@@ -1,0 +1,28 @@
+.footer {
+  padding: 1rem 0;
+  background-color: #fff;
+  border-top: 1px solid #eaedf1;
+  width: 100%; /* Make footer take full width */
+  margin: 0; /* Remove any margin */
+}
+
+/* Add these styles to ensure the footer is at the bottom of the content area */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--navbar-height)); /* Subtract navbar height */
+}
+
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(
+    100vh - var(--navbar-height)
+  ); /* Ensure it takes full height */
+}
+
+/* Push the footer to the bottom when content doesn't fill the page */
+.footer-wrapper {
+  margin-top: auto;
+  width: 100%;
+}

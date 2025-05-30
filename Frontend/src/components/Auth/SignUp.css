@@ -1,0 +1,223 @@
+.auth-card {
+  border: none;
+  border-radius: var(--card-border-radius);
+  box-shadow: var(--box-shadow);
+  width: 100%; /* Ensure card takes full width of container */
+  max-width: 900px; /* Limit maximum width */
+  margin: 2rem auto; /* Center the card */
+}
+
+.auth-card .card-body {
+  padding: 2.5rem;
+}
+
+.auth-card .card-title {
+  font-weight: 800;
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+}
+
+.auth-form .form-label {
+  font-weight: 600;
+  color: #6366a3;
+}
+
+.auth-form .form-control,
+.auth-form .form-select {
+  border-radius: var(--input-border-radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid #d4d6ff;
+}
+
+/* Style the input group prefix */
+.auth-form .input-group-text {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.divider-text {
+  position: relative;
+  text-align: center;
+  margin: 1.5rem 0;
+  color: var(--dark-color);
+}
+
+.divider-text:before,
+.divider-text:after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 45%;
+  height: 1px;
+  background-color: #e3e6f0;
+}
+
+.divider-text:before {
+  left: 0;
+}
+
+.divider-text:after {
+  right: 0;
+}
+
+/* Fix the sidebar image */
+.bg-register-image {
+  background-size: cover !important;
+  background-position: center !important;
+  min-height: 100%;
+  border-radius: var(--card-border-radius) 0 0 var(--card-border-radius);
+  position: relative;
+}
+
+/* Add overlay to the image to match the new color theme */
+.bg-register-image:after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(94, 96, 206, 0.7) 0%,
+    rgba(100, 223, 223, 0.5) 100%
+  );
+  border-radius: var(--card-border-radius) 0 0 var(--card-border-radius);
+}
+
+/* Step indicator styling */
+.steps-indicator {
+  margin: 0 auto 2rem auto;
+  width: 80%;
+}
+
+.step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #e9ecef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #6c757d;
+  position: relative;
+  z-index: 2;
+}
+
+.step-circle.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.step-circle.completed {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+.step-line {
+  height: 3px;
+  background-color: #e9ecef;
+  flex-grow: 1;
+  margin: 0 -5px;
+  position: relative;
+  top: 20px;
+  z-index: 1;
+  max-width: 100px;
+}
+
+.step-label {
+  color: #6c757d;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  width: 100px;
+}
+
+/* Alert styling */
+.alert-info {
+  background-color: rgba(100, 223, 223, 0.2);
+  border-color: rgba(100, 223, 223, 0.3);
+  color: var(--dark-color);
+}
+/* Eye icon button styling */
+.input-group .btn-outline-secondary {
+  border-color: #d4d6ff;
+  color: var(--dark-color);
+  padding: 0.375rem 0.75rem;
+  z-index: 3; /* Ensure it appears above invalid feedback messages */
+}
+
+.input-group .btn-outline-secondary:hover {
+  background-color: #f2f2ff;
+  color: var(--primary-color);
+}
+
+.input-group .btn-outline-secondary:focus {
+  box-shadow: none;
+}
+
+/* Fix positioning of invalid feedback for input groups with buttons */
+.input-group .invalid-feedback {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+}
+
+/* Add more spacing when invalid feedback is shown */
+.input-group.has-validation {
+  margin-bottom: 1.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .auth-card {
+    margin: 1rem auto;
+  }
+}
+
+@media (max-width: 576px) {
+  .steps-indicator {
+    width: 100%;
+  }
+
+  .step-label {
+    width: 80px;
+  }
+  .input-group {
+    margin-bottom: 2rem;
+  }
+}
+/* Add this to your media queries section */
+@media (max-width: 400px) {
+  .step-circle {
+    width: 35px;
+    height: 35px;
+    font-size: 0.9rem;
+  }
+
+  .step-line {
+    max-width: 60px;
+  }
+
+  .auth-card .card-body {
+    padding: 1.5rem;
+  }
+
+  /* Handle two-column layout for password fields on very small screens */
+  .row .col-sm-6 {
+    padding: 0 0.5rem;
+  }
+
+  /* Make buttons stack on very small screens */
+  .d-flex.gap-2 {
+    flex-direction: column;
+  }
+
+  .d-flex.gap-2 .btn {
+    margin-bottom: 0.5rem;
+  }
+}

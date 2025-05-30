@@ -1,0 +1,23 @@
+<svg width="280" height="200" viewBox="0 0 280 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="40" y="20" width="150" height="120" rx="5" fill="#F5F5F5" stroke="#D9D9D9" stroke-width="2" />
+  <rect x="60" y="55" width="80" height="10" rx="2" fill="#FFC107" />
+  <rect x="60" y="75" width="110" height="10" rx="2" fill="#E9ECEF" />
+
+  <circle cx="50" cy="100" r="10" fill="#F8F9FA" />
+  <path d="M50 95V105M45 100H55" stroke="#ADB5BD" stroke-width="2" stroke-linecap="round" />
+
+  <circle cx="50" cy="135" r="10" fill="#F8F9FA" />
+  <path d="M50 130V140M45 135H55" stroke="#ADB5BD" stroke-width="2" stroke-linecap="round" />
+
+  <g transform="translate(180, 85)">
+    <circle cx="40" cy="40" r="40" fill="#FFC107" />
+    <circle cx="40" cy="25" r="15" fill="#FFFFFF" />
+    <path d="M20 65C20 54.5 28 45 40 45C52 45 60 54.5 60 65" fill="#FFFFFF" />
+    <path d="M30 21C30 19.3432 31.3432 18 33 18V18C34.6568 18 36 19.3432 36 21V25C36 26.6568 34.6568 28 33 28V28C31.3432 28 30 26.6568 30 25V21Z" fill="#FFC107" />
+    <path d="M44 21C44 19.3432 45.3432 18 47 18V18C48.6569 18 50 19.3432 50 21V25C50 26.6568 48.6569 28 47 28V28C45.3432 28 44 26.6568 44 25V21Z" fill="#FFC107" />
+    <path d="M32 57C35.3333 59.8333 44.6667 59.8333 48 57" stroke="#FFC107" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <circle cx="180" cy="80" r="28" fill="#E9ECEF" opacity="0.5" />
+  <circle cx="225" cy="40" r="15" fill="#E9ECEF" opacity="0.3" />
+</svg>

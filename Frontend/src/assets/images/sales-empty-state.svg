@@ -1,0 +1,84 @@
+<!-- filepath: g:\Coding\Shop_Manegment_Website\Frontend\src\assets\images\sales-empty-state.svg -->
+<svg width="300" height="250" viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .invoice {
+      fill: #f8f9fa;
+      stroke: #5e60ce;
+      stroke-width: 2;
+    }
+
+    .text-line {
+      fill: #dee2e6;
+    }
+
+    .calculator {
+      fill: #4a5568;
+    }
+
+    .screen {
+      fill: #2d3748;
+    }
+
+    .button {
+      fill: #e2e8f0;
+    }
+
+    .person {
+      fill: #f6ad55;
+    }
+
+    .shirt {
+      fill: #5e60ce;
+    }
+
+    .money {
+      fill: #48bb78;
+    }
+  </style>
+
+  <!-- Background -->
+  <circle cx="150" cy="125" r="120" fill="#f7fafc" opacity="0.3" />
+
+  <!-- Calculator -->
+  <rect class="calculator" x="50" y="80" width="60" height="80" rx="5" />
+  <rect class="screen" x="55" y="90" width="50" height="20" rx="2" />
+  <rect class="button" x="60" y="115" width="8" height="8" rx="1" />
+  <rect class="button" x="72" y="115" width="8" height="8" rx="1" />
+  <rect class="button" x="84" y="115" width="8" height="8" rx="1" />
+  <rect class="button" x="96" y="115" width="8" height="8" rx="1" />
+  <rect class="button" x="60" y="127" width="8" height="8" rx="1" />
+  <rect class="button" x="72" y="127" width="8" height="8" rx="1" />
+  <rect class="button" x="84" y="127" width="8" height="8" rx="1" />
+  <rect class="button" x="96" y="127" width="8" height="8" rx="1" />
+  <rect class="button" x="60" y="139" width="8" height="8" rx="1" />
+  <rect class="button" x="72" y="139" width="8" height="8" rx="1" />
+  <rect class="button" x="84" y="139" width="8" height="8" rx="1" />
+  <rect class="button" x="96" y="139" width="8" height="8" rx="1" />
+
+  <!-- Invoice -->
+  <rect class="invoice" x="130" y="60" width="90" height="120" rx="3" />
+  <rect class="text-line" x="140" y="75" width="70" height="4" rx="2" />
+  <rect class="text-line" x="140" y="85" width="50" height="3" rx="1" />
+  <rect class="text-line" x="140" y="93" width="60" height="3" rx="1" />
+  <rect class="text-line" x="140" y="105" width="40" height="3" rx="1" />
+  <rect class="text-line" x="140" y="113" width="35" height="3" rx="1" />
+  <rect class="text-line" x="140" y="121" width="45" height="3" rx="1" />
+  <rect class="text-line" x="140" y="135" width="70" height="2" rx="1" />
+  <rect class="text-line" x="140" y="143" width="60" height="4" rx="2" />
+  <rect class="text-line" x="140" y="155" width="50" height="6" rx="3" />
+
+  <!-- Person -->
+  <circle class="person" cx="230" cy="110" r="15" />
+  <rect class="shirt" x="220" y="125" width="20" height="30" rx="3" />
+
+  <!-- Money bills floating -->
+  <rect class="money" x="170" y="30" width="25" height="15" rx="2" transform="rotate(15 182.5 37.5)" />
+  <rect class="money" x="200" y="40" width="20" height="12" rx="2" transform="rotate(-10 210 46)" />
+  <rect class="money" x="240" y="35" width="18" height="10" rx="1" transform="rotate(20 249 40)" />
+
+  <!-- Cart icon -->
+  <path d="M80 190 L95 190 L100 210 L75 210 Z" fill="#5e60ce" opacity="0.6" />
+  <circle cx="82" cy="215" r="3" fill="#5e60ce" />
+  <circle cx="93" cy="215" r="3" fill="#5e60ce" />
+  <rect x="85" y="185" width="20" height="12" fill="none" stroke="#5e60ce" stroke-width="2" rx="2" />
+</svg>

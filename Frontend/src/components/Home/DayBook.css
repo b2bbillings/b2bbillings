@@ -1,0 +1,163 @@
+/* Banner styling */
+.page-banner {
+  background-color: #f0f4ff;
+  border-radius: 8px;
+  padding: 1rem 2rem;
+  margin-top: 1rem;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+}
+
+.banner-icon {
+  font-size: 1.5rem;
+  margin-right: 1rem;
+}
+
+/* Page header */
+.page-header {
+  margin-top: 1.5rem;
+}
+
+.video-badge {
+  background-color: #edf2ff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+/* Summary cards */
+.summary-cards .card {
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
+}
+
+.summary-cards .card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.income-card {
+  border-left: 4px solid #28a745;
+}
+
+.expense-card {
+  border-left: 4px solid #dc3545;
+}
+
+.balance-card {
+  border-left: 4px solid #17a2b8;
+}
+
+.card-value {
+  font-size: 1.75rem;
+  margin: 0.5rem 0;
+}
+
+.card-indicator {
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.indicator {
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.indicator.up {
+  color: #28a745;
+}
+
+.indicator.down {
+  color: #dc3545;
+}
+
+.indicator-text {
+  color: #6c757d;
+}
+
+/* Table styling */
+.transaction-table thead th {
+  background-color: #f8f9fa;
+  border-top: none;
+}
+
+.transaction-table {
+  margin-bottom: 0;
+}
+
+.transaction-table tbody tr {
+  transition: all 0.15s ease-in-out;
+}
+
+.transaction-table tbody tr:hover {
+  background-color: #f8f9ff;
+}
+
+.transaction-table tfoot {
+  font-weight: bold;
+  background-color: #f8f9fa;
+}
+
+/* Tabs styling */
+.nav-tabs-custom .nav-link {
+  color: #495057;
+  border: none;
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+}
+
+.nav-tabs-custom .nav-link.active {
+  color: #5e60ce;
+  border-bottom: 2px solid #5e60ce;
+  background-color: transparent;
+}
+
+.nav-tabs-custom {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.search-bar {
+  width: 300px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header > div:last-child {
+    margin-top: 1rem;
+    width: 100%;
+  }
+
+  .banner-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .banner-icon {
+    margin-bottom: 0.5rem;
+    margin-right: 0;
+  }
+
+  .banner-content button {
+    margin-top: 0.5rem;
+    margin-left: 0 !important;
+  }
+
+  .search-bar {
+    width: 100%;
+  }
+}

@@ -1,0 +1,238 @@
+/* Sidebar variables */
+:root {
+  --sidebar-width: 260px;
+  --sidebar-closed-width: 70px;
+  --navbar-height: 60px;
+  --sidebar-item-height: 46px;
+  --sidebar-bg: #ffffff;
+  --sidebar-text-color: #6b7280;
+  --sidebar-active-color: #5e60ce;
+  --sidebar-hover-bg: #f9fafb;
+  --submenu-bg: #f9fafb;
+}
+
+/* Basic sidebar layout */
+.sidebar {
+  width: var(--sidebar-width);
+  height: calc(100vh - var(--navbar-height));
+  background-color: var(--sidebar-bg);
+  position: fixed;
+  top: var(--navbar-height);
+  left: 0;
+  bottom: 0;
+  z-index: 999;
+  transition: width 0.3s;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid #e5e7eb;
+}
+
+.sidebar.closed {
+  width: var(--sidebar-closed-width);
+}
+
+/* Hide scrollbar but allow scrolling */
+.sidebar::-webkit-scrollbar {
+  width: 0px;
+}
+
+.sidebar-menu {
+  padding: 0;
+}
+
+/* Accordion overrides */
+.sidebar-accordion .accordion-button {
+  background: none !important;
+  box-shadow: none !important;
+  padding: 0;
+}
+
+.sidebar-accordion .accordion-button::after {
+  display: none;
+}
+
+.sidebar-accordion .accordion-body {
+  padding: 0;
+}
+
+/* Item styling */
+.sidebar-item {
+  display: block;
+  width: 100%;
+}
+
+.sidebar-accordion-item {
+  border: none !important;
+  background-color: transparent !important;
+}
+
+/* Header styling */
+.sidebar-header {
+  padding: 0 !important;
+}
+
+.sidebar-header .accordion-button {
+  width: 100%;
+}
+
+/* Link styling */
+.sidebar-link,
+.sidebar-header .accordion-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--sidebar-item-height);
+  color: var(--sidebar-text-color) !important;
+  text-decoration: none;
+  padding: 0 16px !important;
+  transition: all 0.2s;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.sidebar-link-content {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.sidebar-link:hover,
+.sidebar-header .accordion-button:hover {
+  background-color: var(--sidebar-hover-bg);
+  color: var(--sidebar-active-color) !important;
+}
+
+.sidebar-text {
+  margin-left: 12px;
+  transition: opacity 0.2s;
+  font-size: 0.95rem;
+}
+
+.sidebar-icon {
+  width: 20px;
+  font-size: 16px;
+  color: #6b7280;
+  text-align: center;
+}
+
+/* Chevron icon */
+.chevron-icon {
+  font-size: 14px;
+  transition: transform 0.3s;
+  color: #9ca3af;
+}
+
+.chevron-icon.rotated {
+  transform: rotate(90deg);
+}
+
+/* Submenu styling */
+.sidebar-submenu {
+  background-color: var(--submenu-bg);
+  padding: 4px 0;
+}
+
+.submenu-item {
+  padding: 8px 16px 8px 48px !important;
+  color: var(--sidebar-text-color) !important;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.submenu-item:hover {
+  color: var(--sidebar-active-color) !important;
+  background-color: rgba(94, 96, 206, 0.05);
+}
+
+/* Active states */
+.sidebar-link.active,
+.sidebar-header .accordion-button.active {
+  color: var(--sidebar-active-color) !important;
+  background-color: rgba(94, 96, 206, 0.05);
+}
+
+.submenu-item.active {
+  color: var(--sidebar-active-color) !important;
+  font-weight: 500;
+}
+
+/* Collapsed sidebar */
+.sidebar.closed .sidebar-text,
+.sidebar.closed .chevron-icon {
+  opacity: 0;
+  width: 0;
+  display: none;
+}
+
+.sidebar.closed .sidebar-icon {
+  margin-right: 0;
+}
+
+.sidebar.closed .sidebar-link,
+.sidebar.closed .sidebar-header .accordion-button {
+  justify-content: center;
+  padding: 0 !important;
+}
+
+.sidebar.closed .sidebar-link-content {
+  justify-content: center;
+}
+
+.sidebar.closed .sidebar-submenu {
+  display: none;
+}
+
+/* Add this additional CSS to fix the content margin issue */
+.content-wrapper {
+  margin-left: var(--sidebar-width);
+  width: calc(100% - var(--sidebar-width));
+  transition: margin-left 0.3s, width 0.3s;
+  margin-top: var(--navbar-height); /* Add margin-top equal to navbar height */
+  min-height: calc(
+    100vh - var(--navbar-height)
+  ); /* Adjust min-height calculation */
+}
+
+.content-wrapper.expanded {
+  margin-left: var(--sidebar-closed-width);
+  width: calc(100% - var(--sidebar-closed-width));
+}
+
+.main-content {
+  padding: 1rem 1.5rem; /* Add padding to main content */
+}
+
+/* Fix the sticky navbar correctly */
+.custom-navbar {
+  height: var(--navbar-height);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+}
+
+/* Ensure the footer appears at the bottom */
+.footer {
+  margin-top: auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991.98px) {
+  .sidebar {
+    width: 0;
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    width: var(--sidebar-width);
+    transform: translateX(0);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  }
+
+  .content-wrapper,
+  .content-wrapper.expanded {
+    margin-left: 0;
+    width: 100%;
+  }
+}
