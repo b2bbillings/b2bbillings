@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Form, InputGroup, Badge } from 'react-bootstrap';
+import { Table, Button, Form, InputGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faEdit } from '@fortawesome/free-solid-svg-icons';
 import ProductSelector from './ProductSelector';
 
-function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoiceType }) {
+function PurchaseItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, purchaseType }) {
     // Global tax inclusive state for all items
     const [globalTaxInclusive, setGlobalTaxInclusive] = useState(false);
 
@@ -56,8 +56,8 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
         return (parseFloat(quantity || 0) * parseFloat(price || 0)).toFixed(2);
     };
 
-    const getGSTAmount = (item, invoiceType) => {
-        if (invoiceType !== 'gst' || !item.gstRate) return 0;
+    const getGSTAmount = (item, purchaseType) => {
+        if (purchaseType !== 'gst' || !item.gstRate) return 0;
 
         const baseAmount = parseFloat(item.total || 0);
 
@@ -72,21 +72,21 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
     const getFinalTotal = (item) => {
         const baseTotal = parseFloat(calculateItemTotal(item.quantity, item.price));
 
-        if (invoiceType !== 'gst' || !item.gstRate) {
+        if (purchaseType !== 'gst' || !item.gstRate) {
             return baseTotal;
         }
 
         if (item.taxInclusive || globalTaxInclusive) {
             return baseTotal;
         } else {
-            const gstAmount = getGSTAmount(item, invoiceType);
+            const gstAmount = getGSTAmount(item, purchaseType);
             return baseTotal + gstAmount;
         }
     };
 
     // Helper function to check if GST features should be shown
     const showGSTFeatures = () => {
-        return invoiceType === 'gst';
+        return purchaseType === 'gst';
     };
 
     return (
@@ -104,7 +104,7 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                                         <div className="d-flex align-items-center gap-2">
                                             <Form.Check
                                                 type="switch"
-                                                id="global-tax-inclusive"
+                                                id="global-tax-inclusive-purchase"
                                                 checked={globalTaxInclusive}
                                                 onChange={(e) => handleGlobalTaxInclusiveChange(e.target.checked)}
                                                 className="mb-0"
@@ -223,16 +223,6 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                                                 />
                                                 <InputGroup.Text>%</InputGroup.Text>
                                             </InputGroup>
-                                            {/* {item.selectedProduct && item.gstRate > 0 && (
-                                                <small className="text-success d-block mt-1">
-                                                    Auto-filled from inventory
-                                                </small>
-                                            )}
-                                            {item.gstRate > 0 && (
-                                                <small className="text-muted d-block">
-                                                    ₹{getGSTAmount(item, invoiceType).toFixed(2)}
-                                                </small>
-                                            )} */}
                                         </div>
                                     </td>
                                 )}
@@ -285,4 +275,4 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
     );
 }
 
-export default ItemsTable;
+export default PurchaseItemsTable;

@@ -1,0 +1,267 @@
+/* Items Table Container */
+.items-table-container {
+  margin: 1rem 0;
+}
+
+/* Main Table Styling */
+.items-table {
+  margin-bottom: 0;
+  font-size: 0.9rem;
+}
+
+.items-table thead th {
+  background-color: #f8f9fa !important;
+  border-color: #dee2e6 !important;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+  vertical-align: middle;
+}
+
+.items-table tbody td {
+  padding: 0.75rem 0.5rem;
+  vertical-align: middle;
+  border-color: #dee2e6;
+}
+
+/* Input Field Styling */
+.items-table .form-control {
+  border-radius: 0.375rem;
+  font-size: 0.9rem;
+}
+
+.items-table .form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Quantity input specific styling */
+.quantity-input {
+  min-width: 80px !important;
+  text-align: center !important;
+  font-weight: 600;
+}
+
+/* Price input specific styling */
+.price-input {
+  min-width: 100px !important;
+  text-align: right !important;
+}
+
+/* Tax Toggle Switch */
+.items-table .form-check-input {
+  cursor: pointer;
+}
+
+.items-table .form-check-input:checked {
+  background-color: #198754;
+  border-color: #198754;
+}
+
+/* GST Display */
+.gst-display {
+  text-align: center;
+  min-width: 80px;
+}
+
+.gst-rate {
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.gst-amount {
+  font-weight: 600;
+  color: #198754 !important;
+  font-size: 0.8rem;
+}
+
+/* Product Info Display */
+.items-table .text-muted {
+  font-size: 0.75rem;
+}
+
+/* Total Column Styling */
+.items-table .text-primary {
+  color: #0d6efd !important;
+  font-weight: 600 !important;
+}
+
+/* Action Button Styling */
+.items-table .btn-outline-danger {
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.items-table .btn-outline-danger:hover {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+.items-table .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Add Item Button */
+.btn-outline-primary {
+  border-color: #0d6efd;
+  color: #0d6efd;
+  font-weight: 500;
+}
+
+.btn-outline-primary:hover {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+  color: white;
+}
+
+/* Product Suggestions */
+.suggestion-dropdown {
+  position: absolute !important;
+  z-index: 9999 !important;
+  width: 100% !important;
+  margin-top: 1px !important;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  border-radius: 0.375rem;
+  background-color: white;
+  border: 1px solid #dee2e6;
+}
+
+.suggestion-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f8f9fa;
+  transition: background-color 0.2s ease;
+}
+
+.suggestion-item:hover {
+  background-color: #f8f9fa;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+/* Summary Section */
+.items-summary {
+  background-color: #f8f9fa;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .items-table {
+    font-size: 0.85rem;
+  }
+
+  .items-table thead th,
+  .items-table tbody td {
+    padding: 0.5rem 0.3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .items-table {
+    font-size: 0.8rem;
+  }
+
+  .items-table thead th,
+  .items-table tbody td {
+    padding: 0.4rem 0.2rem;
+  }
+
+  .quantity-input,
+  .price-input {
+    min-width: 60px !important;
+  }
+
+  .gst-rate {
+    font-size: 0.7rem;
+  }
+
+  .gst-amount {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .items-table {
+    font-size: 0.75rem;
+  }
+
+  .items-table thead th,
+  .items-table tbody td {
+    padding: 0.375rem 0.2rem;
+  }
+}
+
+/* Focus states for accessibility */
+.items-table .form-control:focus,
+.items-table .form-check-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Loading state */
+.items-table.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Error state */
+.items-table .is-invalid {
+  border-color: #dc3545;
+}
+
+.items-table .invalid-feedback {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: #dc3545;
+}
+
+/* Success state */
+.items-table .is-valid {
+  border-color: #198754;
+}
+
+/* Badge styling */
+.badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Input Group styling */
+.input-group-text {
+  background-color: transparent !important;
+  border-right: none !important;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+/* Table hover effects */
+.items-table tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Stock warning */
+.stock-warning {
+  color: #dc3545 !important;
+  font-weight: 600;
+}
+
+.stock-low {
+  color: #fd7e14 !important;
+  font-weight: 600;
+}
+
+.stock-good {
+  color: #198754 !important;
+}

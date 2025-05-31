@@ -156,10 +156,24 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                             </Accordion.Header>
                             <Accordion.Body className="sidebar-submenu">
                                 <Nav className="flex-column">
-                                    <Nav.Link href="#" className="submenu-item">All Purchases</Nav.Link>
-                                    <Nav.Link href="#" className="submenu-item">Create Purchase</Nav.Link>
-                                    <Nav.Link href="#" className="submenu-item">Purchase Orders</Nav.Link>
-                                </Nav>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('allPurchases')}
+                                        className={`submenu-item ${activePage === 'allPurchases' ? 'active' : ''}`}
+                                    >
+                                        All Purchases
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('createPurchase')}
+                                        className={`submenu-item ${activePage === 'createPurchase' ? 'active' : ''}`}
+                                    >
+                                        Create Purchase
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('purchaseOrders')}
+                                        className={`submenu-item ${activePage === 'purchaseOrders' ? 'active' : ''}`}
+                                    >
+                                        Purchase Orders
+                                    </Nav.Link>   </Nav>
                             </Accordion.Body>
                         </Accordion.Item>
                     </div>

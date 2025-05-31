@@ -136,9 +136,29 @@ function Sales({ view = 'allSales', onNavigate }) {
         });
         setShowCreateModal(true);
     };
-
     const handleCloseModal = () => {
-        setShowCreateModal(false);
+        setShowCreateModal(false); // FIXED: was setShowModal, should be setShowCreateModal
+
+        // Reset form data to initial state
+        setFormData({
+            invoiceNumber: '',
+            invoiceDate: new Date().toISOString().split('T')[0],
+            selectedParty: '',
+            invoiceType: '',
+            items: [{
+                productService: '',
+                quantity: 1,
+                price: 0,
+                total: 0
+            }],
+            subtotal: 0,
+            tax: 0,
+            discount: 0,
+            total: 0,
+            notes: ''
+        });
+
+        // Reset editing state
         setEditingSale(null);
     };
 
@@ -521,8 +541,8 @@ function Sales({ view = 'allSales', onNavigate }) {
                                 onCreateInvoice={handleOpenCreateModal}
                                 onEditSale={handleEditSale}
                                 onDeleteSale={handleDeleteSale}
-                                onManagePayment={handleManagePayment}
-                                onPrintInvoice={handlePrintInvoice}
+                                onManagePayment={handleManagePayment}  // Add this line
+                                onPrintInvoice={handlePrintInvoice}    // Add this line
                             />
                         </>
                     ) : (

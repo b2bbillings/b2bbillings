@@ -4,6 +4,7 @@ import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
 import './HomePage.css';
+import Purchases from '../components/Home/Purchases';
 
 /**
  * HomePage component that serves as the main container for the application
@@ -31,11 +32,11 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
 
     // Render the appropriate component based on the current view
     const renderContent = () => {
-
-        // Main sections
         switch (currentView) {
             case 'dailySummary':
+                return <DayBook view={currentView} onNavigate={handleNavigation} />;
             case 'transactions':
+                return <DayBook view={currentView} onNavigate={handleNavigation} />;
             case 'cashAndBank':
                 return <DayBook view={currentView} onNavigate={handleNavigation} />;
             case 'parties':
@@ -48,7 +49,7 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
             case 'allPurchases':
             case 'createPurchase':
             case 'purchaseOrders':
-                return <div className="placeholder-content">Purchases view: {currentView}</div>;
+                return <Purchases view={currentView} onNavigate={handleNavigation} />;
             case 'products':
                 return <div className="placeholder-content">Products & Services</div>;
             case 'inventory':

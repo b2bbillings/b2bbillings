@@ -657,7 +657,6 @@ function Parties() {
                                 />
                             </div>
                         </Form.Group>
-
                         {/* Basic Information */}
                         <Row>
                             <Col md={6}>
@@ -690,26 +689,24 @@ function Parties() {
                                         placeholder="Enter WhatsApp number"
                                         className="form-input"
                                     />
+
+                                    {/* Add Phone Number Button - Now directly under WhatsApp field */}
+                                    {!showAdditionalPhones && (
+                                        <div className="mt-2">
+                                            <Button
+                                                variant="outline-primary"
+                                                size="sm"
+                                                onClick={showAdditionalPhonesSection}
+                                                type="button"
+                                            >
+                                                <FontAwesomeIcon icon={faPlus} className="me-1" />
+                                                Add Phone Numbers
+                                            </Button>
+                                        </div>
+                                    )}
                                 </Form.Group>
                             </Col>
                         </Row>
-
-                        {/* Add Phone Number Button */}
-                        {!showAdditionalPhones && (
-                            <Row className="mb-3">
-                                <Col>
-                                    <Button
-                                        variant="outline-primary"
-                                        size="sm"
-                                        onClick={showAdditionalPhonesSection}
-                                        type="button"
-                                    >
-                                        <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                        Add Phone Numbers
-                                    </Button>
-                                </Col>
-                            </Row>
-                        )}
 
                         {/* Multiple Phone Numbers Section */}
                         {showAdditionalPhones && (
@@ -771,7 +768,6 @@ function Parties() {
                                 ))}
                             </div>
                         )}
-
                         <Row>
                             <Col md={6}>
                                 <Form.Group className="mb-3">
