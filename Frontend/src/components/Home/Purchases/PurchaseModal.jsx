@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Button, Form, Row, Col, Card, ListGroup } from 'react-bootstrap';
+import { Modal, Button, Form, Row, Col, Card, ListGroup, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faFileInvoice, faUserPlus, faUser, faToggleOn, faToggleOff } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faFileInvoice, faUserPlus, faUser, faToggleOn, faToggleOff, faSearch, faCheckCircle, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import PurchaseItemsTable from './PurchaseItemsTable';
 
 function PurchaseModal({
@@ -16,7 +16,8 @@ function PurchaseModal({
     onAddItem,
     onRemoveItem,
     onSavePurchase,
-    onShowAddSupplierModal
+    onShowAddSupplierModal,
+    existingPurchases = [] // Add this prop to check for existing bills
 }) {
     // Local state for supplier autocomplete
     const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
@@ -24,6 +25,14 @@ function PurchaseModal({
     const [filteredSuppliers, setFilteredSuppliers] = useState([]);
     const [selectedSupplier, setSelectedSupplier] = useState(null);
     const [isInitialized, setIsInitialized] = useState(false);
+
+    // New state for invoice number handling
+    const [invoiceNumberStatus, setInvoiceNumberStatus] = useState({
+        isChecking: false,
+        isExisting: false,
+        existingData: null,
+        isDuplicate: false
+    });
 
     // Add fake products data
     const [products] = useState([
@@ -51,37 +60,147 @@ function PurchaseModal({
 
     const inputRef = useRef(null);
 
-    // Generate purchase number based on type
-    const generatePurchaseNumber = (purchaseType) => {
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const random = Math.floor(1000 + Math.random() * 9000);
+    // Handle invoice number change and check for existing data
+    const handleInvoiceNumberChange = async (e) => {
+        const invoiceNumber = e.target.value;
 
-        if (purchaseType === 'gst') {
-            return `PO-GST-${year}${month}${day}-${random}`;
-        } else {
-            return `PO-${year}${month}${day}-${random}`;
+        // Update form data
+        onInputChange({
+            target: {
+                name: 'supplierInvoiceNumber',
+                value: invoiceNumber
+            }
+        });
+
+        // Reset status
+        setInvoiceNumberStatus({
+            isChecking: false,
+            isExisting: false,
+            existingData: null,
+            isDuplicate: false
+        });
+
+        if (invoiceNumber.trim() === '') return;
+
+        // Check if this invoice number already exists (duplicate check)
+        const duplicateCheck = existingPurchases.find(purchase =>
+            purchase.supplierInvoiceNumber === invoiceNumber.trim() &&
+            purchase.id !== editingPurchase?.id
+        );
+
+        if (duplicateCheck) {
+            setInvoiceNumberStatus({
+                isChecking: false,
+                isExisting: false,
+                existingData: null,
+                isDuplicate: true
+            });
+            return;
+        }
+
+        // Set checking status
+        setInvoiceNumberStatus(prev => ({ ...prev, isChecking: true }));
+
+        // Simulate API call delay
+        setTimeout(() => {
+            // Check if this invoice number was created from this website
+            const existingPurchase = existingPurchases.find(purchase =>
+                purchase.supplierInvoiceNumber === invoiceNumber.trim() &&
+                purchase.isFromThisWebsite === true
+            );
+
+            if (existingPurchase) {
+                setInvoiceNumberStatus({
+                    isChecking: false,
+                    isExisting: true,
+                    existingData: existingPurchase,
+                    isDuplicate: false
+                });
+
+                // Auto-fill the form with existing data
+                autoFillFromExisting(existingPurchase);
+            } else {
+                setInvoiceNumberStatus({
+                    isChecking: false,
+                    isExisting: false,
+                    existingData: null,
+                    isDuplicate: false
+                });
+            }
+        }, 500);
+    };
+
+    // Auto-fill form with existing purchase data
+    const autoFillFromExisting = (existingData) => {
+        // Fill supplier data
+        if (existingData.supplier) {
+            setSupplierSearchQuery(existingData.supplier.name);
+            setSelectedSupplier(existingData.supplier);
+            onSupplierSelection({
+                target: {
+                    value: existingData.supplier.id.toString(),
+                    selectedSupplierData: existingData.supplier
+                }
+            });
+        }
+
+        // Fill purchase type
+        onInputChange({
+            target: {
+                name: 'purchaseType',
+                value: existingData.purchaseType || 'non-gst'
+            }
+        });
+
+        // Fill purchase date
+        onInputChange({
+            target: {
+                name: 'purchaseDate',
+                value: existingData.purchaseDate || ''
+            }
+        });
+
+        // Fill items (if any)
+        if (existingData.items && existingData.items.length > 0) {
+            existingData.items.forEach((item, index) => {
+                onItemChange(index, 'productService', item.productService || '');
+                onItemChange(index, 'quantity', item.quantity || 1);
+                onItemChange(index, 'price', item.price || 0);
+                onItemChange(index, 'unit', item.unit || 'piece');
+                onItemChange(index, 'gstRate', item.gstRate || 0);
+                onItemChange(index, 'taxInclusive', item.taxInclusive || false);
+            });
+        }
+
+        // Fill notes
+        if (existingData.notes) {
+            onInputChange({
+                target: {
+                    name: 'notes',
+                    value: existingData.notes
+                }
+            });
+        }
+
+        // Fill discount
+        if (existingData.discount) {
+            onInputChange({
+                target: {
+                    name: 'discount',
+                    value: existingData.discount
+                }
+            });
         }
     };
 
     // Handle purchase type toggle
     const handlePurchaseTypeToggle = () => {
         const newType = formData.purchaseType === 'gst' ? 'non-gst' : 'gst';
-        const newPurchaseNumber = generatePurchaseNumber(newType);
 
         onInputChange({
             target: {
                 name: 'purchaseType',
                 value: newType
-            }
-        });
-
-        onInputChange({
-            target: {
-                name: 'purchaseNumber',
-                value: newPurchaseNumber
             }
         });
     };
@@ -105,6 +224,13 @@ function PurchaseModal({
             setIsInitialized(true);
         } else if (!show) {
             setIsInitialized(false);
+            // Reset invoice status when modal closes
+            setInvoiceNumberStatus({
+                isChecking: false,
+                isExisting: false,
+                existingData: null,
+                isDuplicate: false
+            });
         }
     }, [show, editingPurchase, formData.selectedSupplier, suppliers, isInitialized]);
 
@@ -204,6 +330,8 @@ function PurchaseModal({
     const isFormValid = () => {
         if (!formData.purchaseDate || formData.purchaseDate.trim() === '') return false;
         if (!formData.purchaseType || formData.purchaseType === '') return false;
+        if (!formData.supplierInvoiceNumber || formData.supplierInvoiceNumber.trim() === '') return false;
+        if (invoiceNumberStatus.isDuplicate) return false;
         if (!selectedSupplier && (!supplierSearchQuery || supplierSearchQuery.trim() === '')) return false;
         if (!formData.items || formData.items.length === 0) return false;
 
@@ -252,7 +380,7 @@ function PurchaseModal({
         e.stopPropagation();
 
         if (!isFormValid()) {
-            alert('Please fill in all required fields:\n- Purchase Date\n- Purchase Type\n- Supplier Name\n- At least one item with product/service name');
+            alert('Please fill in all required fields:\n- Purchase Date\n- Purchase Type\n- Supplier Invoice Number\n- Supplier Name\n- At least one item with product/service name');
             return;
         }
 
@@ -458,22 +586,50 @@ function PurchaseModal({
                             </div>
                         </Col>
 
-                        {/* Right Side: Purchase Number and Date */}
+                        {/* Right Side: Invoice Number and Date */}
                         <Col md={6}>
                             <div className="d-flex flex-column h-100 justify-content-start">
+                                {/* Supplier Invoice Number */}
                                 <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">Purchase Number</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="purchaseNumber"
-                                        value={formData.purchaseNumber}
-                                        onChange={onInputChange}
-                                        placeholder="Auto-generated"
-                                        readOnly
-                                        className="bg-light"
-                                    />
+                                    <Form.Label className="fw-semibold">
+                                        Supplier Invoice Number <span className="text-danger">*</span>
+                                    </Form.Label>
+                                    <div className="position-relative">
+                                        <Form.Control
+                                            type="text"
+                                            name="supplierInvoiceNumber"
+                                            value={formData.supplierInvoiceNumber || ''}
+                                            onChange={handleInvoiceNumberChange}
+                                            placeholder="Enter supplier's invoice/bill number"
+                                            className={`form-input ${invoiceNumberStatus.isDuplicate ? 'is-invalid' : invoiceNumberStatus.isExisting ? 'is-valid' : ''}`}
+                                            required
+                                        />
+                                        {invoiceNumberStatus.isChecking && (
+                                            <div className="position-absolute top-50 end-0 translate-middle-y me-3">
+                                                <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                                    <span className="visually-hidden">Checking...</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Status Messages */}
+                                    {invoiceNumberStatus.isDuplicate && (
+                                        <Alert variant="danger" className="mt-2 py-2">
+                                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                                            <strong>Duplicate Invoice!</strong> This invoice number already exists in the system.
+                                        </Alert>
+                                    )}
+
+                                    {invoiceNumberStatus.isExisting && invoiceNumberStatus.existingData && (
+                                        <Alert variant="success" className="mt-2 py-2">
+                                            <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+                                            <strong>Found existing data!</strong> Invoice created on {new Date(invoiceNumberStatus.existingData.createdAt).toLocaleDateString()}. Data auto-filled.
+                                        </Alert>
+                                    )}
+
                                     <Form.Text className="text-muted">
-                                        {formData.purchaseType === 'gst' ? 'GST Purchase Format' : 'Standard Purchase Format'}
+                                        Enter the supplier's original invoice/bill number
                                     </Form.Text>
                                 </Form.Group>
 
@@ -490,23 +646,6 @@ function PurchaseModal({
                                         required
                                     />
                                 </Form.Group>
-
-                                {/* <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">Payment Terms</Form.Label>
-                                    <Form.Select
-                                        name="paymentTerms"
-                                        value={formData.paymentTerms || 'net30'}
-                                        onChange={onInputChange}
-                                        className="form-input"
-                                    >
-                                        <option value="immediate">Immediate</option>
-                                        <option value="net15">Net 15 Days</option>
-                                        <option value="net30">Net 30 Days</option>
-                                        <option value="net45">Net 45 Days</option>
-                                        <option value="net60">Net 60 Days</option>
-                                        <option value="custom">Custom Terms</option>
-                                    </Form.Select>
-                                </Form.Group> */}
                             </div>
                         </Col>
                     </Row>
@@ -624,11 +763,11 @@ function PurchaseModal({
                                         <span className="text-primary text-lg">₹{summaryValues.finalTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
 
-                                    {/* Additional Info */}
-                                    {formData.paymentTerms && formData.paymentTerms !== 'immediate' && (
-                                        <div className="mt-3 p-2 bg-warning bg-opacity-10 border border-warning border-opacity-25 rounded">
+                                    {/* Invoice Number Display */}
+                                    {formData.supplierInvoiceNumber && (
+                                        <div className="mt-3 p-2 bg-info bg-opacity-10 border border-info border-opacity-25 rounded">
                                             <small className="text-muted">
-                                                <strong>Payment Terms:</strong> {formData.paymentTerms.replace('net', 'Net ')}
+                                                <strong>Supplier Invoice:</strong> {formData.supplierInvoiceNumber}
                                             </small>
                                         </div>
                                     )}

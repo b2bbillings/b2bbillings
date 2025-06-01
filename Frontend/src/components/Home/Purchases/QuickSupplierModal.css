@@ -1,0 +1,213 @@
+/* Quick Supplier Modal Backdrop Blur Effect */
+.quick-supplier-modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1050;
+}
+
+/* Force backdrop styling when modal is shown */
+.modal-backdrop.quick-supplier-modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+/* Target all backdrops when quick supplier modal is active */
+body.quick-supplier-modal-open .modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Higher specificity for backdrop */
+.modal.quick-supplier-modal + .modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Modal Dialog Styling */
+.quick-supplier-modal .modal-dialog {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 1055;
+  transform: scale(1);
+  transition: all 0.3s ease;
+}
+
+/* Modal Content Styling */
+.quick-supplier-modal .modal-content {
+  border: none;
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 20px 40px -12px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal Header Styling */
+.quick-supplier-modal .modal-header {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(248, 250, 252, 0.95)
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.3);
+  border-radius: 16px 16px 0 0;
+}
+
+/* Close Button Styling */
+.quick-supplier-modal .btn-close {
+  background-size: 1.2em;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.quick-supplier-modal .btn-close:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* Enhanced Form Input Styling */
+.quick-supplier-modal .form-input {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.quick-supplier-modal .form-input:focus {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.15);
+  transform: translateY(-1px);
+}
+
+/* Party Type Radio Buttons */
+.quick-supplier-modal .party-type-radio {
+  transform: scale(1.1);
+  margin-right: 0.5rem;
+}
+
+.quick-supplier-modal .party-type-radio .form-check-input:checked {
+  background-color: #5e60ce;
+  border-color: #5e60ce;
+}
+
+/* Form Labels */
+.quick-supplier-modal .form-label {
+  color: #374151;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* Button Styling */
+.quick-supplier-modal .btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.quick-supplier-modal .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Animation for modal appearance */
+.quick-supplier-modal.show .modal-dialog {
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .quick-supplier-modal .modal-dialog {
+    margin: 1rem;
+  }
+
+  .quick-supplier-modal .modal-content {
+    border-radius: 12px;
+  }
+}
+
+/* Enhanced backdrop for better blur support */
+@supports (backdrop-filter: blur(12px)) {
+  .quick-supplier-modal-backdrop,
+  .modal-backdrop.quick-supplier-modal-backdrop,
+  body.quick-supplier-modal-open .modal-backdrop,
+  .modal.quick-supplier-modal + .modal-backdrop {
+    background-color: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+  }
+}
+
+/* Fallback for browsers without backdrop-filter support */
+@supports not (backdrop-filter: blur(12px)) {
+  .quick-supplier-modal-backdrop,
+  .modal-backdrop.quick-supplier-modal-backdrop,
+  body.quick-supplier-modal-open .modal-backdrop,
+  .modal.quick-supplier-modal + .modal-backdrop {
+    background-color: rgba(255, 255, 255, 0.85);
+  }
+}
+
+/* Additional phone numbers styling */
+.quick-supplier-modal .additional-phone-row {
+  background: rgba(248, 250, 252, 0.5);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.3);
+}
+
+.quick-supplier-modal .additional-phone-row:hover {
+  background: rgba(248, 250, 252, 0.7);
+  border-color: rgba(226, 232, 240, 0.5);
+  transition: all 0.2s ease;
+}
+
+/* Improved delete button styling */
+.quick-supplier-modal .btn-outline-danger {
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.3);
+}
+
+.quick-supplier-modal .btn-outline-danger:hover {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: white;
+  transform: translateY(-1px) scale(1.05);
+}
+
+/* Stronger backdrop targeting using CSS specificity */
+.modal.show.quick-supplier-modal + .modal-backdrop,
+.modal-backdrop.show.quick-supplier-modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Force backdrop blur with higher specificity */
+body.modal-open .modal-backdrop.quick-supplier-modal-backdrop {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

@@ -182,6 +182,7 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
     };
 
     // Add quick supplier
+    // Update the handleAddQuickSupplier function around line 190-210
     const handleAddQuickSupplier = (e) => {
         e.preventDefault();
 
@@ -193,8 +194,9 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
         const newSupplier = {
             id: Date.now(),
             ...quickSupplierData,
-            whatsappNumber: quickSupplierData.phone,
-            city: ''
+            // Include additional phones if passed from modal
+            additionalPhones: e.additionalPhones || [],
+            createdAt: new Date().toISOString()
         };
 
         setSuppliers(prev => [...prev, newSupplier]);
@@ -205,19 +207,23 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
             selectedSupplier: newSupplier.id.toString()
         }));
 
+        // Reset form
         setQuickSupplierData({
             partyType: 'supplier',
             name: '',
-            phone: '',
+            whatsappNumber: '',
             email: '',
             gstNumber: '',
-            address: ''
+            address: '',
+            city: '',
+            pincode: ''
         });
 
         setShowAddSupplierModal(false);
-        alert('Supplier added successfully!');
-    };
 
+        console.log('✅ Supplier added and selected:', newSupplier);
+        alert(`${quickSupplierData.partyType === 'customer' ? 'Customer' : 'Supplier'} added and selected successfully!`);
+    };
     // Item operations
     const handleItemChange = (index, field, value) => {
         const newItems = [...formData.items];
