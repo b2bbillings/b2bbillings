@@ -13,7 +13,7 @@ import {
     faMoneyBillWave,
     faCreditCard
 } from '@fortawesome/free-solid-svg-icons';
-import SalesFilters from './SalesFilters'; // Fixed import path
+import SalesFilters from './SalesFilters';
 
 function SalesTable({
     filteredSales,
@@ -21,22 +21,33 @@ function SalesTable({
     setSearchQuery,
     dateFilter,
     setDateFilter,
-    statusFilter,        // Add these missing props
-    setStatusFilter,     // Add these missing props
-    paymentStatusFilter, // Add these missing props
-    setPaymentStatusFilter, // Add these missing props
-    sortConfig,          // Add these missing props
-    setSortConfig,       // Add these missing props
+    statusFilter,
+    setStatusFilter,
+    paymentStatusFilter,
+    setPaymentStatusFilter,
+    sortConfig,
+    setSortConfig,
     onCreateInvoice,
     onEditSale,
     onDeleteSale,
     onManagePayment,
     onPrintInvoice
 }) {
+    // Helper function to safely convert to number
+    const safeToNumber = (value) => {
+        const num = parseFloat(value);
+        return isNaN(num) ? 0 : num;
+    };
+
+    // Helper function to format currency safely
+    const formatCurrency = (amount) => {
+        return safeToNumber(amount).toFixed(2);
+    };
+
     const getPaymentStatusBadge = (sale) => {
-        const totalPaid = sale.payments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) ||
-            sale.paymentHistory?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
-        const saleTotal = sale.total || sale.finalTotal || 0;
+        const totalPaid = sale.payments?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) ||
+            sale.paymentHistory?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) || 0;
+        const saleTotal = safeToNumber(sale.total || sale.finalTotal || 0);
         const remainingAmount = saleTotal - totalPaid;
 
         if (remainingAmount <= 0) {
@@ -49,15 +60,15 @@ function SalesTable({
     };
 
     const getPaymentProgress = (sale) => {
-        const totalPaid = sale.payments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) ||
-            sale.paymentHistory?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
-        const saleTotal = sale.total || sale.finalTotal || 0;
+        const totalPaid = sale.payments?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) ||
+            sale.paymentHistory?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) || 0;
+        const saleTotal = safeToNumber(sale.total || sale.finalTotal || 0);
         return saleTotal > 0 ? Math.round((totalPaid / saleTotal) * 100) : 0;
     };
 
     const getTotalPaid = (sale) => {
-        return sale.payments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) ||
-            sale.paymentHistory?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
+        return sale.payments?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) ||
+            sale.paymentHistory?.reduce((sum, payment) => sum + safeToNumber(payment.amount), 0) || 0;
     };
 
     const handleDeleteSale = (saleId) => {
@@ -84,7 +95,6 @@ function SalesTable({
                 </div>
             </Card.Header>
             <Card.Body>
-                {/* Fixed SalesFilters with all required props */}
                 <SalesFilters
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
@@ -119,7 +129,8 @@ function SalesTable({
                                     const statusBadge = getPaymentStatusBadge(sale);
                                     const progress = getPaymentProgress(sale);
                                     const totalPaid = getTotalPaid(sale);
-                                    const saleTotal = sale.total || sale.finalTotal || 0;
+                                    const saleTotal = safeToNumber(sale.total || sale.finalTotal || 0);
+                                    const gstAmount = safeToNumber(sale.gstAmount || sale.taxAmount || 0);
 
                                     return (
                                         <tr key={sale.id}>
@@ -174,10 +185,10 @@ function SalesTable({
                                                 )}
                                             </td>
                                             <td>
-                                                <div className="fw-bold fs-6">₹{saleTotal?.toLocaleString() || '0'}</div>
-                                                {sale.invoiceType === 'gst' && (sale.gstAmount > 0 || sale.taxAmount > 0) && (
+                                                <div className="fw-bold fs-6">₹{saleTotal.toLocaleString()}</div>
+                                                {sale.invoiceType === 'gst' && gstAmount > 0 && (
                                                     <small className="text-muted">
-                                                        incl. GST ₹{(sale.gstAmount || sale.taxAmount || 0)?.toFixed(2)}
+                                                        incl. GST ₹{formatCurrency(gstAmount)}
                                                     </small>
                                                 )}
                                             </td>
@@ -220,7 +231,6 @@ function SalesTable({
                                             </td>
                                             <td className="text-center">
                                                 <div className="d-flex gap-1 justify-content-center">
-                                                    {/* Quick Payment Button */}
                                                     <Button
                                                         variant={progress < 100 ? "success" : "outline-success"}
                                                         size="sm"
@@ -231,7 +241,6 @@ function SalesTable({
                                                         <FontAwesomeIcon icon={faMoneyBillWave} />
                                                     </Button>
 
-                                                    {/* Quick Print Button */}
                                                     <Button
                                                         variant="outline-primary"
                                                         size="sm"
@@ -241,7 +250,6 @@ function SalesTable({
                                                         <FontAwesomeIcon icon={faPrint} />
                                                     </Button>
 
-                                                    {/* More Actions Dropdown */}
                                                     <Dropdown>
                                                         <Dropdown.Toggle
                                                             variant="outline-secondary"
@@ -320,7 +328,7 @@ function SalesTable({
                             </div>
                             <div className="col-md-3">
                                 <div className="fw-bold text-success fs-5">
-                                    ₹{filteredSales.reduce((sum, sale) => sum + (sale.total || sale.finalTotal || 0), 0).toLocaleString()}
+                                    ₹{filteredSales.reduce((sum, sale) => sum + safeToNumber(sale.total || sale.finalTotal || 0), 0).toLocaleString()}
                                 </div>
                                 <small className="text-muted">Total Revenue</small>
                             </div>
@@ -328,7 +336,7 @@ function SalesTable({
                                 <div className="fw-bold text-warning fs-5">
                                     {filteredSales.filter(sale => {
                                         const totalPaid = getTotalPaid(sale);
-                                        const saleTotal = sale.total || sale.finalTotal || 0;
+                                        const saleTotal = safeToNumber(sale.total || sale.finalTotal || 0);
                                         return totalPaid > 0 && totalPaid < saleTotal;
                                     }).length}
                                 </div>

@@ -34,25 +34,37 @@ function PaymentModal({
     const [showAddPayment, setShowAddPayment] = useState(false);
     const [editingPayment, setEditingPayment] = useState(null);
 
-    // Calculate payment summary
+    // Calculate payment summary with proper number validation
     const calculatePaymentSummary = () => {
-        const totalInvoiceAmount = invoiceData?.finalTotal || 0;
-        const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.amount || 0), 0);
-        const remainingAmount = totalInvoiceAmount - totalPaid;
-        const paymentStatus = remainingAmount <= 0 ? 'paid' : remainingAmount < totalInvoiceAmount ? 'partial' : 'unpaid';
+        // Ensure we have valid numbers with fallbacks
+        const totalInvoiceAmount = parseFloat(invoiceData?.finalTotal) || parseFloat(invoiceData?.totalAmount) || 0;
+        const totalPaid = payments.reduce((sum, payment) => {
+            const amount = parseFloat(payment.amount);
+            return sum + (isNaN(amount) ? 0 : amount);
+        }, 0);
+        const remainingAmount = Math.max(0, totalInvoiceAmount - totalPaid);
+
+        let paymentStatus = 'unpaid';
+        if (remainingAmount <= 0 && totalInvoiceAmount > 0) {
+            paymentStatus = 'paid';
+        } else if (totalPaid > 0 && remainingAmount < totalInvoiceAmount) {
+            paymentStatus = 'partial';
+        }
 
         return {
-            totalInvoiceAmount,
-            totalPaid,
-            remainingAmount,
+            totalInvoiceAmount: Number(totalInvoiceAmount),
+            totalPaid: Number(totalPaid),
+            remainingAmount: Number(remainingAmount),
             paymentStatus
         };
     };
 
     // Initialize with existing payments if any
     useEffect(() => {
-        if (invoiceData?.payments) {
+        if (invoiceData?.payments && Array.isArray(invoiceData.payments)) {
             setPayments(invoiceData.payments);
+        } else {
+            setPayments([]);
         }
 
         // Initialize next due date if exists
@@ -72,16 +84,17 @@ function PaymentModal({
 
     // Add new payment
     const handleAddPayment = () => {
-        if (!newPayment.amount || parseFloat(newPayment.amount) <= 0) {
+        const paymentAmount = parseFloat(newPayment.amount);
+
+        if (!newPayment.amount || isNaN(paymentAmount) || paymentAmount <= 0) {
             alert('Please enter a valid payment amount');
             return;
         }
 
         const summary = calculatePaymentSummary();
-        const paymentAmount = parseFloat(newPayment.amount);
 
         if (paymentAmount > summary.remainingAmount) {
-            if (!window.confirm(`Payment amount (₹${paymentAmount}) exceeds remaining amount (₹${summary.remainingAmount.toFixed(2)}). Do you want to continue?`)) {
+            if (!window.confirm(`Payment amount (₹${paymentAmount.toFixed(2)}) exceeds remaining amount (₹${summary.remainingAmount.toFixed(2)}). Do you want to continue?`)) {
                 return;
             }
         }
@@ -119,14 +132,16 @@ function PaymentModal({
 
     // Update payment
     const handleUpdatePayment = () => {
-        if (!newPayment.amount || parseFloat(newPayment.amount) <= 0) {
+        const paymentAmount = parseFloat(newPayment.amount);
+
+        if (!newPayment.amount || isNaN(paymentAmount) || paymentAmount <= 0) {
             alert('Please enter a valid payment amount');
             return;
         }
 
         const updatedPayment = {
             ...editingPayment,
-            amount: parseFloat(newPayment.amount),
+            amount: paymentAmount,
             paymentMethod: newPayment.paymentMethod,
             paymentDate: newPayment.paymentDate,
             notes: newPayment.notes,
@@ -168,7 +183,7 @@ function PaymentModal({
         const summary = calculatePaymentSummary();
 
         const paymentData = {
-            invoiceId: invoiceData.id,
+            invoiceId: invoiceData?.id,
             payments: payments,
             nextDueDate: summary.remainingAmount > 0 ? nextDueDate : null,
             summary: summary
@@ -212,8 +227,31 @@ function PaymentModal({
         return diffDays;
     };
 
+    // Helper function to safely format currency
+    const formatCurrency = (amount) => {
+        const num = parseFloat(amount);
+        return isNaN(num) ? '0.00' : num.toFixed(2);
+    };
+
     const summary = calculatePaymentSummary();
     const daysUntilDue = getDaysUntilDue();
+
+    // Early return if no invoice data
+    if (!invoiceData) {
+        return (
+            <Modal show={show} onHide={onHide} size="lg" centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>Payment Management</Modal.Title>
+                </Modal.Header>
+                <Modal.Body className="text-center py-5">
+                    <Alert variant="warning">
+                        <FontAwesomeIcon icon={faMoneyBillWave} size="2x" className="mb-3 d-block" />
+                        No invoice data available
+                    </Alert>
+                </Modal.Body>
+            </Modal>
+        );
+    }
 
     return (
         <Modal show={show} onHide={onHide} size="lg" centered>
@@ -241,15 +279,15 @@ function PaymentModal({
                                 <div className="d-flex flex-wrap gap-3">
                                     <div>
                                         <small className="text-muted">Invoice Number:</small>
-                                        <div className="fw-semibold">{invoiceData?.invoiceNumber}</div>
+                                        <div className="fw-semibold">{invoiceData.invoiceNumber || 'N/A'}</div>
                                     </div>
                                     <div>
                                         <small className="text-muted">Party:</small>
-                                        <div className="fw-semibold">{invoiceData?.partyName}</div>
+                                        <div className="fw-semibold">{invoiceData.partyName || invoiceData.customerName || 'N/A'}</div>
                                     </div>
                                     <div>
                                         <small className="text-muted">Date:</small>
-                                        <div className="fw-semibold">{invoiceData?.invoiceDate}</div>
+                                        <div className="fw-semibold">{invoiceData.invoiceDate || invoiceData.saleDate || 'N/A'}</div>
                                     </div>
                                 </div>
                             </Col>
@@ -257,7 +295,7 @@ function PaymentModal({
                                 <div className="mb-2">{getPaymentStatusBadge(summary.paymentStatus)}</div>
                                 <div className="text-muted small">Total Amount</div>
                                 <div className="h5 fw-bold text-primary mb-0">
-                                    ₹{summary.totalInvoiceAmount.toFixed(2)}
+                                    ₹{formatCurrency(summary.totalInvoiceAmount)}
                                 </div>
                             </Col>
                         </Row>
@@ -272,7 +310,7 @@ function PaymentModal({
                                 <div className="text-success">
                                     <FontAwesomeIcon icon={faCheck} size="2x" className="mb-2" />
                                 </div>
-                                <div className="h5 fw-bold text-success">₹{summary.totalPaid.toFixed(2)}</div>
+                                <div className="h5 fw-bold text-success">₹{formatCurrency(summary.totalPaid)}</div>
                                 <div className="text-muted small">Total Paid</div>
                             </Card.Body>
                         </Card>
@@ -283,7 +321,7 @@ function PaymentModal({
                                 <div className="text-warning">
                                     <FontAwesomeIcon icon={faMoneyBillWave} size="2x" className="mb-2" />
                                 </div>
-                                <div className="h5 fw-bold text-warning">₹{summary.remainingAmount.toFixed(2)}</div>
+                                <div className="h5 fw-bold text-warning">₹{formatCurrency(summary.remainingAmount)}</div>
                                 <div className="text-muted small">Remaining</div>
                             </Card.Body>
                         </Card>
@@ -331,14 +369,14 @@ function PaymentModal({
                                     {payments.map((payment) => (
                                         <tr key={payment.id}>
                                             <td>{new Date(payment.paymentDate).toLocaleDateString()}</td>
-                                            <td className="fw-semibold text-success">₹{payment.amount.toFixed(2)}</td>
+                                            <td className="fw-semibold text-success">₹{formatCurrency(payment.amount)}</td>
                                             <td>
                                                 <div className="d-flex align-items-center">
                                                     <FontAwesomeIcon
                                                         icon={getPaymentMethodIcon(payment.paymentMethod)}
                                                         className="me-2"
                                                     />
-                                                    {payment.paymentMethod.toUpperCase()}
+                                                    {payment.paymentMethod?.toUpperCase() || 'CASH'}
                                                 </div>
                                             </td>
                                             <td>
@@ -401,7 +439,7 @@ function PaymentModal({
                                             step="0.01"
                                         />
                                         <Form.Text className="text-muted">
-                                            Remaining: ₹{summary.remainingAmount.toFixed(2)}
+                                            Remaining: ₹{formatCurrency(summary.remainingAmount)}
                                         </Form.Text>
                                     </Form.Group>
                                 </Col>
@@ -486,7 +524,7 @@ function PaymentModal({
                                             min={new Date().toISOString().split('T')[0]}
                                         />
                                         <Form.Text className="text-muted">
-                                            Amount due: ₹{summary.remainingAmount.toFixed(2)}
+                                            Amount due: ₹{formatCurrency(summary.remainingAmount)}
                                         </Form.Text>
                                     </Form.Group>
                                 </Col>
