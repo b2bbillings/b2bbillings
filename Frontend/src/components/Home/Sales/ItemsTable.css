@@ -43,48 +43,103 @@
   font-weight: 600;
 }
 
-/* Price input specific styling */
+/* Price and Tax Toggle Horizontal Layout */
+.price-tax-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+/* Price Input Group Styling */
+.price-input-group {
+  flex: 0 0 auto;
+  width: 90px;
+  min-width: 80px;
+}
+
 .price-input {
-  min-width: 100px !important;
   text-align: right !important;
+  font-weight: 600;
+  font-size: 0.85rem !important;
+  padding: 0.25rem 0.4rem !important;
 }
 
-/* Tax Toggle Switch */
-.items-table .form-check-input {
+/* Tax Toggle Horizontal Container */
+.tax-toggle-horizontal {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+/* Tax Switch Styling */
+.tax-switch {
+  transform: scale(0.8);
+  margin: 0 !important;
+}
+
+/* Tax Label Styling for horizontal layout */
+.tax-label {
+  font-size: 0.7rem !important;
+  font-weight: 600;
+  color: #6c757d;
+  white-space: nowrap;
+  margin: 0;
+  line-height: 1;
+}
+
+/* Reset Icon Styling for horizontal layout */
+.reset-icon {
+  font-size: 0.7rem !important;
   cursor: pointer;
+  transition: color 0.2s ease;
+  font-weight: bold;
+  margin-left: 2px;
+  line-height: 1;
 }
 
-.items-table .form-check-input:checked {
-  background-color: #198754;
-  border-color: #198754;
+.reset-icon:hover {
+  color: #0d6efd !important;
 }
 
-/* GST Display */
+/* Input Group adjustments for smaller size */
+.items-table .input-group-sm .input-group-text {
+  padding: 0.25rem 0.25rem;
+  font-size: 0.8rem;
+  border-right: none;
+}
+
+.items-table .input-group-sm .form-control {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+}
+
+/* GST Display Styling */
 .gst-display {
   text-align: center;
-  min-width: 80px;
+  min-width: 100px;
 }
 
 .gst-rate {
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: 0.85rem !important;
+  text-align: center;
 }
 
 .gst-amount {
   font-weight: 600;
   color: #198754 !important;
-  font-size: 0.8rem;
-}
-
-/* Product Info Display */
-.items-table .text-muted {
   font-size: 0.75rem;
 }
 
 /* Total Column Styling */
 .items-table .text-primary {
   color: #0d6efd !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
+  font-size: 1rem;
 }
 
 /* Action Button Styling */
@@ -146,12 +201,33 @@
   border-bottom: none;
 }
 
-/* Summary Section */
-.items-summary {
-  background-color: #f8f9fa;
-  border-radius: 0.375rem;
-  padding: 1rem;
-  margin-top: 1rem;
+/* Tax inclusive/exclusive indicators */
+.tax-status-indicator {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+}
+
+.tax-inclusive {
+  background-color: rgba(25, 135, 84, 0.1);
+  color: #198754;
+}
+
+.tax-exclusive {
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+/* Cursor pointer for interactive elements */
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Animation for smooth transitions */
+.items-table .form-check-input,
+.reset-icon {
+  transition: all 0.2s ease-in-out;
 }
 
 /* Responsive Design */
@@ -163,6 +239,28 @@
   .items-table thead th,
   .items-table tbody td {
     padding: 0.5rem 0.3rem;
+  }
+
+  .price-input-group {
+    width: 80px;
+    min-width: 70px;
+  }
+
+  .price-input {
+    font-size: 0.8rem !important;
+    padding: 0.2rem 0.3rem !important;
+  }
+
+  .tax-label {
+    font-size: 0.65rem !important;
+  }
+
+  .reset-icon {
+    font-size: 0.65rem !important;
+  }
+
+  .tax-switch {
+    transform: scale(0.75);
   }
 }
 
@@ -176,17 +274,34 @@
     padding: 0.4rem 0.2rem;
   }
 
-  .quantity-input,
+  .price-input-group {
+    width: 70px;
+    min-width: 60px;
+  }
+
   .price-input {
-    min-width: 60px !important;
+    font-size: 0.75rem !important;
+    padding: 0.2rem 0.25rem !important;
+  }
+
+  .tax-label {
+    font-size: 0.6rem !important;
+  }
+
+  .reset-icon {
+    font-size: 0.6rem !important;
+  }
+
+  .tax-switch {
+    transform: scale(0.7);
   }
 
   .gst-rate {
-    font-size: 0.7rem;
+    font-size: 0.75rem !important;
   }
 
   .gst-amount {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
   }
 }
 
@@ -197,7 +312,41 @@
 
   .items-table thead th,
   .items-table tbody td {
-    padding: 0.375rem 0.2rem;
+    padding: 0.375rem 0.15rem;
+  }
+
+  /* Force vertical stacking on very small screens */
+  .price-tax-container {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.25rem !important;
+  }
+
+  .price-input-group {
+    width: 100% !important;
+    min-width: auto !important;
+  }
+
+  .tax-toggle-horizontal {
+    align-self: center;
+    justify-content: center;
+  }
+
+  .price-input {
+    font-size: 0.7rem !important;
+    padding: 0.2rem 0.2rem !important;
+  }
+
+  .tax-label {
+    font-size: 0.55rem !important;
+  }
+
+  .reset-icon {
+    font-size: 0.55rem !important;
+  }
+
+  .tax-switch {
+    transform: scale(0.65);
   }
 }
 
@@ -246,12 +395,7 @@
   font-weight: 500;
 }
 
-/* Table hover effects */
-.items-table tbody tr:hover {
-  background-color: rgba(13, 110, 253, 0.05);
-}
-
-/* Stock warning */
+/* Stock warning styles */
 .stock-warning {
   color: #dc3545 !important;
   font-weight: 600;
@@ -264,4 +408,27 @@
 
 .stock-good {
   color: #198754 !important;
+}
+
+/* Hover effects for better UX */
+.items-table tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Tax switch styling */
+.items-table .form-check-input:checked {
+  background-color: #198754;
+  border-color: #198754;
+}
+
+.items-table .form-check-input {
+  cursor: pointer;
+}
+
+/* Summary Section */
+.items-summary {
+  background-color: #f8f9fa;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin-top: 1rem;
 }

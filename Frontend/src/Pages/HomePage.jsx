@@ -5,6 +5,7 @@ import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
 import './HomePage.css';
 import Purchases from '../components/Home/Purchases';
+import Inventory from '../components/Home/Inventory';
 
 /**
  * HomePage component that serves as the main container for the application
@@ -52,8 +53,18 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
                 return <Purchases view={currentView} onNavigate={handleNavigation} />;
             case 'products':
                 return <div className="placeholder-content">Products & Services</div>;
+            // Fix the inventory routing - add all inventory-related cases
             case 'inventory':
-                return <div className="placeholder-content">Inventory</div>;
+            case 'allProducts':
+            case 'lowStock':
+            case 'stockMovement':
+                return <Inventory view={currentView} onNavigate={handleNavigation} />;
+            case 'insights':
+                return <div className="placeholder-content">Insights Dashboard</div>;
+            case 'reports':
+                return <div className="placeholder-content">Reports & Analytics</div>;
+            case 'settings':
+                return <div className="placeholder-content">Settings</div>;
             default:
                 return <DayBook view="dailySummary" onNavigate={handleNavigation} />;
         }

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Form, Card, ListGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBox, faTag, faWarehouse, faTimes } from '@fortawesome/free-solid-svg-icons';
-import { useProducts } from './hooks/useProducts';
+import { useProducts } from '../../../hooks/useProducts';
 import './ProductSelector.css';
 
 function ProductSelector({
@@ -37,7 +37,7 @@ function ProductSelector({
             const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
             setDropdownPosition({
-                top: rect.bottom + scrollTop - 55,
+                // top: rect.bottom + scrollTop ,
                 left: rect.left + scrollLeft,
                 width: Math.max(rect.width, 300)
             });
@@ -235,7 +235,6 @@ function ProductSelector({
                     ref={dropdownRef}
                     className="product-suggestions-dropdown"
                     style={{
-                        position: 'fixed',
                         top: `${dropdownPosition.top}px`,
                         left: `${dropdownPosition.left}px`,
                         width: `${dropdownPosition.width}px`,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Button, Modal, Form, Table, Badge, Dropdown, InputGroup, Card, ListGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faEdit, faTrash, faEllipsisV, faUser, faBuilding, faPhone, faEnvelope, faMinus, faSearch, faFilter, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTimes, faEdit, faTrash, faEllipsisV, faUser, faBuilding, faPhone, faEnvelope, faMinus, faSearch, faFilter, faDownload, faUserCheck, faRocket } from '@fortawesome/free-solid-svg-icons';
 import './Parties.css';
 import emptyStateImage from '../../assets/images/parties-empty-state.svg';
 
@@ -9,12 +9,13 @@ function Parties() {
     // State for managing parties and modal
     const [parties, setParties] = useState([]);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showQuickAddModal, setShowQuickAddModal] = useState(false); // New state for quick add
     const [editingParty, setEditingParty] = useState(null);
     const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
 
     // Search and filter states
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState('all'); // all, customer, supplier
+    const [filterType, setFilterType] = useState('all'); // all, customer, supplier, running
     const [showDatabaseSearch, setShowDatabaseSearch] = useState(false);
     const [databaseSearchQuery, setDatabaseSearchQuery] = useState('');
     const [databaseSearchResults, setDatabaseSearchResults] = useState([]);
@@ -30,6 +31,12 @@ function Parties() {
         city: '',
         pincode: '',
         gstNumber: ''
+    });
+
+    // Quick add form data for running customers
+    const [quickFormData, setQuickFormData] = useState({
+        name: '',
+        phone: ''
     });
 
     // Sample database parties (simulating external database)
@@ -51,7 +58,9 @@ function Parties() {
             party.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             party.city?.toLowerCase().includes(searchQuery.toLowerCase());
 
-        const matchesType = filterType === 'all' || party.partyType === filterType;
+        const matchesType = filterType === 'all' ||
+            party.partyType === filterType ||
+            (filterType === 'running' && party.isRunningCustomer);
 
         return matchesSearch && matchesType;
     });
@@ -118,6 +127,11 @@ function Parties() {
         setShowAddModal(true);
     };
 
+    const handleOpenQuickAddModal = () => {
+        setQuickFormData({ name: '', phone: '' });
+        setShowQuickAddModal(true);
+    };
+
     const handleCloseModal = () => {
         setShowAddModal(false);
         setEditingParty(null);
@@ -133,6 +147,11 @@ function Parties() {
             pincode: '',
             gstNumber: ''
         });
+    };
+
+    const handleCloseQuickAddModal = () => {
+        setShowQuickAddModal(false);
+        setQuickFormData({ name: '', phone: '' });
     };
 
     // Handle edit party
@@ -159,6 +178,15 @@ function Parties() {
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    // Handle quick form input changes
+    const handleQuickInputChange = (e) => {
+        const { name, value } = e.target;
+        setQuickFormData(prev => ({
             ...prev,
             [name]: value
         }));
@@ -205,6 +233,41 @@ function Parties() {
         }
     };
 
+    // Handle quick add form submission
+    const handleSaveQuickCustomer = (e) => {
+        e.preventDefault();
+
+        if (!quickFormData.name.trim()) {
+            alert('Please enter customer name');
+            return;
+        }
+
+        if (!quickFormData.phone.trim()) {
+            alert('Please enter customer phone number');
+            return;
+        }
+
+        const newRunningCustomer = {
+            id: Date.now(),
+            name: quickFormData.name.trim(),
+            phone: quickFormData.phone.trim(),
+            whatsappNumber: quickFormData.phone.trim(),
+            partyType: 'customer',
+            isRunningCustomer: true,
+            email: '',
+            address: '',
+            city: '',
+            pincode: '',
+            gstNumber: '',
+            phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }],
+            createdAt: new Date().toISOString()
+        };
+
+        setParties([...parties, newRunningCustomer]);
+        alert('Running customer added successfully!');
+        handleCloseQuickAddModal();
+    };
+
     // Handle form submission
     const handleSaveParty = (e) => {
         e.preventDefault();
@@ -219,13 +282,14 @@ function Parties() {
         const partyData = {
             ...formData,
             phoneNumbers: validPhoneNumbers,
-            phone: formData.whatsappNumber || (validPhoneNumbers.length > 0 ? validPhoneNumbers[0].number : '')
+            phone: formData.whatsappNumber || (validPhoneNumbers.length > 0 ? validPhoneNumbers[0].number : ''),
+            isRunningCustomer: false // Regular parties are not running customers
         };
 
         if (editingParty) {
             setParties(parties.map(party =>
                 party.id === editingParty.id
-                    ? { ...partyData, id: editingParty.id, createdAt: editingParty.createdAt }
+                    ? { ...partyData, id: editingParty.id, createdAt: editingParty.createdAt, isRunningCustomer: editingParty.isRunningCustomer }
                     : party
             ));
             alert('Party updated successfully!');
@@ -268,8 +332,9 @@ function Parties() {
                             className="form-input"
                         >
                             <option value="all">All Types</option>
-                            <option value="customer">Customers Only</option>
-                            <option value="supplier">Suppliers Only</option>
+                            <option value="customer">Regular Customers</option>
+                            <option value="running">Running Customers</option>
+                            <option value="supplier">Suppliers</option>
                         </Form.Select>
                     </Col>
                     <Col md={3}>
@@ -432,12 +497,19 @@ function Parties() {
                                     <div className="d-flex align-items-center">
                                         <div className="party-avatar me-3">
                                             <FontAwesomeIcon
-                                                icon={party.partyType === 'customer' ? faUser : faBuilding}
-                                                className="text-muted"
+                                                icon={party.isRunningCustomer ? faRocket : (party.partyType === 'customer' ? faUser : faBuilding)}
+                                                className={party.isRunningCustomer ? "text-warning" : "text-muted"}
                                             />
                                         </div>
                                         <div>
-                                            <div className="fw-semibold">{party.name}</div>
+                                            <div className="fw-semibold">
+                                                {party.name}
+                                                {party.isRunningCustomer && (
+                                                    <Badge bg="warning" className="ms-2 text-dark">
+                                                        Running
+                                                    </Badge>
+                                                )}
+                                            </div>
                                             {party.email && (
                                                 <small className="text-muted">
                                                     <FontAwesomeIcon icon={faEnvelope} className="me-1" />
@@ -454,6 +526,14 @@ function Parties() {
                                     >
                                         {party.partyType === 'customer' ? 'Customer' : 'Supplier'}
                                     </Badge>
+                                    {party.isRunningCustomer && (
+                                        <div className="mt-1">
+                                            <small className="text-warning">
+                                                <FontAwesomeIcon icon={faRocket} className="me-1" />
+                                                Quick Entry
+                                            </small>
+                                        </div>
+                                    )}
                                 </td>
                                 <td>
                                     <div className="contact-info">
@@ -535,14 +615,26 @@ function Parties() {
                     </h1>
                 </Col>
                 <Col xs="auto">
-                    <Button
-                        variant="primary"
-                        className="d-flex align-items-center"
-                        onClick={handleOpenModal}
-                    >
-                        <FontAwesomeIcon icon={faPlus} className="me-2" />
-                        Add New Party
-                    </Button>
+                    <div className="d-flex gap-2">
+                        {/* Quick Add Running Customer Button */}
+                        <Button
+                            variant="warning"
+                            className="d-flex align-items-center text-dark"
+                            onClick={handleOpenQuickAddModal}
+                        >
+                            <FontAwesomeIcon icon={faRocket} className="me-2" />
+                            Quick Add Customer
+                        </Button>
+                        {/* Regular Add Party Button */}
+                        <Button
+                            variant="primary"
+                            className="d-flex align-items-center"
+                            onClick={handleOpenModal}
+                        >
+                            <FontAwesomeIcon icon={faPlus} className="me-2" />
+                            Add New Party
+                        </Button>
+                    </div>
                 </Col>
             </Row>
 
@@ -571,6 +663,14 @@ function Parties() {
                         </div>
 
                         <div className="d-flex gap-3 justify-content-center">
+                            <Button
+                                variant="warning"
+                                className="text-dark"
+                                onClick={handleOpenQuickAddModal}
+                            >
+                                <FontAwesomeIcon icon={faRocket} className="me-2" />
+                                Quick Add Customer
+                            </Button>
                             <Button
                                 variant="danger"
                                 className="add-party-btn"
@@ -613,9 +713,84 @@ function Parties() {
                 </>
             )}
 
-            {/* Add/Edit Party Modal - keeping the existing modal code */}
+            {/* Quick Add Running Customer Modal */}
+            <Modal show={showQuickAddModal} onHide={handleCloseQuickAddModal} centered>
+                <Modal.Header className="border-0 pb-0 bg-warning text-dark">
+                    <Modal.Title className="fw-bold d-flex align-items-center">
+                        <FontAwesomeIcon icon={faRocket} className="me-2" />
+                        Quick Add Running Customer
+                    </Modal.Title>
+                    <Button
+                        variant="link"
+                        className="p-0 border-0 text-dark"
+                        onClick={handleCloseQuickAddModal}
+                    >
+                        <FontAwesomeIcon icon={faTimes} size="lg" />
+                    </Button>
+                </Modal.Header>
+
+                <Modal.Body className="px-4 pb-4">
+                    <div className="alert alert-info border-0 bg-info bg-opacity-10">
+                        <FontAwesomeIcon icon={faUserCheck} className="me-2 text-info" />
+                        <strong>Quick Entry:</strong> Add customer with just name and phone number for fast billing.
+                    </div>
+
+                    <Form onSubmit={handleSaveQuickCustomer}>
+                        <Form.Group className="mb-3">
+                            <Form.Label className="fw-semibold">
+                                Customer Name <span className="text-danger">*</span>
+                            </Form.Label>
+                            <Form.Control
+                                type="text"
+                                name="name"
+                                value={quickFormData.name}
+                                onChange={handleQuickInputChange}
+                                placeholder="Enter customer name"
+                                className="form-input"
+                                autoFocus
+                                required
+                            />
+                        </Form.Group>
+
+                        <Form.Group className="mb-4">
+                            <Form.Label className="fw-semibold">
+                                Phone Number <span className="text-danger">*</span>
+                            </Form.Label>
+                            <Form.Control
+                                type="tel"
+                                name="phone"
+                                value={quickFormData.phone}
+                                onChange={handleQuickInputChange}
+                                placeholder="Enter phone number"
+                                className="form-input"
+                                required
+                            />
+                        </Form.Group>
+
+                        <div className="d-flex gap-3 justify-content-end">
+                            <Button
+                                variant="outline-secondary"
+                                onClick={handleCloseQuickAddModal}
+                                className="px-4"
+                                type="button"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="warning"
+                                type="submit"
+                                className="px-4 text-dark"
+                            >
+                                <FontAwesomeIcon icon={faRocket} className="me-2" />
+                                Add Quick Customer
+                            </Button>
+                        </div>
+                    </Form>
+                </Modal.Body>
+            </Modal>
+
+            {/* Regular Add/Edit Party Modal */}
             <Modal show={showAddModal} onHide={handleCloseModal} centered size="xl">
-                {/* ... existing modal content ... */}
                 <Modal.Header className="border-0 pb-0">
                     <Modal.Title className="fw-bold">
                         {editingParty ? 'Edit Party' : 'Add New Party'}
@@ -657,6 +832,7 @@ function Parties() {
                                 />
                             </div>
                         </Form.Group>
+
                         {/* Basic Information */}
                         <Row>
                             <Col md={6}>
@@ -690,7 +866,7 @@ function Parties() {
                                         className="form-input"
                                     />
 
-                                    {/* Add Phone Number Button - Now directly under WhatsApp field */}
+                                    {/* Add Phone Number Button */}
                                     {!showAdditionalPhones && (
                                         <div className="mt-2">
                                             <Button
@@ -768,6 +944,7 @@ function Parties() {
                                 ))}
                             </div>
                         )}
+
                         <Row>
                             <Col md={6}>
                                 <Form.Group className="mb-3">

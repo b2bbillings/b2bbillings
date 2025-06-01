@@ -3,6 +3,7 @@ import { Table, Button, Form, InputGroup, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faEdit } from '@fortawesome/free-solid-svg-icons';
 import ProductSelector from './ProductSelector';
+import './ItemsTable.css';
 
 function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoiceType }) {
     // Global tax inclusive state for all items
@@ -35,9 +36,9 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
     const handleGlobalTaxInclusiveChange = (isChecked) => {
         setGlobalTaxInclusive(isChecked);
 
-        // Apply to all existing items
+        // Apply to all existing items that don't have individual overrides
         items.forEach((item, index) => {
-            if (item.productService) {
+            if (item.productService && !item.hasIndividualTaxSetting) {
                 onItemChange(index, 'taxInclusive', isChecked);
             }
         });
@@ -46,40 +47,47 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
     // Apply global tax inclusive to new items
     useEffect(() => {
         items.forEach((item, index) => {
-            if (item.productService && item.taxInclusive === undefined) {
+            if (item.productService && item.taxInclusive === undefined && !item.hasIndividualTaxSetting) {
                 onItemChange(index, 'taxInclusive', globalTaxInclusive);
             }
         });
     }, [items.length, globalTaxInclusive]);
 
     const calculateItemTotal = (quantity, price) => {
-        return (parseFloat(quantity || 0) * parseFloat(price || 0)).toFixed(2);
+        return (parseFloat(quantity || 0) * parseFloat(price || 0));
     };
 
-    const getGSTAmount = (item, invoiceType) => {
+    const getGSTAmount = (item) => {
         if (invoiceType !== 'gst' || !item.gstRate) return 0;
 
         const baseAmount = parseFloat(item.total || 0);
+        const isItemTaxInclusive = item.taxInclusive !== undefined ? item.taxInclusive : globalTaxInclusive;
 
-        if (item.taxInclusive || globalTaxInclusive) {
+        if (isItemTaxInclusive) {
+            // Tax inclusive: extract GST from total
             const gstAmount = baseAmount - (baseAmount / (1 + parseFloat(item.gstRate) / 100));
             return gstAmount;
         } else {
+            // Tax exclusive: add GST to base amount
             return (baseAmount * parseFloat(item.gstRate)) / 100;
         }
     };
 
     const getFinalTotal = (item) => {
-        const baseTotal = parseFloat(calculateItemTotal(item.quantity, item.price));
+        const baseTotal = calculateItemTotal(item.quantity, item.price);
 
         if (invoiceType !== 'gst' || !item.gstRate) {
             return baseTotal;
         }
 
-        if (item.taxInclusive || globalTaxInclusive) {
+        const isItemTaxInclusive = item.taxInclusive !== undefined ? item.taxInclusive : globalTaxInclusive;
+
+        if (isItemTaxInclusive) {
+            // Tax inclusive: price already includes GST
             return baseTotal;
         } else {
-            const gstAmount = getGSTAmount(item, invoiceType);
+            // Tax exclusive: add GST to base amount
+            const gstAmount = (baseTotal * parseFloat(item.gstRate)) / 100;
             return baseTotal + gstAmount;
         }
     };
@@ -89,15 +97,20 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
         return invoiceType === 'gst';
     };
 
+    // Count items with individual tax settings
+    const getIndividualOverrideCount = () => {
+        return items.filter(item => item.hasIndividualTaxSetting).length;
+    };
+
     return (
         <div className="items-table-container">
             <div className="table-responsive">
                 <Table bordered className="items-table">
                     <thead className="table-light">
                         <tr>
-                            <th style={{ width: showGSTFeatures() ? '35%' : '45%' }}>Product/Service</th>
-                            <th style={{ width: '12%' }}>Quantity</th>
-                            <th style={{ width: showGSTFeatures() ? '20%' : '25%' }}>
+                            <th style={{ width: showGSTFeatures() ? '30%' : '45%' }}>Product/Service</th>
+                            <th style={{ width: '10%' }}>Quantity</th>
+                            <th style={{ width: showGSTFeatures() ? '25%' : '30%' }}>
                                 <div className="d-flex align-items-center justify-content-between">
                                     <span>Price (₹)</span>
                                     {showGSTFeatures() && (
@@ -116,9 +129,9 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                                     )}
                                 </div>
                             </th>
-                            {showGSTFeatures() && <th style={{ width: '12%' }}>GST</th>}
+                            {showGSTFeatures() && <th style={{ width: '15%' }}>GST (%)</th>}
                             <th style={{ width: '15%' }}>Total (₹)</th>
-                            <th style={{ width: '8%' }}>Action</th>
+                            <th style={{ width: '5%' }}>Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -181,58 +194,90 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                                     />
                                 </td>
 
-                                {/* Price Column */}
+                                {/* Price Column with Individual Tax Toggle - HORIZONTAL LAYOUT */}
                                 <td>
-                                    <InputGroup>
-                                        <InputGroup.Text className="border-0 bg-transparent">₹</InputGroup.Text>
-                                        <Form.Control
-                                            type="number"
-                                            value={item.price || ''}
-                                            onChange={(e) => {
-                                                const price = parseFloat(e.target.value) || 0;
-                                                handleInputChange(index, 'price', price);
-                                                const quantity = parseFloat(item.quantity) || 1;
-                                                const total = quantity * price;
-                                                handleInputChange(index, 'total', total);
-                                            }}
-                                            placeholder="0.00"
-                                            min="0"
-                                            step="0.01"
-                                            className="border-0 price-input"
-                                        />
-                                    </InputGroup>
+                                    <div className="d-flex align-items-center gap-2 price-tax-container">
+                                        {/* Price Input - Smaller Size */}
+                                        <InputGroup size="sm" className="price-input-group">
+                                            <InputGroup.Text className="border-0 bg-transparent px-1">₹</InputGroup.Text>
+                                            <Form.Control
+                                                type="number"
+                                                value={item.price || ''}
+                                                onChange={(e) => {
+                                                    const price = parseFloat(e.target.value) || 0;
+                                                    handleInputChange(index, 'price', price);
+                                                    const quantity = parseFloat(item.quantity) || 1;
+                                                    const total = quantity * price;
+                                                    handleInputChange(index, 'total', total);
+                                                }}
+                                                placeholder="0.00"
+                                                min="0"
+                                                step="0.01"
+                                                className="border-0 price-input text-end"
+                                                size="sm"
+                                            />
+                                        </InputGroup>
+
+                                        {/* Individual Tax Toggle - Horizontal after price */}
+                                        {showGSTFeatures() && (
+                                            <div className="d-flex align-items-center gap-1 tax-toggle-horizontal">
+                                                <Form.Check
+                                                    type="switch"
+                                                    id={`tax-inclusive-${index}`}
+                                                    checked={item.taxInclusive !== undefined ? item.taxInclusive : globalTaxInclusive}
+                                                    onChange={(e) => {
+                                                        handleInputChange(index, 'taxInclusive', e.target.checked);
+                                                        handleInputChange(index, 'hasIndividualTaxSetting', true);
+                                                    }}
+                                                    className="mb-0 tax-switch"
+                                                    size="sm"
+                                                />
+                                                <small className="text-muted tax-label">
+                                                    {(item.taxInclusive !== undefined ? item.taxInclusive : globalTaxInclusive) ? 'Inc' : 'Exc'}
+                                                </small>
+
+                                                {/* Show override indicator if different from global */}
+                                                {item.hasIndividualTaxSetting &&
+                                                    (item.taxInclusive !== globalTaxInclusive) && (
+                                                        <span
+                                                            className="text-info cursor-pointer reset-icon"
+                                                            title="Reset to global setting"
+                                                            onClick={() => {
+                                                                handleInputChange(index, 'taxInclusive', globalTaxInclusive);
+                                                                handleInputChange(index, 'hasIndividualTaxSetting', false);
+                                                            }}
+                                                        >
+                                                            ↺
+                                                        </span>
+                                                    )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </td>
 
-                                {/* GST Column - Auto-filled from inventory, editable */}
+                                {/* GST Column - Only show for GST invoices */}
                                 {showGSTFeatures() && (
                                     <td>
-                                        <div className="text-center">
-                                            <InputGroup size="sm">
-                                                <Form.Control
-                                                    type="number"
-                                                    value={item.gstRate || ''}
-                                                    onChange={(e) => {
-                                                        const gstRate = parseFloat(e.target.value) || 0;
-                                                        handleInputChange(index, 'gstRate', gstRate);
-                                                    }}
-                                                    placeholder="0"
-                                                    min="0"
-                                                    max="50"
-                                                    step="0.1"
-                                                    className="text-center"
-                                                />
-                                                <InputGroup.Text>%</InputGroup.Text>
-                                            </InputGroup>
-                                            {/* {item.selectedProduct && item.gstRate > 0 && (
-                                                <small className="text-success d-block mt-1">
-                                                    Auto-filled from inventory
+                                        <div className="text-center gst-display">
+                                            <Form.Control
+                                                type="number"
+                                                value={item.gstRate || ''}
+                                                onChange={(e) => {
+                                                    const gstRate = parseFloat(e.target.value) || 0;
+                                                    handleInputChange(index, 'gstRate', gstRate);
+                                                }}
+                                                placeholder="0"
+                                                min="0"
+                                                max="50"
+                                                step="0.1"
+                                                className="text-center gst-rate"
+                                                size="sm"
+                                            />
+                                            {item.gstRate > 0 && (
+                                                <small className="text-muted gst-amount d-block mt-1">
+                                                    ₹{getGSTAmount(item).toFixed(2)}
                                                 </small>
                                             )}
-                                            {item.gstRate > 0 && (
-                                                <small className="text-muted d-block">
-                                                    ₹{getGSTAmount(item, invoiceType).toFixed(2)}
-                                                </small>
-                                            )} */}
                                         </div>
                                     </td>
                                 )}
@@ -240,9 +285,14 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                                 {/* Total Column */}
                                 <td>
                                     <div className="text-center">
-                                        <div className="fw-semibold">
+                                        <div className="fw-semibold text-primary">
                                             ₹{getFinalTotal(item).toFixed(2)}
                                         </div>
+                                        {showGSTFeatures() && item.gstRate > 0 && (
+                                            <small className="text-muted d-block">
+                                                {(item.taxInclusive !== undefined ? item.taxInclusive : globalTaxInclusive) ? 'Tax Inc.' : 'Tax Exc.'}
+                                            </small>
+                                        )}
                                     </div>
                                 </td>
 
@@ -278,6 +328,11 @@ function ItemsTable({ items = [], onItemChange, onAddItem, onRemoveItem, invoice
                 <div className="text-end">
                     <small className="text-muted">
                         {items.length} item{items.length !== 1 ? 's' : ''} added
+                        {showGSTFeatures() && getIndividualOverrideCount() > 0 && (
+                            <span className="d-block">
+                                {getIndividualOverrideCount()} with individual tax settings
+                            </span>
+                        )}
                     </small>
                 </div>
             </div>

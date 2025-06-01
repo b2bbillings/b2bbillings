@@ -1,0 +1,197 @@
+/* Custom Backdrop with Blur Effect */
+.quick-party-modal-wrapper .modal-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.3); /* White blur instead of black */
+}
+
+/* Alternative approach - Target the modal directly */
+.quick-party-modal-wrapper {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Modal Content Styling */
+.quick-party-modal-wrapper .modal-content {
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Modal Header */
+.quick-party-modal-wrapper .modal-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 1.5rem 1.5rem 1rem 1.5rem;
+}
+
+/* Modal Body */
+.quick-party-modal-wrapper .modal-body {
+  padding: 1rem 1.5rem 1.5rem 1.5rem;
+}
+
+/* Form Input Styling */
+.quick-party-modal-wrapper .form-input,
+.quick-party-modal-wrapper .form-control {
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.quick-party-modal-wrapper .form-input:focus,
+.quick-party-modal-wrapper .form-control:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* Button Styling */
+.quick-party-modal-wrapper .btn {
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.quick-party-modal-wrapper .btn-primary {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  border: none;
+}
+
+.quick-party-modal-wrapper .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.quick-party-modal-wrapper .btn-outline-primary:hover {
+  transform: translateY(-1px);
+}
+
+.quick-party-modal-wrapper .btn-outline-secondary:hover {
+  transform: translateY(-1px);
+}
+
+/* Phone Numbers Section */
+.quick-party-modal-wrapper .phone-numbers-section {
+  background: rgba(248, 249, 250, 0.6);
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+/* Radio Button Styling */
+.quick-party-modal-wrapper .form-check-input:focus {
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Close Button */
+.quick-party-modal-wrapper .modal-header .btn-close,
+.quick-party-modal-wrapper .modal-header .btn-link {
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+.quick-party-modal-wrapper .modal-header .btn-close:hover,
+.quick-party-modal-wrapper .modal-header .btn-link:hover {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+/* Animation */
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.quick-party-modal-wrapper .modal-content {
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .quick-party-modal-wrapper .modal-content {
+    margin: 1rem;
+  }
+
+  .quick-party-modal-wrapper .modal-header,
+  .quick-party-modal-wrapper .modal-body {
+    padding: 1rem;
+  }
+
+  .quick-party-modal-wrapper .d-flex.gap-4 {
+    flex-direction: column;
+    gap: 0.5rem !important;
+  }
+
+  .quick-party-modal-wrapper .d-flex.gap-3 {
+    flex-direction: column;
+    gap: 0.75rem !important;
+  }
+
+  .quick-party-modal-wrapper .d-flex.gap-3 .btn {
+    width: 100%;
+  }
+}
+
+/* Enhanced blur for modern browsers - White theme */
+@supports (backdrop-filter: blur(10px)) {
+  .quick-party-modal-wrapper .modal-backdrop {
+    background: rgba(255, 255, 255, 0.4); /* Enhanced white backdrop */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .quick-party-modal-wrapper .modal-content {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+  }
+}
+
+/* Fallback for browsers without backdrop-filter support - White overlay */
+@supports not (backdrop-filter: blur(10px)) {
+  .quick-party-modal-wrapper .modal-backdrop {
+    background: rgba(255, 255, 255, 0.5); /* White fallback instead of dark */
+  }
+
+  .quick-party-modal-wrapper .modal-content {
+    background: rgba(255, 255, 255, 0.98);
+  }
+}
+
+/* Performance optimization */
+.quick-party-modal-wrapper .modal-content,
+.quick-party-modal-wrapper .form-input,
+.quick-party-modal-wrapper .btn {
+  will-change: transform;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .quick-party-modal-wrapper .modal-content {
+    animation: none;
+  }
+
+  .quick-party-modal-wrapper .btn:hover {
+    transform: none;
+  }
+
+  .quick-party-modal-wrapper .modal-header .btn-close:hover,
+  .quick-party-modal-wrapper .modal-header .btn-link:hover {
+    transform: none;
+  }
+}

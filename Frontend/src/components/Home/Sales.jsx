@@ -10,7 +10,7 @@ import SalesTable from './Sales/SalesTable';
 import SalesEmptyState from './Sales/SalesEmptyState';
 import SalesModal from './Sales/SalesModal';
 import QuickPartyModal from './Sales/QuickPartyModal';
-import PaymentStatusModal from './Sales/PaymentStatusModal';
+import PaymentModal from './Sales/PaymentModal'; // Only use PaymentModal
 import PrintInvoiceModal from './Sales/PrintInvoiceModal';
 
 function Sales({ view = 'allSales', onNavigate }) {
@@ -20,7 +20,7 @@ function Sales({ view = 'allSales', onNavigate }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showAddPartyModal, setShowAddPartyModal] = useState(false);
 
-    // ADD THESE MISSING STATE VARIABLES
+    // Payment and Print modal states - SIMPLIFIED
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
     const [selectedSaleForPayment, setSelectedSaleForPayment] = useState(null);
@@ -29,6 +29,11 @@ function Sales({ view = 'allSales', onNavigate }) {
     const [editingSale, setEditingSale] = useState(null);
     const [activeTab, setActiveTab] = useState(view || 'allSales');
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Simplified payment modal state - use same modal for both scenarios
+    const [showPaymentAfterInvoice, setShowPaymentAfterInvoice] = useState(false);
+    const [newlyCreatedInvoice, setNewlyCreatedInvoice] = useState(null);
+
     const [dateFilter, setDateFilter] = useState({
         from: '',
         to: ''
@@ -105,28 +110,39 @@ function Sales({ view = 'allSales', onNavigate }) {
     }, []);
 
     // Generate invoice number
-    const generateInvoiceNumber = () => {
+    const generateInvoiceNumber = (invoiceType = 'non-gst') => {
         const date = new Date();
         const year = date.getFullYear();
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const day = date.getDate().toString().padStart(2, '0');
         const random = Math.floor(1000 + Math.random() * 9000);
-        return `INV-${year}${month}${day}-${random}`;
+
+        if (invoiceType === 'gst') {
+            return `GST-${year}${month}${day}-${random}`;
+        } else {
+            return `INV-${year}${month}${day}-${random}`;
+        }
     };
 
     // Modal operations
     const handleOpenCreateModal = () => {
         setEditingSale(null);
+
+        const defaultInvoiceType = 'non-gst';
+        const invoiceNumber = generateInvoiceNumber(defaultInvoiceType);
+
         setFormData({
-            invoiceNumber: generateInvoiceNumber(),
+            invoiceNumber: invoiceNumber,
             invoiceDate: new Date().toISOString().split('T')[0],
             selectedParty: '',
-            invoiceType: '',
+            invoiceType: defaultInvoiceType,
             items: [{
                 productService: '',
                 quantity: 1,
                 price: 0,
-                total: 0
+                total: 0,
+                gstRate: 0,
+                taxInclusive: false
             }],
             subtotal: 0,
             tax: 0,
@@ -136,10 +152,9 @@ function Sales({ view = 'allSales', onNavigate }) {
         });
         setShowCreateModal(true);
     };
-    const handleCloseModal = () => {
-        setShowCreateModal(false); // FIXED: was setShowModal, should be setShowCreateModal
 
-        // Reset form data to initial state
+    const handleCloseModal = () => {
+        setShowCreateModal(false);
         setFormData({
             invoiceNumber: '',
             invoiceDate: new Date().toISOString().split('T')[0],
@@ -157,13 +172,12 @@ function Sales({ view = 'allSales', onNavigate }) {
             total: 0,
             notes: ''
         });
-
-        // Reset editing state
         setEditingSale(null);
     };
 
-    // Payment and Print handlers
+    // SIMPLIFIED Payment handler - now just opens PaymentModal for existing invoices
     const handleManagePayment = (sale) => {
+        console.log('🎯 Opening payment modal for existing sale:', sale);
         setSelectedSaleForPayment(sale);
         setShowPaymentModal(true);
     };
@@ -173,26 +187,73 @@ function Sales({ view = 'allSales', onNavigate }) {
         setShowPrintModal(true);
     };
 
-    const handleUpdatePayment = (updatedSale) => {
-        setSales(sales.map(sale =>
-            sale.id === updatedSale.id ? updatedSale : sale
-        ));
-        alert('Payment status updated successfully!');
+    // UNIFIED Payment handler - handles both new and existing invoice payments
+    const handleSavePaymentPlan = (paymentData) => {
+        console.log('💰 Saving payment plan:', paymentData);
+
+        try {
+            const invoiceId = paymentData.invoiceId;
+
+            setSales(prevSales => {
+                return prevSales.map(sale => {
+                    if (sale.id === invoiceId) {
+                        const updatedSale = {
+                            ...sale,
+                            payments: paymentData.payments || [],
+                            nextDueDate: paymentData.nextDueDate,
+                            paymentHistory: [...(sale.paymentHistory || []), {
+                                id: Date.now(),
+                                type: 'payment_plan_updated',
+                                data: paymentData.summary,
+                                createdAt: new Date().toISOString()
+                            }]
+                        };
+
+                        // Update payment status based on summary
+                        if (paymentData.summary) {
+                            updatedSale.paymentStatus = paymentData.summary.paymentStatus;
+                            updatedSale.remainingAmount = paymentData.summary.remainingAmount;
+                        }
+
+                        return updatedSale;
+                    }
+                    return sale;
+                });
+            });
+
+            alert('Payment plan saved successfully!');
+
+            // Close the appropriate modal
+            if (showPaymentAfterInvoice) {
+                setShowPaymentAfterInvoice(false);
+                setNewlyCreatedInvoice(null);
+            } else {
+                setShowPaymentModal(false);
+                setSelectedSaleForPayment(null);
+            }
+
+        } catch (error) {
+            console.error('❌ Error saving payment plan:', error);
+            alert('Error saving payment plan. Please try again.');
+        }
     };
 
-    // Party selection - updated to handle different party selection modes
+    // Party selection
     const handlePartySelection = (e) => {
-        const value = e.target.value;
-        const selectedPartyData = e.target.selectedPartyData;
+        console.log('Party selection:', e.target);
 
-        console.log('Party selection:', { value, selectedPartyData });
+        const { value, selectedPartyData } = e.target;
 
         setFormData(prev => ({
             ...prev,
             selectedParty: value,
-            // Store additional party data if needed
-            ...(selectedPartyData && { selectedPartyData })
+            customerName: selectedPartyData?.name || '',
+            customerPhone: selectedPartyData?.phone || selectedPartyData?.whatsappNumber || '',
+            customerEmail: selectedPartyData?.email || '',
+            customerAddress: selectedPartyData?.address || '',
         }));
+
+        console.log('Form data updated with party:', selectedPartyData);
     };
 
     // Form input changes
@@ -204,7 +265,6 @@ function Sales({ view = 'allSales', onNavigate }) {
                 [name]: value
             };
 
-            // Recalculate totals when tax or discount changes
             if (name === 'tax' || name === 'discount') {
                 const subtotal = prev.subtotal || 0;
                 const tax = name === 'tax' ? parseFloat(value) || 0 : prev.tax || 0;
@@ -249,7 +309,6 @@ function Sales({ view = 'allSales', onNavigate }) {
 
         setParties(prev => [...prev, newParty]);
 
-        // Auto-select the newly added party
         setFormData(prev => ({
             ...prev,
             selectedParty: newParty.id.toString()
@@ -267,12 +326,27 @@ function Sales({ view = 'allSales', onNavigate }) {
         alert('Party added successfully!');
     };
 
-    // Item operations - updated for new structure
+    // Show Add Party Modal Handler
+    const handleShowAddPartyModal = (prefilledName = '') => {
+        console.log('🎯 handleShowAddPartyModal called with prefilledName:', prefilledName);
+
+        setQuickPartyData(prev => ({
+            ...prev,
+            name: prefilledName || '',
+            partyType: 'customer',
+            phone: '',
+            email: '',
+            address: ''
+        }));
+
+        setShowAddPartyModal(true);
+    };
+
+    // Item operations
     const handleItemChange = (index, field, value) => {
         const newItems = [...formData.items];
         newItems[index][field] = value;
 
-        // Recalculate item total
         if (field === 'quantity' || field === 'price') {
             const quantity = parseFloat(newItems[index].quantity) || 0;
             const price = parseFloat(newItems[index].price) || 0;
@@ -284,7 +358,6 @@ function Sales({ view = 'allSales', onNavigate }) {
             items: newItems
         }));
 
-        // Recalculate totals
         setTimeout(() => calculateTotals(newItems), 0);
     };
 
@@ -315,7 +388,7 @@ function Sales({ view = 'allSales', onNavigate }) {
         }
     };
 
-    // Calculate totals - updated for new structure
+    // Calculate totals
     const calculateTotals = (items = formData.items) => {
         let subtotal = 0;
         let totalGST = 0;
@@ -324,18 +397,15 @@ function Sales({ view = 'allSales', onNavigate }) {
             const itemTotal = parseFloat(item.total) || 0;
             subtotal += itemTotal;
 
-            // Calculate GST for each item if invoice type is GST
             if (formData.invoiceType === 'gst' && item.gstRate) {
                 const itemGST = (itemTotal * parseFloat(item.gstRate)) / 100;
                 totalGST += itemGST;
             }
         });
 
-        // Apply overall discount on subtotal
         const discountAmount = (subtotal * (parseFloat(formData.discount) || 0)) / 100;
         const finalSubtotal = subtotal - discountAmount;
 
-        // GST should be calculated on the discounted amount
         let finalGST = totalGST;
         if (discountAmount > 0 && formData.invoiceType === 'gst') {
             finalGST = totalGST * (finalSubtotal / subtotal);
@@ -351,30 +421,25 @@ function Sales({ view = 'allSales', onNavigate }) {
         }));
     };
 
-
-    // Updated validation logic
+    // Validation
     const validateForm = () => {
         console.log('Validating form data:', formData);
 
-        // Check invoice date
         if (!formData.invoiceDate || formData.invoiceDate.trim() === '') {
             alert('Please select an invoice date');
             return false;
         }
 
-        // Check invoice type
         if (!formData.invoiceType || formData.invoiceType === '') {
             alert('Please select invoice type (GST or Non-GST)');
             return false;
         }
 
-        // Check party selection
         if (!formData.selectedParty || formData.selectedParty === '') {
             alert('Please select a customer');
             return false;
         }
 
-        // Check items
         if (!formData.items || formData.items.length === 0) {
             alert('Please add at least one item');
             return false;
@@ -389,7 +454,6 @@ function Sales({ view = 'allSales', onNavigate }) {
             return false;
         }
 
-        // Check if any item has invalid quantity or price
         const invalidItems = formData.items.filter(item =>
             item.productService && item.productService.trim() !== '' &&
             (parseFloat(item.quantity) <= 0 || parseFloat(item.price) <= 0)
@@ -403,63 +467,90 @@ function Sales({ view = 'allSales', onNavigate }) {
         return true;
     };
 
-    // Save invoice - updated validation
+    // Save invoice - shows PaymentModal after creation
     const handleSaveInvoice = (e) => {
         e.preventDefault();
 
         console.log('Saving invoice with data:', formData);
+        try {
+            if (!validateForm()) {
+                return;
+            }
 
-        // Validate form
-        if (!validateForm()) {
-            return;
-        }
+            let customerData = {};
+            let selectedParty = null;
 
-        // Get selected party details for saving
-        let customerData = {};
+            if (formData.selectedParty === 'walk-in') {
+                customerData = formData.selectedPartyData || {};
+            } else if (formData.selectedParty.startsWith('db_')) {
+                customerData = formData.selectedPartyData || {};
+            } else {
+                selectedParty = parties.find(p => p.id.toString() === formData.selectedParty);
+                customerData = selectedParty || {};
+            }
 
-        if (formData.selectedParty === 'walk-in') {
-            // Handle walk-in customer data from modal
-            customerData = formData.selectedPartyData || {};
-        } else if (formData.selectedParty.startsWith('db_')) {
-            // Handle database party data from modal
-            customerData = formData.selectedPartyData || {};
-        } else {
-            // Handle existing party
-            const selectedParty = parties.find(p => p.id.toString() === formData.selectedParty);
-            customerData = selectedParty || {};
-        }
-
-        // Prepare invoice data
-        const invoiceData = {
-            ...formData,
-            customerName: customerData.name || 'Unknown Customer',
-            customerPhone: customerData.phone || customerData.whatsappNumber || '',
-            customerEmail: customerData.email || '',
-            customerAddress: customerData.address || '',
-            customerCity: customerData.city || '',
-            gstNumber: customerData.gstNumber || '',
-            status: 'completed',
-            paymentHistory: [] // Initialize empty payment history
-        };
-
-        if (editingSale) {
-            setSales(sales.map(sale =>
-                sale.id === editingSale.id
-                    ? { ...invoiceData, id: editingSale.id, createdAt: editingSale.createdAt, paymentHistory: editingSale.paymentHistory || [] }
-                    : sale
-            ));
-            alert('Invoice updated successfully!');
-        } else {
-            const newSale = {
-                ...invoiceData,
-                id: Date.now(),
-                createdAt: new Date().toISOString()
+            const invoiceData = {
+                id: editingSale ? editingSale.id : Date.now(),
+                invoiceNumber: formData.invoiceNumber || generateInvoiceNumber(),
+                invoiceDate: formData.invoiceDate,
+                invoiceType: formData.invoiceType || 'non-gst',
+                customerName: formData.customerName || selectedParty?.name || 'Walk-in Customer',
+                customerPhone: formData.customerPhone || selectedParty?.phone || '',
+                customerEmail: formData.customerEmail || selectedParty?.email || '',
+                customerAddress: formData.customerAddress || selectedParty?.address || '',
+                items: formData.items,
+                subtotal: formData.subtotal || 0,
+                discount: formData.discount || 0,
+                gstAmount: formData.gstAmount || 0,
+                total: formData.total || 0,
+                finalTotal: formData.total || 0, // For PaymentModal compatibility
+                notes: formData.notes || '',
+                createdAt: editingSale ? editingSale.createdAt : new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                status: 'completed',
+                payments: editingSale ? editingSale.payments || [] : [],
+                paymentHistory: editingSale ? editingSale.paymentHistory || [] : [],
+                paymentStatus: 'pending',
+                remainingAmount: formData.total || 0,
+                // For PaymentModal compatibility
+                partyName: formData.customerName || selectedParty?.name || 'Walk-in Customer'
             };
-            setSales([...sales, newSale]);
-            alert('Invoice created successfully!');
-        }
 
-        handleCloseModal();
+            if (editingSale) {
+                setSales(prev => prev.map(sale =>
+                    sale.id === editingSale.id ? invoiceData : sale
+                ));
+                alert('Invoice updated successfully!');
+                handleCloseModal();
+            } else {
+                setSales(prev => [...prev, invoiceData]);
+                setNewlyCreatedInvoice(invoiceData);
+
+                alert('Invoice created successfully!');
+                console.log('✅ New invoice created:', invoiceData);
+
+                handleCloseModal();
+
+                // Show PaymentModal after invoice creation
+                setTimeout(() => {
+                    setShowPaymentAfterInvoice(true);
+                }, 500);
+            }
+
+        } catch (error) {
+            console.error('❌ Error saving invoice:', error);
+            alert('Error saving invoice. Please try again.');
+        }
+    };
+
+    const handleClosePaymentAfterInvoice = () => {
+        setShowPaymentAfterInvoice(false);
+        setNewlyCreatedInvoice(null);
+    };
+
+    const handleClosePaymentModal = () => {
+        setShowPaymentModal(false);
+        setSelectedSaleForPayment(null);
     };
 
     // Edit and delete operations
@@ -467,7 +558,6 @@ function Sales({ view = 'allSales', onNavigate }) {
         setEditingSale(sale);
         setFormData({
             ...sale,
-            // Ensure items have the correct structure
             items: sale.items?.map(item => ({
                 productService: item.productService || item.product || '',
                 quantity: item.quantity || 1,
@@ -538,11 +628,17 @@ function Sales({ view = 'allSales', onNavigate }) {
                                 setSearchQuery={setSearchQuery}
                                 dateFilter={dateFilter}
                                 setDateFilter={setDateFilter}
+                                statusFilter="all"
+                                setStatusFilter={() => { }}
+                                paymentStatusFilter="all"
+                                setPaymentStatusFilter={() => { }}
+                                sortConfig={{ field: 'createdAt', direction: 'desc' }}
+                                setSortConfig={() => { }}
                                 onCreateInvoice={handleOpenCreateModal}
                                 onEditSale={handleEditSale}
                                 onDeleteSale={handleDeleteSale}
-                                onManagePayment={handleManagePayment}  // Add this line
-                                onPrintInvoice={handlePrintInvoice}    // Add this line
+                                onManagePayment={handleManagePayment}
+                                onPrintInvoice={handlePrintInvoice}
                             />
                         </>
                     ) : (
@@ -579,7 +675,7 @@ function Sales({ view = 'allSales', onNavigate }) {
                 onAddItem={addItem}
                 onRemoveItem={removeItem}
                 onSaveInvoice={handleSaveInvoice}
-                onShowAddPartyModal={() => setShowAddPartyModal(true)}
+                onShowAddPartyModal={handleShowAddPartyModal}
             />
 
             <QuickPartyModal
@@ -590,11 +686,26 @@ function Sales({ view = 'allSales', onNavigate }) {
                 onAddQuickParty={handleAddQuickParty}
             />
 
-            <PaymentStatusModal
+            {/* Payment Modal for Existing Invoices */}
+            <PaymentModal
                 show={showPaymentModal}
-                onHide={() => setShowPaymentModal(false)}
-                sale={selectedSaleForPayment}
-                onUpdatePayment={handleUpdatePayment}
+                onHide={handleClosePaymentModal}
+                invoiceData={selectedSaleForPayment}
+                onSavePayment={handleSavePaymentPlan}
+                onSetReminder={(data) => {
+                    console.log('Setting payment reminder for existing invoice:', data);
+                }}
+            />
+
+            {/* Payment Modal After Invoice Creation */}
+            <PaymentModal
+                show={showPaymentAfterInvoice}
+                onHide={handleClosePaymentAfterInvoice}
+                invoiceData={newlyCreatedInvoice}
+                onSavePayment={handleSavePaymentPlan}
+                onSetReminder={(data) => {
+                    console.log('Setting payment reminder for new invoice:', data);
+                }}
             />
 
             <PrintInvoiceModal

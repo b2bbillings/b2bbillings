@@ -13,7 +13,7 @@ import {
     faMoneyBillWave,
     faCreditCard
 } from '@fortawesome/free-solid-svg-icons';
-import SalesFilters from './SalesFileters';
+import SalesFilters from './SalesFilters'; // Fixed import path
 
 function SalesTable({
     filteredSales,
@@ -21,6 +21,12 @@ function SalesTable({
     setSearchQuery,
     dateFilter,
     setDateFilter,
+    statusFilter,        // Add these missing props
+    setStatusFilter,     // Add these missing props
+    paymentStatusFilter, // Add these missing props
+    setPaymentStatusFilter, // Add these missing props
+    sortConfig,          // Add these missing props
+    setSortConfig,       // Add these missing props
     onCreateInvoice,
     onEditSale,
     onDeleteSale,
@@ -28,7 +34,6 @@ function SalesTable({
     onPrintInvoice
 }) {
     const getPaymentStatusBadge = (sale) => {
-        // Check both new and old payment data structures
         const totalPaid = sale.payments?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) ||
             sale.paymentHistory?.reduce((sum, payment) => sum + parseFloat(payment.amount), 0) || 0;
         const saleTotal = sale.total || sale.finalTotal || 0;
@@ -79,11 +84,18 @@ function SalesTable({
                 </div>
             </Card.Header>
             <Card.Body>
+                {/* Fixed SalesFilters with all required props */}
                 <SalesFilters
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
                     dateFilter={dateFilter}
                     setDateFilter={setDateFilter}
+                    statusFilter={statusFilter}
+                    setStatusFilter={setStatusFilter}
+                    paymentStatusFilter={paymentStatusFilter}
+                    setPaymentStatusFilter={setPaymentStatusFilter}
+                    sortConfig={sortConfig}
+                    setSortConfig={setSortConfig}
                 />
 
                 <div className="table-responsive">
@@ -189,7 +201,6 @@ function SalesTable({
                                                         )}
                                                     </div>
                                                 )}
-                                                {/* Show installments info if available */}
                                                 {sale.installments && sale.installments.length > 0 && (
                                                     <small className="text-info d-block">
                                                         {sale.installments.length} installment{sale.installments.length > 1 ? 's' : ''}

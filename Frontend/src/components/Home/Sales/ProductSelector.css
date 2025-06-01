@@ -14,7 +14,6 @@
   box-shadow: 0 0 0 0.2rem rgba(94, 96, 206, 0.25);
 }
 
-
 /* Product Suggestions Dropdown - FLOATING ABOVE EVERYTHING */
 .product-suggestions-dropdown {
   /* position: fixed !important; Changed from absolute to fixed */
@@ -29,9 +28,9 @@
   overflow-y: auto !important;
   overflow-x: hidden !important;
   margin: 0 !important;
-  padding: 0 !important;
+  /* padding: 0 !important; */
   /* Reduced gap for better positioning */
-  margin-top: 4rem !important;
+  /* margin-top: 4rem !important; */
 }
 
 /* Dropdown Card */

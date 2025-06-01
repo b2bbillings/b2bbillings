@@ -12,7 +12,10 @@ import {
     faBook,
     faUserFriends,
     faAngleRight,
-    faLayerGroup
+    faLayerGroup,
+    faWarehouse,
+    faExclamationTriangle,
+    faExchangeAlt
 } from '@fortawesome/free-solid-svg-icons';
 import './Sidebar.css';
 
@@ -78,7 +81,6 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     </div>
 
                     {/* Parties */}
-
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('parties')}
@@ -173,14 +175,18 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                         className={`submenu-item ${activePage === 'purchaseOrders' ? 'active' : ''}`}
                                     >
                                         Purchase Orders
-                                    </Nav.Link>   </Nav>
+                                    </Nav.Link>
+                                </Nav>
                             </Accordion.Body>
                         </Accordion.Item>
                     </div>
 
                     {/* Products & Services */}
                     <div className="sidebar-item">
-                        <Nav.Link href="#" className="sidebar-link">
+                        <Nav.Link 
+                            onClick={() => handleNavigation('products')}
+                            className={`sidebar-link ${activePage === 'products' ? 'active' : ''}`}
+                        >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faBoxes} className="sidebar-icon" />
                                 <span className="sidebar-text">Products & Services</span>
@@ -206,9 +212,27 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                             </Accordion.Header>
                             <Accordion.Body className="sidebar-submenu">
                                 <Nav className="flex-column">
-                                    <Nav.Link href="#" className="submenu-item">Stock Summary</Nav.Link>
-                                    <Nav.Link href="#" className="submenu-item">Low Stock Items</Nav.Link>
-                                    <Nav.Link href="#" className="submenu-item">Stock Transfers</Nav.Link>
+                                    <Nav.Link 
+                                        onClick={() => handleNavigation('allProducts')}
+                                        className={`submenu-item ${activePage === 'allProducts' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faWarehouse} className="me-2" />
+                                        All Products
+                                    </Nav.Link>
+                                    <Nav.Link 
+                                        onClick={() => handleNavigation('lowStock')}
+                                        className={`submenu-item ${activePage === 'lowStock' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                                        Low Stock Items
+                                    </Nav.Link>
+                                    <Nav.Link 
+                                        onClick={() => handleNavigation('stockMovement')}
+                                        className={`submenu-item ${activePage === 'stockMovement' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                                        Stock Movement
+                                    </Nav.Link>
                                 </Nav>
                             </Accordion.Body>
                         </Accordion.Item>
@@ -216,7 +240,10 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Insights */}
                     <div className="sidebar-item">
-                        <Nav.Link href="#" className="sidebar-link">
+                        <Nav.Link 
+                            onClick={() => handleNavigation('insights')}
+                            className={`sidebar-link ${activePage === 'insights' ? 'active' : ''}`}
+                        >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faChartLine} className="sidebar-icon" />
                                 <span className="sidebar-text">Insights</span>
@@ -226,7 +253,10 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Reports */}
                     <div className="sidebar-item">
-                        <Nav.Link href="#" className="sidebar-link">
+                        <Nav.Link 
+                            onClick={() => handleNavigation('reports')}
+                            className={`sidebar-link ${activePage === 'reports' ? 'active' : ''}`}
+                        >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faFileAlt} className="sidebar-icon" />
                                 <span className="sidebar-text">Reports</span>
@@ -236,7 +266,10 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Settings */}
                     <div className="sidebar-item">
-                        <Nav.Link href="#" className="sidebar-link">
+                        <Nav.Link 
+                            onClick={() => handleNavigation('settings')}
+                            className={`sidebar-link ${activePage === 'settings' ? 'active' : ''}`}
+                        >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faCog} className="sidebar-icon" />
                                 <span className="sidebar-text">Settings</span>
