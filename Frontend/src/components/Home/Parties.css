@@ -186,16 +186,64 @@
   border-color: #6c757d;
 }
 
+
+/* Clickable party rows */
+.party-row-clickable:hover {
+  background-color: rgba(0, 123, 255, 0.05) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.party-row-clickable td {
+  transition: all 0.2s ease;
+}
+
+.party-row-clickable:hover td {
+  border-color: rgba(0, 123, 255, 0.2);
+}
+
+/* Party avatar improvements */
+.party-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 123, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.party-row-clickable:hover .party-avatar {
+  background: rgba(0, 123, 255, 0.2);
+  transform: scale(1.1);
+}
+
+/* Contact info styling */
+.contact-info {
+  font-size: 0.9rem;
+}
+
+/* Table hover effects */
+.parties-table tbody tr {
+  transition: all 0.2s ease;
+}
+
+.parties-table tbody tr:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 /* Responsive adjustments */
 @media (max-width: 767.98px) {
   .empty-state-container {
     padding: 1.5rem 1rem;
   }
-  
+
   .empty-state-content {
     padding: 1rem 0;
   }
-  
+
   .empty-state-image {
     max-width: 220px;
   }
@@ -203,11 +251,11 @@
   .modal-body {
     padding: 1rem;
   }
-  
+
   .d-flex.gap-3 {
     flex-direction: column;
   }
-  
+
   .d-flex.gap-3 .btn {
     width: 100%;
   }

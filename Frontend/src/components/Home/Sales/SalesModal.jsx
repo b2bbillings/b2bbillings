@@ -232,24 +232,24 @@ function SalesModal({
         });
     };
 
-    // Handle Add as Permanent Party
-    const handleAddPermanentParty = (e) => {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+ const handleAddPermanentParty = (e) => {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
 
-        console.log('🎯 Add as Permanent Party clicked');
-        setShowSuggestions(false);
+    console.log('🎯 Add as Permanent Party clicked');
+    console.log('📝 Party search query:', partySearchQuery.trim());
+    console.log('📝 Calling onShowAddPartyModal with running-customer');
+    setShowSuggestions(false);
 
-        if (typeof onShowAddPartyModal === 'function') {
-            onShowAddPartyModal(partySearchQuery.trim());
-        } else {
-            console.error('❌ onShowAddPartyModal is not a function');
-            alert('Add party function not available');
-        }
-    };
-
+    if (typeof onShowAddPartyModal === 'function') {
+        onShowAddPartyModal(partySearchQuery.trim(), 'running-customer');
+    } else {
+        console.error('❌ onShowAddPartyModal is not a function');
+        alert('Add party function not available');
+    }
+};
     // Handle discount change
     const handleDiscountChange = (e) => {
         const discountValue = parseFloat(e.target.value) || 0;

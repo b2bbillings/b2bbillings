@@ -1,26 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button, Modal, Form, Table, Badge, Dropdown, InputGroup, Card, ListGroup } from 'react-bootstrap';
+import { Container, Row, Col, Button, ButtonGroup, Modal, Form, Table, Badge, Dropdown, InputGroup, Card, ListGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faEdit, faTrash, faEllipsisV, faUser, faBuilding, faPhone, faEnvelope, faMinus, faSearch, faFilter, faDownload, faUserCheck, faRocket } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTimes, faEdit, faTrash, faEllipsisV, faUser, faBuilding, faPhone, faEnvelope, faMinus, faSearch, faFilter, faDownload, faUserCheck, faRocket, faEye, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
 import './Parties.css';
 import emptyStateImage from '../../assets/images/parties-empty-state.svg';
+import PartyDetails from './Party/PartyDetails';
 
 function Parties() {
     // State for managing parties and modal
     const [parties, setParties] = useState([]);
     const [showAddModal, setShowAddModal] = useState(false);
-    const [showQuickAddModal, setShowQuickAddModal] = useState(false); // New state for quick add
+    const [showQuickAddModal, setShowQuickAddModal] = useState(false);
     const [editingParty, setEditingParty] = useState(null);
     const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
 
     // Search and filter states
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState('all'); // all, customer, supplier, running
+    const [filterType, setFilterType] = useState('all');
+    // Location filter states
+    const [filterLocation, setFilterLocation] = useState('all');
+    const [locationOptions, setLocationOptions] = useState({
+        cities: [],
+        talukas: [],
+        states: []
+    });
+    const [activeLocationFilter, setActiveLocationFilter] = useState('');
     const [showDatabaseSearch, setShowDatabaseSearch] = useState(false);
     const [databaseSearchQuery, setDatabaseSearchQuery] = useState('');
     const [databaseSearchResults, setDatabaseSearchResults] = useState([]);
     const [isSearchingDatabase, setIsSearchingDatabase] = useState(false);
 
+    // Party Details modal states
+    const [showPartyDetails, setShowPartyDetails] = useState(false);
+    const [selectedParty, setSelectedParty] = useState(null);
+
+    // Form data for adding/editing parties
     const [formData, setFormData] = useState({
         partyType: 'customer',
         name: '',
@@ -28,7 +42,9 @@ function Parties() {
         phoneNumbers: [{ number: '', label: '' }],
         email: '',
         address: '',
-        city: '',
+        city: '',       // City and district are the same
+        taluka: '',
+        state: '',      // Keep state
         pincode: '',
         gstNumber: ''
     });
@@ -41,28 +57,76 @@ function Parties() {
 
     // Sample database parties (simulating external database)
     const [databaseParties] = useState([
-        { id: 'db1', name: 'Reliance Industries', phone: '9876543210', email: 'contact@reliance.com', partyType: 'supplier', city: 'Mumbai', gstNumber: '27AAACR5055K1ZX' },
-        { id: 'db2', name: 'Tata Motors', phone: '9876543211', email: 'info@tatamotors.com', partyType: 'supplier', city: 'Pune', gstNumber: '27AAACT2727Q1ZN' },
-        { id: 'db3', name: 'Amit Kumar', phone: '9876543212', email: 'amit@gmail.com', partyType: 'customer', city: 'Delhi', gstNumber: '' },
-        { id: 'db4', name: 'Infosys Ltd', phone: '9876543213', email: 'contact@infosys.com', partyType: 'supplier', city: 'Bangalore', gstNumber: '29AAACI1681G1ZK' },
-        { id: 'db5', name: 'Priya Sharma', phone: '9876543214', email: 'priya@gmail.com', partyType: 'customer', city: 'Jaipur', gstNumber: '' },
-        { id: 'db6', name: 'Mahindra & Mahindra', phone: '9876543215', email: 'info@mahindra.com', partyType: 'supplier', city: 'Mumbai', gstNumber: '27AAACM1294H1Z8' }
+        { id: 'db1', name: 'Reliance Industries', phone: '9876543210', email: 'contact@reliance.com', partyType: 'supplier', city: 'Mumbai', taluka: 'Andheri', state: 'Maharashtra', gstNumber: '27AAACR5055K1ZX' },
+        { id: 'db2', name: 'Tata Motors', phone: '9876543211', email: 'info@tatamotors.com', partyType: 'supplier', city: 'Pune', taluka: 'Hinjewadi', state: 'Maharashtra', gstNumber: '27AAACT2727Q1ZN' },
+        { id: 'db3', name: 'Amit Kumar', phone: '9876543212', email: 'amit@gmail.com', partyType: 'customer', city: 'Delhi', taluka: 'Central Delhi', state: 'Delhi', gstNumber: '' },
+        { id: 'db4', name: 'Infosys Ltd', phone: '9876543213', email: 'contact@infosys.com', partyType: 'supplier', city: 'Bangalore', taluka: 'Electronic City', state: 'Karnataka', gstNumber: '29AAACI1681G1ZK' },
+        { id: 'db5', name: 'Priya Sharma', phone: '9876543214', email: 'priya@gmail.com', partyType: 'customer', city: 'Jaipur', taluka: 'Sanganer', state: 'Rajasthan', gstNumber: '' },
+        { id: 'db6', name: 'Mahindra & Mahindra', phone: '9876543215', email: 'info@mahindra.com', partyType: 'supplier', city: 'Mumbai', taluka: 'Worli', state: 'Maharashtra', gstNumber: '27AAACM1294H1Z8' }
     ]);
 
     const hasParties = parties.length > 0;
 
-    // Filter parties based on search and type
+    // Extract unique location data from parties
+    const generateLocationOptions = (partiesData) => {
+        const cities = new Set();
+        const talukas = new Set();
+        const states = new Set();
+
+        partiesData.forEach(party => {
+            if (party.city) cities.add(party.city);
+            if (party.taluka) talukas.add(party.taluka);
+            if (party.state) states.add(party.state);
+        });
+
+        return {
+            cities: Array.from(cities).sort(),
+            talukas: Array.from(talukas).sort(),
+            states: Array.from(states).sort()
+        };
+    };
+
+    // Update location options when parties change
+    useEffect(() => {
+        if (parties.length > 0) {
+            setLocationOptions(generateLocationOptions(parties));
+        }
+    }, [parties]);
+
+    // Filter parties based on search, type and location
     const filteredParties = parties.filter(party => {
+        // Search matching
         const matchesSearch = party.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             party.phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             party.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.city?.toLowerCase().includes(searchQuery.toLowerCase());
+            party.city?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            party.taluka?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            party.state?.toLowerCase().includes(searchQuery.toLowerCase());
 
+        // Party type filtering
         const matchesType = filterType === 'all' ||
             party.partyType === filterType ||
             (filterType === 'running' && party.isRunningCustomer);
 
-        return matchesSearch && matchesType;
+        // Location filtering
+        let matchesLocation = true;
+        if (filterLocation !== 'all') {
+            switch (activeLocationFilter) {
+                case 'city':
+                    matchesLocation = party.city === filterLocation;
+                    break;
+                case 'taluka':
+                    matchesLocation = party.taluka === filterLocation;
+                    break;
+                case 'state':
+                    matchesLocation = party.state === filterLocation;
+                    break;
+                default:
+                    matchesLocation = true;
+            }
+        }
+
+        return matchesSearch && matchesType && matchesLocation;
     });
 
     // Search database parties
@@ -83,7 +147,9 @@ function Parties() {
                 const matchesQuery = party.name.toLowerCase().includes(query.toLowerCase()) ||
                     party.phone.toLowerCase().includes(query.toLowerCase()) ||
                     party.email.toLowerCase().includes(query.toLowerCase()) ||
-                    party.city.toLowerCase().includes(query.toLowerCase());
+                    party.city?.toLowerCase().includes(query.toLowerCase()) ||
+                    party.taluka?.toLowerCase().includes(query.toLowerCase()) ||
+                    party.state?.toLowerCase().includes(query.toLowerCase());
 
                 return matchesQuery && isNotAlreadyAdded;
             });
@@ -109,14 +175,14 @@ function Parties() {
             createdAt: new Date().toISOString(),
             phoneNumbers: [{ number: dbParty.phone, label: 'Primary' }],
             whatsappNumber: dbParty.phone,
-            pincode: ''
+            city: dbParty.city || '',
+            taluka: dbParty.taluka || '',
+            state: dbParty.state || '',
+            pincode: dbParty.pincode || ''
         };
 
         setParties([...parties, newParty]);
-
-        // Remove from search results
         setDatabaseSearchResults(databaseSearchResults.filter(party => party.id !== dbParty.id));
-
         alert(`${dbParty.name} added successfully!`);
     };
 
@@ -144,6 +210,8 @@ function Parties() {
             email: '',
             address: '',
             city: '',
+            taluka: '',
+            state: '',
             pincode: '',
             gstNumber: ''
         });
@@ -152,6 +220,17 @@ function Parties() {
     const handleCloseQuickAddModal = () => {
         setShowQuickAddModal(false);
         setQuickFormData({ name: '', phone: '' });
+    };
+
+    // Party Details handlers
+    const handleViewPartyDetails = (party) => {
+        setSelectedParty(party);
+        setShowPartyDetails(true);
+    };
+
+    const handleClosePartyDetails = () => {
+        setShowPartyDetails(false);
+        setSelectedParty(null);
     };
 
     // Handle edit party
@@ -257,6 +336,8 @@ function Parties() {
             email: '',
             address: '',
             city: '',
+            taluka: '',
+            state: '',
             pincode: '',
             gstNumber: '',
             phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }],
@@ -283,7 +364,7 @@ function Parties() {
             ...formData,
             phoneNumbers: validPhoneNumbers,
             phone: formData.whatsappNumber || (validPhoneNumbers.length > 0 ? validPhoneNumbers[0].number : ''),
-            isRunningCustomer: false // Regular parties are not running customers
+            isRunningCustomer: false
         };
 
         if (editingParty) {
@@ -310,8 +391,8 @@ function Parties() {
     const renderSearchAndFilters = () => (
         <Card className="mb-4 border-0 shadow-sm">
             <Card.Body className="p-3">
-                <Row className="align-items-center">
-                    <Col md={4}>
+                <Row className="align-items-center mb-2">
+                    <Col md={6}>
                         <InputGroup>
                             <InputGroup.Text className="bg-light border-end-0">
                                 <FontAwesomeIcon icon={faSearch} className="text-muted" />
@@ -331,7 +412,7 @@ function Parties() {
                             onChange={(e) => setFilterType(e.target.value)}
                             className="form-input"
                         >
-                            <option value="all">All Types</option>
+                            <option value="all">All Party Types</option>
                             <option value="customer">Regular Customers</option>
                             <option value="running">Running Customers</option>
                             <option value="supplier">Suppliers</option>
@@ -347,12 +428,132 @@ function Parties() {
                             Import from Database
                         </Button>
                     </Col>
+                </Row>
+
+                {/* Location filters */}
+                <Row className="mt-2">
+                    <Col md={3} className="d-flex align-items-center">
+                        <Form.Label className="mb-0 me-2 text-nowrap small">Filter by:</Form.Label>
+                        <ButtonGroup size="sm">
+                            <Button 
+                                variant={activeLocationFilter === 'city' ? 'primary' : 'outline-primary'}
+                                onClick={() => {
+                                    setActiveLocationFilter('city');
+                                    setFilterLocation('all');
+                                }}
+                                className="px-2"
+                            >
+                                City
+                            </Button>
+                            <Button 
+                                variant={activeLocationFilter === 'taluka' ? 'primary' : 'outline-primary'}
+                                onClick={() => {
+                                    setActiveLocationFilter('taluka');
+                                    setFilterLocation('all');
+                                }}
+                                className="px-2"
+                            >
+                                Taluka
+                            </Button>
+                            <Button 
+                                variant={activeLocationFilter === 'state' ? 'primary' : 'outline-primary'}
+                                onClick={() => {
+                                    setActiveLocationFilter('state');
+                                    setFilterLocation('all');
+                                }}
+                                className="px-2"
+                            >
+                                State
+                            </Button>
+                        </ButtonGroup>
+                    </Col>
+                    <Col md={7}>
+                        {activeLocationFilter && (
+                            <Form.Select
+                                value={filterLocation}
+                                onChange={(e) => setFilterLocation(e.target.value)}
+                                size="sm"
+                            >
+                                <option value="all">All {activeLocationFilter === 'city' ? 'Cities' : 
+                                                activeLocationFilter === 'taluka' ? 'Talukas' : 'States'}</option>
+                                {locationOptions[`${activeLocationFilter}s`]?.map((location) => (
+                                    <option key={location} value={location}>
+                                        {location}
+                                    </option>
+                                ))}
+                            </Form.Select>
+                        )}
+                    </Col>
                     <Col md={2}>
-                        <div className="text-muted small">
+                        <div className="text-muted text-end small">
                             {filteredParties.length} of {parties.length} parties
                         </div>
                     </Col>
                 </Row>
+                
+                {/* Display active filters */}
+                {(filterType !== 'all' || filterLocation !== 'all' || searchQuery) && (
+                    <Row className="mt-2">
+                        <Col>
+                            <div className="d-flex gap-2 align-items-center">
+                                <small className="text-muted">Active filters:</small>
+                                {filterType !== 'all' && (
+                                    <Badge bg="info" className="d-flex align-items-center">
+                                        Type: {filterType === 'customer' ? 'Customers' : 
+                                            filterType === 'running' ? 'Running Customers' : 'Suppliers'}
+                                        <Button 
+                                            variant="link" 
+                                            className="p-0 ms-1 text-white" 
+                                            size="sm"
+                                            onClick={() => setFilterType('all')}
+                                        >
+                                            <FontAwesomeIcon icon={faTimes} />
+                                        </Button>
+                                    </Badge>
+                                )}
+                                {filterLocation !== 'all' && (
+                                    <Badge bg="info" className="d-flex align-items-center">
+                                        {activeLocationFilter}: {filterLocation}
+                                        <Button 
+                                            variant="link" 
+                                            className="p-0 ms-1 text-white" 
+                                            size="sm"
+                                            onClick={() => setFilterLocation('all')}
+                                        >
+                                            <FontAwesomeIcon icon={faTimes} />
+                                        </Button>
+                                    </Badge>
+                                )}
+                                {searchQuery && (
+                                    <Badge bg="info" className="d-flex align-items-center">
+                                        Search: {searchQuery}
+                                        <Button 
+                                            variant="link" 
+                                            className="p-0 ms-1 text-white" 
+                                            size="sm"
+                                            onClick={() => setSearchQuery('')}
+                                        >
+                                            <FontAwesomeIcon icon={faTimes} />
+                                        </Button>
+                                    </Badge>
+                                )}
+                                <Button 
+                                    variant="link" 
+                                    className="ms-auto p-0 text-muted" 
+                                    size="sm"
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setFilterType('all');
+                                        setFilterLocation('all');
+                                        setActiveLocationFilter('');
+                                    }}
+                                >
+                                    Clear all filters
+                                </Button>
+                            </div>
+                        </Col>
+                    </Row>
+                )}
             </Card.Body>
         </Card>
     );
@@ -387,7 +588,7 @@ function Parties() {
                         </InputGroup.Text>
                         <Form.Control
                             type="text"
-                            placeholder="Search database parties by name, phone, email, or city..."
+                            placeholder="Search database parties by name, phone, email, city, taluka..."
                             value={databaseSearchQuery}
                             onChange={handleDatabaseSearch}
                         />
@@ -428,6 +629,12 @@ function Parties() {
                                                             <>
                                                                 <span className="mx-2">•</span>
                                                                 {party.city}
+                                                                {party.taluka && (
+                                                                    <>, {party.taluka}</>
+                                                                )}
+                                                                {party.state && (
+                                                                    <>, {party.state}</>
+                                                                )}
                                                             </>
                                                         )}
                                                     </div>
@@ -475,7 +682,7 @@ function Parties() {
         )
     );
 
-    // Render parties list
+    // Render parties list with clickable rows
     const renderPartiesList = () => (
         <div className="parties-list-container">
             <div className="table-responsive">
@@ -492,8 +699,12 @@ function Parties() {
                     </thead>
                     <tbody>
                         {filteredParties.map((party) => (
-                            <tr key={party.id}>
-                                <td>
+                            <tr
+                                key={party.id}
+                                className="party-row-clickable"
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <td onClick={() => handleViewPartyDetails(party)}>
                                     <div className="d-flex align-items-center">
                                         <div className="party-avatar me-3">
                                             <FontAwesomeIcon
@@ -519,7 +730,7 @@ function Parties() {
                                         </div>
                                     </div>
                                 </td>
-                                <td>
+                                <td onClick={() => handleViewPartyDetails(party)}>
                                     <Badge
                                         bg={party.partyType === 'customer' ? 'primary' : 'success'}
                                         className="party-type-badge"
@@ -535,7 +746,7 @@ function Parties() {
                                         </div>
                                     )}
                                 </td>
-                                <td>
+                                <td onClick={() => handleViewPartyDetails(party)}>
                                     <div className="contact-info">
                                         {party.whatsappNumber && (
                                             <div className="text-muted mb-1">
@@ -558,9 +769,23 @@ function Parties() {
                                         )}
                                     </div>
                                 </td>
-                                <td>
+                                <td onClick={() => handleViewPartyDetails(party)}>
                                     <div>
-                                        <span className="text-muted">{party.city || '-'}</span>
+                                        {party.city && (
+                                            <span className="text-muted">{party.city}</span>
+                                        )}
+                                        {party.taluka && party.city && (
+                                            <span className="text-muted">, </span>
+                                        )}
+                                        {party.taluka && (
+                                            <span className="text-muted">{party.taluka}</span>
+                                        )}
+                                        {party.state && (party.city || party.taluka) && (
+                                            <div className="small text-muted">{party.state}</div>
+                                        )}
+                                        {!party.city && !party.taluka && !party.state && (
+                                            <span className="text-muted">-</span>
+                                        )}
                                         {party.pincode && (
                                             <div>
                                                 <small className="text-muted">PIN: {party.pincode}</small>
@@ -568,7 +793,7 @@ function Parties() {
                                         )}
                                     </div>
                                 </td>
-                                <td>
+                                <td onClick={() => handleViewPartyDetails(party)}>
                                     <span className="text-muted">{party.gstNumber || '-'}</span>
                                 </td>
                                 <td>
@@ -581,6 +806,10 @@ function Parties() {
                                             <FontAwesomeIcon icon={faEllipsisV} />
                                         </Dropdown.Toggle>
                                         <Dropdown.Menu>
+                                            <Dropdown.Item onClick={() => handleViewPartyDetails(party)}>
+                                                <FontAwesomeIcon icon={faEye} className="me-2" />
+                                                View Details
+                                            </Dropdown.Item>
                                             <Dropdown.Item onClick={() => handleEditParty(party)}>
                                                 <FontAwesomeIcon icon={faEdit} className="me-2" />
                                                 Edit
@@ -616,7 +845,6 @@ function Parties() {
                 </Col>
                 <Col xs="auto">
                     <div className="d-flex gap-2">
-                        {/* Quick Add Running Customer Button */}
                         <Button
                             variant="warning"
                             className="d-flex align-items-center text-dark"
@@ -625,7 +853,6 @@ function Parties() {
                             <FontAwesomeIcon icon={faRocket} className="me-2" />
                             Quick Add Customer
                         </Button>
-                        {/* Regular Add Party Button */}
                         <Button
                             variant="primary"
                             className="d-flex align-items-center"
@@ -703,6 +930,8 @@ function Parties() {
                             <Button variant="outline-primary" onClick={() => {
                                 setSearchQuery('');
                                 setFilterType('all');
+                                setFilterLocation('all');
+                                setActiveLocationFilter('');
                             }}>
                                 Clear Filters
                             </Button>
@@ -712,6 +941,21 @@ function Parties() {
                     )}
                 </>
             )}
+
+            {/* PartyDetails Modal */}
+            <PartyDetails
+                party={selectedParty}
+                show={showPartyDetails}
+                onHide={handleClosePartyDetails}
+                onEdit={(party) => {
+                    handleClosePartyDetails();
+                    handleEditParty(party);
+                }}
+                onDelete={(partyId) => {
+                    handleClosePartyDetails();
+                    handleDeleteParty(partyId);
+                }}
+            />
 
             {/* Quick Add Running Customer Modal */}
             <Modal show={showQuickAddModal} onHide={handleCloseQuickAddModal} centered>
@@ -974,8 +1218,9 @@ function Parties() {
                             </Col>
                         </Row>
 
+                        {/* Location Information with updated fields */}
                         <Row>
-                            <Col md={6}>
+                            <Col md={4}>
                                 <Form.Group className="mb-3">
                                     <Form.Label className="fw-semibold">City</Form.Label>
                                     <Form.Control
@@ -988,7 +1233,42 @@ function Parties() {
                                     />
                                 </Form.Group>
                             </Col>
-                            <Col md={6}>
+                            <Col md={4}>
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Taluka
+                                        <small className="text-muted ms-1">(Optional)</small>
+                                    </Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        name="taluka"
+                                        value={formData.taluka}
+                                        onChange={handleInputChange}
+                                        placeholder="Enter taluka"
+                                        className="form-input"
+                                    />
+                                </Form.Group>
+                            </Col>
+                            <Col md={4}>
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        State
+                                        <small className="text-muted ms-1">(Optional)</small>
+                                    </Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        name="state"
+                                        value={formData.state}
+                                        onChange={handleInputChange}
+                                        placeholder="Enter state"
+                                        className="form-input"
+                                    />
+                                </Form.Group>
+                            </Col>
+                        </Row>
+
+                        <Row>
+                            <Col md={4}>
                                 <Form.Group className="mb-3">
                                     <Form.Label className="fw-semibold">
                                         Pin Code
@@ -1006,15 +1286,12 @@ function Parties() {
                                     />
                                 </Form.Group>
                             </Col>
-                        </Row>
-
-                        <Row>
-                            <Col md={12}>
+                            <Col md={8}>
                                 <Form.Group className="mb-3">
                                     <Form.Label className="fw-semibold">Address</Form.Label>
                                     <Form.Control
                                         as="textarea"
-                                        rows={3}
+                                        rows={1}
                                         name="address"
                                         value={formData.address}
                                         onChange={handleInputChange}

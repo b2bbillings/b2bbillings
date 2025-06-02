@@ -327,13 +327,13 @@ function Sales({ view = 'allSales', onNavigate }) {
     };
 
     // Show Add Party Modal Handler
-    const handleShowAddPartyModal = (prefilledName = '') => {
+    const handleShowAddPartyModal = (prefilledName = '',defaultPartyType = 'customer') => {
         console.log('🎯 handleShowAddPartyModal called with prefilledName:', prefilledName);
 
         setQuickPartyData(prev => ({
             ...prev,
             name: prefilledName || '',
-            partyType: 'customer',
+            partyType: defaultPartyType,
             phone: '',
             email: '',
             address: ''

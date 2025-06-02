@@ -65,6 +65,15 @@ function QuickPartyModal({
         const partyType = quickPartyData.partyType;
 
         switch (partyType) {
+            case 'running_customer':
+                return {
+                    name: "Enter running customer name",
+                    phone: "Running customer's contact number",
+                    email: "",
+                    gst: "",
+                    city: "",
+                    address: ""
+                };
             case 'customer':
                 return {
                     name: "Enter customer name",
@@ -83,15 +92,7 @@ function QuickPartyModal({
                     city: "Supplier's city",
                     address: "Supplier's complete address"
                 };
-            case 'running_customer':
-                return {
-                    name: "Enter running customer name",
-                    phone: "Running customer's contact number",
-                    email: "",
-                    gst: "",
-                    city: "",
-                    address: ""
-                };
+            
             default:
                 return {
                     name: "Enter party name",
@@ -131,6 +132,15 @@ function QuickPartyModal({
                             <Form.Check
                                 type="radio"
                                 name="partyType"
+                                id="quick-running-customer"
+                                label="Running Customer"
+                                value="running_customer"
+                                checked={quickPartyData.partyType === 'running_customer'}
+                                onChange={onQuickPartyChange}
+                            />
+                            <Form.Check
+                                type="radio"
+                                name="partyType"
                                 id="quick-customer"
                                 label="Customer"
                                 value="customer"
@@ -146,15 +156,7 @@ function QuickPartyModal({
                                 checked={quickPartyData.partyType === 'supplier'}
                                 onChange={onQuickPartyChange}
                             />
-                            <Form.Check
-                                type="radio"
-                                name="partyType"
-                                id="quick-running-customer"
-                                label="Running Customer"
-                                value="running_customer"
-                                checked={quickPartyData.partyType === 'running_customer'}
-                                onChange={onQuickPartyChange}
-                            />
+                            
                         </div>
                         {isRunningCustomer && (
                             <small className="text-muted mt-1 d-block">
