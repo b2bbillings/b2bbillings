@@ -1,0 +1,138 @@
+.steps-header-modern {
+  background-color: #f8f9fa; /* Light background for the header */
+  border-bottom: 1px solid #dee2e6;
+  padding: 1rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 1020; /* Ensure it's above step content but below modal header */
+}
+
+.progress-wrapper-modern .progress-bar {
+  background-color: #0d6efd; /* Primary color */
+  transition: width 0.3s ease-in-out;
+}
+
+.custom-progress-modern {
+  height: 8px;
+  border-radius: 4px;
+  background-color: #e9ecef; /* Lighter background for the progress track */
+}
+
+.step-nav-modern {
+  display: flex;
+  flex-wrap: nowrap; /* Prevent wrapping on smaller screens if possible */
+  overflow-x: auto; /* Allow horizontal scrolling if items overflow */
+  padding-bottom: 0.5rem; /* Space for scrollbar */
+}
+
+.step-item-modern {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0; /* Prevent items from shrinking too much */
+  min-width: 180px; /* Minimum width for each step item */
+  border: 1px solid transparent;
+}
+
+.step-item-modern:hover {
+  background-color: #e9ecef; /* Light hover effect */
+  transform: translateY(-2px);
+}
+
+.step-item-modern.active {
+  background-color: #cfe2ff; /* Primary light background for active step */
+  border-color: #0d6efd;
+  font-weight: 600;
+}
+
+.step-item-modern.completed .step-circle-modern {
+  background-color: #198754; /* Success color for completed steps */
+  color: white;
+  border-color: #198754;
+}
+
+.step-item-modern.completed .step-title-modern {
+  color: #198754; /* Darker green for completed title */
+}
+
+.step-circle-modern {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #adb5bd; /* Default grey for non-active/non-completed */
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.75rem;
+  font-size: 1rem;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.step-item-modern.active .step-circle-modern {
+  background-color: #0d6efd; /* Primary color for active step circle */
+  color: white;
+  border-color: #0a58ca;
+}
+
+.step-info-modern {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-title-modern {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #495057; /* Dark grey for title */
+}
+
+.step-item-modern.active .step-title-modern {
+  color: #0d6efd; /* Primary color for active title */
+}
+
+.step-description-modern {
+  font-size: 0.75rem;
+  color: #6c757d; /* Lighter grey for description */
+}
+
+/* Responsive adjustments for step navigation */
+@media (max-width: 992px) {
+  .step-item-modern {
+    min-width: 160px;
+    padding: 0.5rem;
+  }
+  .step-title-modern {
+    font-size: 0.85rem;
+  }
+  .step-description-modern {
+    font-size: 0.7rem;
+  }
+  .step-circle-modern {
+    width: 30px;
+    height: 30px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .steps-header-modern {
+    padding: 0.5rem 0;
+  }
+  .step-nav-modern {
+    justify-content: flex-start; /* Align items to start for scrolling */
+  }
+  .step-item-modern {
+    min-width: 140px; /* Further reduce min-width */
+  }
+  .step-info-modern {
+    display: none; /* Hide text on very small screens, show only icon */
+  }
+  .step-item-modern.active .step-info-modern,
+  .step-item-modern:hover .step-info-modern {
+    display: flex; /* Show info for active/hovered item */
+  }
+}

@@ -1,0 +1,50 @@
+.staff-details-modal .modal-header {
+  padding-bottom: 0;
+}
+
+.avatar-placeholder-large {
+  width: 60px;
+  height: 60px;
+  background-color: #f1f1f1;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eee;
+  color: #333;
+}
+
+.info-list .list-group-item {
+  padding: 0.5rem 0;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+.info-label {
+  font-weight: 500;
+  color: #555;
+  min-width: 100px;
+}
+
+.info-value {
+  flex: 1;
+}
+
+.permissions-container {
+  margin-top: 0.5rem;
+}
+
+.permission-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.permission-badge {
+  padding: 0.5rem 1rem;
+  font-weight: normal;
+  border: 1px solid #ddd;
+}

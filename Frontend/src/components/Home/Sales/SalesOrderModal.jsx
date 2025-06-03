@@ -3,20 +3,21 @@ import { Modal, Button, Form, Row, Col, Card, ListGroup, Badge } from 'react-boo
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faTimes,
-    faFileInvoice,
+    faFileContract,
     faUserPlus,
     faUser,
     faToggleOn,
     faToggleOff,
     faRocket,
-    faPlus
+    faPlus,
+    faCalendar
 } from '@fortawesome/free-solid-svg-icons';
 import ItemsTable from './ItemsTable';
 
-function SalesModal({
+function SalesOrderModal({
     show,
     onHide,
-    editingSale,
+    editingSalesOrder,
     formData,
     parties,
     onInputChange,
@@ -24,7 +25,7 @@ function SalesModal({
     onItemChange,
     onAddItem,
     onRemoveItem,
-    onSaveInvoice,
+    onSaveSalesOrder,
     onShowAddPartyModal
 }) {
     // Local state for party search
@@ -123,23 +124,23 @@ function SalesModal({
     // Initialize when modal opens
     useEffect(() => {
         if (show) {
-            console.log('🎬 SalesModal opened');
+            console.log('🎬 SalesOrderModal opened');
 
-            if (editingSale && formData.selectedParty) {
+            if (editingSalesOrder && formData.selectedParty) {
                 const party = parties.find(p => p.id.toString() === formData.selectedParty);
                 if (party && (!selectedParty || selectedParty.id !== party.id)) {
                     console.log('📝 Setting party for editing:', party);
                     setPartySearchQuery(party.name);
                     setSelectedParty(party);
                 }
-            } else if (!editingSale) {
-                console.log('📝 Resetting for new invoice');
+            } else if (!editingSalesOrder) {
+                console.log('📝 Resetting for new sales order');
                 setPartySearchQuery('');
                 setSelectedParty(null);
                 setShowSuggestions(false);
             }
         }
-    }, [show, editingSale]);
+    }, [show, editingSalesOrder]);
 
     // Filter parties when search query changes
     useEffect(() => {
@@ -250,6 +251,7 @@ function SalesModal({
             alert('Add party function not available');
         }
     };
+
     // Handle discount change
     const handleDiscountChange = (e) => {
         const discountValue = parseFloat(e.target.value) || 0;
@@ -271,8 +273,13 @@ function SalesModal({
         console.log('📝 Form submitted');
 
         // Basic validation
-        if (!formData.invoiceDate) {
-            alert('Please select invoice date');
+        if (!formData.orderDate) {
+            alert('Please select order date');
+            return;
+        }
+
+        if (!formData.deliveryDate) {
+            alert('Please select expected delivery date');
             return;
         }
 
@@ -296,7 +303,7 @@ function SalesModal({
             return;
         }
 
-        onSaveInvoice(e);
+        onSaveSalesOrder(e);
     };
 
     // Click outside to close suggestions
@@ -315,8 +322,8 @@ function SalesModal({
         <Modal show={show} onHide={onHide} size="xl" centered>
             <Modal.Header closeButton>
                 <Modal.Title>
-                    <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                    {editingSale ? 'Edit Invoice' : 'Create New Invoice'}
+                    <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                    {editingSalesOrder ? 'Edit Sales Order' : 'Create New Sales Order'}
                 </Modal.Title>
             </Modal.Header>
 
@@ -439,16 +446,18 @@ function SalesModal({
                                     </div>
                                 )}
                             </div>
+
+                            {/* Order Status has been removed */}
                         </Col>
 
-                        {/* Right Column - Invoice Details */}
+                        {/* Right Column - Order Details */}
                         <Col md={6}>
                             <Form.Group className="mb-3">
-                                <Form.Label>Invoice Number</Form.Label>
+                                <Form.Label>Order Number</Form.Label>
                                 <Form.Control
                                     type="text"
-                                    name="invoiceNumber"
-                                    value={formData.invoiceNumber}
+                                    name="orderNumber"
+                                    value={formData.orderNumber}
                                     onChange={onInputChange}
                                     placeholder="Auto-generated"
                                     readOnly
@@ -458,14 +467,30 @@ function SalesModal({
 
                             <Form.Group className="mb-3">
                                 <Form.Label>
-                                    Invoice Date <span className="text-danger">*</span>
+                                    <FontAwesomeIcon icon={faCalendar} className="me-1" />
+                                    Order Date <span className="text-danger">*</span>
                                 </Form.Label>
                                 <Form.Control
                                     type="date"
-                                    name="invoiceDate"
-                                    value={formData.invoiceDate}
+                                    name="orderDate"
+                                    value={formData.orderDate}
                                     onChange={onInputChange}
                                     required
+                                />
+                            </Form.Group>
+
+                            <Form.Group className="mb-3">
+                                <Form.Label>
+                                    <FontAwesomeIcon icon={faCalendar} className="me-1" />
+                                    Expected Delivery Date <span className="text-danger">*</span>
+                                </Form.Label>
+                                <Form.Control
+                                    type="date"
+                                    name="deliveryDate"
+                                    value={formData.deliveryDate}
+                                    onChange={onInputChange}
+                                    required
+                                    min={formData.orderDate} // Can't be before order date
                                 />
                             </Form.Group>
                         </Col>
@@ -503,8 +528,8 @@ function SalesModal({
                             <Card className="bg-light border">
                                 <Card.Body>
                                     <h6 className="fw-bold mb-3 text-primary">
-                                        <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                                        Invoice Summary
+                                        <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                                        Order Summary
                                     </h6>
 
                                     {/* Subtotal */}
@@ -552,7 +577,7 @@ function SalesModal({
 
                                     {/* Final Total */}
                                     <div className="d-flex justify-content-between fw-bold fs-5">
-                                        <span>Total:</span>
+                                        <span>Total Amount:</span>
                                         <span className="text-primary">₹{invoiceSummary.finalTotal}</span>
                                     </div>
 
@@ -563,7 +588,7 @@ function SalesModal({
                                             {formData.items?.length || 0} item{(formData.items?.length || 0) !== 1 ? 's' : ''}
                                             {formData.invoiceType === 'gst' && (
                                                 <span className="d-block">
-                                                    {formData.invoiceType.toUpperCase()} Invoice
+                                                    {formData.invoiceType.toUpperCase()} Order
                                                 </span>
                                             )}
                                         </small>
@@ -579,8 +604,8 @@ function SalesModal({
                             Cancel
                         </Button>
                         <Button variant="primary" type="submit">
-                            <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                            {editingSale ? 'Update Invoice' : 'Create Invoice'}
+                            <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                            {editingSalesOrder ? 'Update Sales Order' : 'Create Sales Order'}
                         </Button>
                     </div>
                 </Form>
@@ -589,4 +614,4 @@ function SalesModal({
     );
 }
 
-export default SalesModal;
+export default SalesOrderModal;

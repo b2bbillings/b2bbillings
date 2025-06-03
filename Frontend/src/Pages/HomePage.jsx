@@ -3,9 +3,13 @@ import React, { useState, useEffect } from 'react';
 import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
+import SalesOrders from '../components/Home/SalesOrders'; // Import the new SalesOrders component
 import './HomePage.css';
 import Purchases from '../components/Home/Purchases';
 import Inventory from '../components/Home/Inventory';
+import StaffManagement from '../components/Home/StaffManagement';
+import PurchaseOrders from '../components/Home/PurchaseOrders';
+
 
 /**
  * HomePage component that serves as the main container for the application
@@ -47,10 +51,16 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
             case 'createInvoice':
             case 'creditNotes':
                 return <Sales view={currentView} onNavigate={handleNavigation} />;
+            // Add new cases for sales orders
+            case 'salesOrders':
+            case 'createSalesOrder':
+                return <SalesOrders view={currentView} onNavigate={handleNavigation} />;
             case 'allPurchases':
             case 'createPurchase':
             case 'purchaseOrders':
                 return <Purchases view={currentView} onNavigate={handleNavigation} />;
+            case 'createPurchaseOrder':
+                return <PurchaseOrders view={currentView} onNavigate={handleNavigation} />;
             case 'products':
                 return <div className="placeholder-content">Products & Services</div>;
             // Fix the inventory routing - add all inventory-related cases
@@ -59,6 +69,8 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
             case 'lowStock':
             case 'stockMovement':
                 return <Inventory view={currentView} onNavigate={handleNavigation} />;
+            case 'staff':
+                return <StaffManagement view={currentView} onNavigate={handleNavigation} />;
             case 'insights':
                 return <div className="placeholder-content">Insights Dashboard</div>;
             case 'reports':

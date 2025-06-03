@@ -15,7 +15,10 @@ import {
     faLayerGroup,
     faWarehouse,
     faExclamationTriangle,
-    faExchangeAlt
+    faExchangeAlt,
+    faUserTie,
+    faFileInvoice,
+    faFileContract
 } from '@fortawesome/free-solid-svg-icons';
 import './Sidebar.css';
 
@@ -34,6 +37,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
             onNavigate(page);
         }
     };
+
 
     return (
         <div className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
@@ -121,13 +125,27 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                         onClick={() => handleNavigation('invoices')}
                                         className={`submenu-item ${activePage === 'invoices' ? 'active' : ''}`}
                                     >
+                                        <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                                         Invoices
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('salesOrders')}
+                                        className={`submenu-item ${activePage === 'salesOrders' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                                        Sales Orders
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('createInvoice')}
                                         className={`submenu-item ${activePage === 'createInvoice' ? 'active' : ''}`}
                                     >
                                         Create Invoice
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('createSalesOrder')}
+                                        className={`submenu-item ${activePage === 'createSalesOrder' ? 'active' : ''}`}
+                                    >
+                                        Create Sales Order
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('creditNotes')}
@@ -139,7 +157,6 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                             </Accordion.Body>
                         </Accordion.Item>
                     </div>
-
                     {/* Purchases */}
                     <div className="sidebar-item">
                         <Accordion.Item eventKey="purchases" className="sidebar-accordion-item">
@@ -174,7 +191,14 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                         onClick={() => handleNavigation('purchaseOrders')}
                                         className={`submenu-item ${activePage === 'purchaseOrders' ? 'active' : ''}`}
                                     >
+                                        <FontAwesomeIcon icon={faFileContract} className="me-2" />
                                         Purchase Orders
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('createPurchaseOrder')}
+                                        className={`submenu-item ${activePage === 'createPurchaseOrder' ? 'active' : ''}`}
+                                    >
+                                        Create Purchase Order
                                     </Nav.Link>
                                 </Nav>
                             </Accordion.Body>
@@ -183,7 +207,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Products & Services */}
                     <div className="sidebar-item">
-                        <Nav.Link 
+                        <Nav.Link
                             onClick={() => handleNavigation('products')}
                             className={`sidebar-link ${activePage === 'products' ? 'active' : ''}`}
                         >
@@ -212,21 +236,21 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                             </Accordion.Header>
                             <Accordion.Body className="sidebar-submenu">
                                 <Nav className="flex-column">
-                                    <Nav.Link 
+                                    <Nav.Link
                                         onClick={() => handleNavigation('allProducts')}
                                         className={`submenu-item ${activePage === 'allProducts' ? 'active' : ''}`}
                                     >
                                         <FontAwesomeIcon icon={faWarehouse} className="me-2" />
                                         All Products
                                     </Nav.Link>
-                                    <Nav.Link 
+                                    <Nav.Link
                                         onClick={() => handleNavigation('lowStock')}
                                         className={`submenu-item ${activePage === 'lowStock' ? 'active' : ''}`}
                                     >
                                         <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
                                         Low Stock Items
                                     </Nav.Link>
-                                    <Nav.Link 
+                                    <Nav.Link
                                         onClick={() => handleNavigation('stockMovement')}
                                         className={`submenu-item ${activePage === 'stockMovement' ? 'active' : ''}`}
                                     >
@@ -238,9 +262,22 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                         </Accordion.Item>
                     </div>
 
+                    {/* Staff Management */}
+                    <div className="sidebar-item">
+                        <Nav.Link
+                            onClick={() => handleNavigation('staff')}
+                            className={`sidebar-link ${activePage === 'staff' ? 'active' : ''}`}
+                        >
+                            <div className="sidebar-link-content">
+                                <FontAwesomeIcon icon={faUserTie} className="sidebar-icon" />
+                                <span className="sidebar-text">Staff Management</span>
+                            </div>
+                        </Nav.Link>
+                    </div>
+
                     {/* Insights */}
                     <div className="sidebar-item">
-                        <Nav.Link 
+                        <Nav.Link
                             onClick={() => handleNavigation('insights')}
                             className={`sidebar-link ${activePage === 'insights' ? 'active' : ''}`}
                         >
@@ -253,7 +290,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Reports */}
                     <div className="sidebar-item">
-                        <Nav.Link 
+                        <Nav.Link
                             onClick={() => handleNavigation('reports')}
                             className={`sidebar-link ${activePage === 'reports' ? 'active' : ''}`}
                         >
@@ -266,7 +303,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
 
                     {/* Settings */}
                     <div className="sidebar-item">
-                        <Nav.Link 
+                        <Nav.Link
                             onClick={() => handleNavigation('settings')}
                             className={`sidebar-link ${activePage === 'settings' ? 'active' : ''}`}
                         >

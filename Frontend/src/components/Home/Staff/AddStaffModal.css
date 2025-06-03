@@ -1,0 +1,84 @@
+/* Overall Modal Styling */
+.staff-modal-modern .modal-content {
+  border-radius: 16px; /* More rounded corners for the modal itself */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* Softer, larger shadow */
+  border: none;
+  overflow: hidden; /* Important for rounded corners on header/footer */
+}
+
+.modern-modal-header {
+  background: linear-gradient(
+    135deg,
+    #6f42c1 0%,
+    #e83e8c 100%
+  ); /* Example gradient */
+  color: white;
+  border-bottom: none; /* Remove border if using background */
+  padding: 1rem 1.5rem;
+}
+
+.modern-modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%); /* Make close button white */
+}
+
+.modern-modal-title {
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.modern-modal-title .fa-user-tie {
+  color: rgba(255, 255, 255, 0.8); /* Slightly transparent icon */
+}
+
+.modern-modal-body {
+  background-color: #f4f7f9; /* Very light grey for the body background */
+  padding: 0 !important; /* Remove padding as StepNavigation and step-body will handle it */
+}
+
+.step-body-modern {
+  background-color: #ffffff; /* White background for the actual step content area */
+  min-height: 400px; /* Ensure a minimum height for content */
+  /* padding: 1.5rem; /* Moved to container inside */
+}
+
+.modern-modal-footer {
+  background-color: #f8f9fa; /* Light grey for footer */
+  border-top: 1px solid #dee2e6;
+  padding: 1rem 1.5rem;
+}
+
+.modern-modal-footer .modern-btn {
+  padding: 0.6rem 1.5rem; /* Consistent button padding */
+  font-size: 0.95rem;
+}
+
+/* Backdrop - if you still need custom backdrop styling */
+.modal-backdrop.show {
+  background-color: rgba(0, 0, 0, 0.5) !important; /* Standard dark backdrop */
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* General styling for cards within steps if not overridden by step-specific CSS */
+.step-body-modern .card {
+  margin-bottom: 1.5rem; /* Default margin for cards in steps */
+}
+
+/* Text danger for errors */
+.text-danger {
+  font-size: 0.875em;
+}
+
+/* Responsive adjustments for the main modal */
+@media (max-width: 768px) {
+  .modern-modal-header,
+  .modern-modal-footer {
+    padding: 0.75rem 1rem;
+  }
+  .modern-modal-title {
+    font-size: 1.1rem;
+  }
+  .step-body-modern .container-fluid {
+    padding: 1rem !important;
+  }
+}

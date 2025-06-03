@@ -1,0 +1,153 @@
+.step-content-modern {
+  animation: fadeInModern 0.5s ease-out;
+}
+
+@keyframes fadeInModern {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modern-card {
+  border: none; /* Remove default card border */
+  border-radius: 12px; /* Softer corners */
+  background-color: #fff; /* Ensure white background */
+}
+
+.card-title-modern {
+  color: #0d6efd; /* Primary color for titles */
+  font-weight: 600;
+  border-bottom: 2px solid #e9ecef; /* Subtle separator */
+  padding-bottom: 0.75rem;
+}
+
+.modern-form-group .form-label {
+  color: #495057; /* Darker label color */
+  font-size: 0.9rem;
+}
+
+.modern-input,
+.modern-input-group .form-control {
+  border-radius: 8px; /* Consistent border radius */
+  border: 1px solid #ced4da;
+  padding: 0.75rem 1rem; /* Comfortable padding */
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modern-input:focus,
+.modern-input-group .form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.modern-input-group .input-group-text {
+  background-color: #e9ecef; /* Light grey for input group text */
+  border: 1px solid #ced4da;
+  border-right: none; /* Seamless look with input */
+  border-radius: 8px 0 0 8px;
+  color: #495057;
+}
+.modern-input-group .form-control {
+  border-radius: 0 8px 8px 0;
+}
+.modern-input-group .modern-btn-icon {
+  border-radius: 0 8px 8px 0;
+  border-left: none;
+}
+.modern-input-group
+  > :not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(
+    .valid-feedback
+  ):not(.invalid-tooltip):not(.invalid-feedback) {
+  margin-left: -1px; /* Overlap borders */
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.modern-btn {
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.modern-btn:hover {
+  transform: translateY(-1px);
+}
+
+.modern-btn-icon {
+  padding: 0.6rem 0.8rem; /* Slightly less padding for icon buttons */
+}
+
+/* Avatar Styles */
+.avatar-upload-modern {
+  width: 160px; /* Slightly larger */
+  margin-bottom: 1rem;
+}
+
+.avatar-preview-modern {
+  width: 160px;
+  height: 160px;
+  border: 3px dashed #dee2e6; /* Dashed border for placeholder */
+  border-radius: 50%; /* Circular preview */
+  margin: 0 auto;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background-color: #f8f9fa; /* Light background */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.avatar-preview-modern:hover {
+  border-color: #0d6efd;
+  box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+}
+
+.avatar-placeholder-modern {
+  text-align: center;
+}
+
+.avatar-image-container-modern {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.avatar-image-modern {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Ensure image covers the circle */
+}
+
+.avatar-remove-btn-modern {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: rgba(220, 53, 69, 0.8); /* Semi-transparent red */
+  color: white;
+  border: none;
+  opacity: 0; /* Hidden by default */
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-preview-modern:hover .avatar-remove-btn-modern {
+  opacity: 1; /* Show on hover */
+}
+
+.avatar-remove-btn-modern:hover {
+  background-color: #dc3545; /* Solid red on hover */
+  transform: scale(1.1);
+}

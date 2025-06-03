@@ -1,1330 +1,834 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button, ButtonGroup, Modal, Form, Table, Badge, Dropdown, InputGroup, Card, ListGroup } from 'react-bootstrap';
+import { Container, Row, Col, Button, Card, Form, InputGroup, ListGroup, Badge, Table, Dropdown } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTimes, faEdit, faTrash, faEllipsisV, faUser, faBuilding, faPhone, faEnvelope, faMinus, faSearch, faFilter, faDownload, faUserCheck, faRocket, faEye, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
+import {
+    faPlus,
+    faSearch,
+    faEdit,
+    faPhone,
+    faEnvelope,
+    faMapMarkerAlt,
+    faBuilding,
+    faUser,
+    faFileInvoice,
+    faShoppingCart,
+    faChevronDown,
+    faCog,
+    faEllipsisV,
+    faArrowUp,
+    faArrowDown,
+    faFilter,
+    faSort,
+    faSortUp,
+    faSortDown
+} from '@fortawesome/free-solid-svg-icons';
 import './Parties.css';
-import emptyStateImage from '../../assets/images/parties-empty-state.svg';
-import PartyDetails from './Party/PartyDetails';
+import AddNewParty from './Party/AddNewParty';
 
 function Parties() {
-    // State for managing parties and modal
-    const [parties, setParties] = useState([]);
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [showQuickAddModal, setShowQuickAddModal] = useState(false);
-    const [editingParty, setEditingParty] = useState(null);
-    const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
-
-    // Search and filter states
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState('all');
-    // Location filter states
-    const [filterLocation, setFilterLocation] = useState('all');
-    const [locationOptions, setLocationOptions] = useState({
-        cities: [],
-        talukas: [],
-        states: []
-    });
-    const [activeLocationFilter, setActiveLocationFilter] = useState('');
-    const [showDatabaseSearch, setShowDatabaseSearch] = useState(false);
-    const [databaseSearchQuery, setDatabaseSearchQuery] = useState('');
-    const [databaseSearchResults, setDatabaseSearchResults] = useState([]);
-    const [isSearchingDatabase, setIsSearchingDatabase] = useState(false);
-
-    // Party Details modal states
-    const [showPartyDetails, setShowPartyDetails] = useState(false);
-    const [selectedParty, setSelectedParty] = useState(null);
-
-    // Form data for adding/editing parties
-    const [formData, setFormData] = useState({
-        partyType: 'customer',
-        name: '',
-        whatsappNumber: '',
-        phoneNumbers: [{ number: '', label: '' }],
-        email: '',
-        address: '',
-        city: '',       // City and district are the same
-        taluka: '',
-        state: '',      // Keep state
-        pincode: '',
-        gstNumber: ''
-    });
-
-    // Quick add form data for running customers
-    const [quickFormData, setQuickFormData] = useState({
-        name: '',
-        phone: ''
-    });
-
-    // Sample database parties (simulating external database)
-    const [databaseParties] = useState([
-        { id: 'db1', name: 'Reliance Industries', phone: '9876543210', email: 'contact@reliance.com', partyType: 'supplier', city: 'Mumbai', taluka: 'Andheri', state: 'Maharashtra', gstNumber: '27AAACR5055K1ZX' },
-        { id: 'db2', name: 'Tata Motors', phone: '9876543211', email: 'info@tatamotors.com', partyType: 'supplier', city: 'Pune', taluka: 'Hinjewadi', state: 'Maharashtra', gstNumber: '27AAACT2727Q1ZN' },
-        { id: 'db3', name: 'Amit Kumar', phone: '9876543212', email: 'amit@gmail.com', partyType: 'customer', city: 'Delhi', taluka: 'Central Delhi', state: 'Delhi', gstNumber: '' },
-        { id: 'db4', name: 'Infosys Ltd', phone: '9876543213', email: 'contact@infosys.com', partyType: 'supplier', city: 'Bangalore', taluka: 'Electronic City', state: 'Karnataka', gstNumber: '29AAACI1681G1ZK' },
-        { id: 'db5', name: 'Priya Sharma', phone: '9876543214', email: 'priya@gmail.com', partyType: 'customer', city: 'Jaipur', taluka: 'Sanganer', state: 'Rajasthan', gstNumber: '' },
-        { id: 'db6', name: 'Mahindra & Mahindra', phone: '9876543215', email: 'info@mahindra.com', partyType: 'supplier', city: 'Mumbai', taluka: 'Worli', state: 'Maharashtra', gstNumber: '27AAACM1294H1Z8' }
+    // State for managing parties
+    const [parties, setParties] = useState([
+        {
+            id: 1,
+            name: 'IT Solution',
+            phone: '9999999999',
+            email: 'it@solution.com',
+            address: 'LATUR',
+            partyType: 'customer',
+            balance: 90000.00,
+            isSelected: true
+        },
+        {
+            id: 2,
+            name: 'Atharva',
+            phone: '9876543210',
+            email: 'atharva@gmail.com',
+            address: 'Mumbai',
+            partyType: 'customer',
+            balance: 0,
+            isSelected: false
+        }
     ]);
 
-    const hasParties = parties.length > 0;
+    // Modal states
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [editingParty, setEditingParty] = useState(null);
+    const [selectedParty, setSelectedParty] = useState(parties[0]);
 
-    // Extract unique location data from parties
-    const generateLocationOptions = (partiesData) => {
-        const cities = new Set();
-        const talukas = new Set();
-        const states = new Set();
+    // Search states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
 
-        partiesData.forEach(party => {
-            if (party.city) cities.add(party.city);
-            if (party.taluka) talukas.add(party.taluka);
-            if (party.state) states.add(party.state);
-        });
-
-        return {
-            cities: Array.from(cities).sort(),
-            talukas: Array.from(talukas).sort(),
-            states: Array.from(states).sort()
-        };
-    };
-
-    // Update location options when parties change
-    useEffect(() => {
-        if (parties.length > 0) {
-            setLocationOptions(generateLocationOptions(parties));
-        }
-    }, [parties]);
-
-    // Filter parties based on search, type and location
-    const filteredParties = parties.filter(party => {
-        // Search matching
-        const matchesSearch = party.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.city?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.taluka?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            party.state?.toLowerCase().includes(searchQuery.toLowerCase());
-
-        // Party type filtering
-        const matchesType = filterType === 'all' ||
-            party.partyType === filterType ||
-            (filterType === 'running' && party.isRunningCustomer);
-
-        // Location filtering
-        let matchesLocation = true;
-        if (filterLocation !== 'all') {
-            switch (activeLocationFilter) {
-                case 'city':
-                    matchesLocation = party.city === filterLocation;
-                    break;
-                case 'taluka':
-                    matchesLocation = party.taluka === filterLocation;
-                    break;
-                case 'state':
-                    matchesLocation = party.state === filterLocation;
-                    break;
-                default:
-                    matchesLocation = true;
-            }
-        }
-
-        return matchesSearch && matchesType && matchesLocation;
+    // Sorting states
+    const [sortConfig, setSortConfig] = useState({
+        key: null,
+        direction: 'asc'
     });
 
-    // Search database parties
-    const searchDatabaseParties = (query) => {
-        if (!query.trim()) {
-            setDatabaseSearchResults([]);
-            return;
+    // Filter states for each column
+    const [filters, setFilters] = useState({
+        type: [],
+        number: '',
+        date: '',
+        total: '',
+        balance: ''
+    });
+
+    // Sample transactions for selected party
+    const [transactions, setTransactions] = useState([
+        {
+            id: 1,
+            type: 'Sale',
+            number: '1',
+            date: '03/06/2025',
+            total: 90000.00,
+            balance: 90000.00
         }
+    ]);
 
-        setIsSearchingDatabase(true);
+    // Available transaction types
+    const transactionTypes = [
+        'Sale',
+        'Sale (e-Invoice)',
+        'Purchase',
+        'Credit Note',
+        'Credit Note (e-Invoice)',
+        'Debit Note',
+        'Sale Order',
+        'Purchase Order',
+        'Quotation',
+        'Delivery Challan',
+        'Receipt Voucher',
+        'Payment Voucher'
+    ];
 
-        // Simulate API call delay
-        setTimeout(() => {
-            const results = databaseParties.filter(party => {
-                const existingPartyIds = parties.map(p => p.originalId || p.id);
-                const isNotAlreadyAdded = !existingPartyIds.includes(party.id);
-
-                const matchesQuery = party.name.toLowerCase().includes(query.toLowerCase()) ||
-                    party.phone.toLowerCase().includes(query.toLowerCase()) ||
-                    party.email.toLowerCase().includes(query.toLowerCase()) ||
-                    party.city?.toLowerCase().includes(query.toLowerCase()) ||
-                    party.taluka?.toLowerCase().includes(query.toLowerCase()) ||
-                    party.state?.toLowerCase().includes(query.toLowerCase());
-
-                return matchesQuery && isNotAlreadyAdded;
-            });
-
-            setDatabaseSearchResults(results);
-            setIsSearchingDatabase(false);
-        }, 500);
+    // Helper function to format currency safely
+    const formatCurrency = (amount) => {
+        const numericAmount = parseFloat(amount) || 0;
+        return numericAmount.toLocaleString('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
     };
 
-    // Handle database search input
-    const handleDatabaseSearch = (e) => {
-        const query = e.target.value;
-        setDatabaseSearchQuery(query);
-        searchDatabaseParties(query);
-    };
-
-    // Add party from database
-    const addPartyFromDatabase = (dbParty) => {
-        const newParty = {
-            ...dbParty,
-            id: Date.now(),
-            originalId: dbParty.id,
-            createdAt: new Date().toISOString(),
-            phoneNumbers: [{ number: dbParty.phone, label: 'Primary' }],
-            whatsappNumber: dbParty.phone,
-            city: dbParty.city || '',
-            taluka: dbParty.taluka || '',
-            state: dbParty.state || '',
-            pincode: dbParty.pincode || ''
+    // Helper function to ensure party has all required properties
+    const normalizeParty = (party) => {
+        return {
+            id: party.id || Date.now(),
+            name: party.name || party.businessName || '',
+            phone: party.phone || party.phoneNumber || party.whatsappNumber || '',
+            email: party.email || '',
+            address: party.address || '',
+            partyType: party.partyType || 'customer',
+            balance: parseFloat(party.balance) || 0,
+            isSelected: party.isSelected || false,
+            // Add any additional fields from AddNewParty form
+            city: party.city || '',
+            state: party.state || '',
+            pincode: party.pincode || '',
+            gstNumber: party.gstNumber || '',
+            panNumber: party.panNumber || '',
+            whatsappNumber: party.whatsappNumber || '',
+            phoneNumbers: party.phoneNumbers || [],
+            taluka: party.taluka || '',
+            // Preserve any other existing fields
+            ...party
         };
-
-        setParties([...parties, newParty]);
-        setDatabaseSearchResults(databaseSearchResults.filter(party => party.id !== dbParty.id));
-        alert(`${dbParty.name} added successfully!`);
     };
 
-    // Handle modal open/close
+    // Handle sorting
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    // Sort parties based on current sort configuration
+    const sortedParties = React.useMemo(() => {
+        let sortableParties = [...parties];
+        if (sortConfig.key) {
+            sortableParties.sort((a, b) => {
+                if (sortConfig.key === 'name') {
+                    const aValue = (a.name || '').toLowerCase();
+                    const bValue = (b.name || '').toLowerCase();
+                    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                } else if (sortConfig.key === 'balance') {
+                    const aValue = parseFloat(a.balance) || 0;
+                    const bValue = parseFloat(b.balance) || 0;
+                    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                }
+                return 0;
+            });
+        }
+        return sortableParties;
+    }, [parties, sortConfig]);
+
+    // Filter parties based on search
+    const filteredParties = sortedParties.filter(party => {
+        const name = party.name || '';
+        const phone = party.phone || '';
+        const searchTerm = searchQuery.toLowerCase();
+
+        return name.toLowerCase().includes(searchTerm) ||
+            phone.includes(searchQuery);
+    });
+
+    // Handle party selection
+    const handlePartySelect = (party) => {
+        const normalizedParty = normalizeParty(party);
+        setParties(parties.map(p => ({ ...p, isSelected: p.id === normalizedParty.id })));
+        setSelectedParty(normalizedParty);
+
+        // Set sample transactions based on selected party
+        if (normalizedParty.id === 1) {
+            setTransactions([
+                {
+                    id: 1,
+                    type: 'Sale',
+                    number: '1',
+                    date: '03/06/2025',
+                    total: 90000.00,
+                    balance: 90000.00
+                }
+            ]);
+        } else {
+            setTransactions([]);
+        }
+    };
+
+    // Handle filter changes
+    const handleFilterChange = (column, value) => {
+        setFilters(prev => ({
+            ...prev,
+            [column]: value
+        }));
+    };
+
+    // Handle type filter toggle
+    const handleTypeFilter = (type) => {
+        setFilters(prev => ({
+            ...prev,
+            type: prev.type.includes(type)
+                ? prev.type.filter(t => t !== type)
+                : [...prev.type, type]
+        }));
+    };
+
+    // Clear all filters
+    const clearFilters = () => {
+        setFilters({
+            type: [],
+            number: '',
+            date: '',
+            total: '',
+            balance: ''
+        });
+    };
+
+    // Apply filters to transactions
+    const filteredTransactions = transactions.filter(transaction => {
+        if (filters.type.length > 0 && !filters.type.includes(transaction.type)) return false;
+        if (filters.number && !transaction.number.toString().includes(filters.number)) return false;
+        if (filters.date && !transaction.date.includes(filters.date)) return false;
+        if (filters.total && !transaction.total.toString().includes(filters.total)) return false;
+        if (filters.balance && !transaction.balance.toString().includes(filters.balance)) return false;
+        return true;
+    });
+
+    // Get sort icon for a specific column
+    const getSortIcon = (columnKey) => {
+        if (sortConfig.key !== columnKey) {
+            return faSort;
+        }
+        return sortConfig.direction === 'asc' ? faSortUp : faSortDown;
+    };
+
+    // Modal handlers
     const handleOpenModal = () => {
         setEditingParty(null);
-        setShowAdditionalPhones(false);
         setShowAddModal(true);
-    };
-
-    const handleOpenQuickAddModal = () => {
-        setQuickFormData({ name: '', phone: '' });
-        setShowQuickAddModal(true);
     };
 
     const handleCloseModal = () => {
         setShowAddModal(false);
         setEditingParty(null);
-        setShowAdditionalPhones(false);
-        setFormData({
-            partyType: 'customer',
-            name: '',
-            whatsappNumber: '',
-            phoneNumbers: [{ number: '', label: '' }],
-            email: '',
-            address: '',
-            city: '',
-            taluka: '',
-            state: '',
-            pincode: '',
-            gstNumber: ''
-        });
-    };
-
-    const handleCloseQuickAddModal = () => {
-        setShowQuickAddModal(false);
-        setQuickFormData({ name: '', phone: '' });
-    };
-
-    // Party Details handlers
-    const handleViewPartyDetails = (party) => {
-        setSelectedParty(party);
-        setShowPartyDetails(true);
-    };
-
-    const handleClosePartyDetails = () => {
-        setShowPartyDetails(false);
-        setSelectedParty(null);
     };
 
     // Handle edit party
     const handleEditParty = (party) => {
-        setEditingParty(party);
-        const editData = {
-            ...party,
-            phoneNumbers: party.phoneNumbers || [{ number: party.phone || '', label: 'Primary' }],
-            whatsappNumber: party.whatsappNumber || party.phone || ''
-        };
-        setFormData(editData);
-        setShowAdditionalPhones(editData.phoneNumbers && editData.phoneNumbers.length > 0 && editData.phoneNumbers.some(phone => phone.number.trim() !== ''));
+        setEditingParty(normalizeParty(party));
         setShowAddModal(true);
     };
 
-    // Handle delete party
-    const handleDeleteParty = (partyId) => {
-        if (window.confirm('Are you sure you want to delete this party?')) {
-            setParties(parties.filter(party => party.id !== partyId));
+    // Handle save party - Updated with better error handling
+    const handleSaveParty = (partyData, isQuickAdd = false, isEdit = false) => {
+        try {
+            const normalizedParty = normalizeParty(partyData);
+
+            if (isEdit) {
+                setParties(prevParties =>
+                    prevParties.map(party =>
+                        party.id === normalizedParty.id ? normalizedParty : party
+                    )
+                );
+
+                // Update selected party if it's the one being edited
+                if (selectedParty && selectedParty.id === normalizedParty.id) {
+                    setSelectedParty(normalizedParty);
+                }
+
+                alert('Party updated successfully!');
+            } else {
+                // Ensure unique ID for new party
+                if (!normalizedParty.id) {
+                    normalizedParty.id = Date.now() + Math.random();
+                }
+
+                setParties(prevParties => [...prevParties, normalizedParty]);
+
+                if (isQuickAdd) {
+                    alert('Quick customer added successfully!');
+                } else {
+                    alert('Party added successfully!');
+                }
+            }
+
+            handleCloseModal();
+        } catch (error) {
+            console.error('Error saving party:', error);
+            alert('Error saving party. Please try again.');
         }
     };
 
-    // Handle form input changes
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    // Handle quick form input changes
-    const handleQuickInputChange = (e) => {
-        const { name, value } = e.target;
-        setQuickFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    // Handle phone number changes
-    const handlePhoneNumberChange = (index, field, value) => {
-        const newPhoneNumbers = [...formData.phoneNumbers];
-        newPhoneNumbers[index][field] = value;
-        setFormData(prev => ({
-            ...prev,
-            phoneNumbers: newPhoneNumbers
-        }));
-    };
-
-    // Show additional phone numbers section
-    const showAdditionalPhonesSection = () => {
-        setShowAdditionalPhones(true);
-    };
-
-    // Add new phone number field
-    const addPhoneNumber = () => {
-        setFormData(prev => ({
-            ...prev,
-            phoneNumbers: [...prev.phoneNumbers, { number: '', label: '' }]
-        }));
-    };
-
-    // Remove phone number field
-    const removePhoneNumber = (index) => {
-        const newPhoneNumbers = formData.phoneNumbers.filter((_, i) => i !== index);
-
-        if (newPhoneNumbers.length === 0) {
-            setShowAdditionalPhones(false);
-            setFormData(prev => ({
-                ...prev,
-                phoneNumbers: [{ number: '', label: '' }]
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                phoneNumbers: newPhoneNumbers
-            }));
+    // Handle payment actions
+    const handlePayIn = () => {
+        if (selectedParty) {
+            alert(`Recording payment received from ${selectedParty.name}`);
         }
     };
 
-    // Handle quick add form submission
-    const handleSaveQuickCustomer = (e) => {
-        e.preventDefault();
-
-        if (!quickFormData.name.trim()) {
-            alert('Please enter customer name');
-            return;
+    const handlePayOut = () => {
+        if (selectedParty) {
+            alert(`Recording payment made to ${selectedParty.name}`);
         }
-
-        if (!quickFormData.phone.trim()) {
-            alert('Please enter customer phone number');
-            return;
-        }
-
-        const newRunningCustomer = {
-            id: Date.now(),
-            name: quickFormData.name.trim(),
-            phone: quickFormData.phone.trim(),
-            whatsappNumber: quickFormData.phone.trim(),
-            partyType: 'customer',
-            isRunningCustomer: true,
-            email: '',
-            address: '',
-            city: '',
-            taluka: '',
-            state: '',
-            pincode: '',
-            gstNumber: '',
-            phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }],
-            createdAt: new Date().toISOString()
-        };
-
-        setParties([...parties, newRunningCustomer]);
-        alert('Running customer added successfully!');
-        handleCloseQuickAddModal();
     };
 
-    // Handle form submission
-    const handleSaveParty = (e) => {
-        e.preventDefault();
-
-        if (!formData.name.trim()) {
-            alert('Please enter a name');
-            return;
-        }
-
-        const validPhoneNumbers = formData.phoneNumbers.filter(phone => phone.number.trim() !== '');
-
-        const partyData = {
-            ...formData,
-            phoneNumbers: validPhoneNumbers,
-            phone: formData.whatsappNumber || (validPhoneNumbers.length > 0 ? validPhoneNumbers[0].number : ''),
-            isRunningCustomer: false
-        };
-
-        if (editingParty) {
-            setParties(parties.map(party =>
-                party.id === editingParty.id
-                    ? { ...partyData, id: editingParty.id, createdAt: editingParty.createdAt, isRunningCustomer: editingParty.isRunningCustomer }
-                    : party
-            ));
-            alert('Party updated successfully!');
-        } else {
-            const newParty = {
-                ...partyData,
-                id: Date.now(),
-                createdAt: new Date().toISOString()
-            };
-            setParties([...parties, newParty]);
-            alert('Party added successfully!');
-        }
-
-        handleCloseModal();
-    };
-
-    // Render search and filter section
-    const renderSearchAndFilters = () => (
-        <Card className="mb-4 border-0 shadow-sm">
-            <Card.Body className="p-3">
-                <Row className="align-items-center mb-2">
-                    <Col md={6}>
-                        <InputGroup>
-                            <InputGroup.Text className="bg-light border-end-0">
-                                <FontAwesomeIcon icon={faSearch} className="text-muted" />
-                            </InputGroup.Text>
-                            <Form.Control
-                                type="text"
-                                placeholder="Search parties by name, phone, email, city..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="border-start-0"
-                            />
-                        </InputGroup>
-                    </Col>
-                    <Col md={3}>
-                        <Form.Select
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value)}
-                            className="form-input"
-                        >
-                            <option value="all">All Party Types</option>
-                            <option value="customer">Regular Customers</option>
-                            <option value="running">Running Customers</option>
-                            <option value="supplier">Suppliers</option>
-                        </Form.Select>
-                    </Col>
-                    <Col md={3}>
-                        <Button
-                            variant="outline-primary"
-                            onClick={() => setShowDatabaseSearch(!showDatabaseSearch)}
-                            className="w-100"
-                        >
-                            <FontAwesomeIcon icon={faDownload} className="me-2" />
-                            Import from Database
-                        </Button>
-                    </Col>
-                </Row>
-
-                {/* Location filters */}
-                <Row className="mt-2">
-                    <Col md={3} className="d-flex align-items-center">
-                        <Form.Label className="mb-0 me-2 text-nowrap small">Filter by:</Form.Label>
-                        <ButtonGroup size="sm">
-                            <Button 
-                                variant={activeLocationFilter === 'city' ? 'primary' : 'outline-primary'}
-                                onClick={() => {
-                                    setActiveLocationFilter('city');
-                                    setFilterLocation('all');
-                                }}
-                                className="px-2"
-                            >
-                                City
-                            </Button>
-                            <Button 
-                                variant={activeLocationFilter === 'taluka' ? 'primary' : 'outline-primary'}
-                                onClick={() => {
-                                    setActiveLocationFilter('taluka');
-                                    setFilterLocation('all');
-                                }}
-                                className="px-2"
-                            >
-                                Taluka
-                            </Button>
-                            <Button 
-                                variant={activeLocationFilter === 'state' ? 'primary' : 'outline-primary'}
-                                onClick={() => {
-                                    setActiveLocationFilter('state');
-                                    setFilterLocation('all');
-                                }}
-                                className="px-2"
-                            >
-                                State
-                            </Button>
-                        </ButtonGroup>
-                    </Col>
-                    <Col md={7}>
-                        {activeLocationFilter && (
-                            <Form.Select
-                                value={filterLocation}
-                                onChange={(e) => setFilterLocation(e.target.value)}
-                                size="sm"
-                            >
-                                <option value="all">All {activeLocationFilter === 'city' ? 'Cities' : 
-                                                activeLocationFilter === 'taluka' ? 'Talukas' : 'States'}</option>
-                                {locationOptions[`${activeLocationFilter}s`]?.map((location) => (
-                                    <option key={location} value={location}>
-                                        {location}
-                                    </option>
-                                ))}
-                            </Form.Select>
-                        )}
-                    </Col>
-                    <Col md={2}>
-                        <div className="text-muted text-end small">
-                            {filteredParties.length} of {parties.length} parties
-                        </div>
-                    </Col>
-                </Row>
-                
-                {/* Display active filters */}
-                {(filterType !== 'all' || filterLocation !== 'all' || searchQuery) && (
-                    <Row className="mt-2">
-                        <Col>
-                            <div className="d-flex gap-2 align-items-center">
-                                <small className="text-muted">Active filters:</small>
-                                {filterType !== 'all' && (
-                                    <Badge bg="info" className="d-flex align-items-center">
-                                        Type: {filterType === 'customer' ? 'Customers' : 
-                                            filterType === 'running' ? 'Running Customers' : 'Suppliers'}
-                                        <Button 
-                                            variant="link" 
-                                            className="p-0 ms-1 text-white" 
-                                            size="sm"
-                                            onClick={() => setFilterType('all')}
-                                        >
-                                            <FontAwesomeIcon icon={faTimes} />
-                                        </Button>
-                                    </Badge>
-                                )}
-                                {filterLocation !== 'all' && (
-                                    <Badge bg="info" className="d-flex align-items-center">
-                                        {activeLocationFilter}: {filterLocation}
-                                        <Button 
-                                            variant="link" 
-                                            className="p-0 ms-1 text-white" 
-                                            size="sm"
-                                            onClick={() => setFilterLocation('all')}
-                                        >
-                                            <FontAwesomeIcon icon={faTimes} />
-                                        </Button>
-                                    </Badge>
-                                )}
-                                {searchQuery && (
-                                    <Badge bg="info" className="d-flex align-items-center">
-                                        Search: {searchQuery}
-                                        <Button 
-                                            variant="link" 
-                                            className="p-0 ms-1 text-white" 
-                                            size="sm"
-                                            onClick={() => setSearchQuery('')}
-                                        >
-                                            <FontAwesomeIcon icon={faTimes} />
-                                        </Button>
-                                    </Badge>
-                                )}
-                                <Button 
-                                    variant="link" 
-                                    className="ms-auto p-0 text-muted" 
+    return (
+        <div className="parties-layout bg-light min-vh-100" style={{ fontSize: '13px' }}>
+            {/* Top Header - Transaction Search */}
+            <div className="bg-white border-bottom shadow-sm p-2">
+                <Container fluid>
+                    <Row className="align-items-center g-2">
+                        <Col lg={7} md={6}>
+                            <InputGroup size="sm">
+                                <InputGroup.Text className="bg-light border-end-0 rounded-start-pill">
+                                    <FontAwesomeIcon icon={faSearch} className="text-muted" size="sm" />
+                                </InputGroup.Text>
+                                <Form.Control
+                                    type="text"
+                                    placeholder="Search transactions..."
+                                    value={transactionSearchQuery}
+                                    onChange={(e) => setTransactionSearchQuery(e.target.value)}
+                                    className="border-start-0 rounded-end-pill"
+                                    style={{ fontSize: '13px' }}
+                                />
+                            </InputGroup>
+                        </Col>
+                        <Col lg={5} md={6} className="text-end">
+                            <div className="d-flex gap-2 justify-content-end flex-wrap">
+                                <Button
+                                    variant="outline-danger"
                                     size="sm"
-                                    onClick={() => {
-                                        setSearchQuery('');
-                                        setFilterType('all');
-                                        setFilterLocation('all');
-                                        setActiveLocationFilter('');
-                                    }}
+                                    className="px-2 border-2"
+                                    style={{ fontSize: '12px' }}
                                 >
-                                    Clear all filters
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="sm" />
+                                    Add Sale
+                                </Button>
+                                <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    className="px-2 border-2"
+                                    style={{ fontSize: '12px' }}
+                                >
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="sm" />
+                                    Add Purchase
                                 </Button>
                             </div>
                         </Col>
                     </Row>
-                )}
-            </Card.Body>
-        </Card>
-    );
+                </Container>
+            </div>
 
-    // Render database search section
-    const renderDatabaseSearch = () => (
-        showDatabaseSearch && (
-            <Card className="mb-4 border-primary">
-                <Card.Header className="bg-primary text-white">
-                    <div className="d-flex justify-content-between align-items-center">
-                        <h6 className="mb-0">
-                            <FontAwesomeIcon icon={faDownload} className="me-2" />
-                            Import Parties from Database
-                        </h6>
-                        <Button
-                            variant="outline-light"
-                            size="sm"
-                            onClick={() => {
-                                setShowDatabaseSearch(false);
-                                setDatabaseSearchQuery('');
-                                setDatabaseSearchResults([]);
-                            }}
-                        >
-                            <FontAwesomeIcon icon={faTimes} />
-                        </Button>
-                    </div>
-                </Card.Header>
-                <Card.Body>
-                    <InputGroup className="mb-3">
-                        <InputGroup.Text>
-                            <FontAwesomeIcon icon={faSearch} />
-                        </InputGroup.Text>
-                        <Form.Control
-                            type="text"
-                            placeholder="Search database parties by name, phone, email, city, taluka..."
-                            value={databaseSearchQuery}
-                            onChange={handleDatabaseSearch}
-                        />
-                    </InputGroup>
+            {/* Parties Section Header */}
+            <div className="bg-white border-bottom shadow-sm p-2">
+                <Container fluid>
+                    <Row className="align-items-center">
+                        <Col>
+                            <Dropdown>
+                                <Dropdown.Toggle
+                                    variant="link"
+                                    className="text-dark text-decoration-none p-0 border-0 shadow-none bg-transparent"
+                                    id="parties-dropdown"
+                                >
+                                    <h5 className="mb-0 fw-bold d-flex align-items-center" style={{ fontSize: '16px' }}>
+                                        Parties
+                                        <FontAwesomeIcon icon={faChevronDown} className="ms-2" size="sm" />
+                                    </h5>
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu className="shadow border-0">
+                                    <Dropdown.Item className="py-2" style={{ fontSize: '13px' }}>All Parties</Dropdown.Item>
+                                    <Dropdown.Item className="py-2" style={{ fontSize: '13px' }}>Customers</Dropdown.Item>
+                                    <Dropdown.Item className="py-2" style={{ fontSize: '13px' }}>Suppliers</Dropdown.Item>
+                                    <Dropdown.Divider />
+                                    <Dropdown.Item className="py-2" style={{ fontSize: '13px' }}>Export Parties</Dropdown.Item>
+                                </Dropdown.Menu>
+                            </Dropdown>
+                        </Col>
+                        <Col xs="auto">
+                            <div className="d-flex align-items-center gap-2">
+                                <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    onClick={handleOpenModal}
+                                    className="px-2 border-2"
+                                    style={{ fontSize: '12px' }}
+                                >
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" />
+                                    Add Party
+                                </Button>
+                                <Button variant="outline-secondary" size="sm" className="border-0 p-1">
+                                    <FontAwesomeIcon icon={faCog} size="sm" />
+                                </Button>
+                                <Button variant="outline-secondary" size="sm" className="border-0 p-1">
+                                    <FontAwesomeIcon icon={faEllipsisV} size="sm" />
+                                </Button>
+                            </div>
+                        </Col>
+                    </Row>
+                </Container>
+            </div>
 
-                    {isSearchingDatabase && (
-                        <div className="text-center py-3">
-                            <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                            Searching database...
+            {/* Main Content */}
+            <Container fluid className="p-0">
+                <Row className="g-0" style={{ height: 'calc(100vh - 120px)' }}>
+                    {/* Left Sidebar - Parties List */}
+                    <Col xl={3} lg={4} md={5} className="bg-white border-end">
+                        <div className="h-100 d-flex flex-column">
+                            {/* Search Party */}
+                            <div className="p-2 border-bottom bg-light ">
+                                <InputGroup size="sm">
+                                    <InputGroup.Text className="bg-white border-end-0 rounded-start-pill">
+                                        <FontAwesomeIcon icon={faSearch} className="text-muted" size="sm" />
+                                    </InputGroup.Text>
+                                    <Form.Control
+                                        type="text"
+                                        placeholder="Search Party Name"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="border-start-0 rounded-end-pill"
+                                        style={{ fontSize: '13px' }}
+                                    />
+                                </InputGroup>
+                            </div>
+
+                            {/* Parties List Header */}
+                            <div className="bg-light border-bottom px-2 py-1">
+                                <Row className="align-items-center">
+                                    <Col>
+                                        <small
+                                            className="text-muted fw-bold text-uppercase d-flex align-items-center cursor-pointer"
+                                            style={{ fontSize: '11px' }}
+                                            onClick={() => handleSort('name')}
+                                        >
+                                            <FontAwesomeIcon icon={faFilter} className="me-1" size="xs" />
+                                            Party Name
+                                            <FontAwesomeIcon
+                                                icon={getSortIcon('name')}
+                                                className="ms-auto"
+                                                size="xs"
+                                            />
+                                        </small>
+                                    </Col>
+                                    <Col xs="auto">
+                                        <small
+                                            className="text-muted fw-bold text-uppercase d-flex align-items-center cursor-pointer"
+                                            style={{ fontSize: '11px' }}
+                                            onClick={() => handleSort('balance')}
+                                        >
+                                            Amount
+                                            <FontAwesomeIcon
+                                                icon={getSortIcon('balance')}
+                                                className="ms-1"
+                                                size="xs"
+                                            />
+                                        </small>
+                                    </Col>
+                                </Row>
+                            </div>
+
+                            {/* Parties List */}
+                            <div className="flex-grow-1 parties-list-container">
+                                <ListGroup variant="flush" className="border-0">
+                                    {filteredParties.map((party) => {
+                                        const normalizedParty = normalizeParty(party);
+                                        return (
+                                            <ListGroup.Item
+                                                key={normalizedParty.id}
+                                                action
+                                                active={normalizedParty.isSelected}
+                                                onClick={() => handlePartySelect(normalizedParty)}
+                                                className={`border-0 border-bottom party-item p-2 ${normalizedParty.isSelected
+                                                    ? 'bg-primary bg-opacity-75 text-white'
+                                                    : 'bg-white'
+                                                    }`}
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    transition: 'background-color 0.2s ease'
+                                                }}
+                                            >
+                                                <Row className="align-items-center">
+                                                    <Col>
+                                                        <div
+                                                            className={`fw-bold mb-1 ${normalizedParty.isSelected ? 'text-white' : 'text-dark'
+                                                                }`}
+                                                            style={{ fontSize: '13px' }}
+                                                        >
+                                                            {normalizedParty.name}
+                                                        </div>
+                                                        <small
+                                                            className={
+                                                                normalizedParty.isSelected ? 'text-white text-opacity-75' : 'text-muted'
+                                                            }
+                                                            style={{ fontSize: '11px' }}
+                                                        >
+                                                            {normalizedParty.phone}
+                                                        </small>
+                                                    </Col>
+                                                    <Col xs="auto" className="text-end">
+                                                        <div
+                                                            className={`fw-bold ${normalizedParty.isSelected
+                                                                ? 'text-white'
+                                                                : normalizedParty.balance > 0
+                                                                    ? 'text-success'
+                                                                    : 'text-secondary'
+                                                                }`}
+                                                            style={{ fontSize: '12px' }}
+                                                        >
+                                                            ₹{formatCurrency(normalizedParty.balance)}
+                                                        </div>
+                                                    </Col>
+                                                </Row>
+                                            </ListGroup.Item>
+                                        );
+                                    })}
+                                </ListGroup>
+                            </div>
+
+                            {/* Bottom Contact Info */}
+                            <div className="p-2 border-top bg-light">
+                                <Card className="border-0 bg-success bg-opacity-10 text-center">
+                                    <Card.Body className="p-2">
+                                        <FontAwesomeIcon icon={faPhone} className="text-success mb-1" />
+                                        <div className="small text-muted" style={{ fontSize: '11px' }}>
+                                            Use contacts from your Phone or Gmail to{' '}
+                                            <strong className="text-dark">quickly create parties.</strong>
+                                        </div>
+                                    </Card.Body>
+                                </Card>
+                            </div>
                         </div>
-                    )}
+                    </Col>
 
-                    {databaseSearchResults.length > 0 && (
-                        <div>
-                            <h6 className="mb-3">Search Results ({databaseSearchResults.length})</h6>
-                            <ListGroup className="database-search-results">
-                                {databaseSearchResults.map((party) => (
-                                    <ListGroup.Item key={party.id} className="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <div className="d-flex align-items-center">
-                                                <FontAwesomeIcon
-                                                    icon={party.partyType === 'customer' ? faUser : faBuilding}
-                                                    className="text-muted me-2"
-                                                />
+                    {/* Right Content Area - Party Details */}
+                    <Col xl={9} lg={8} md={7}>
+                        {selectedParty ? (
+                            <div className="h-100 bg-white">
+                                {/* Party Header */}
+                                <div className="border-bottom p-3 bg-light">
+                                    <Row className="align-items-center">
+                                        <Col>
+                                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                                                 <div>
-                                                    <div className="fw-semibold">{party.name}</div>
-                                                    <div className="small text-muted">
+                                                    <h5 className="mb-1 fw-bold d-flex align-items-center" style={{ fontSize: '16px' }}>
+                                                        {selectedParty.name}
+                                                        <Button
+                                                            variant="link"
+                                                            size="sm"
+                                                            className="p-1 ms-2 text-primary"
+                                                            onClick={() => handleEditParty(selectedParty)}
+                                                        >
+                                                            <FontAwesomeIcon icon={faEdit} size="sm" />
+                                                        </Button>
+                                                    </h5>
+                                                    <div className="text-muted" style={{ fontSize: '12px' }}>
                                                         <FontAwesomeIcon icon={faPhone} className="me-1" />
-                                                        {party.phone}
-                                                        {party.email && (
-                                                            <>
-                                                                <span className="mx-2">•</span>
-                                                                <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                                                                {party.email}
-                                                            </>
-                                                        )}
-                                                        {party.city && (
-                                                            <>
-                                                                <span className="mx-2">•</span>
-                                                                {party.city}
-                                                                {party.taluka && (
-                                                                    <>, {party.taluka}</>
-                                                                )}
-                                                                {party.state && (
-                                                                    <>, {party.state}</>
-                                                                )}
-                                                            </>
-                                                        )}
+                                                        {selectedParty.phone}
+                                                        <span className="mx-2">|</span>
+                                                        <FontAwesomeIcon icon={faEnvelope} className="me-1" />
+                                                        {selectedParty.email}
                                                     </div>
-                                                    {party.gstNumber && (
-                                                        <div className="small text-muted">GST: {party.gstNumber}</div>
-                                                    )}
+                                                </div>
+                                                <div className="d-flex gap-2">
+                                                    <Button
+                                                        variant="outline-success"
+                                                        size="sm"
+                                                        onClick={handlePayIn}
+                                                        className="px-2 border-2"
+                                                        style={{ fontSize: '12px' }}
+                                                    >
+                                                        <FontAwesomeIcon icon={faArrowDown} className="me-1" />
+                                                        Pay In
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline-danger"
+                                                        size="sm"
+                                                        onClick={handlePayOut}
+                                                        className="px-2 border-2"
+                                                        style={{ fontSize: '12px' }}
+                                                    >
+                                                        <FontAwesomeIcon icon={faArrowUp} className="me-1" />
+                                                        Pay Out
+                                                    </Button>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div className="d-flex align-items-center gap-2">
-                                            <Badge bg={party.partyType === 'customer' ? 'primary' : 'success'}>
-                                                {party.partyType}
-                                            </Badge>
-                                            <Button
-                                                variant="primary"
-                                                size="sm"
-                                                onClick={() => addPartyFromDatabase(party)}
-                                            >
-                                                <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                                Add
-                                            </Button>
-                                        </div>
-                                    </ListGroup.Item>
-                                ))}
-                            </ListGroup>
-                        </div>
-                    )}
-
-                    {databaseSearchQuery && !isSearchingDatabase && databaseSearchResults.length === 0 && (
-                        <div className="text-center py-4 text-muted">
-                            <FontAwesomeIcon icon={faSearch} size="2x" className="mb-2" />
-                            <div>No parties found matching your search.</div>
-                            <small>Try different keywords or check if the party is already added.</small>
-                        </div>
-                    )}
-
-                    {!databaseSearchQuery && (
-                        <div className="text-center py-4 text-muted">
-                            <FontAwesomeIcon icon={faSearch} size="2x" className="mb-2" />
-                            <div>Start typing to search for parties in the database.</div>
-                        </div>
-                    )}
-                </Card.Body>
-            </Card>
-        )
-    );
-
-    // Render parties list with clickable rows
-    const renderPartiesList = () => (
-        <div className="parties-list-container">
-            <div className="table-responsive">
-                <Table hover className="parties-table">
-                    <thead className="table-light">
-                        <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Contact</th>
-                            <th>Location</th>
-                            <th>GST</th>
-                            <th width="50">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredParties.map((party) => (
-                            <tr
-                                key={party.id}
-                                className="party-row-clickable"
-                                style={{ cursor: 'pointer' }}
-                            >
-                                <td onClick={() => handleViewPartyDetails(party)}>
-                                    <div className="d-flex align-items-center">
-                                        <div className="party-avatar me-3">
-                                            <FontAwesomeIcon
-                                                icon={party.isRunningCustomer ? faRocket : (party.partyType === 'customer' ? faUser : faBuilding)}
-                                                className={party.isRunningCustomer ? "text-warning" : "text-muted"}
-                                            />
-                                        </div>
-                                        <div>
-                                            <div className="fw-semibold">
-                                                {party.name}
-                                                {party.isRunningCustomer && (
-                                                    <Badge bg="warning" className="ms-2 text-dark">
-                                                        Running
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            {party.email && (
-                                                <small className="text-muted">
-                                                    <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                                                    {party.email}
-                                                </small>
-                                            )}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td onClick={() => handleViewPartyDetails(party)}>
-                                    <Badge
-                                        bg={party.partyType === 'customer' ? 'primary' : 'success'}
-                                        className="party-type-badge"
-                                    >
-                                        {party.partyType === 'customer' ? 'Customer' : 'Supplier'}
-                                    </Badge>
-                                    {party.isRunningCustomer && (
-                                        <div className="mt-1">
-                                            <small className="text-warning">
-                                                <FontAwesomeIcon icon={faRocket} className="me-1" />
-                                                Quick Entry
-                                            </small>
-                                        </div>
-                                    )}
-                                </td>
-                                <td onClick={() => handleViewPartyDetails(party)}>
-                                    <div className="contact-info">
-                                        {party.whatsappNumber && (
-                                            <div className="text-muted mb-1">
-                                                <FontAwesomeIcon icon={faPhone} className="me-1 text-success" />
-                                                <small className="text-success">WhatsApp:</small> {party.whatsappNumber}
-                                            </div>
-                                        )}
-                                        {party.phoneNumbers && party.phoneNumbers.length > 0 && (
-                                            party.phoneNumbers.slice(0, 2).map((phone, index) => (
-                                                phone.number && (
-                                                    <div key={index} className="text-muted">
-                                                        <FontAwesomeIcon icon={faPhone} className="me-1" />
-                                                        {phone.label && <small>{phone.label}:</small>} {phone.number}
-                                                    </div>
-                                                )
-                                            ))
-                                        )}
-                                        {party.phoneNumbers && party.phoneNumbers.length > 2 && (
-                                            <small className="text-muted">+{party.phoneNumbers.length - 2} more</small>
-                                        )}
-                                    </div>
-                                </td>
-                                <td onClick={() => handleViewPartyDetails(party)}>
-                                    <div>
-                                        {party.city && (
-                                            <span className="text-muted">{party.city}</span>
-                                        )}
-                                        {party.taluka && party.city && (
-                                            <span className="text-muted">, </span>
-                                        )}
-                                        {party.taluka && (
-                                            <span className="text-muted">{party.taluka}</span>
-                                        )}
-                                        {party.state && (party.city || party.taluka) && (
-                                            <div className="small text-muted">{party.state}</div>
-                                        )}
-                                        {!party.city && !party.taluka && !party.state && (
-                                            <span className="text-muted">-</span>
-                                        )}
-                                        {party.pincode && (
-                                            <div>
-                                                <small className="text-muted">PIN: {party.pincode}</small>
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                                <td onClick={() => handleViewPartyDetails(party)}>
-                                    <span className="text-muted">{party.gstNumber || '-'}</span>
-                                </td>
-                                <td>
-                                    <Dropdown>
-                                        <Dropdown.Toggle
-                                            variant="link"
-                                            className="p-0 border-0 text-muted"
-                                            id={`dropdown-${party.id}`}
-                                        >
-                                            <FontAwesomeIcon icon={faEllipsisV} />
-                                        </Dropdown.Toggle>
-                                        <Dropdown.Menu>
-                                            <Dropdown.Item onClick={() => handleViewPartyDetails(party)}>
-                                                <FontAwesomeIcon icon={faEye} className="me-2" />
-                                                View Details
-                                            </Dropdown.Item>
-                                            <Dropdown.Item onClick={() => handleEditParty(party)}>
-                                                <FontAwesomeIcon icon={faEdit} className="me-2" />
-                                                Edit
-                                            </Dropdown.Item>
-                                            <Dropdown.Item
-                                                onClick={() => handleDeleteParty(party.id)}
-                                                className="text-danger"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                                Delete
-                                            </Dropdown.Item>
-                                        </Dropdown.Menu>
-                                    </Dropdown>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </Table>
-            </div>
-        </div>
-    );
-
-    return (
-        <Container fluid className="py-4">
-            <Row className="mb-4 align-items-center">
-                <Col>
-                    <h1 className="page-title mb-0">
-                        Parties
-                        {hasParties && (
-                            <Badge bg="secondary" className="ms-2">{parties.length}</Badge>
-                        )}
-                    </h1>
-                </Col>
-                <Col xs="auto">
-                    <div className="d-flex gap-2">
-                        <Button
-                            variant="warning"
-                            className="d-flex align-items-center text-dark"
-                            onClick={handleOpenQuickAddModal}
-                        >
-                            <FontAwesomeIcon icon={faRocket} className="me-2" />
-                            Quick Add Customer
-                        </Button>
-                        <Button
-                            variant="primary"
-                            className="d-flex align-items-center"
-                            onClick={handleOpenModal}
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="me-2" />
-                            Add New Party
-                        </Button>
-                    </div>
-                </Col>
-            </Row>
-
-            {/* Search and Filters */}
-            {hasParties && renderSearchAndFilters()}
-
-            {/* Database Search */}
-            {renderDatabaseSearch()}
-
-            {!hasParties ? (
-                <div className="empty-state-container">
-                    <div className="empty-state-content text-center">
-                        <h2 className="mt-4">Party Details</h2>
-                        <p className="text-muted mb-4">
-                            Add your customers and suppliers to manage your business easily.
-                            <br />
-                            Track payments and grow your business without any hassle!
-                        </p>
-
-                        <div className="empty-state-image-container mb-4">
-                            <img
-                                src={emptyStateImage}
-                                alt="Add your first party"
-                                className="empty-state-image"
-                            />
-                        </div>
-
-                        <div className="d-flex gap-3 justify-content-center">
-                            <Button
-                                variant="warning"
-                                className="text-dark"
-                                onClick={handleOpenQuickAddModal}
-                            >
-                                <FontAwesomeIcon icon={faRocket} className="me-2" />
-                                Quick Add Customer
-                            </Button>
-                            <Button
-                                variant="danger"
-                                className="add-party-btn"
-                                onClick={handleOpenModal}
-                            >
-                                <FontAwesomeIcon icon={faPlus} className="me-2" />
-                                Add Your First Party
-                            </Button>
-                            <Button
-                                variant="outline-primary"
-                                onClick={() => setShowDatabaseSearch(true)}
-                            >
-                                <FontAwesomeIcon icon={faDownload} className="me-2" />
-                                Import from Database
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <>
-                    {filteredParties.length === 0 ? (
-                        <div className="text-center py-5">
-                            <FontAwesomeIcon icon={faSearch} size="3x" className="text-muted mb-3" />
-                            <h4>No parties found</h4>
-                            <p className="text-muted">
-                                No parties match your current search criteria.
-                                <br />
-                                Try adjusting your search terms or filters.
-                            </p>
-                            <Button variant="outline-primary" onClick={() => {
-                                setSearchQuery('');
-                                setFilterType('all');
-                                setFilterLocation('all');
-                                setActiveLocationFilter('');
-                            }}>
-                                Clear Filters
-                            </Button>
-                        </div>
-                    ) : (
-                        renderPartiesList()
-                    )}
-                </>
-            )}
-
-            {/* PartyDetails Modal */}
-            <PartyDetails
-                party={selectedParty}
-                show={showPartyDetails}
-                onHide={handleClosePartyDetails}
-                onEdit={(party) => {
-                    handleClosePartyDetails();
-                    handleEditParty(party);
-                }}
-                onDelete={(partyId) => {
-                    handleClosePartyDetails();
-                    handleDeleteParty(partyId);
-                }}
-            />
-
-            {/* Quick Add Running Customer Modal */}
-            <Modal show={showQuickAddModal} onHide={handleCloseQuickAddModal} centered>
-                <Modal.Header className="border-0 pb-0 bg-warning text-dark">
-                    <Modal.Title className="fw-bold d-flex align-items-center">
-                        <FontAwesomeIcon icon={faRocket} className="me-2" />
-                        Quick Add Running Customer
-                    </Modal.Title>
-                    <Button
-                        variant="link"
-                        className="p-0 border-0 text-dark"
-                        onClick={handleCloseQuickAddModal}
-                    >
-                        <FontAwesomeIcon icon={faTimes} size="lg" />
-                    </Button>
-                </Modal.Header>
-
-                <Modal.Body className="px-4 pb-4">
-                    <div className="alert alert-info border-0 bg-info bg-opacity-10">
-                        <FontAwesomeIcon icon={faUserCheck} className="me-2 text-info" />
-                        <strong>Quick Entry:</strong> Add customer with just name and phone number for fast billing.
-                    </div>
-
-                    <Form onSubmit={handleSaveQuickCustomer}>
-                        <Form.Group className="mb-3">
-                            <Form.Label className="fw-semibold">
-                                Customer Name <span className="text-danger">*</span>
-                            </Form.Label>
-                            <Form.Control
-                                type="text"
-                                name="name"
-                                value={quickFormData.name}
-                                onChange={handleQuickInputChange}
-                                placeholder="Enter customer name"
-                                className="form-input"
-                                autoFocus
-                                required
-                            />
-                        </Form.Group>
-
-                        <Form.Group className="mb-4">
-                            <Form.Label className="fw-semibold">
-                                Phone Number <span className="text-danger">*</span>
-                            </Form.Label>
-                            <Form.Control
-                                type="tel"
-                                name="phone"
-                                value={quickFormData.phone}
-                                onChange={handleQuickInputChange}
-                                placeholder="Enter phone number"
-                                className="form-input"
-                                required
-                            />
-                        </Form.Group>
-
-                        <div className="d-flex gap-3 justify-content-end">
-                            <Button
-                                variant="outline-secondary"
-                                onClick={handleCloseQuickAddModal}
-                                className="px-4"
-                                type="button"
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="warning"
-                                type="submit"
-                                className="px-4 text-dark"
-                            >
-                                <FontAwesomeIcon icon={faRocket} className="me-2" />
-                                Add Quick Customer
-                            </Button>
-                        </div>
-                    </Form>
-                </Modal.Body>
-            </Modal>
-
-            {/* Regular Add/Edit Party Modal */}
-            <Modal show={showAddModal} onHide={handleCloseModal} centered size="xl">
-                <Modal.Header className="border-0 pb-0">
-                    <Modal.Title className="fw-bold">
-                        {editingParty ? 'Edit Party' : 'Add New Party'}
-                    </Modal.Title>
-                    <Button
-                        variant="link"
-                        className="p-0 border-0 text-muted"
-                        onClick={handleCloseModal}
-                    >
-                        <FontAwesomeIcon icon={faTimes} size="lg" />
-                    </Button>
-                </Modal.Header>
-
-                <Modal.Body className="px-4 pb-4">
-                    <Form onSubmit={handleSaveParty}>
-                        {/* Party Type Selection */}
-                        <Form.Group className="mb-4">
-                            <Form.Label className="fw-semibold mb-3">Party Type</Form.Label>
-                            <div className="d-flex gap-4">
-                                <Form.Check
-                                    type="radio"
-                                    name="partyType"
-                                    id="customer"
-                                    label="Customer"
-                                    value="customer"
-                                    checked={formData.partyType === 'customer'}
-                                    onChange={handleInputChange}
-                                    className="party-type-radio"
-                                />
-                                <Form.Check
-                                    type="radio"
-                                    name="partyType"
-                                    id="supplier"
-                                    label="Supplier"
-                                    value="supplier"
-                                    checked={formData.partyType === 'supplier'}
-                                    onChange={handleInputChange}
-                                    className="party-type-radio"
-                                />
-                            </div>
-                        </Form.Group>
-
-                        {/* Basic Information */}
-                        <Row>
-                            <Col md={6}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">
-                                        Name <span className="text-danger">*</span>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter party name"
-                                        className="form-input"
-                                        required
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={6}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">
-                                        WhatsApp Number
-                                        <small className="text-muted ms-1">(Primary Contact)</small>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type="tel"
-                                        name="whatsappNumber"
-                                        value={formData.whatsappNumber}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter WhatsApp number"
-                                        className="form-input"
-                                    />
-
-                                    {/* Add Phone Number Button */}
-                                    {!showAdditionalPhones && (
-                                        <div className="mt-2">
-                                            <Button
-                                                variant="outline-primary"
-                                                size="sm"
-                                                onClick={showAdditionalPhonesSection}
-                                                type="button"
-                                            >
-                                                <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                                Add Phone Numbers
-                                            </Button>
-                                        </div>
-                                    )}
-                                </Form.Group>
-                            </Col>
-                        </Row>
-
-                        {/* Multiple Phone Numbers Section */}
-                        {showAdditionalPhones && (
-                            <div className="mb-4">
-                                <div className="d-flex justify-content-between align-items-center mb-3">
-                                    <Form.Label className="fw-semibold mb-0">
-                                        Additional Phone Numbers
-                                        <small className="text-muted ms-1">(Optional)</small>
-                                    </Form.Label>
-                                    <Button
-                                        variant="outline-primary"
-                                        size="sm"
-                                        onClick={addPhoneNumber}
-                                        type="button"
-                                    >
-                                        <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                        Add Phone
-                                    </Button>
-                                </div>
-
-                                {formData.phoneNumbers.map((phone, index) => (
-                                    <Row key={index} className="mb-2 align-items-end">
-                                        <Col md={4}>
-                                            <Form.Group>
-                                                <Form.Label className="fw-semibold small">Label</Form.Label>
-                                                <Form.Control
-                                                    type="text"
-                                                    value={phone.label}
-                                                    onChange={(e) => handlePhoneNumberChange(index, 'label', e.target.value)}
-                                                    placeholder="e.g., Office, Home, Mobile"
-                                                    className="form-input"
-                                                />
-                                            </Form.Group>
-                                        </Col>
-                                        <Col md={6}>
-                                            <Form.Group>
-                                                <Form.Label className="fw-semibold small">Phone Number</Form.Label>
-                                                <Form.Control
-                                                    type="tel"
-                                                    value={phone.number}
-                                                    onChange={(e) => handlePhoneNumberChange(index, 'number', e.target.value)}
-                                                    placeholder="Enter phone number"
-                                                    className="form-input"
-                                                />
-                                            </Form.Group>
-                                        </Col>
-                                        <Col md={2}>
-                                            <Button
-                                                variant="outline-danger"
-                                                size="sm"
-                                                onClick={() => removePhoneNumber(index)}
-                                                className="w-100"
-                                                type="button"
-                                            >
-                                                <FontAwesomeIcon icon={faMinus} />
-                                            </Button>
                                         </Col>
                                     </Row>
-                                ))}
+                                </div>
+
+                                {/* Transactions Section */}
+                                <div className="p-3">
+                                    <Row className="align-items-center mb-3">
+                                        <Col>
+                                            <h6 className="mb-0 fw-bold" style={{ fontSize: '14px' }}>Transactions</h6>
+                                        </Col>
+                                        <Col xs="auto">
+                                            <div className="d-flex gap-1">
+                                                <Button variant="outline-secondary" size="sm" className="border-0 p-1">
+                                                    <FontAwesomeIcon icon={faSearch} size="sm" />
+                                                </Button>
+                                                <Button variant="outline-secondary" size="sm" className="border-0 p-1">
+                                                    <FontAwesomeIcon icon={faFileInvoice} size="sm" />
+                                                </Button>
+                                                <Button variant="outline-secondary" size="sm" className="border-0 p-1">
+                                                    <FontAwesomeIcon icon={faEllipsisV} size="sm" />
+                                                </Button>
+                                            </div>
+                                        </Col>
+                                    </Row>
+
+                                    {/* Transactions Table */}
+                                    {filteredTransactions.length > 0 ? (
+                                        <div className="border rounded">
+                                            {/* Table Headers with Inline Filters */}
+                                            <div className="bg-light border-bottom">
+                                                <Row className="align-items-center py-2 px-3">
+                                                    <Col lg={2} md={3}>
+                                                        <Dropdown>
+                                                            <Dropdown.Toggle
+                                                                variant="link"
+                                                                className="text-muted fw-bold text-uppercase text-decoration-none p-0 border-0 shadow-none bg-transparent d-flex align-items-center"
+                                                                style={{ fontSize: '11px' }}
+                                                            >
+                                                                TYPE
+                                                                <FontAwesomeIcon icon={faChevronDown} className="ms-1" size="xs" />
+                                                            </Dropdown.Toggle>
+                                                            <Dropdown.Menu className="p-3" style={{ minWidth: '250px' }}>
+                                                                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                                                    {transactionTypes.map((type) => (
+                                                                        <Form.Check
+                                                                            key={type}
+                                                                            type="checkbox"
+                                                                            id={`type-${type}`}
+                                                                            label={type}
+                                                                            checked={filters.type.includes(type)}
+                                                                            onChange={() => handleTypeFilter(type)}
+                                                                            className="mb-2"
+                                                                            style={{ fontSize: '12px' }}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                                <hr />
+                                                                <div className="d-flex gap-2">
+                                                                    <Button
+                                                                        variant="outline-secondary"
+                                                                        size="sm"
+                                                                        onClick={clearFilters}
+                                                                        style={{ fontSize: '11px' }}
+                                                                    >
+                                                                        Clear
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="outline-danger"
+                                                                        size="sm"
+                                                                        style={{ fontSize: '11px' }}
+                                                                    >
+                                                                        Apply
+                                                                    </Button>
+                                                                </div>
+                                                            </Dropdown.Menu>
+                                                        </Dropdown>
+                                                    </Col>
+                                                    <Col lg={2} md={3}>
+                                                        <Dropdown>
+                                                            <Dropdown.Toggle
+                                                                variant="link"
+                                                                className="text-muted fw-bold text-uppercase text-decoration-none p-0 border-0 shadow-none bg-transparent d-flex align-items-center"
+                                                                style={{ fontSize: '11px' }}
+                                                            >
+                                                                NUMBER
+                                                                <FontAwesomeIcon icon={faFilter} className="ms-1" size="xs" />
+                                                            </Dropdown.Toggle>
+                                                            <Dropdown.Menu className="p-2">
+                                                                <Form.Control
+                                                                    size="sm"
+                                                                    placeholder="Filter by number..."
+                                                                    value={filters.number}
+                                                                    onChange={(e) => handleFilterChange('number', e.target.value)}
+                                                                    style={{ fontSize: '12px' }}
+                                                                />
+                                                            </Dropdown.Menu>
+                                                        </Dropdown>
+                                                    </Col>
+                                                    <Col lg={2} md={3}>
+                                                        <Dropdown>
+                                                            <Dropdown.Toggle
+                                                                variant="link"
+                                                                className="text-muted fw-bold text-uppercase text-decoration-none p-0 border-0 shadow-none bg-transparent d-flex align-items-center"
+                                                                style={{ fontSize: '11px' }}
+                                                            >
+                                                                DATE
+                                                                <FontAwesomeIcon icon={faFilter} className="ms-1" size="xs" />
+                                                            </Dropdown.Toggle>
+                                                            <Dropdown.Menu className="p-2">
+                                                                <Form.Control
+                                                                    size="sm"
+                                                                    placeholder="Filter by date..."
+                                                                    value={filters.date}
+                                                                    onChange={(e) => handleFilterChange('date', e.target.value)}
+                                                                    style={{ fontSize: '12px' }}
+                                                                />
+                                                            </Dropdown.Menu>
+                                                        </Dropdown>
+                                                    </Col>
+                                                    <Col lg={2} md={3}>
+                                                        <Dropdown>
+                                                            <Dropdown.Toggle
+                                                                variant="link"
+                                                                className="text-muted fw-bold text-uppercase text-decoration-none p-0 border-0 shadow-none bg-transparent d-flex align-items-center"
+                                                                style={{ fontSize: '11px' }}
+                                                            >
+                                                                TOTAL
+                                                                <FontAwesomeIcon icon={faFilter} className="ms-1" size="xs" />
+                                                            </Dropdown.Toggle>
+                                                            <Dropdown.Menu className="p-2">
+                                                                <Form.Control
+                                                                    size="sm"
+                                                                    placeholder="Filter by total..."
+                                                                    value={filters.total}
+                                                                    onChange={(e) => handleFilterChange('total', e.target.value)}
+                                                                    style={{ fontSize: '12px' }}
+                                                                />
+                                                            </Dropdown.Menu>
+                                                        </Dropdown>
+                                                    </Col>
+                                                    <Col lg={2} md={3}>
+                                                        <Dropdown>
+                                                            <Dropdown.Toggle
+                                                                variant="link"
+                                                                className="text-muted fw-bold text-uppercase text-decoration-none p-0 border-0 shadow-none bg-transparent d-flex align-items-center"
+                                                                style={{ fontSize: '11px' }}
+                                                            >
+                                                                BALANCE
+                                                                <FontAwesomeIcon icon={faFilter} className="ms-1" size="xs" />
+                                                            </Dropdown.Toggle>
+                                                            <Dropdown.Menu className="p-2">
+                                                                <Form.Control
+                                                                    size="sm"
+                                                                    placeholder="Filter by balance..."
+                                                                    value={filters.balance}
+                                                                    onChange={(e) => handleFilterChange('balance', e.target.value)}
+                                                                    style={{ fontSize: '12px' }}
+                                                                />
+                                                            </Dropdown.Menu>
+                                                        </Dropdown>
+                                                    </Col>
+                                                    <Col lg={2} md={3}>
+                                                    </Col>
+                                                </Row>
+                                            </div>
+
+                                            {/* Table Data */}
+                                            <div>
+                                                {filteredTransactions.map((transaction, index) => (
+                                                    <Row key={index} className="align-items-center py-2 px-3 border-bottom">
+                                                        <Col lg={2} md={3}>
+                                                            <span style={{ fontSize: '13px' }}>{transaction.type}</span>
+                                                        </Col>
+                                                        <Col lg={2} md={3}>
+                                                            <span style={{ fontSize: '13px' }}>{transaction.number}</span>
+                                                        </Col>
+                                                        <Col lg={2} md={3}>
+                                                            <span style={{ fontSize: '13px' }}>{transaction.date}</span>
+                                                        </Col>
+                                                        <Col lg={2} md={3}>
+                                                            <span style={{ fontSize: '13px' }}>₹{formatCurrency(transaction.total)}</span>
+                                                        </Col>
+                                                        <Col lg={2} md={3}>
+                                                            <span style={{ fontSize: '13px' }}>₹{formatCurrency(transaction.balance)}</span>
+                                                        </Col>
+                                                        <Col lg={2} md={3} className="text-center">
+                                                            <FontAwesomeIcon icon={faEllipsisV} className="text-muted" size="sm" />
+                                                        </Col>
+                                                    </Row>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Card className="border-0 bg-light text-center py-4">
+                                            <Card.Body>
+                                                <div className="mb-3">
+                                                    <div className="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style={{ width: '60px', height: '60px' }}>
+                                                        <FontAwesomeIcon icon={faFileInvoice} size="lg" className="text-primary" />
+                                                    </div>
+                                                </div>
+                                                <h6 className="text-muted mb-1" style={{ fontSize: '14px' }}>No Transactions to Show</h6>
+                                                <p className="text-muted mb-0" style={{ fontSize: '12px' }}>You haven't added any transactions yet</p>
+                                            </Card.Body>
+                                        </Card>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-100 d-flex align-items-center justify-content-center bg-light">
+                                <Card className="border-0 bg-white text-center shadow-sm">
+                                    <Card.Body className="p-4">
+                                        <FontAwesomeIcon icon={faUser} size="2x" className="text-muted mb-3" />
+                                        <h6 className="text-muted" style={{ fontSize: '14px' }}>Select a party to view details</h6>
+                                        <p className="text-muted mb-0" style={{ fontSize: '12px' }}>Choose a party from the list to see their information and transactions</p>
+                                    </Card.Body>
+                                </Card>
                             </div>
                         )}
+                    </Col>
+                </Row>
+            </Container>
 
-                        <Row>
-                            <Col md={6}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">Email</Form.Label>
-                                    <Form.Control
-                                        type="email"
-                                        name="email"
-                                        value={formData.email}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter email address"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={6}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">GST Number</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="gstNumber"
-                                        value={formData.gstNumber}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter GST number (optional)"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-
-                        {/* Location Information with updated fields */}
-                        <Row>
-                            <Col md={4}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">City</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="city"
-                                        value={formData.city}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter city"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={4}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">
-                                        Taluka
-                                        <small className="text-muted ms-1">(Optional)</small>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="taluka"
-                                        value={formData.taluka}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter taluka"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={4}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">
-                                        State
-                                        <small className="text-muted ms-1">(Optional)</small>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="state"
-                                        value={formData.state}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter state"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-
-                        <Row>
-                            <Col md={4}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">
-                                        Pin Code
-                                        <small className="text-muted ms-1">(Optional)</small>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        name="pincode"
-                                        value={formData.pincode}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter 6-digit pin code"
-                                        className="form-input"
-                                        maxLength="6"
-                                        pattern="[0-9]{6}"
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={8}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label className="fw-semibold">Address</Form.Label>
-                                    <Form.Control
-                                        as="textarea"
-                                        rows={1}
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleInputChange}
-                                        placeholder="Enter complete address"
-                                        className="form-input"
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-
-                        {/* Action Buttons */}
-                        <div className="d-flex gap-3 justify-content-end">
-                            <Button
-                                variant="outline-secondary"
-                                onClick={handleCloseModal}
-                                className="px-4"
-                                type="button"
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="primary"
-                                type="submit"
-                                className="px-4"
-                            >
-                                <FontAwesomeIcon icon={faPlus} className="me-2" />
-                                {editingParty ? 'Update Party' : 'Save Party'}
-                            </Button>
-                        </div>
-                    </Form>
-                </Modal.Body>
-            </Modal>
-        </Container>
+            {/* Add Party Modal */}
+            <AddNewParty
+                show={showAddModal}
+                onHide={handleCloseModal}
+                editingParty={editingParty}
+                onSaveParty={handleSaveParty}
+                isQuickAdd={false}
+            />
+        </div>
     );
 }
 

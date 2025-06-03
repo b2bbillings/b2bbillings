@@ -3,41 +3,43 @@ import { Modal, Button, Form, Row, Col, Card, ListGroup, Badge } from 'react-boo
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faTimes,
-    faFileInvoice,
+    faFileContract,
     faUserPlus,
     faUser,
     faToggleOn,
     faToggleOff,
-    faRocket,
-    faPlus
+    faPlus,
+    faCalendar,
+    faSearch,
+    faShoppingBag
 } from '@fortawesome/free-solid-svg-icons';
-import ItemsTable from './ItemsTable';
+import PurchaseItemsTable from './PurchaseItemsTable';
 
-function SalesModal({
+function PurchaseOrderModal({
     show,
     onHide,
-    editingSale,
+    editingPurchaseOrder,
     formData,
-    parties,
+    suppliers,
     onInputChange,
-    onPartySelection,
+    onSupplierSelection,
     onItemChange,
     onAddItem,
     onRemoveItem,
-    onSaveInvoice,
-    onShowAddPartyModal
+    onSavePurchaseOrder,
+    onShowAddSupplierModal
 }) {
-    // Local state for party search
-    const [partySearchQuery, setPartySearchQuery] = useState('');
+    // Local state for supplier search
+    const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
-    const [filteredParties, setFilteredParties] = useState([]);
-    const [selectedParty, setSelectedParty] = useState(null);
+    const [filteredSuppliers, setFilteredSuppliers] = useState([]);
+    const [selectedSupplier, setSelectedSupplier] = useState(null);
 
     // Refs
-    const partyInputRef = useRef(null);
+    const supplierInputRef = useRef(null);
 
-    // Calculate invoice totals based on items
-    const calculateInvoiceSummary = () => {
+    // Calculate purchase order totals based on items
+    const calculatePurchaseSummary = () => {
         if (!formData.items || formData.items.length === 0) {
             return {
                 subtotal: 0,
@@ -56,7 +58,7 @@ function SalesModal({
             const gstRate = parseFloat(item.gstRate || 0);
             const itemTotal = quantity * price;
 
-            if (formData.invoiceType === 'gst' && gstRate > 0) {
+            if (formData.purchaseType === 'gst' && gstRate > 0) {
                 const isItemTaxInclusive = item.taxInclusive !== undefined ? item.taxInclusive : false;
 
                 if (isItemTaxInclusive) {
@@ -95,11 +97,11 @@ function SalesModal({
     };
 
     // Get calculated summary
-    const invoiceSummary = calculateInvoiceSummary();
+    const purchaseSummary = calculatePurchaseSummary();
 
     // Update formData totals when items or discount changes
     useEffect(() => {
-        const summary = calculateInvoiceSummary();
+        const summary = calculatePurchaseSummary();
 
         // Update parent component's formData with calculated totals
         if (parseFloat(formData.subtotal || 0) !== parseFloat(summary.subtotal) ||
@@ -118,96 +120,98 @@ function SalesModal({
                 });
             }, 0);
         }
-    }, [formData.items, formData.discount, formData.invoiceType]);
+    }, [formData.items, formData.discount, formData.purchaseType]);
 
     // Initialize when modal opens
     useEffect(() => {
         if (show) {
-            console.log('🎬 SalesModal opened');
+            console.log('🎬 PurchaseOrderModal opened');
 
-            if (editingSale && formData.selectedParty) {
-                const party = parties.find(p => p.id.toString() === formData.selectedParty);
-                if (party && (!selectedParty || selectedParty.id !== party.id)) {
-                    console.log('📝 Setting party for editing:', party);
-                    setPartySearchQuery(party.name);
-                    setSelectedParty(party);
+            if (editingPurchaseOrder && formData.selectedSupplier) {
+                const supplier = suppliers.find(s => s.id.toString() === formData.selectedSupplier);
+                if (supplier && (!selectedSupplier || selectedSupplier.id !== supplier.id)) {
+                    console.log('📝 Setting supplier for editing:', supplier);
+                    setSupplierSearchQuery(supplier.name);
+                    setSelectedSupplier(supplier);
                 }
-            } else if (!editingSale) {
-                console.log('📝 Resetting for new invoice');
-                setPartySearchQuery('');
-                setSelectedParty(null);
+            } else if (!editingPurchaseOrder) {
+                console.log('📝 Resetting for new purchase order');
+                setSupplierSearchQuery('');
+                setSelectedSupplier(null);
                 setShowSuggestions(false);
             }
         }
-    }, [show, editingSale]);
+    }, [show, editingPurchaseOrder]);
 
-    // Filter parties when search query changes
+    // Filter suppliers when search query changes
     useEffect(() => {
-        if (partySearchQuery.trim() && !selectedParty) {
-            const filtered = parties
-                .filter(party => {
-                    const searchTerm = partySearchQuery.toLowerCase();
+        if (supplierSearchQuery.trim() && !selectedSupplier) {
+            const filtered = suppliers
+                .filter(supplier => {
+                    const searchTerm = supplierSearchQuery.toLowerCase();
                     return (
-                        party.name.toLowerCase().includes(searchTerm) ||
-                        (party.phone && party.phone.toLowerCase().includes(searchTerm)) ||
-                        (party.email && party.email.toLowerCase().includes(searchTerm))
+                        supplier.name.toLowerCase().includes(searchTerm) ||
+                        (supplier.phone && supplier.phone.toLowerCase().includes(searchTerm)) ||
+                        (supplier.whatsappNumber && supplier.whatsappNumber.toLowerCase().includes(searchTerm)) ||
+                        (supplier.email && supplier.email.toLowerCase().includes(searchTerm)) ||
+                        (supplier.gstNumber && supplier.gstNumber.toLowerCase().includes(searchTerm))
                     );
                 })
                 .slice(0, 5);
 
-            setFilteredParties(filtered);
+            setFilteredSuppliers(filtered);
             setShowSuggestions(true);
         } else {
-            setFilteredParties([]);
+            setFilteredSuppliers([]);
             setShowSuggestions(false);
         }
-    }, [partySearchQuery, parties, selectedParty]);
+    }, [supplierSearchQuery, suppliers, selectedSupplier]);
 
-    // Handle party search input change
-    const handlePartySearchChange = (e) => {
+    // Handle supplier search input change
+    const handleSupplierSearchChange = (e) => {
         const value = e.target.value;
-        console.log('📝 Party search changed:', value);
+        console.log('📝 Supplier search changed:', value);
 
-        setPartySearchQuery(value);
+        setSupplierSearchQuery(value);
 
-        if (selectedParty && value.trim() !== selectedParty.name.trim()) {
-            console.log('📝 Clearing selected party as name changed');
-            setSelectedParty(null);
+        if (selectedSupplier && value.trim() !== selectedSupplier.name.trim()) {
+            console.log('📝 Clearing selected supplier as name changed');
+            setSelectedSupplier(null);
 
-            onPartySelection({
+            onSupplierSelection({
                 target: {
-                    name: 'selectedParty',
+                    name: 'selectedSupplier',
                     value: ''
                 }
             });
         }
 
-        if (value.trim() && !selectedParty) {
+        if (value.trim() && !selectedSupplier) {
             setShowSuggestions(true);
         } else if (!value.trim()) {
             setShowSuggestions(false);
         }
     };
 
-    // Select party from suggestions
-    const handlePartySelect = (party, e) => {
+    // Select supplier from suggestions
+    const handleSupplierSelect = (supplier, e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
         }
 
-        console.log('🎯 Party selected:', party);
+        console.log('🎯 Supplier selected:', supplier);
 
-        setPartySearchQuery(party.name);
-        setSelectedParty(party);
+        setSupplierSearchQuery(supplier.name);
+        setSelectedSupplier(supplier);
         setShowSuggestions(false);
 
         setTimeout(() => {
-            onPartySelection({
+            onSupplierSelection({
                 target: {
-                    name: 'selectedParty',
-                    value: party.id.toString(),
-                    selectedPartyData: party
+                    name: 'selectedSupplier',
+                    value: supplier.id.toString(),
+                    selectedSupplierData: supplier
                 }
             });
         }, 0);
@@ -215,41 +219,41 @@ function SalesModal({
 
     // Handle input focus
     const handleInputFocus = () => {
-        if (partySearchQuery.trim() && !selectedParty) {
+        if (supplierSearchQuery.trim() && !selectedSupplier) {
             console.log('📝 Input focused, showing suggestions');
             setShowSuggestions(true);
         }
     };
 
-    // Handle invoice type toggle
-    const handleInvoiceTypeToggle = () => {
-        const newType = formData.invoiceType === 'gst' ? 'non-gst' : 'gst';
+    // Handle purchase type toggle
+    const handlePurchaseTypeToggle = () => {
+        const newType = formData.purchaseType === 'gst' ? 'non-gst' : 'gst';
         onInputChange({
             target: {
-                name: 'invoiceType',
+                name: 'purchaseType',
                 value: newType
             }
         });
     };
 
-    const handleAddPermanentParty = (e) => {
+    const handleAddPermanentSupplier = (e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
         }
 
-        console.log('🎯 Add as Permanent Party clicked');
-        console.log('📝 Party search query:', partySearchQuery.trim());
-        console.log('📝 Calling onShowAddPartyModal with running-customer');
+        console.log('🎯 Add as Permanent Supplier clicked');
+        console.log('📝 Supplier search query:', supplierSearchQuery.trim());
         setShowSuggestions(false);
 
-        if (typeof onShowAddPartyModal === 'function') {
-            onShowAddPartyModal(partySearchQuery.trim(), 'running-customer');
+        if (typeof onShowAddSupplierModal === 'function') {
+            onShowAddSupplierModal(supplierSearchQuery.trim(), 'supplier');
         } else {
-            console.error('❌ onShowAddPartyModal is not a function');
-            alert('Add party function not available');
+            console.error('❌ onShowAddSupplierModal is not a function');
+            alert('Add supplier function not available');
         }
     };
+
     // Handle discount change
     const handleDiscountChange = (e) => {
         const discountValue = parseFloat(e.target.value) || 0;
@@ -271,13 +275,18 @@ function SalesModal({
         console.log('📝 Form submitted');
 
         // Basic validation
-        if (!formData.invoiceDate) {
-            alert('Please select invoice date');
+        if (!formData.orderDate) {
+            alert('Please select order date');
             return;
         }
 
-        if (!selectedParty && !partySearchQuery.trim()) {
-            alert('Please select or enter a party name');
+        if (!formData.expectedDeliveryDate) {
+            alert('Please select expected delivery date');
+            return;
+        }
+
+        if (!selectedSupplier && !supplierSearchQuery.trim()) {
+            alert('Please select or enter a supplier name');
             return;
         }
 
@@ -296,13 +305,13 @@ function SalesModal({
             return;
         }
 
-        onSaveInvoice(e);
+        onSavePurchaseOrder(e);
     };
 
     // Click outside to close suggestions
     useEffect(() => {
         const handleClickOutside = (e) => {
-            if (partyInputRef.current && !partyInputRef.current.contains(e.target)) {
+            if (supplierInputRef.current && !supplierInputRef.current.contains(e.target)) {
                 setShowSuggestions(false);
             }
         };
@@ -315,50 +324,50 @@ function SalesModal({
         <Modal show={show} onHide={onHide} size="xl" centered>
             <Modal.Header closeButton>
                 <Modal.Title>
-                    <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                    {editingSale ? 'Edit Invoice' : 'Create New Invoice'}
+                    <FontAwesomeIcon icon={faShoppingBag} className="me-2" />
+                    {editingPurchaseOrder ? 'Edit Purchase Order' : 'Create New Purchase Order'}
                 </Modal.Title>
             </Modal.Header>
 
             <Modal.Body>
                 <Form onSubmit={handleSubmit}>
                     <Row className="mb-4">
-                        {/* Left Column - Party Details */}
+                        {/* Left Column - Supplier Details */}
                         <Col md={6}>
-                            {/* Invoice Type Toggle */}
+                            {/* Purchase Type Toggle */}
                             <div className="mb-3">
-                                <Form.Label className="fw-semibold">Invoice Type</Form.Label>
+                                <Form.Label className="fw-semibold">Purchase Type</Form.Label>
                                 <div>
                                     <Button
                                         variant="outline-primary"
-                                        onClick={handleInvoiceTypeToggle}
+                                        onClick={handlePurchaseTypeToggle}
                                         className="d-flex align-items-center gap-2"
                                         type="button"
                                     >
                                         <FontAwesomeIcon
-                                            icon={formData.invoiceType === 'gst' ? faToggleOn : faToggleOff}
-                                            className={formData.invoiceType === 'gst' ? 'text-success' : 'text-muted'}
+                                            icon={formData.purchaseType === 'gst' ? faToggleOn : faToggleOff}
+                                            className={formData.purchaseType === 'gst' ? 'text-success' : 'text-muted'}
                                         />
-                                        {formData.invoiceType === 'gst' ? 'GST Invoice' : 'Non-GST Invoice'}
+                                        {formData.purchaseType === 'gst' ? 'GST Purchase' : 'Non-GST Purchase'}
                                     </Button>
                                 </div>
                             </div>
 
-                            {/* Party Name */}
-                            <div className="mb-3 position-relative" ref={partyInputRef}>
+                            {/* Supplier Name */}
+                            <div className="mb-3 position-relative" ref={supplierInputRef}>
                                 <Form.Label className="fw-semibold">
-                                    Party Name <span className="text-danger">*</span>
+                                    Supplier Name <span className="text-danger">*</span>
                                 </Form.Label>
                                 <Form.Control
                                     type="text"
-                                    value={partySearchQuery}
-                                    onChange={handlePartySearchChange}
+                                    value={supplierSearchQuery}
+                                    onChange={handleSupplierSearchChange}
                                     onFocus={handleInputFocus}
-                                    placeholder="Type party name to search..."
+                                    placeholder="Type supplier name to search..."
                                     autoComplete="off"
                                 />
 
-                                {/* Party Suggestions Dropdown */}
+                                {/* Supplier Suggestions Dropdown */}
                                 {showSuggestions && (
                                     <div
                                         className="position-absolute w-100 mt-1"
@@ -366,17 +375,17 @@ function SalesModal({
                                     >
                                         <Card className="border shadow-lg">
                                             <Card.Body className="p-0">
-                                                {filteredParties.length > 0 ? (
+                                                {filteredSuppliers.length > 0 ? (
                                                     <>
                                                         <div className="px-3 py-2 bg-light border-bottom">
-                                                            <small className="text-muted fw-semibold">Existing Parties</small>
+                                                            <small className="text-muted fw-semibold">Existing Suppliers</small>
                                                         </div>
                                                         <ListGroup variant="flush">
-                                                            {filteredParties.map((party) => (
+                                                            {filteredSuppliers.map((supplier) => (
                                                                 <ListGroup.Item
-                                                                    key={party.id}
+                                                                    key={supplier.id}
                                                                     action
-                                                                    onClick={(e) => handlePartySelect(party, e)}
+                                                                    onClick={(e) => handleSupplierSelect(supplier, e)}
                                                                     className="cursor-pointer"
                                                                     style={{ cursor: 'pointer' }}
                                                                 >
@@ -386,10 +395,11 @@ function SalesModal({
                                                                             className="text-muted me-3"
                                                                         />
                                                                         <div>
-                                                                            <div className="fw-semibold">{party.name}</div>
+                                                                            <div className="fw-semibold">{supplier.name}</div>
                                                                             <small className="text-muted">
-                                                                                {party.phone || 'No phone'}
-                                                                                {party.email && ` • ${party.email}`}
+                                                                                {supplier.phone || supplier.whatsappNumber || 'No phone'}
+                                                                                {supplier.email && ` • ${supplier.email}`}
+                                                                                {supplier.gstNumber && ` • GST: ${supplier.gstNumber}`}
                                                                             </small>
                                                                         </div>
                                                                     </div>
@@ -397,28 +407,28 @@ function SalesModal({
                                                             ))}
                                                         </ListGroup>
                                                     </>
-                                                ) : partySearchQuery.trim() && (
+                                                ) : supplierSearchQuery.trim() && (
                                                     <>
                                                         <div className="px-3 py-2 bg-light border-bottom">
-                                                            <small className="text-muted">No existing party found</small>
+                                                            <small className="text-muted">No existing supplier found</small>
                                                         </div>
                                                         <div className="p-4 text-center">
                                                             <FontAwesomeIcon icon={faUser} size="3x" className="text-muted mb-3" />
                                                             <div className="mb-2">
-                                                                <strong>"{partySearchQuery}"</strong> - New Party
+                                                                <strong>"{supplierSearchQuery}"</strong> - New Supplier
                                                             </div>
                                                             <small className="text-muted d-block mb-4">
-                                                                This party doesn't exist in your database
+                                                                This supplier doesn't exist in your database
                                                             </small>
 
                                                             <div className="d-grid">
                                                                 <Button
                                                                     variant="primary"
-                                                                    onClick={handleAddPermanentParty}
+                                                                    onClick={handleAddPermanentSupplier}
                                                                     type="button"
                                                                 >
                                                                     <FontAwesomeIcon icon={faUserPlus} className="me-2" />
-                                                                    Add as Permanent Party
+                                                                    Add as Permanent Supplier
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -429,26 +439,26 @@ function SalesModal({
                                     </div>
                                 )}
 
-                                {/* Selected Party Display */}
-                                {selectedParty && (
+                                {/* Selected Supplier Display */}
+                                {selectedSupplier && (
                                     <div className="mt-2">
                                         <Badge bg="success" className="p-2">
                                             <FontAwesomeIcon icon={faUser} className="me-2" />
-                                            ✓ {selectedParty.name} selected
+                                            ✓ {selectedSupplier.name} selected
                                         </Badge>
                                     </div>
                                 )}
                             </div>
                         </Col>
 
-                        {/* Right Column - Invoice Details */}
+                        {/* Right Column - Order Details */}
                         <Col md={6}>
                             <Form.Group className="mb-3">
-                                <Form.Label>Invoice Number</Form.Label>
+                                <Form.Label>Purchase Order Number</Form.Label>
                                 <Form.Control
                                     type="text"
-                                    name="invoiceNumber"
-                                    value={formData.invoiceNumber}
+                                    name="orderNumber"
+                                    value={formData.orderNumber}
                                     onChange={onInputChange}
                                     placeholder="Auto-generated"
                                     readOnly
@@ -458,14 +468,30 @@ function SalesModal({
 
                             <Form.Group className="mb-3">
                                 <Form.Label>
-                                    Invoice Date <span className="text-danger">*</span>
+                                    <FontAwesomeIcon icon={faCalendar} className="me-1" />
+                                    Order Date <span className="text-danger">*</span>
                                 </Form.Label>
                                 <Form.Control
                                     type="date"
-                                    name="invoiceDate"
-                                    value={formData.invoiceDate}
+                                    name="orderDate"
+                                    value={formData.orderDate}
                                     onChange={onInputChange}
                                     required
+                                />
+                            </Form.Group>
+
+                            <Form.Group className="mb-3">
+                                <Form.Label>
+                                    <FontAwesomeIcon icon={faCalendar} className="me-1" />
+                                    Expected Delivery Date <span className="text-danger">*</span>
+                                </Form.Label>
+                                <Form.Control
+                                    type="date"
+                                    name="expectedDeliveryDate"
+                                    value={formData.expectedDeliveryDate}
+                                    onChange={onInputChange}
+                                    required
+                                    min={formData.orderDate} // Can't be before order date
                                 />
                             </Form.Group>
                         </Col>
@@ -474,12 +500,12 @@ function SalesModal({
                     {/* Items Section */}
                     <div className="mb-4">
                         <h6 className="fw-bold mb-3">Items</h6>
-                        <ItemsTable
+                        <PurchaseItemsTable
                             items={formData.items}
                             onItemChange={onItemChange}
                             onAddItem={onAddItem}
                             onRemoveItem={onRemoveItem}
-                            invoiceType={formData.invoiceType}
+                            purchaseType={formData.purchaseType}
                         />
                     </div>
 
@@ -494,7 +520,7 @@ function SalesModal({
                                     name="notes"
                                     value={formData.notes || ''}
                                     onChange={onInputChange}
-                                    placeholder="Any additional notes..."
+                                    placeholder="Any additional notes for the supplier..."
                                 />
                             </Form.Group>
                         </Col>
@@ -503,23 +529,23 @@ function SalesModal({
                             <Card className="bg-light border">
                                 <Card.Body>
                                     <h6 className="fw-bold mb-3 text-primary">
-                                        <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                                        Invoice Summary
+                                        <FontAwesomeIcon icon={faShoppingBag} className="me-2" />
+                                        Purchase Summary
                                     </h6>
 
                                     {/* Subtotal */}
                                     <div className="d-flex justify-content-between mb-2">
                                         <span>Subtotal:</span>
-                                        <span className="fw-semibold">₹{invoiceSummary.subtotal}</span>
+                                        <span className="fw-semibold">₹{purchaseSummary.subtotal}</span>
                                     </div>
 
-                                    {/* GST Amount - Only show for GST invoices */}
-                                    {formData.invoiceType === 'gst' && parseFloat(invoiceSummary.totalGST) > 0 && (
+                                    {/* GST Amount - Only show for GST purchases */}
+                                    {formData.purchaseType === 'gst' && parseFloat(purchaseSummary.totalGST) > 0 && (
                                         <div className="d-flex justify-content-between mb-2">
                                             <span className="text-success">
                                                 <small>GST Amount:</small>
                                             </span>
-                                            <span className="fw-semibold text-success">₹{invoiceSummary.totalGST}</span>
+                                            <span className="fw-semibold text-success">₹{purchaseSummary.totalGST}</span>
                                         </div>
                                     )}
 
@@ -540,9 +566,9 @@ function SalesModal({
                                                 size="sm"
                                             />
                                             <span className="text-muted">%</span>
-                                            {parseFloat(invoiceSummary.discountAmount) > 0 && (
+                                            {parseFloat(purchaseSummary.discountAmount) > 0 && (
                                                 <small className="text-danger ms-1">
-                                                    (-₹{invoiceSummary.discountAmount})
+                                                    (-₹{purchaseSummary.discountAmount})
                                                 </small>
                                             )}
                                         </div>
@@ -552,8 +578,8 @@ function SalesModal({
 
                                     {/* Final Total */}
                                     <div className="d-flex justify-content-between fw-bold fs-5">
-                                        <span>Total:</span>
-                                        <span className="text-primary">₹{invoiceSummary.finalTotal}</span>
+                                        <span>Total Amount:</span>
+                                        <span className="text-primary">₹{purchaseSummary.finalTotal}</span>
                                     </div>
 
                                     {/* Summary Statistics */}
@@ -561,9 +587,9 @@ function SalesModal({
                                     <div className="text-center">
                                         <small className="text-muted">
                                             {formData.items?.length || 0} item{(formData.items?.length || 0) !== 1 ? 's' : ''}
-                                            {formData.invoiceType === 'gst' && (
+                                            {formData.purchaseType === 'gst' && (
                                                 <span className="d-block">
-                                                    {formData.invoiceType.toUpperCase()} Invoice
+                                                    {formData.purchaseType.toUpperCase()} Purchase
                                                 </span>
                                             )}
                                         </small>
@@ -579,8 +605,8 @@ function SalesModal({
                             Cancel
                         </Button>
                         <Button variant="primary" type="submit">
-                            <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                            {editingSale ? 'Update Invoice' : 'Create Invoice'}
+                            <FontAwesomeIcon icon={faShoppingBag} className="me-2" />
+                            {editingPurchaseOrder ? 'Update Purchase Order' : 'Create Purchase Order'}
                         </Button>
                     </div>
                 </Form>
@@ -589,4 +615,4 @@ function SalesModal({
     );
 }
 
-export default SalesModal;
+export default PurchaseOrderModal;
