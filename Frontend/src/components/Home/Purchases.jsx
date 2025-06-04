@@ -9,6 +9,7 @@ import PurchasesTable from './Purchases/PurchasesTable';
 import PurchasesEmptyState from './Purchases/PurchasesEmptyState';
 import PurchaseModal from './Purchases/PurchaseModal';
 import QuickSupplierModal from './Purchases/QuickSupplierModal';
+import PurchaseBills from './Purchases/PurchaseBills'; // Add this import
 
 function Purchases({ view = 'allPurchases', onNavigate }) {
     // State management
@@ -23,6 +24,13 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
         from: '',
         to: ''
     });
+
+    // Update activeTab when view prop changes
+    useEffect(() => {
+        if (view) {
+            setActiveTab(view);
+        }
+    }, [view]);
 
     // Form data structure matching sales
     const [formData, setFormData] = useState({
@@ -182,7 +190,6 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
     };
 
     // Add quick supplier
-    // Update the handleAddQuickSupplier function around line 190-210
     const handleAddQuickSupplier = (e) => {
         e.preventDefault();
 
@@ -194,7 +201,6 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
         const newSupplier = {
             id: Date.now(),
             ...quickSupplierData,
-            // Include additional phones if passed from modal
             additionalPhones: e.additionalPhones || [],
             createdAt: new Date().toISOString()
         };
@@ -224,6 +230,7 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
         console.log('✅ Supplier added and selected:', newSupplier);
         alert(`${quickSupplierData.partyType === 'customer' ? 'Customer' : 'Supplier'} added and selected successfully!`);
     };
+
     // Item operations
     const handleItemChange = (index, field, value) => {
         const newItems = [...formData.items];
@@ -425,90 +432,125 @@ function Purchases({ view = 'allPurchases', onNavigate }) {
         return matchesSearch && matchesDate;
     });
 
-    return (
-        <Container fluid className="py-4">
-            {/* Page Header */}
-            <Row className="mb-4 align-items-center">
-                <Col>
-                    <h1 className="page-title mb-0">
-                        Purchase Management
-                        {hasPurchases && (
-                            <Badge bg="secondary" className="ms-2">{purchases.length}</Badge>
-                        )}
-                    </h1>
-                </Col>
-                <Col xs="auto">
-                    <Button
-                        variant="primary"
-                        className="d-flex align-items-center"
-                        onClick={handleOpenCreateModal}
-                    >
-                        <FontAwesomeIcon icon={faPlus} className="me-2" />
-                        Create Purchase Order
-                    </Button>
-                </Col>
-            </Row>
-
-            {/* Tabs */}
-            <Tabs
-                activeKey={activeTab}
-                onSelect={(k) => setActiveTab(k)}
-                className="mb-4 custom-tabs"
-            >
-                <Tab eventKey="allPurchases" title="All Purchases">
-                    {hasPurchases ? (
-                        <>
-                            <PurchasesSummaryCards purchases={purchases} />
-                            <PurchasesTable
-                                filteredPurchases={filteredPurchases}
-                                searchQuery={searchQuery}
-                                setSearchQuery={setSearchQuery}
-                                dateFilter={dateFilter}
-                                setDateFilter={setDateFilter}
-                                onCreatePurchase={handleOpenCreateModal}
-                                onEditPurchase={handleEditPurchase}
-                                onDeletePurchase={handleDeletePurchase}
-                            />
-                        </>
-                    ) : (
-                        <PurchasesEmptyState onCreatePurchase={handleOpenCreateModal} />
-                    )}
-                </Tab>
-                <Tab eventKey="orders" title="Purchase Orders">
+    // Render content based on active tab
+    const renderTabContent = () => {
+        switch (activeTab) {
+            case 'purchaseBills':
+                return <PurchaseBills />;
+            case 'allPurchases':
+                return hasPurchases ? (
+                    <>
+                        <PurchasesSummaryCards purchases={purchases} />
+                        <PurchasesTable
+                            filteredPurchases={filteredPurchases}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            dateFilter={dateFilter}
+                            setDateFilter={setDateFilter}
+                            onCreatePurchase={handleOpenCreateModal}
+                            onEditPurchase={handleEditPurchase}
+                            onDeletePurchase={handleDeletePurchase}
+                        />
+                    </>
+                ) : (
+                    <PurchasesEmptyState onCreatePurchase={handleOpenCreateModal} />
+                );
+            case 'orders':
+                return (
                     <div className="text-center py-5">
                         <p>Purchase orders management will be available here.</p>
                     </div>
-                </Tab>
-                <Tab eventKey="reports" title="Reports">
+                );
+            case 'reports':
+                return (
                     <div className="text-center py-5">
                         <p>Purchase reports and analytics will be available here.</p>
                     </div>
-                </Tab>
-            </Tabs>
+                );
+            default:
+                return (
+                    <div className="text-center py-5">
+                        <p>Content not found.</p>
+                    </div>
+                );
+        }
+    };
 
-            {/* Modals */}
-            <PurchaseModal
-                show={showCreateModal}
-                onHide={handleCloseModal}
-                editingPurchase={editingPurchase}
-                formData={formData}
-                suppliers={suppliers}
-                onInputChange={handleInputChange}
-                onSupplierSelection={handleSupplierSelection}
-                onItemChange={handleItemChange}
-                onAddItem={addItem}
-                onRemoveItem={removeItem}
-                onSavePurchase={handleSavePurchase}
-                onShowAddSupplierModal={() => setShowAddSupplierModal(true)}
-            />
+    return (
+        <Container fluid className="py-4">
+            {/* Page Header - Only show for non-PurchaseBills tabs */}
+            {activeTab !== 'purchaseBills' && (
+                <Row className="mb-4 align-items-center">
+                    <Col>
+                        <h1 className="page-title mb-0">
+                            Purchase Management
+                            {hasPurchases && (
+                                <Badge bg="secondary" className="ms-2">{purchases.length}</Badge>
+                            )}
+                        </h1>
+                    </Col>
+                    <Col xs="auto">
+                        <Button
+                            variant="primary"
+                            className="d-flex align-items-center"
+                            onClick={handleOpenCreateModal}
+                        >
+                            <FontAwesomeIcon icon={faPlus} className="me-2" />
+                            Create Purchase Order
+                        </Button>
+                    </Col>
+                </Row>
+            )}
 
-            <QuickSupplierModal
-                show={showAddSupplierModal}
-                onHide={() => setShowAddSupplierModal(false)}
-                quickSupplierData={quickSupplierData}
-                onQuickSupplierChange={handleQuickSupplierChange}
-                onAddQuickSupplier={handleAddQuickSupplier}
-            />
+            {/* Tabs - Only show for non-PurchaseBills tabs */}
+            {activeTab !== 'purchaseBills' && (
+                <Tabs
+                    activeKey={activeTab}
+                    onSelect={(k) => setActiveTab(k)}
+                    className="mb-4 custom-tabs"
+                >
+                    <Tab eventKey="allPurchases" title="All Purchases">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                    <Tab eventKey="orders" title="Purchase Orders">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                    <Tab eventKey="reports" title="Reports">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                </Tabs>
+            )}
+
+            {/* Render Tab Content */}
+            {renderTabContent()}
+
+            {/* Modals - Only show for non-PurchaseBills tabs */}
+            {activeTab !== 'purchaseBills' && (
+                <>
+                    <PurchaseModal
+                        show={showCreateModal}
+                        onHide={handleCloseModal}
+                        editingPurchase={editingPurchase}
+                        formData={formData}
+                        suppliers={suppliers}
+                        onInputChange={handleInputChange}
+                        onSupplierSelection={handleSupplierSelection}
+                        onItemChange={handleItemChange}
+                        onAddItem={addItem}
+                        onRemoveItem={removeItem}
+                        onSavePurchase={handleSavePurchase}
+                        onShowAddSupplierModal={() => setShowAddSupplierModal(true)}
+                    />
+
+                    <QuickSupplierModal
+                        show={showAddSupplierModal}
+                        onHide={() => setShowAddSupplierModal(false)}
+                        quickSupplierData={quickSupplierData}
+                        onQuickSupplierChange={handleQuickSupplierChange}
+                        onAddQuickSupplier={handleAddQuickSupplier}
+                    />
+                </>
+            )}
         </Container>
     );
 }

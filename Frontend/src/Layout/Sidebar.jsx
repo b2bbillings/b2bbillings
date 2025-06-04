@@ -18,7 +18,16 @@ import {
     faExchangeAlt,
     faUserTie,
     faFileInvoice,
-    faFileContract
+    faFileContract,
+    faFileInvoiceDollar,
+    faCreditCard,
+    faReceipt,
+    faUndoAlt,
+    faUniversity,
+    faMoneyBillWave,
+    faExchangeAlt as faTransfer,
+    faBalanceScale,
+    faChartBar
 } from '@fortawesome/free-solid-svg-icons';
 import './Sidebar.css';
 
@@ -37,7 +46,6 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
             onNavigate(page);
         }
     };
-
 
     return (
         <div className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
@@ -157,48 +165,117 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                             </Accordion.Body>
                         </Accordion.Item>
                     </div>
-                    {/* Purchases */}
+
+                    {/* Purchase & Expense */}
                     <div className="sidebar-item">
-                        <Accordion.Item eventKey="purchases" className="sidebar-accordion-item">
+                        <Accordion.Item eventKey="purchaseExpense" className="sidebar-accordion-item">
                             <Accordion.Header
-                                onClick={() => handleToggle('purchases')}
+                                onClick={() => handleToggle('purchaseExpense')}
                                 className="sidebar-header"
                             >
                                 <div className="sidebar-link-content">
                                     <FontAwesomeIcon icon={faShoppingBag} className="sidebar-icon" />
-                                    <span className="sidebar-text">Purchases</span>
+                                    <span className="sidebar-text">Purchase & Expense</span>
                                 </div>
                                 <FontAwesomeIcon
                                     icon={faAngleRight}
-                                    className={`chevron-icon ${activeKey === 'purchases' ? 'rotated' : ''}`}
+                                    className={`chevron-icon ${activeKey === 'purchaseExpense' ? 'rotated' : ''}`}
                                 />
                             </Accordion.Header>
                             <Accordion.Body className="sidebar-submenu">
                                 <Nav className="flex-column">
                                     <Nav.Link
-                                        onClick={() => handleNavigation('allPurchases')}
-                                        className={`submenu-item ${activePage === 'allPurchases' ? 'active' : ''}`}
+                                        onClick={() => handleNavigation('purchaseBills')}
+                                        className={`submenu-item ${activePage === 'purchaseBills' ? 'active' : ''}`}
                                     >
-                                        All Purchases
+                                        <FontAwesomeIcon icon={faFileInvoiceDollar} className="me-2" />
+                                        Purchase Bills
                                     </Nav.Link>
                                     <Nav.Link
-                                        onClick={() => handleNavigation('createPurchase')}
-                                        className={`submenu-item ${activePage === 'createPurchase' ? 'active' : ''}`}
+                                        onClick={() => handleNavigation('paymentOut')}
+                                        className={`submenu-item ${activePage === 'paymentOut' ? 'active' : ''}`}
                                     >
-                                        Create Purchase
+                                        <FontAwesomeIcon icon={faCreditCard} className="me-2" />
+                                        Payment Out
                                     </Nav.Link>
                                     <Nav.Link
-                                        onClick={() => handleNavigation('purchaseOrders')}
-                                        className={`submenu-item ${activePage === 'purchaseOrders' ? 'active' : ''}`}
+                                        onClick={() => handleNavigation('expenses')}
+                                        className={`submenu-item ${activePage === 'expenses' ? 'active' : ''}`}
                                     >
-                                        <FontAwesomeIcon icon={faFileContract} className="me-2" />
-                                        Purchase Orders
+                                        <FontAwesomeIcon icon={faReceipt} className="me-2" />
+                                        Expenses
                                     </Nav.Link>
                                     <Nav.Link
-                                        onClick={() => handleNavigation('createPurchaseOrder')}
-                                        className={`submenu-item ${activePage === 'createPurchaseOrder' ? 'active' : ''}`}
+                                        onClick={() => handleNavigation('purchaseOrder')}
+                                        className={`submenu-item ${activePage === 'purchaseOrder' ? 'active' : ''}`}
                                     >
-                                        Create Purchase Order
+                                        <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+                                        Purchase Order
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('purchaseReturn')}
+                                        className={`submenu-item ${activePage === 'purchaseReturn' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faUndoAlt} className="me-2" />
+                                        Purchase Return/ Dr. Note
+                                    </Nav.Link>
+                                </Nav>
+                            </Accordion.Body>
+                        </Accordion.Item>
+                    </div>
+
+                    {/* Bank & Cash - NEW SECTION */}
+                    <div className="sidebar-item">
+                        <Accordion.Item eventKey="bankCash" className="sidebar-accordion-item">
+                            <Accordion.Header
+                                onClick={() => handleToggle('bankCash')}
+                                className="sidebar-header"
+                            >
+                                <div className="sidebar-link-content">
+                                    <FontAwesomeIcon icon={faUniversity} className="sidebar-icon" />
+                                    <span className="sidebar-text">Bank & Cash</span>
+                                </div>
+                                <FontAwesomeIcon
+                                    icon={faAngleRight}
+                                    className={`chevron-icon ${activeKey === 'bankCash' ? 'rotated' : ''}`}
+                                />
+                            </Accordion.Header>
+                            <Accordion.Body className="sidebar-submenu">
+                                <Nav className="flex-column">
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('bankAccounts')}
+                                        className={`submenu-item ${activePage === 'bankAccounts' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faUniversity} className="me-2" />
+                                        Bank Accounts
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('cashAccounts')}
+                                        className={`submenu-item ${activePage === 'cashAccounts' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
+                                        Cash Accounts
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('bankTransactions')}
+                                        className={`submenu-item ${activePage === 'bankTransactions' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faTransfer} className="me-2" />
+                                        Transactions
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('bankReconciliation')}
+                                        className={`submenu-item ${activePage === 'bankReconciliation' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faBalanceScale} className="me-2" />
+                                        Reconciliation
+                                    </Nav.Link>
+                                    <Nav.Link
+                                        onClick={() => handleNavigation('cashFlow')}
+                                        className={`submenu-item ${activePage === 'cashFlow' ? 'active' : ''}`}
+                                    >
+                                        <FontAwesomeIcon icon={faChartBar} className="me-2" />
+                                        Cash Flow Report
                                     </Nav.Link>
                                 </Nav>
                             </Accordion.Body>

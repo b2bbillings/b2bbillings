@@ -1,201 +1,312 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button, Badge, Tabs, Tab, Toast, ToastContainer } from 'react-bootstrap';
+import { Container, Row, Col, Button } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faSearch, faCheck, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 import './Inventory.css';
 
 // Import components
-import InventorySummaryCards from './Inventory/InventorySummaryCards';
-import InventoryTable from './Inventory/InventoryTable';
-import InventoryEmptyState from './Inventory/InventoryEmptyState';
+import InventoryHeader from './Inventory/InventoryHeader';
+import InventorySidebar from './Inventory/InventorySidebar';
+import ItemInfoSection from './Inventory/ItemInfoSection';
+import TransactionHistory from './Inventory/TransactionHistory';
 import ProductModal from './Inventory/ProductModal';
 import StockAdjustmentModal from './Inventory/StockAdjustmentModal';
 import CategoryModal from './Inventory/CategoryModal';
 import BulkImportModal from './Inventory/BulkImportModal';
-import ProductSearchModal from './Inventory/ProductSearchModal';
+import SalesForm from './Sales/SalesInvoice/SalesForm';
+import PurchaseForm from './Purchases/PurchaseForm';
 
 function Inventory({ view = 'allProducts', onNavigate }) {
+    // Add current view state for form navigation
+    const [currentView, setCurrentView] = useState('inventory'); // 'inventory', 'sale', 'purchase'
+
     // State management
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
-    const [lowStockItems, setLowStockItems] = useState([]);
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [activeType, setActiveType] = useState('products'); // 'products' or 'services'
+    const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+    const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
+
+    // Modal states
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showStockModal, setShowStockModal] = useState(false);
     const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [showBulkImportModal, setShowBulkImportModal] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
     const [selectedProductForStock, setSelectedProductForStock] = useState(null);
-    const [activeTab, setActiveTab] = useState(view || 'allProducts');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('');
-    const [stockFilter, setStockFilter] = useState('');
-    const [showSearchModal, setShowSearchModal] = useState(false);
 
-    // Toast notification state
-    const [showToast, setShowToast] = useState(false);
-    const [toastMessage, setToastMessage] = useState('');
-    const [toastVariant, setToastVariant] = useState('success');
-
-    // Product form data
+    // Form data states
     const [formData, setFormData] = useState({
         name: '',
         sku: '',
+        itemCode: '',
+        hsnNumber: '',
         category: '',
+        description: '',
         price: 0,
+        buyPrice: 0,
+        salePrice: 0,
         gstRate: 18,
-        unit: 'piece',
+        unit: 'PCS',
+        type: 'product',
         minStockLevel: 10,
         currentStock: 0,
-        description: '',
-        isService: false,
+        openingStock: 0,
         isActive: true
     });
 
-    // Category form data
     const [categoryFormData, setCategoryFormData] = useState({
         name: '',
         description: '',
         isActive: true
     });
 
-    const hasProducts = products.length > 0;
-
-    // Load sample data on component mount
+    // Load sample data
     useEffect(() => {
         const sampleCategories = [
             { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
             { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
             { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
-            { id: 4, name: 'Appliances', description: 'Home and office appliances', isActive: true },
-            { id: 5, name: 'Services', description: 'Service-based offerings', isActive: true },
+            { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
         ];
 
         const sampleProducts = [
             {
                 id: 1,
-                name: 'Laptop Dell Inspiron 15',
-                sku: 'DELL-INS-15-001',
+                name: 'Laptop',
+                itemCode: 'DELL-INS-15-001',
+                hsnNumber: '8471',
                 category: 'Electronics',
-                price: 45000,
+                buyPrice: 42000,
+                salePrice: 100000,
                 gstRate: 18,
-                unit: 'piece',
-                currentStock: 25,
+                unit: 'PCS',
+                currentStock: 0,
                 minStockLevel: 5,
-                description: 'Dell Inspiron 15 3000 Series Laptop',
-                isService: false,
+                description: 'Dell Inspiron 15 3000 Series Laptop with i5 processor and 8GB RAM',
+                type: 'product',
                 isActive: true,
                 createdAt: new Date().toISOString()
             },
             {
                 id: 2,
-                name: 'Office Chair Executive',
-                sku: 'OFC-CHR-EXE-001',
+                name: 'Sample Item',
+                itemCode: 'SAMPLE-001',
+                hsnNumber: '9401',
                 category: 'Furniture',
-                price: 8500,
+                buyPrice: 7500,
+                salePrice: 8500,
                 gstRate: 12,
-                unit: 'piece',
-                currentStock: 3,
+                unit: 'PCS',
+                currentStock: 1,
                 minStockLevel: 10,
-                description: 'Executive Office Chair with Lumbar Support',
-                isService: false,
+                description: 'Sample item for testing purposes',
+                type: 'product',
                 isActive: true,
                 createdAt: new Date().toISOString()
             },
             {
                 id: 3,
-                name: 'Printer Paper A4',
-                sku: 'PPR-A4-001',
-                category: 'Stationery',
-                price: 350,
-                gstRate: 12,
-                unit: 'pack',
-                currentStock: 150,
-                minStockLevel: 50,
-                description: 'A4 Size Printer Paper 500 Sheets',
-                isService: false,
+                name: 'Business Consultation',
+                itemCode: 'SVC-CONS-001',
+                hsnNumber: '998314',
+                category: 'Services',
+                buyPrice: 0,
+                salePrice: 2000,
+                gstRate: 18,
+                unit: 'HRS',
+                currentStock: null,
+                minStockLevel: null,
+                description: 'Professional business consultation service per hour',
+                type: 'service',
                 isActive: true,
                 createdAt: new Date().toISOString()
             },
             {
                 id: 4,
-                name: 'Consultation Service',
-                sku: 'SVC-CONS-001',
-                category: 'Services',
-                price: 2000,
-                gstRate: 18,
-                unit: 'hour',
-                currentStock: null,
-                minStockLevel: null,
-                description: 'Business Consultation Service per hour',
-                isService: true,
-                isActive: true,
-                createdAt: new Date().toISOString()
-            },
-            {
-                id: 5,
                 name: 'Wireless Mouse',
-                sku: 'MOU-WL-001',
+                itemCode: 'MOU-WL-001',
+                hsnNumber: '8471',
                 category: 'Electronics',
-                price: 1200,
+                buyPrice: 1000,
+                salePrice: 1200,
                 gstRate: 18,
-                unit: 'piece',
-                currentStock: 0,
+                unit: 'PCS',
+                currentStock: 15,
                 minStockLevel: 20,
-                description: 'Wireless Optical Mouse',
-                isService: false,
+                description: 'Optical wireless mouse with USB receiver',
+                type: 'product',
                 isActive: true,
                 createdAt: new Date().toISOString()
             }
         ];
 
+        const sampleTransactions = [
+            {
+                id: 1,
+                type: 'Sale',
+                invoiceNumber: '1',
+                itemId: 1,
+                customerName: 'IT Solution',
+                date: '03/06/2025',
+                quantity: 1,
+                pricePerUnit: 100000,
+                status: 'Unpaid'
+            },
+            {
+                id: 2,
+                type: 'Purchase',
+                invoiceNumber: '',
+                itemId: 1,
+                customerName: 'IT Solution',
+                date: '03/06/2025',
+                quantity: 1,
+                pricePerUnit: 11111,
+                status: 'Paid'
+            },
+            {
+                id: 3,
+                type: 'Sale',
+                invoiceNumber: '2',
+                itemId: 2,
+                customerName: 'ABC Corp',
+                date: '02/06/2025',
+                quantity: 2,
+                pricePerUnit: 8500,
+                status: 'Paid'
+            }
+        ];
+
         setCategories(sampleCategories);
         setProducts(sampleProducts);
+        setTransactions(sampleTransactions);
 
-        // Calculate low stock items
-        const lowStock = sampleProducts.filter(product =>
-            !product.isService &&
-            product.currentStock <= product.minStockLevel
-        );
-        setLowStockItems(lowStock);
+        // Set first product as selected by default
+        if (sampleProducts.length > 0) {
+            setSelectedItem(sampleProducts[0]);
+        }
     }, []);
 
-    // Show toast notification
-    const showToastNotification = (message, variant = 'success') => {
-        setToastMessage(message);
-        setToastVariant(variant);
-        setShowToast(true);
+    // Filter products/services based on active type
+    const filteredItems = products.filter(product => {
+        const typeMatch = activeType === 'products' ? product.type === 'product' : product.type === 'service';
+        return typeMatch;
+    });
 
-        // Auto-hide toast after 4 seconds
-        setTimeout(() => {
-            setShowToast(false);
-        }, 4000);
+    // Handle type change
+    const handleTypeChange = (type) => {
+        setActiveType(type);
+        setSidebarSearchQuery('');
+        // Reset selection when switching types
+        const typeItems = products.filter(product =>
+            type === 'products' ? product.type === 'product' : product.type === 'service'
+        );
+        if (typeItems.length > 0) {
+            setSelectedItem(typeItems[0]);
+        } else {
+            setSelectedItem(null);
+        }
     };
 
-    // Modal operations
-    const handleOpenCreateModal = () => {
+    // Handle item selection
+    const handleItemSelect = (item) => {
+        setSelectedItem(item);
+    };
+
+    // Navigation handlers for Sales/Purchase forms (matching Bank.jsx pattern)
+    const handleAddSale = () => {
+        setCurrentView('sale');
+    };
+
+    const handleAddPurchase = () => {
+        setCurrentView('purchase');
+    };
+
+    const handleBackToInventory = () => {
+        setCurrentView('inventory');
+    };
+
+
+    // Form save handlers (matching Bank.jsx pattern)
+    const handleSaleFormSave = (saleData) => {
+        console.log('💾 Saving sale data from Inventory component:', saleData);
+
+        // Add transaction to inventory records
+        const newTransaction = {
+            id: Date.now(),
+            type: 'Sale',
+            invoiceNumber: saleData.invoiceNumber,
+            itemId: selectedItem?.id || 1,
+            customerName: saleData.customer?.name || 'Customer',
+            date: new Date().toLocaleDateString('en-GB'),
+            quantity: saleData.items?.reduce((total, item) => total + item.quantity, 0) || 1,
+            pricePerUnit: saleData.totals?.finalTotal || 0,
+            status: saleData.paymentStatus || 'Unpaid'
+        };
+
+        // Update transactions
+        setTransactions(prev => [...prev, newTransaction]);
+
+        // Update product stock if applicable
+        if (saleData.items) {
+            saleData.items.forEach(item => {
+                setProducts(prev => prev.map(product =>
+                    product.id === item.productId
+                        ? { ...product, currentStock: Math.max(0, product.currentStock - item.quantity) }
+                        : product
+                ));
+            });
+        }
+
+        // Go back to inventory view
+        setCurrentView('inventory');
+        alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
+    };
+
+    const handlePurchaseFormSave = (purchaseData) => {
+        console.log('💾 Saving purchase data from Inventory component:', purchaseData);
+
+        // Add transaction to inventory records
+        const newTransaction = {
+            id: Date.now(),
+            type: 'Purchase',
+            invoiceNumber: purchaseData.purchaseNumber,
+            itemId: selectedItem?.id || 1,
+            customerName: purchaseData.supplier?.name || 'Supplier',
+            date: new Date().toLocaleDateString('en-GB'),
+            quantity: purchaseData.items?.reduce((total, item) => total + item.quantity, 0) || 1,
+            pricePerUnit: purchaseData.totals?.finalTotal || 0,
+            status: purchaseData.paymentStatus || 'Paid'
+        };
+
+        // Update transactions
+        setTransactions(prev => [...prev, newTransaction]);
+
+        // Update product stock if applicable
+        if (purchaseData.items) {
+            purchaseData.items.forEach(item => {
+                setProducts(prev => prev.map(product =>
+                    product.id === item.productId
+                        ? { ...product, currentStock: product.currentStock + item.quantity }
+                        : product
+                ));
+            });
+        }
+
+        // Go back to inventory view
+        setCurrentView('inventory');
+        alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
+    };
+
+    const handleAddCategory = (categoryData) => {
+        console.log('Adding new category:', categoryData);
+        setCategories(prev => [...prev, categoryData]);
+    };
+    // Handle Add Item
+    const handleAddItem = (itemType) => {
         setEditingProduct(null);
-        setFormData({
-            name: '',
-            sku: generateSKU(),
-            itemCode: '',
-            hsnNumber: '',
-            category: '',
-            description: '',
-            price: 0,
-            gstRate: 18,
-            unit: 'piece',
-            type: 'product',
-            minStockLevel: 10,
-            currentStock: 0,
-            openingStock: 0,
-            isService: false,
-            isActive: true
-        });
-        setShowCreateModal(true);
-    };
-
-    const handleCloseModal = () => {
-        setShowCreateModal(false);
         setFormData({
             name: '',
             sku: '',
@@ -203,70 +314,46 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             hsnNumber: '',
             category: '',
             description: '',
-            price: 0,
+            buyPrice: 0,
+            salePrice: 0,
             gstRate: 18,
-            unit: 'piece',
-            type: 'product',
+            unit: 'PCS',
+            type: itemType,
             minStockLevel: 10,
             currentStock: 0,
             openingStock: 0,
-            isService: false,
             isActive: true
         });
-        setEditingProduct(null);
-    };
-
-    const handleProductFromSearch = (product) => {
-        // Pre-fill form with selected product data
-        setFormData({
-            name: product.name || '',
-            sku: product.sku || product.itemCode || generateSKU(),
-            itemCode: product.itemCode || product.sku || '',
-            hsnNumber: product.hsnNumber || '',
-            unit: product.unit || 'piece',
-            category: product.category || '',
-            description: product.description || '',
-            price: product.price || 0,
-            type: product.type || (product.isService ? 'service' : 'product'),
-            gstRate: product.gstRate || 18,
-            openingStock: product.currentStock || product.openingStock || 0,
-            currentStock: product.currentStock || 0,
-            minStockLevel: product.minStockLevel || 10,
-            isService: product.type === 'service' || product.isService || false,
-            isActive: product.isActive !== undefined ? product.isActive : true
-        });
-
-        // Open the product modal
-        setEditingProduct(null); // This will be a new product, not editing
         setShowCreateModal(true);
     };
 
-    // Generate SKU
-    const generateSKU = () => {
-        const timestamp = Date.now().toString().slice(-6);
-        return `PRD-${timestamp}`;
+    // Handle Edit Item
+    const handleEditItem = (item) => {
+        setEditingProduct(item);
+        setFormData(item);
+        setShowCreateModal(true);
     };
 
-    // Form input changes
+    // Handle Adjust Stock
+    const handleAdjustStock = (item) => {
+        setSelectedProductForStock(item);
+        setShowStockModal(true);
+    };
+
+    // Modal handlers
+    const handleCloseModal = () => {
+        setShowCreateModal(false);
+        setEditingProduct(null);
+    };
+
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
-
-        // Auto-generate SKU based on product name
-        if (name === 'name' && value && !editingProduct) {
-            const skuBase = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-            const timestamp = Date.now().toString().slice(-3);
-            setFormData(prev => ({
-                ...prev,
-                sku: `${skuBase}-${timestamp}`
-            }));
-        }
     };
 
-    // Category form changes
     const handleCategoryInputChange = (e) => {
         const { name, value, type, checked } = e.target;
         setCategoryFormData(prev => ({
@@ -275,135 +362,59 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         }));
     };
 
-    // Updated handleSaveProduct function
     const handleSaveProduct = async (e, isSaveAndAdd = false) => {
         e.preventDefault();
 
         try {
-            // Validation
-            if (!formData.name.trim()) {
-                showToastNotification('Please enter product name', 'error');
-                return false;
-            }
-
-            if (!formData.category) {
-                showToastNotification('Please select a category', 'error');
-                return false;
-            }
-
-            // Map form data to product structure
             const productData = {
-                name: formData.name,
-                sku: formData.sku || formData.itemCode || generateSKU(),
-                itemCode: formData.itemCode || formData.sku,
-                hsnNumber: formData.hsnNumber || '',
-                category: formData.category,
-                description: formData.description || '',
-                price: parseFloat(formData.price) || 0,
-                gstRate: parseFloat(formData.gstRate) || 18,
-                unit: formData.unit || 'piece',
-                currentStock: formData.isService || formData.type === 'service' ? null : (parseFloat(formData.currentStock) || parseFloat(formData.openingStock) || 0),
-                minStockLevel: formData.isService || formData.type === 'service' ? null : (parseFloat(formData.minStockLevel) || 10),
-                isService: formData.isService || formData.type === 'service',
-                type: formData.type || (formData.isService ? 'service' : 'product'),
-                isActive: formData.isActive !== false
+                ...formData,
+                id: editingProduct ? editingProduct.id : Date.now(),
+                createdAt: editingProduct ? editingProduct.createdAt : new Date().toISOString()
             };
 
             if (editingProduct) {
-                // Update existing product
                 setProducts(products.map(product =>
-                    product.id === editingProduct.id
-                        ? { ...productData, id: editingProduct.id, createdAt: editingProduct.createdAt }
-                        : product
+                    product.id === editingProduct.id ? productData : product
                 ));
-
-                if (!isSaveAndAdd) {
-                    showToastNotification(`${productData.name} updated successfully!`);
-                    handleCloseModal();
+                // Update selected item if it's the one being edited
+                if (selectedItem?.id === editingProduct.id) {
+                    setSelectedItem(productData);
                 }
             } else {
-                // Create new product
-                const newProduct = {
-                    ...productData,
-                    id: Date.now(),
-                    createdAt: new Date().toISOString()
-                };
-                setProducts(prevProducts => [...prevProducts, newProduct]);
-
-                if (!isSaveAndAdd) {
-                    showToastNotification(`${productData.name} created successfully!`);
-                    handleCloseModal();
-                }
+                setProducts(prev => [...prev, productData]);
             }
 
-            updateLowStockItems();
-            return true; // Return success
-
+            if (!isSaveAndAdd) {
+                handleCloseModal();
+            } else {
+                // Reset form for new item
+                setFormData({
+                    ...formData,
+                    name: '',
+                    itemCode: '',
+                    description: '',
+                    buyPrice: 0,
+                    salePrice: 0,
+                    currentStock: 0,
+                    openingStock: 0
+                });
+            }
+            return true;
         } catch (error) {
             console.error('Error saving product:', error);
-            showToastNotification('Error saving product. Please try again.', 'error');
-            return false; // Return failure
+            return false;
         }
     };
 
-    // Save category
     const handleSaveCategory = (e) => {
         e.preventDefault();
-
-        if (!categoryFormData.name.trim()) {
-            showToastNotification('Please enter category name', 'error');
-            return;
-        }
-
         const newCategory = {
             ...categoryFormData,
             id: Date.now()
         };
-
         setCategories([...categories, newCategory]);
-        setCategoryFormData({
-            name: '',
-            description: '',
-            isActive: true
-        });
+        setCategoryFormData({ name: '', description: '', isActive: true });
         setShowCategoryModal(false);
-        showToastNotification(`Category "${newCategory.name}" created successfully!`);
-    };
-
-    const handleEditProduct = (product) => {
-        setEditingProduct(product);
-        setFormData({
-            name: product.name || '',
-            sku: product.sku || '',
-            itemCode: product.itemCode || product.sku || '',
-            hsnNumber: product.hsnNumber || '',
-            category: product.category || '',
-            description: product.description || '',
-            price: product.price || 0,
-            gstRate: product.gstRate || 18,
-            unit: product.unit || 'piece',
-            type: product.type || (product.isService ? 'service' : 'product'),
-            minStockLevel: product.minStockLevel || 10,
-            currentStock: product.currentStock || 0,
-            openingStock: product.currentStock || 0,
-            isService: product.isService || product.type === 'service',
-            isActive: product.isActive !== false
-        });
-        setShowCreateModal(true);
-    };
-
-    const handleDeleteProduct = (productId) => {
-        if (window.confirm('Are you sure you want to delete this product?')) {
-            setProducts(products.filter(product => product.id !== productId));
-            updateLowStockItems();
-            showToastNotification('Product deleted successfully!');
-        }
-    };
-
-    // Stock adjustment
-    const handleStockAdjustment = (product) => {
-        setSelectedProductForStock(product);
-        setShowStockModal(true);
     };
 
     const handleUpdateStock = (productId, newStock, reason) => {
@@ -414,171 +425,147 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         ));
         setShowStockModal(false);
         setSelectedProductForStock(null);
-        updateLowStockItems();
-        showToastNotification('Stock updated successfully!');
-    };
-
-    // Update low stock items
-    const updateLowStockItems = () => {
-        const lowStock = products.filter(product =>
-            !product.isService &&
-            product.currentStock <= product.minStockLevel
-        );
-        setLowStockItems(lowStock);
-    };
-
-    // Filter products
-    const filteredProducts = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-
-        const matchesCategory = !categoryFilter || product.category === categoryFilter;
-
-        let matchesStock = true;
-        if (stockFilter === 'in-stock') {
-            matchesStock = product.isService || product.currentStock > product.minStockLevel;
-        } else if (stockFilter === 'low-stock') {
-            matchesStock = !product.isService && product.currentStock <= product.minStockLevel && product.currentStock > 0;
-        } else if (stockFilter === 'out-of-stock') {
-            matchesStock = !product.isService && product.currentStock === 0;
+        // Update selected item if it's the one being updated
+        if (selectedItem?.id === productId) {
+            setSelectedItem(prev => ({ ...prev, currentStock: newStock }));
         }
+    };
 
-        return matchesSearch && matchesCategory && matchesStock;
-    });
+    // Header action handlers
+    const handleMoreOptions = () => {
+        console.log('More options clicked');
+        // Add your logic here
+    };
 
+    const handleSettings = () => {
+        console.log('Settings clicked');
+        // Add your logic here
+    };
+
+    // Render Sales Form View
+    if (currentView === 'sale') {
+        return (
+            <div className="d-flex flex-column vh-100">
+                {/* Header with Back Button */}
+                <div className="sales-form-header bg-white border-bottom">
+                    <Container fluid className="px-4">
+                        <Row className="align-items-center py-3">
+                            <Col>
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={handleBackToInventory}
+                                    className="me-3"
+                                >
+                                    <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
+                                    Back to Inventory
+                                </Button>
+                                <span className="page-title-text fw-bold">Create New Sale</span>
+                            </Col>
+                        </Row>
+                    </Container>
+                </div>
+
+                {/* Sales Form */}
+                <SalesForm
+                    onSave={handleSaleFormSave}
+                    onCancel={handleBackToInventory}
+                />
+            </div>
+        );
+    }
+
+    // Render Purchase Form View
+    if (currentView === 'purchase') {
+        return (
+            <div className="d-flex flex-column vh-100">
+                {/* Header with Back Button */}
+                <div className="sales-form-header bg-white border-bottom">
+                    <Container fluid className="px-4">
+                        <Row className="align-items-center py-3">
+                            <Col>
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={handleBackToInventory}
+                                    className="me-3"
+                                >
+                                    <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
+                                    Back to Inventory
+                                </Button>
+                                <span className="page-title-text fw-bold">Create New Purchase</span>
+                            </Col>
+                        </Row>
+                    </Container>
+                </div>
+
+                {/* Purchase Form */}
+                <PurchaseForm
+                    onSave={handlePurchaseFormSave}
+                    onCancel={handleBackToInventory}
+                />
+            </div>
+        );
+    }
+
+    // Render Inventory View (Default)
     return (
-        <Container fluid className="py-4">
-            {/* Toast Notifications */}
-            <ToastContainer
-                position="top-end"
-                className="p-3"
-                style={{
-                    position: 'fixed',
-                    top: '20px',
-                    right: '20px',
-                    zIndex: 9999
-                }}
-            >
-                <Toast
-                    show={showToast}
-                    onClose={() => setShowToast(false)}
-                    className={`inventory-toast ${toastVariant === 'error' ? 'error-toast' : 'success-toast'}`}
-                    autohide
-                    delay={4000}
-                >
-                    <Toast.Header className={`${toastVariant === 'error' ? 'bg-danger' : 'bg-success'} text-white border-0`}>
-                        <FontAwesomeIcon
-                            icon={toastVariant === 'error' ? faExclamationTriangle : faCheck}
-                            className="me-2"
-                        />
-                        <strong className="me-auto">
-                            {toastVariant === 'error' ? 'Error' : 'Success'}
-                        </strong>
-                    </Toast.Header>
-                    <Toast.Body className="bg-light border-0">
-                        <div className="d-flex align-items-center">
-                            <FontAwesomeIcon
-                                icon={toastVariant === 'error' ? faExclamationTriangle : faCheck}
-                                className={`${toastVariant === 'error' ? 'text-danger' : 'text-success'} me-2`}
-                            />
-                            <span>{toastMessage}</span>
-                        </div>
-                    </Toast.Body>
-                </Toast>
-            </ToastContainer>
+        <div className="d-flex flex-column vh-100">
+            {/* Header */}
+            <InventoryHeader
+                activeType={activeType}
+                onTypeChange={handleTypeChange}
+                transactionSearchQuery={transactionSearchQuery}
+                onTransactionSearchChange={setTransactionSearchQuery}
+                onAddSale={handleAddSale}
+                onAddPurchase={handleAddPurchase}
+                onBulkImport={() => setShowBulkImportModal(true)}
+                onMoreOptions={handleMoreOptions}
+                onSettings={handleSettings}
+            />
 
-            {/* Page Header */}
-            <Row className="mb-4 align-items-center">
-                <Col>
-                    <h1 className="page-title mb-0">
-                        Inventory Management
-                        {hasProducts && (
-                            <Badge bg="secondary" className="ms-2">{products.length}</Badge>
-                        )}
-                    </h1>
-                </Col>
-                <Col xs="auto" className="d-flex gap-2">
-                    {/* Add Search Button */}
-                    <Button
-                        variant="outline-info"
-                        onClick={() => setShowSearchModal(true)}
-                        className="d-flex align-items-center"
-                    >
-                        <FontAwesomeIcon icon={faSearch} className="me-2" />
-                        Search Products
-                    </Button>
-                    <Button
-                        variant="outline-primary"
-                        onClick={() => setShowCategoryModal(true)}
-                    >
-                        Add Category
-                    </Button>
-                    <Button
-                        variant="outline-secondary"
-                        onClick={() => setShowBulkImportModal(true)}
-                    >
-                        Bulk Import
-                    </Button>
-                    <Button
-                        variant="primary"
-                        className="d-flex align-items-center"
-                        onClick={handleOpenCreateModal}
-                    >
-                        <FontAwesomeIcon icon={faPlus} className="me-2" />
-                        Add Product
-                    </Button>
-                </Col>
-            </Row>
+            {/* Main Content */}
+            <div className="flex-grow-1 overflow-hidden">
+                <Container fluid className="h-100 p-0">
+                    <Row className="h-100 g-0">
+                        {/* Left Sidebar */}
+                        <Col md={4} lg={3}>
+                            <InventorySidebar
+                                items={filteredItems}
+                                selectedItem={selectedItem}
+                                onItemSelect={handleItemSelect}
+                                onAddItem={handleAddItem}
+                                onAddCategory={handleAddCategory} // Now passes category data
+                                searchQuery={sidebarSearchQuery}
+                                onSearchChange={setSidebarSearchQuery}
+                                activeType={activeType}
+                            />
+                        </Col>
 
-            {/* Tabs */}
-            <Tabs
-                activeKey={activeTab}
-                onSelect={(k) => setActiveTab(k)}
-                className="mb-4 custom-tabs"
-            >
-                <Tab eventKey="allProducts" title="All Products">
-                    {hasProducts ? (
-                        <>
-                            <InventorySummaryCards
-                                products={products}
-                                lowStockItems={lowStockItems}
-                                categories={categories}
-                            />
-                            <InventoryTable
-                                filteredProducts={filteredProducts}
-                                searchQuery={searchQuery}
-                                setSearchQuery={setSearchQuery}
-                                categoryFilter={categoryFilter}
-                                setCategoryFilter={setCategoryFilter}
-                                stockFilter={stockFilter}
-                                setStockFilter={setStockFilter}
-                                categories={categories}
-                                onCreateProduct={handleOpenCreateModal}
-                                onEditProduct={handleEditProduct}
-                                onDeleteProduct={handleDeleteProduct}
-                                onStockAdjustment={handleStockAdjustment}
-                            />
-                        </>
-                    ) : (
-                        <InventoryEmptyState onCreateProduct={handleOpenCreateModal} />
-                    )}
-                </Tab>
-                <Tab eventKey="lowStock" title={`Low Stock ${lowStockItems.length > 0 ? `(${lowStockItems.length})` : ''}`}>
-                    <div className="text-center py-5">
-                        <p>Low stock items management will be available here.</p>
-                    </div>
-                </Tab>
-                <Tab eventKey="stockMovement" title="Stock Movement">
-                    <div className="text-center py-5">
-                        <p>Stock movement tracking will be available here.</p>
-                    </div>
-                </Tab>
-                <Tab eventKey="reports" title="Reports">
-                    <div className="text-center py-5">
-                        <p>Inventory reports and analytics will be available here.</p>
-                    </div>
-                </Tab>
-            </Tabs>
+                        {/* Right Content */}
+                        <Col md={8} lg={9}>
+                            <div className="h-100 d-flex flex-column">
+                                {/* Item Info Section */}
+                                <div className="flex-shrink-0 p-3">
+                                    <ItemInfoSection
+                                        selectedItem={selectedItem}
+                                        onEditItem={handleEditItem}
+                                        onAdjustStock={handleAdjustStock}
+                                    />
+                                </div>
+
+                                {/* Transaction History */}
+                                <div className="flex-grow-1 px-3 pb-3">
+                                    <TransactionHistory
+                                        transactions={transactions}
+                                        selectedItem={selectedItem}
+                                        searchQuery={transactionSearchQuery}
+                                        onSearchChange={setTransactionSearchQuery}
+                                    />
+                                </div>
+                            </div>
+                        </Col>
+                    </Row>
+                </Container>
+            </div>
 
             {/* Modals */}
             <ProductModal
@@ -589,7 +576,6 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 categories={categories}
                 onInputChange={handleInputChange}
                 onSaveProduct={handleSaveProduct}
-                existingProducts={products}
             />
 
             <StockAdjustmentModal
@@ -613,60 +599,9 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 categories={categories}
                 onProductsImported={(importedProducts) => {
                     setProducts([...products, ...importedProducts]);
-                    updateLowStockItems();
                 }}
             />
-            <ProductSearchModal
-                show={showSearchModal}
-                onHide={() => setShowSearchModal(false)}
-                products={products}
-                onProductSelect={handleProductFromSearch}
-            />
-
-            <style jsx>{`
-                /* Toast Styling */
-                .inventory-toast {
-                    border: none;
-                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-                    border-radius: 12px;
-                    overflow: hidden;
-                    animation: slideInRight 0.4s ease-out;
-                }
-
-                .success-toast .toast-header {
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                    border: none;
-                }
-
-                .error-toast .toast-header {
-                    background: linear-gradient(135deg, #dc3545 0%, #e55353 100%);
-                    border: none;
-                }
-
-                .inventory-toast .toast-body {
-                    background: linear-gradient(135deg, #f8fff9 0%, #e8f5e8 100%);
-                    border: none;
-                    padding: 1rem;
-                }
-
-                .error-toast .toast-body {
-                    background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
-                }
-
-                @keyframes slideInRight {
-                    from {
-                        transform: translateX(100%);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateX(0);
-                        opacity: 1;
-
-                    }
-                }
-            `}</style>
-
-        </Container>
+        </div>
     );
 }
 

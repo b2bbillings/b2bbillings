@@ -14,6 +14,59 @@ import useKeyboardNavigation from '../../hooks/useKeyboardNavigation';
 import './CreateCompany.css';
 
 function CreateCompany({ show, onHide, onCompanyCreated }) {
+    // Business Categories
+    const businessCategories = [
+        'Accounting & CA',
+        'Interior Designer',
+        'Automobiles / Auto Parts',
+        'Salon / Spa',
+        'Liquor Store',
+        'Book / Stationary Store',
+        'Construction Materials & Equipment',
+        'Repairing Plumbing & Electrician',
+        'Chemical & Fertilizer',
+        'Computer Equipment & Software',
+        'Electrical & Electronics Equipment',
+        'Fashion Accessory / Cosmetics',
+        'Tailoring / Boutique',
+        'Fruit and Vegetable',
+        'Kirana / General Merchant',
+        'FMCG Products',
+        'Dairy Farm Products / Poultry',
+        'Furniture',
+        'Garment / Fashion & Hosiery',
+        'Jewellery & Gems',
+        'Pharmacy / Medical',
+        'Hardware Store',
+        'Mobile & Accessories',
+        'Nursery / Plants',
+        'Petroleum Bulk Stations & Terminals / Petrol',
+        'Restaurant / Hotel',
+        'Footwear',
+        'Paper & Paper Products',
+        'Sweet Shop / Bakery',
+        'Gift & Toys',
+        'Laundry / Washing / Dry Clean',
+        'Coaching & Training',
+        'Renting & Leasing',
+        'Fitness Center',
+        'Oil & Gas',
+        'Real Estate',
+        'NGO & Charitable Trust',
+        'Tours & Travels',
+        'Other'
+    ];
+
+    // Business Types
+    const businessTypes = [
+        'Retail',
+        'Wholesale',
+        'Distributor',
+        'Service',
+        'Manufacturing',
+        'Others'
+    ];
+
     // Form state
     const [formData, setFormData] = useState({
         businessName: '',
@@ -438,15 +491,20 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                         Business Type
                                     </Form.Label>
                                     <Col sm={8}>
-                                        <Form.Control
+                                        <Form.Select
                                             ref={businessTypeRef}
-                                            type="text"
                                             name="businessType"
                                             value={formData.businessType}
                                             onChange={handleInputChange}
-                                            placeholder="Enter business type"
                                             size="sm"
-                                        />
+                                        >
+                                            <option value="">Select business type</option>
+                                            {businessTypes.map((type, index) => (
+                                                <option key={index} value={type}>
+                                                    {type}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
                                     </Col>
                                 </Form.Group>
                             </Col>
@@ -512,15 +570,20 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                         Business Category
                                     </Form.Label>
                                     <Col sm={8}>
-                                        <Form.Control
+                                        <Form.Select
                                             ref={businessCategoryRef}
-                                            type="text"
                                             name="businessCategory"
                                             value={formData.businessCategory}
                                             onChange={handleInputChange}
-                                            placeholder="Enter business category"
                                             size="sm"
-                                        />
+                                        >
+                                            <option value="">Select business category</option>
+                                            {businessCategories.map((category, index) => (
+                                                <option key={index} value={category}>
+                                                    {category}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
                                     </Col>
                                 </Form.Group>
                             </Col>

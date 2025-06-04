@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Modal, Form, Button, Row, Col, InputGroup, Toast, ToastContainer } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faTimes, faSearch, faDatabase, faPlus, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faTimes, faSearch, faDatabase, faPlus, faCheck, faToggleOn, faToggleOff } from '@fortawesome/free-solid-svg-icons';
 import ProductSearchModal from './ProductSearchModal';
+import './ProductModal.css';
 
 function ProductModal({
     show,
@@ -14,16 +15,23 @@ function ProductModal({
     onSaveProduct
 }) {
     // Refs for keyboard navigation
-    const typeRef = useRef(null);
-    const gstRateRef = useRef(null);
+    const productServiceToggleRef = useRef(null);
+    const searchDatabaseRef = useRef(null);
     const nameRef = useRef(null);
-    const itemCodeRef = useRef(null);
     const hsnNumberRef = useRef(null);
+    const itemCodeRef = useRef(null);
+    const assignCodeRef = useRef(null);
     const unitRef = useRef(null);
     const categoryRef = useRef(null);
+    const gstRateRef = useRef(null);
     const descriptionRef = useRef(null);
     const openingStockRef = useRef(null);
+    const asOfDateRef = useRef(null);
     const minStockLevelRef = useRef(null);
+    const buyPriceRef = useRef(null);
+    const buyTaxToggleRef = useRef(null);
+    const salePriceRef = useRef(null);
+    const saleTaxToggleRef = useRef(null);
     const isActiveRef = useRef(null);
     const cancelButtonRef = useRef(null);
     const saveAndAddButtonRef = useRef(null);
@@ -34,16 +42,19 @@ function ProductModal({
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
     const [isSaveAndAdd, setIsSaveAndAdd] = useState(false);
+    const [buyPriceTaxInclusive, setBuyPriceTaxInclusive] = useState(false);
+    const [salePriceTaxInclusive, setSalePriceTaxInclusive] = useState(false);
+
+    // Sample database products - replace with actual API call
     const [searchProducts] = useState([
-        // Sample database products - replace with actual API call
-        { id: 1, name: 'HP Laptop i5 8GB', sku: 'HP-LAP-001', price: 45000, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8471', description: 'HP Pavilion Laptop with i5 processor' },
-        { id: 2, name: 'Office Chair Executive', sku: 'OFC-CHR-001', price: 8500, gstRate: 12, unit: 'PCS', category: 'Furniture', hsnNumber: '9401', description: 'Executive office chair with lumbar support' },
-        { id: 3, name: 'A4 Paper 500 Sheets', sku: 'PPR-A4-001', price: 350, gstRate: 12, unit: 'PAC', category: 'Stationery', hsnNumber: '4802', description: 'Premium quality A4 printing paper' },
-        { id: 4, name: 'Wireless Mouse Optical', sku: 'MSE-WL-001', price: 850, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8471', description: 'Optical wireless mouse with USB receiver' },
-        { id: 5, name: 'Business Consultation', sku: 'SVC-CONS-001', price: 2500, gstRate: 18, unit: 'HRS', category: 'Services', type: 'service', description: 'Professional business consultation service' },
-        { id: 6, name: 'LED Monitor 24 inch', sku: 'MON-LED-001', price: 12000, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8528', description: '24 inch LED monitor with HDMI' },
-        { id: 7, name: 'Steel Almirah 4 Door', sku: 'ALM-STL-001', price: 15000, gstRate: 18, unit: 'PCS', category: 'Furniture', hsnNumber: '9403', description: '4 door steel almirah for office use' },
-        { id: 8, name: 'Printer Inkjet Color', sku: 'PRT-INK-001', price: 8500, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8443', description: 'Color inkjet printer with scanner' }
+        { id: 1, name: 'HP Laptop i5 8GB', sku: 'HP-LAP-001', buyPrice: 45000, salePrice: 50000, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8471', description: 'HP Pavilion Laptop with i5 processor' },
+        { id: 2, name: 'Office Chair Executive', sku: 'OFC-CHR-001', buyPrice: 8500, salePrice: 12000, gstRate: 12, unit: 'PCS', category: 'Furniture', hsnNumber: '9401', description: 'Executive office chair with lumbar support' },
+        { id: 3, name: 'A4 Paper 500 Sheets', sku: 'PPR-A4-001', buyPrice: 350, salePrice: 400, gstRate: 12, unit: 'PAC', category: 'Stationery', hsnNumber: '4802', description: 'Premium quality A4 printing paper' },
+        { id: 4, name: 'Wireless Mouse Optical', sku: 'MSE-WL-001', buyPrice: 850, salePrice: 1200, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8471', description: 'Optical wireless mouse with USB receiver' },
+        { id: 5, name: 'Business Consultation', sku: 'SVC-CONS-001', buyPrice: 2500, salePrice: 3500, gstRate: 18, unit: 'HRS', category: 'Services', type: 'service', description: 'Professional business consultation service' },
+        { id: 6, name: 'LED Monitor 24 inch', sku: 'MON-LED-001', buyPrice: 12000, salePrice: 15000, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8528', description: '24 inch LED monitor with HDMI' },
+        { id: 7, name: 'Steel Almirah 4 Door', sku: 'ALM-STL-001', buyPrice: 15000, salePrice: 18000, gstRate: 18, unit: 'PCS', category: 'Furniture', hsnNumber: '9403', description: '4 door steel almirah for office use' },
+        { id: 8, name: 'Printer Inkjet Color', sku: 'PRT-INK-001', buyPrice: 8500, salePrice: 12000, gstRate: 18, unit: 'PCS', category: 'Electronics', hsnNumber: '8443', description: 'Color inkjet printer with scanner' }
     ]);
 
     const unitOptions = [
@@ -54,9 +65,9 @@ function ProductModal({
 
     // Auto-focus first field when modal opens
     useEffect(() => {
-        if (show && typeRef.current) {
+        if (show && productServiceToggleRef.current) {
             setTimeout(() => {
-                typeRef.current.focus();
+                productServiceToggleRef.current.focus();
             }, 100);
         }
     }, [show]);
@@ -68,7 +79,73 @@ function ProductModal({
         }
     }, [show]);
 
-    // Handle keyboard navigation
+    // Generate item code automatically
+    const generateItemCode = (name, category) => {
+        if (!name || !category) return '';
+
+        const namePrefix = name.substring(0, 3).toUpperCase();
+        const categoryPrefix = category.substring(0, 3).toUpperCase();
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+
+        return `${namePrefix}-${categoryPrefix}-${randomNum}`;
+    };
+
+    // Calculate price with/without tax
+    const calculatePriceWithTax = (price, gstRate, isInclusive) => {
+        if (!price || !gstRate) return price;
+
+        if (isInclusive) {
+            // Tax inclusive - return price without tax
+            return (price / (1 + gstRate / 100)).toFixed(2);
+        } else {
+            // Tax exclusive - return price with tax
+            return (price * (1 + gstRate / 100)).toFixed(2);
+        }
+    };
+
+    // Get ordered navigation refs based on current form state
+    const getNavigationRefs = () => {
+        const baseRefs = [
+            productServiceToggleRef,
+            searchDatabaseRef,
+            nameRef,
+            hsnNumberRef,
+            itemCodeRef,
+            assignCodeRef,
+            unitRef,
+            categoryRef,
+            gstRateRef,
+            descriptionRef
+        ];
+
+        const stockRefs = formData.type !== 'service' ? [
+            openingStockRef,
+            asOfDateRef,
+            minStockLevelRef
+        ] : [];
+
+        // For services, only show sale price (service rate). For products, show both buy and sale price
+        const pricingRefs = formData.type === 'service' ? [
+            salePriceRef,
+            saleTaxToggleRef
+        ] : [
+            buyPriceRef,
+            buyTaxToggleRef,
+            salePriceRef,
+            saleTaxToggleRef
+        ];
+
+        const endRefs = [
+            isActiveRef,
+            cancelButtonRef,
+            ...(editingProduct ? [] : [saveAndAddButtonRef]),
+            saveButtonRef
+        ];
+
+        return [...baseRefs, ...stockRefs, ...pricingRefs, ...endRefs];
+    };
+
+    // Handle keyboard navigation globally
     const handleKeyDown = (e) => {
         // Handle Escape key
         if (e.key === 'Escape') {
@@ -87,32 +164,89 @@ function ProductModal({
         // Handle Ctrl+Shift+S for save and add another
         if (e.ctrlKey && e.shiftKey && e.key === 'S') {
             e.preventDefault();
-            handleSaveAndAddAnother(e);
+            if (!editingProduct) {
+                handleSaveAndAddAnother(e);
+            }
             return;
         }
 
-        // Handle Enter key navigation
-        if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        // Handle Ctrl+G for generate code
+        if (e.ctrlKey && e.key === 'g') {
             e.preventDefault();
-            navigateToNext(e.target);
+            handleGenerateCode();
+            return;
+        }
+
+        // Handle Ctrl+D for database search
+        if (e.ctrlKey && e.key === 'd') {
+            e.preventDefault();
+            setShowProductSearch(true);
+            return;
+        }
+
+        // Handle Tab navigation
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const refs = getNavigationRefs();
+            const currentElement = document.activeElement;
+            const currentIndex = refs.findIndex(ref => ref.current === currentElement);
+
+            if (e.shiftKey) {
+                // Shift+Tab - go to previous
+                const prevIndex = currentIndex <= 0 ? refs.length - 1 : currentIndex - 1;
+                const prevRef = refs[prevIndex];
+                if (prevRef && prevRef.current) {
+                    prevRef.current.focus();
+                }
+            } else {
+                // Tab - go to next
+                const nextIndex = currentIndex >= refs.length - 1 ? 0 : currentIndex + 1;
+                const nextRef = refs[nextIndex];
+                if (nextRef && nextRef.current) {
+                    nextRef.current.focus();
+                }
+            }
+            return;
+        }
+
+        // Handle Enter key navigation (except for textarea and buttons)
+        if (e.key === 'Enter' && !['TEXTAREA', 'BUTTON'].includes(e.target.tagName)) {
+            e.preventDefault();
+            const refs = getNavigationRefs();
+            const currentElement = document.activeElement;
+            const currentIndex = refs.findIndex(ref => ref.current === currentElement);
+
+            if (currentIndex !== -1 && currentIndex < refs.length - 1) {
+                const nextRef = refs[currentIndex + 1];
+                if (nextRef && nextRef.current) {
+                    nextRef.current.focus();
+                }
+            }
         }
     };
 
-    // Navigate to next field
-    const navigateToNext = (currentElement) => {
-        const formRefs = [
-            typeRef, gstRateRef, nameRef, itemCodeRef, hsnNumberRef, unitRef,
-            categoryRef, descriptionRef,
-            ...(formData.type !== 'service' ? [openingStockRef, minStockLevelRef] : []),
-            isActiveRef, saveAndAddButtonRef, saveButtonRef
-        ];
+    // Handle toggle keyboard interactions
+    const handleToggleKeyDown = (e, action) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            action();
+        }
+    };
 
-        const currentIndex = formRefs.findIndex(ref => ref.current === currentElement);
-        if (currentIndex !== -1 && currentIndex < formRefs.length - 1) {
-            const nextRef = formRefs[currentIndex + 1];
-            if (nextRef && nextRef.current) {
-                nextRef.current.focus();
-            }
+    // Generate item code
+    const handleGenerateCode = () => {
+        if (formData.name && formData.category) {
+            const generatedCode = generateItemCode(formData.name, formData.category);
+            onInputChange({
+                target: { name: 'itemCode', value: generatedCode }
+            });
+            setToastMessage('Item code generated automatically!');
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 2000);
+        } else {
+            setToastMessage('Please enter item name and select category first');
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 3000);
         }
     };
 
@@ -159,7 +293,7 @@ function ProductModal({
     // Clear form fields but keep common ones
     const clearFormForNext = () => {
         // Reset specific fields to empty
-        const fieldsToReset = ['name', 'itemCode', 'hsnNumber', 'description', 'openingStock', 'minStockLevel'];
+        const fieldsToReset = ['name', 'itemCode', 'hsnNumber', 'description', 'openingStock', 'minStockLevel', 'buyPrice', 'salePrice'];
 
         fieldsToReset.forEach(field => {
             onInputChange({
@@ -167,9 +301,13 @@ function ProductModal({
             });
         });
 
-        // Keep isActive as true
+        // Keep isActive as true and reset date
         onInputChange({
             target: { name: 'isActive', value: true, type: 'checkbox', checked: true }
+        });
+
+        onInputChange({
+            target: { name: 'asOfDate', value: new Date().toISOString().split('T')[0] }
         });
     };
 
@@ -257,7 +395,8 @@ function ProductModal({
             description: product.description,
             gstRate: product.gstRate,
             type: product.type || (product.type === 'service' ? 'service' : 'product'),
-            price: product.price,
+            buyPrice: product.buyPrice,
+            salePrice: product.salePrice,
             isActive: true
         };
 
@@ -287,7 +426,7 @@ function ProductModal({
             <Modal
                 show={show}
                 onHide={handleModalHide}
-                size="lg"
+                size="xl"
                 centered
                 onKeyDown={handleKeyDown}
                 backdrop="static"
@@ -298,7 +437,7 @@ function ProductModal({
                         <Modal.Title className="fw-bold">
                             {editingProduct ? 'Edit Item' : 'Add New Item'}
                             <small className="text-muted ms-2 fw-normal">
-                                (Tab/Enter to navigate, Esc to close, Ctrl+S to save, Ctrl+Shift+S to save & add another)
+                                (Tab/Enter: navigate, Esc: close, Ctrl+S: save, Ctrl+Shift+S: save & add, Ctrl+G: generate code, Ctrl+D: search database)
                             </small>
                         </Modal.Title>
                         <Button
@@ -347,71 +486,206 @@ function ProductModal({
                             </Toast>
                         </ToastContainer>
 
-                        {/* Quick Database Search Section */}
-                        <div className="mb-4 p-3 bg-light rounded border">
-                            <div className="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 className="mb-1 fw-bold text-primary">
-                                        <FontAwesomeIcon icon={faDatabase} className="me-2" />
-                                        Quick Add from Database
-                                    </h6>
-                                    <small className="text-muted">
-                                        Search and import product details from our database to save time
-                                    </small>
+                        {/* Header Section with Type Toggle and Database Search */}
+                        <Row className="mb-4">
+                            <Col md={6}>
+                                {/* Product/Service Toggle */}
+                                <div className="product-service-toggle p-3 bg-light rounded border">
+                                    <div className="d-flex align-items-center justify-content-center">
+                                        <span className={`toggle-label ${formData.type === 'product' ? 'active' : ''}`}>
+                                            Product
+                                        </span>
+                                        <div
+                                            ref={productServiceToggleRef}
+                                            className="custom-toggle mx-3"
+                                            onClick={() => {
+                                                const newType = formData.type === 'product' ? 'service' : 'product';
+                                                onInputChange({
+                                                    target: { name: 'type', value: newType }
+                                                });
+                                            }}
+                                            onKeyDown={(e) => handleToggleKeyDown(e, () => {
+                                                const newType = formData.type === 'product' ? 'service' : 'product';
+                                                onInputChange({
+                                                    target: { name: 'type', value: newType }
+                                                });
+                                            })}
+                                            tabIndex={0}
+                                            role="button"
+                                            aria-label={`Switch to ${formData.type === 'product' ? 'service' : 'product'} mode`}
+                                        >
+                                            <div className={`toggle-slider ${formData.type === 'service' ? 'active' : ''}`}>
+                                                <FontAwesomeIcon
+                                                    icon={formData.type === 'service' ? faToggleOn : faToggleOff}
+                                                    size="2x"
+                                                    className={formData.type === 'service' ? 'text-primary' : 'text-secondary'}
+                                                />
+                                            </div>
+                                        </div>
+                                        <span className={`toggle-label ${formData.type === 'service' ? 'active' : ''}`}>
+                                            Services
+                                        </span>
+                                    </div>
                                 </div>
-                                <Button
-                                    variant="outline-primary"
-                                    onClick={() => setShowProductSearch(true)}
-                                    className="d-flex align-items-center gap-2"
-                                >
-                                    <FontAwesomeIcon icon={faSearch} />
-                                    Search Database
-                                </Button>
-                            </div>
-                        </div>
+                            </Col>
+
+                            <Col md={6}>
+                                {/* Quick Database Search Section */}
+                                <div className="p-3 bg-light rounded border">
+                                    <div className="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 className="mb-1 fw-bold text-primary">
+                                                <FontAwesomeIcon icon={faDatabase} className="me-2" />
+                                                Search Items in Database
+                                            </h6>
+                                            <small className="text-muted">
+                                                Import details to save time (Ctrl+D)
+                                            </small>
+                                        </div>
+                                        <Button
+                                            ref={searchDatabaseRef}
+                                            variant="outline-primary"
+                                            onClick={() => setShowProductSearch(true)}
+                                            className="search-database-btn"
+                                            tabIndex={0}
+                                        >
+                                            <FontAwesomeIcon icon={faSearch} />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Col>
+                        </Row>
 
                         <Form onSubmit={handleSubmit} autoComplete="off">
-                            {/* Type Selection at Top */}
+                            {/* First Row - Item Details */}
                             <Row className="mb-4">
-                                <Col md={6}>
+                                <Col md={4}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="fw-semibold">
-                                            Type <span className="text-danger">*</span>
+                                            {formData.type === 'service' ? 'Service Name' : 'Item Name'} <span className="text-danger">*</span>
                                         </Form.Label>
-                                        <Form.Select
-                                            ref={typeRef}
-                                            name="type"
-                                            value={formData.type || 'product'}
+                                        <Form.Control
+                                            ref={nameRef}
+                                            type="text"
+                                            name="name"
+                                            value={formData.name}
                                             onChange={onInputChange}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    gstRateRef.current?.focus();
-                                                }
-                                            }}
+                                            placeholder={formData.type === 'service' ? 'Service Name' : 'Item Name'}
                                             className="form-input"
                                             required
+                                            tabIndex={0}
+                                        />
+                                    </Form.Group>
+                                </Col>
+
+                                <Col md={3}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="fw-semibold">
+                                            {formData.type === 'service' ? 'SAC Code' : 'HSN Code'}
+                                        </Form.Label>
+                                        <Form.Control
+                                            ref={hsnNumberRef}
+                                            type="text"
+                                            name="hsnNumber"
+                                            value={formData.hsnNumber}
+                                            onChange={onInputChange}
+                                            placeholder={formData.type === 'service' ? 'SAC Code' : 'HSN Code'}
+                                            className="form-input"
+                                            tabIndex={0}
+                                        />
+                                    </Form.Group>
+                                </Col>
+
+                                <Col md={3}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="fw-semibold">
+                                            {formData.type === 'service' ? 'Service Code' : 'Item Code'}
+                                            <Button
+                                                ref={assignCodeRef}
+                                                variant="link"
+                                                size="sm"
+                                                className="p-0 ms-2 text-primary"
+                                                onClick={handleGenerateCode}
+                                                title="Generate Code (Ctrl+G)"
+                                                tabIndex={0}
+                                            >
+                                                Assign Code
+                                            </Button>
+                                        </Form.Label>
+                                        <Form.Control
+                                            ref={itemCodeRef}
+                                            type="text"
+                                            name="itemCode"
+                                            value={formData.itemCode}
+                                            onChange={onInputChange}
+                                            placeholder={formData.type === 'service' ? 'Service Code' : 'Item Code'}
+                                            className="form-input"
+                                            tabIndex={0}
+                                        />
+                                    </Form.Group>
+                                </Col>
+
+                                <Col md={2}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="fw-semibold">
+                                            Select Unit <span className="text-danger">*</span>
+                                        </Form.Label>
+                                        <Form.Select
+                                            ref={unitRef}
+                                            name="unit"
+                                            value={formData.unit}
+                                            onChange={onInputChange}
+                                            className="form-input"
+                                            required
+                                            tabIndex={0}
                                         >
-                                            <option value="product">Product</option>
-                                            <option value="service">Service</option>
+                                            <option value="">Select Unit</option>
+                                            {unitOptions.map(unit => (
+                                                <option key={unit} value={unit}>
+                                                    {unit}
+                                                </option>
+                                            ))}
                                         </Form.Select>
                                     </Form.Group>
                                 </Col>
-                                <Col md={6}>
+                            </Row>
+
+                            {/* Second Row - Category, GST, Description */}
+                            <Row className="mb-4">
+                                <Col md={4}>
                                     <Form.Group className="mb-3">
-                                        <Form.Label className="fw-semibold">GST Rate (%)</Form.Label>
+                                        <Form.Label className="fw-semibold">
+                                            Select Category <span className="text-danger">*</span>
+                                        </Form.Label>
+                                        <Form.Select
+                                            ref={categoryRef}
+                                            name="category"
+                                            value={formData.category}
+                                            onChange={onInputChange}
+                                            className="form-input"
+                                            required
+                                            tabIndex={0}
+                                        >
+                                            <option value="">Select Category</option>
+                                            {categories.filter(cat => cat.isActive).map(category => (
+                                                <option key={category.id} value={category.name}>
+                                                    {category.name}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
+                                    </Form.Group>
+                                </Col>
+
+                                <Col md={3}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="fw-semibold">GST Rate</Form.Label>
                                         <Form.Select
                                             ref={gstRateRef}
                                             name="gstRate"
                                             value={formData.gstRate}
                                             onChange={onInputChange}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    nameRef.current?.focus();
-                                                }
-                                            }}
                                             className="form-input"
+                                            tabIndex={0}
                                         >
                                             {gstRateOptions.map(rate => (
                                                 <option key={rate} value={rate}>
@@ -421,180 +695,33 @@ function ProductModal({
                                         </Form.Select>
                                     </Form.Group>
                                 </Col>
-                            </Row>
 
-                            {/* Basic Information */}
-                            <Row className="mb-4">
-                                <Col md={12}>
-                                    <h6 className="fw-bold text-primary mb-3">Basic Information</h6>
-
-                                    <Row>
-                                        <Col md={8}>
-                                            <Form.Group className="mb-3">
-                                                <Form.Label className="fw-semibold">
-                                                    Item Name <span className="text-danger">*</span>
-                                                </Form.Label>
-                                                <Form.Control
-                                                    ref={nameRef}
-                                                    type="text"
-                                                    name="name"
-                                                    value={formData.name}
-                                                    onChange={onInputChange}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            itemCodeRef.current?.focus();
-                                                        }
-                                                    }}
-                                                    placeholder="Enter item name (required)"
-                                                    className="form-input"
-                                                    required
-                                                />
-                                            </Form.Group>
-                                        </Col>
-
-                                        <Col md={4}>
-                                            <Form.Group className="mb-3">
-                                                <Form.Label className="fw-semibold">Item Code</Form.Label>
-                                                <Form.Control
-                                                    ref={itemCodeRef}
-                                                    type="text"
-                                                    name="itemCode"
-                                                    value={formData.itemCode}
-                                                    onChange={onInputChange}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            hsnNumberRef.current?.focus();
-                                                        }
-                                                    }}
-                                                    placeholder="Optional code"
-                                                    className="form-input"
-                                                />
-                                                <Form.Text className="text-muted">
-                                                    Optional item code for reference
-                                                </Form.Text>
-                                            </Form.Group>
-                                        </Col>
-                                    </Row>
-
-                                    <Row>
-                                        <Col md={6}>
-                                            <Form.Group className="mb-3">
-                                                <Form.Label className="fw-semibold">HSN Number</Form.Label>
-                                                <Form.Control
-                                                    ref={hsnNumberRef}
-                                                    type="text"
-                                                    name="hsnNumber"
-                                                    value={formData.hsnNumber}
-                                                    onChange={onInputChange}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            unitRef.current?.focus();
-                                                        }
-                                                    }}
-                                                    placeholder="HSN/SAC code"
-                                                    className="form-input"
-                                                />
-                                                <Form.Text className="text-muted">
-                                                    HSN for goods, SAC for services
-                                                </Form.Text>
-                                            </Form.Group>
-                                        </Col>
-
-                                        <Col md={6}>
-                                            <Form.Group className="mb-3">
-                                                <Form.Label className="fw-semibold">
-                                                    Unit <span className="text-danger">*</span>
-                                                </Form.Label>
-                                                <Form.Select
-                                                    ref={unitRef}
-                                                    name="unit"
-                                                    value={formData.unit}
-                                                    onChange={onInputChange}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            categoryRef.current?.focus();
-                                                        }
-                                                    }}
-                                                    className="form-input"
-                                                    required
-                                                >
-                                                    <option value="">Select Unit</option>
-                                                    {unitOptions.map(unit => (
-                                                        <option key={unit} value={unit}>
-                                                            {unit}
-                                                        </option>
-                                                    ))}
-                                                </Form.Select>
-                                            </Form.Group>
-                                        </Col>
-                                    </Row>
-
-                                    <Row>
-                                        <Col md={12}>
-                                            <Form.Group className="mb-3">
-                                                <Form.Label className="fw-semibold">
-                                                    Category <span className="text-danger">*</span>
-                                                </Form.Label>
-                                                <Form.Select
-                                                    ref={categoryRef}
-                                                    name="category"
-                                                    value={formData.category}
-                                                    onChange={onInputChange}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            descriptionRef.current?.focus();
-                                                        }
-                                                    }}
-                                                    className="form-input"
-                                                    required
-                                                >
-                                                    <option value="">Select Category</option>
-                                                    {categories.filter(cat => cat.isActive).map(category => (
-                                                        <option key={category.id} value={category.name}>
-                                                            {category.name}
-                                                        </option>
-                                                    ))}
-                                                </Form.Select>
-                                            </Form.Group>
-                                        </Col>
-                                    </Row>
-
+                                <Col md={5}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="fw-semibold">Description</Form.Label>
                                         <Form.Control
                                             ref={descriptionRef}
                                             as="textarea"
-                                            rows={3}
+                                            rows={2}
                                             name="description"
                                             value={formData.description}
                                             onChange={onInputChange}
-                                            onKeyDown={(e) => {
-                                                if (e.ctrlKey && e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    if (formData.type !== 'service') {
-                                                        openingStockRef.current?.focus();
-                                                    } else {
-                                                        isActiveRef.current?.focus();
-                                                    }
-                                                }
-                                            }}
-                                            placeholder="Item description... (Ctrl+Enter to continue)"
+                                            placeholder="Description"
                                             className="form-input"
+                                            tabIndex={0}
                                         />
                                     </Form.Group>
                                 </Col>
                             </Row>
 
-                            {/* Opening Stock - Only for Products */}
-                            {formData.type !== 'service' && (
-                                <Row className="mb-4">
-                                    <Col md={12}>
-                                        <h6 className="fw-bold text-primary mb-3">Opening Stock</h6>
+                            {/* Stock and Pricing Section */}
+                            <Row className="mb-4">
+                                {/* Stock Section - Only for Products */}
+                                {formData.type !== 'service' && (
+                                    <Col md={6}>
+                                        <div className="section-header">
+                                            <h6 className="fw-bold text-primary mb-3">Stock</h6>
+                                        </div>
 
                                         <Row>
                                             <Col md={6}>
@@ -606,58 +733,180 @@ function ProductModal({
                                                         name="openingStock"
                                                         value={formData.openingStock || ''}
                                                         onChange={onInputChange}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                minStockLevelRef.current?.focus();
-                                                            }
-                                                        }}
-                                                        placeholder="0"
+                                                        placeholder="Opening Quantity"
                                                         className="form-input"
                                                         min="0"
                                                         step="0.01"
+                                                        tabIndex={0}
                                                     />
-                                                    <Form.Text className="text-muted">
-                                                        Initial stock quantity
-                                                    </Form.Text>
                                                 </Form.Group>
                                             </Col>
 
                                             <Col md={6}>
                                                 <Form.Group className="mb-3">
-                                                    <Form.Label className="fw-semibold">Minimum Stock Level</Form.Label>
+                                                    <Form.Label className="fw-semibold">As of Date</Form.Label>
+                                                    <Form.Control
+                                                        ref={asOfDateRef}
+                                                        type="date"
+                                                        name="asOfDate"
+                                                        value={formData.asOfDate || new Date().toISOString().split('T')[0]}
+                                                        onChange={onInputChange}
+                                                        className="form-input date-input"
+                                                        tabIndex={0}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                        </Row>
+
+                                        <Row>
+                                            <Col md={12}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="fw-semibold">Min Stock Level</Form.Label>
                                                     <Form.Control
                                                         ref={minStockLevelRef}
                                                         type="number"
                                                         name="minStockLevel"
                                                         value={formData.minStockLevel}
                                                         onChange={onInputChange}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                isActiveRef.current?.focus();
-                                                            }
-                                                        }}
-                                                        placeholder="10"
+                                                        placeholder="Minimum Stock to Maintain"
                                                         className="form-input"
                                                         min="0"
                                                         step="0.01"
+                                                        tabIndex={0}
                                                     />
-                                                    <Form.Text className="text-muted">
-                                                        Alert when stock goes below this level
-                                                    </Form.Text>
                                                 </Form.Group>
                                             </Col>
                                         </Row>
                                     </Col>
-                                </Row>
-                            )}
+                                )}
+
+                                {/* Pricing Section */}
+                                <Col md={formData.type !== 'service' ? 6 : 12}>
+                                    <div className="section-header">
+                                        <h6 className="fw-bold text-primary mb-3">
+                                            {formData.type === 'service' ? 'Service Rate' : 'Pricing'}
+                                        </h6>
+                                    </div>
+
+                                    <Row>
+                                        {/* Buy Price - Only for Products */}
+                                        {formData.type !== 'service' && (
+                                            <Col md={6}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="fw-semibold">
+                                                        Purchase Price
+                                                        <div className="tax-toggle-container">
+                                                            <small
+                                                                ref={buyTaxToggleRef}
+                                                                className={`tax-toggle ${!buyPriceTaxInclusive ? 'active' : ''}`}
+                                                                onClick={() => setBuyPriceTaxInclusive(false)}
+                                                                onKeyDown={(e) => handleToggleKeyDown(e, () => setBuyPriceTaxInclusive(false))}
+                                                                tabIndex={0}
+                                                                role="button"
+                                                                aria-label="Set purchase price to include tax"
+                                                            >
+                                                                With Tax
+                                                            </small>
+                                                            <small
+                                                                className={`tax-toggle ${buyPriceTaxInclusive ? 'active' : ''}`}
+                                                                onClick={() => setBuyPriceTaxInclusive(true)}
+                                                                onKeyDown={(e) => handleToggleKeyDown(e, () => setBuyPriceTaxInclusive(true))}
+                                                                tabIndex={0}
+                                                                role="button"
+                                                                aria-label="Set purchase price to exclude tax"
+                                                            >
+                                                                Without Tax
+                                                            </small>
+                                                        </div>
+                                                    </Form.Label>
+                                                    <InputGroup>
+                                                        <Form.Control
+                                                            ref={buyPriceRef}
+                                                            type="number"
+                                                            name="buyPrice"
+                                                            value={formData.buyPrice || ''}
+                                                            onChange={onInputChange}
+                                                            placeholder="Purchase Price"
+                                                            className="form-input"
+                                                            min="0"
+                                                            step="0.01"
+                                                            tabIndex={0}
+                                                        />
+                                                        <InputGroup.Text>
+                                                            {buyPriceTaxInclusive ? 'Excl.' : 'Incl.'}
+                                                        </InputGroup.Text>
+                                                    </InputGroup>
+                                                    {formData.buyPrice && formData.gstRate && (
+                                                        <Form.Text className="text-muted">
+                                                            {buyPriceTaxInclusive ? 'With tax: ' : 'Without tax: '}
+                                                            ₹{calculatePriceWithTax(formData.buyPrice, formData.gstRate, buyPriceTaxInclusive)}
+                                                        </Form.Text>
+                                                    )}
+                                                </Form.Group>
+                                            </Col>
+                                        )}
+
+                                        {/* Sale Price/Service Rate */}
+                                        <Col md={formData.type === 'service' ? 12 : 6}>
+                                            <Form.Group className="mb-3">
+                                                <Form.Label className="fw-semibold">
+                                                    {formData.type === 'service' ? 'Service Rate' : 'Selling Price'}
+                                                    <div className="tax-toggle-container">
+                                                        <small
+                                                            ref={saleTaxToggleRef}
+                                                            className={`tax-toggle ${!salePriceTaxInclusive ? 'active' : ''}`}
+                                                            onClick={() => setSalePriceTaxInclusive(false)}
+                                                            onKeyDown={(e) => handleToggleKeyDown(e, () => setSalePriceTaxInclusive(false))}
+                                                            tabIndex={0}
+                                                            role="button"
+                                                            aria-label={`Set ${formData.type === 'service' ? 'service rate' : 'selling price'} to include tax`}
+                                                        >
+                                                            With Tax
+                                                        </small>
+                                                        <small
+                                                            className={`tax-toggle ${salePriceTaxInclusive ? 'active' : ''}`}
+                                                            onClick={() => setSalePriceTaxInclusive(true)}
+                                                            onKeyDown={(e) => handleToggleKeyDown(e, () => setSalePriceTaxInclusive(true))}
+                                                            tabIndex={0}
+                                                            role="button"
+                                                            aria-label={`Set ${formData.type === 'service' ? 'service rate' : 'selling price'} to exclude tax`}
+                                                        >
+                                                            Without Tax
+                                                        </small>
+                                                    </div>
+                                                </Form.Label>
+                                                <InputGroup>
+                                                    <Form.Control
+                                                        ref={salePriceRef}
+                                                        type="number"
+                                                        name="salePrice"
+                                                        value={formData.salePrice || ''}
+                                                        onChange={onInputChange}
+                                                        placeholder={formData.type === 'service' ? 'Service Rate' : 'Selling Price'}
+                                                        className="form-input"
+                                                        min="0"
+                                                        step="0.01"
+                                                        tabIndex={0}
+                                                    />
+                                                    <InputGroup.Text>
+                                                        {salePriceTaxInclusive ? 'Excl.' : 'Incl.'}
+                                                    </InputGroup.Text>
+                                                </InputGroup>
+                                                {formData.salePrice && formData.gstRate && (
+                                                    <Form.Text className="text-muted">
+                                                        {salePriceTaxInclusive ? 'With tax: ' : 'Without tax: '}
+                                                        ₹{calculatePriceWithTax(formData.salePrice, formData.gstRate, salePriceTaxInclusive)}
+                                                    </Form.Text>
+                                                )}
+                                            </Form.Group>
+                                        </Col>
+                                    </Row>
+                                </Col>
+                            </Row>
 
                             {/* Status */}
                             <Row className="mb-4">
                                 <Col md={12}>
-                                    <h6 className="fw-bold text-primary mb-3">Status</h6>
-
                                     <Form.Check
                                         ref={isActiveRef}
                                         type="switch"
@@ -676,31 +925,26 @@ function ProductModal({
                                                     }
                                                 });
                                             }
-                                            if (e.key === 'Tab' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                saveAndAddButtonRef.current?.focus();
-                                            }
                                         }}
-                                        label="Item is active (Space/Enter to toggle)"
+                                        label={`${formData.type === 'service' ? 'Service' : 'Item'} is active (Space/Enter to toggle)`}
                                         className="mb-3"
+                                        tabIndex={0}
                                     />
-                                    <Form.Text className="text-muted">
-                                        Inactive items won't appear in transaction forms
-                                    </Form.Text>
                                 </Col>
                             </Row>
 
                             {/* Action Buttons */}
-                            <div className="d-flex gap-3 justify-content-end mt-4">
+                            <div className="action-buttons">
                                 <Button
                                     ref={cancelButtonRef}
                                     variant="outline-secondary"
                                     onClick={handleModalHide}
-                                    className="px-4"
+                                    className="cancel-btn"
                                     type="button"
+                                    tabIndex={0}
                                 >
                                     <FontAwesomeIcon icon={faTimes} className="me-2" />
-                                    Cancel (Esc)
+                                    Cancel
                                 </Button>
 
                                 {/* Save & Add Another Button - Only show for new items */}
@@ -709,17 +953,13 @@ function ProductModal({
                                         ref={saveAndAddButtonRef}
                                         variant="outline-success"
                                         onClick={handleSaveAndAddAnother}
-                                        className="px-4 save-and-add-btn"
+                                        className="save-and-new-btn"
                                         type="button"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Tab' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                saveButtonRef.current?.focus();
-                                            }
-                                        }}
+                                        tabIndex={0}
+                                        style={{ whiteSpace: 'nowrap' }}
                                     >
                                         <FontAwesomeIcon icon={faPlus} className="me-2" />
-                                        Save & Add Another (Ctrl+Shift+S)
+                                        Save & Add New
                                     </Button>
                                 )}
 
@@ -727,12 +967,15 @@ function ProductModal({
                                     ref={saveButtonRef}
                                     variant="primary"
                                     type="submit"
-                                    className="px-4"
+                                    className="save-and-exit-btn"
+                                    tabIndex={0}
+                                    style={{ whiteSpace: 'nowrap' }}
                                 >
                                     <FontAwesomeIcon icon={faSave} className="me-2" />
-                                    {editingProduct ? 'Update Item' : 'Save Item'} (Ctrl+S)
+                                    {editingProduct ? 'Update' : 'Save'} & Close
                                 </Button>
                             </div>
+
                         </Form>
                     </Modal.Body>
                 </div>
@@ -745,170 +988,6 @@ function ProductModal({
                 products={searchProducts}
                 onProductSelect={handleProductSelection}
             />
-
-            <style jsx>{`
-                /* Blur effect for the underlying modal */
-                .modal-blurred .modal-content {
-                    filter: blur(3px);
-                    transition: filter 0.3s ease;
-                }
-
-                .content-blurred {
-                    filter: blur(3px);
-                    opacity: 0.7;
-                    transition: all 0.3s ease;
-                    pointer-events: none;
-                }
-
-                .product-modal .modal-content {
-                    border-radius: 12px;
-                    border: none;
-                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-                    background: rgba(255, 255, 255, 0.98);
-                    backdrop-filter: blur(10px);
-                }
-
-                .product-modal .modal-header {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                    border-radius: 12px 12px 0 0;
-                }
-
-                .form-input {
-                    border-radius: 8px;
-                    border: 1px solid #dee2e6;
-                    transition: all 0.2s ease;
-                }
-
-                .form-input:focus {
-                    border-color: #007bff;
-                    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.1);
-                    transform: translateY(-1px);
-                }
-
-                .btn {
-                    border-radius: 8px;
-                    transition: all 0.2s ease;
-                }
-
-                .btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                }
-
-                /* Save & Add Another Button Styling */
-                .save-and-add-btn {
-                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                    border: 2px solid #28a745;
-                    color: #28a745;
-                    font-weight: 600;
-                    position: relative;
-                    overflow: hidden;
-                }
-
-                .save-and-add-btn:hover {
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                    border-color: #28a745;
-                    color: white;
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.3);
-                }
-
-                .save-and-add-btn:focus {
-                    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
-                    border-color: #28a745;
-                }
-
-                .save-and-add-btn:active {
-                    transform: translateY(0);
-                    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
-                }
-
-                /* Success Toast Styling */
-                .success-toast {
-                    border: none;
-                    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-                    border-radius: 12px;
-                    overflow: hidden;
-                    animation: slideInRight 0.4s ease-out;
-                }
-
-                .success-toast .toast-header {
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                    border: none;
-                }
-
-                .success-toast .toast-body {
-                    background: linear-gradient(135deg, #f8fff9 0%, #e8f5e8 100%);
-                    border: none;
-                    padding: 1rem;
-                }
-
-                @keyframes slideInRight {
-                    from {
-                        transform: translateX(100%);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateX(0);
-                        opacity: 1;
-                    }
-                }
-
-                /* Enhanced backdrop for layered modals */
-                .product-modal.modal-blurred::before {
-                    content: '';
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0, 0, 0, 0.3);
-                    z-index: 1060;
-                    backdrop-filter: blur(5px);
-                    animation: fadeIn 0.3s ease;
-                }
-
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
-
-                /* Button animations */
-                .save-and-add-btn::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: -100%;
-                    width: 100%;
-                    height: 100%;
-                    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-                    transition: left 0.5s;
-                }
-
-                .save-and-add-btn:hover::before {
-                    left: 100%;
-                }
-
-                /* Responsive button layout */
-                @media (max-width: 768px) {
-                    .d-flex.gap-3.justify-content-end {
-                        flex-direction: column;
-                        align-items: stretch;
-                    }
-
-                    .save-and-add-btn {
-                        order: 1;
-                    }
-
-                    .btn-primary {
-                        order: 2;
-                    }
-
-                    .btn-outline-secondary {
-                        order: 3;
-                    }
-                }
-            `}</style>
         </>
     );
 }

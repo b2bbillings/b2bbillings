@@ -10,8 +10,9 @@ import SalesTable from './Sales/SalesTable';
 import SalesEmptyState from './Sales/SalesEmptyState';
 import SalesModal from './Sales/SalesModal';
 import QuickPartyModal from './Sales/QuickPartyModal';
-import PaymentModal from './Sales/PaymentModal'; // Only use PaymentModal
+import PaymentModal from './Sales/PaymentModal';
 import PrintInvoiceModal from './Sales/PrintInvoiceModal';
+import SalesInvoices from './Sales/SalesInvoices'; // Add this import
 
 function Sales({ view = 'allSales', onNavigate }) {
     // State management
@@ -38,6 +39,13 @@ function Sales({ view = 'allSales', onNavigate }) {
         from: '',
         to: ''
     });
+
+    // Update activeTab when view prop changes
+    useEffect(() => {
+        if (view) {
+            setActiveTab(view);
+        }
+    }, [view]);
 
     // Updated form data structure to match the new SalesModal
     const [formData, setFormData] = useState({
@@ -103,7 +111,7 @@ function Sales({ view = 'allSales', onNavigate }) {
                 partyType: 'customer',
                 city: 'Pune',
                 address: '789 Corporate Blvd',
-                gstNumber: ''
+                gstNumber: '',
             }
         ];
         setParties(sampleParties);
@@ -327,7 +335,7 @@ function Sales({ view = 'allSales', onNavigate }) {
     };
 
     // Show Add Party Modal Handler
-    const handleShowAddPartyModal = (prefilledName = '',defaultPartyType = 'customer') => {
+    const handleShowAddPartyModal = (prefilledName = '', defaultPartyType = 'customer') => {
         console.log('🎯 handleShowAddPartyModal called with prefilledName:', prefilledName);
 
         setQuickPartyData(prev => ({
@@ -588,131 +596,161 @@ function Sales({ view = 'allSales', onNavigate }) {
         return matchesSearch && matchesDate;
     });
 
-    return (
-        <Container fluid className="py-4">
-            {/* Page Header */}
-            <Row className="mb-4 align-items-center">
-                <Col>
-                    <h1 className="page-title mb-0">
-                        Sales Management
-                        {hasSales && (
-                            <Badge bg="secondary" className="ms-2">{sales.length}</Badge>
-                        )}
-                    </h1>
-                </Col>
-                <Col xs="auto">
-                    <Button
-                        variant="primary"
-                        className="d-flex align-items-center"
-                        onClick={handleOpenCreateModal}
-                    >
-                        <FontAwesomeIcon icon={faPlus} className="me-2" />
-                        Create Invoice
-                    </Button>
-                </Col>
-            </Row>
-
-            {/* Tabs */}
-            <Tabs
-                activeKey={activeTab}
-                onSelect={(k) => setActiveTab(k)}
-                className="mb-4 custom-tabs"
-            >
-                <Tab eventKey="allSales" title="All Sales">
-                    {hasSales ? (
-                        <>
-                            <SalesSummaryCards sales={sales} />
-                            <SalesTable
-                                filteredSales={filteredSales}
-                                searchQuery={searchQuery}
-                                setSearchQuery={setSearchQuery}
-                                dateFilter={dateFilter}
-                                setDateFilter={setDateFilter}
-                                statusFilter="all"
-                                setStatusFilter={() => { }}
-                                paymentStatusFilter="all"
-                                setPaymentStatusFilter={() => { }}
-                                sortConfig={{ field: 'createdAt', direction: 'desc' }}
-                                setSortConfig={() => { }}
-                                onCreateInvoice={handleOpenCreateModal}
-                                onEditSale={handleEditSale}
-                                onDeleteSale={handleDeleteSale}
-                                onManagePayment={handleManagePayment}
-                                onPrintInvoice={handlePrintInvoice}
-                            />
-                        </>
-                    ) : (
-                        <SalesEmptyState onCreateInvoice={handleOpenCreateModal} />
-                    )}
-                </Tab>
-                <Tab eventKey="invoices" title="Invoices">
-                    <div className="text-center py-5">
-                        <p>Invoice management features will be available here.</p>
-                    </div>
-                </Tab>
-                <Tab eventKey="quotations" title="Quotations">
+    // Render content based on active tab
+    const renderTabContent = () => {
+        switch (activeTab) {
+            case 'invoices':
+                return <SalesInvoices />;
+            case 'allSales':
+                return hasSales ? (
+                    <>
+                        <SalesSummaryCards sales={sales} />
+                        <SalesTable
+                            filteredSales={filteredSales}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            dateFilter={dateFilter}
+                            setDateFilter={setDateFilter}
+                            statusFilter="all"
+                            setStatusFilter={() => { }}
+                            paymentStatusFilter="all"
+                            setPaymentStatusFilter={() => { }}
+                            sortConfig={{ field: 'createdAt', direction: 'desc' }}
+                            setSortConfig={() => { }}
+                            onCreateInvoice={handleOpenCreateModal}
+                            onEditSale={handleEditSale}
+                            onDeleteSale={handleDeleteSale}
+                            onManagePayment={handleManagePayment}
+                            onPrintInvoice={handlePrintInvoice}
+                        />
+                    </>
+                ) : (
+                    <SalesEmptyState onCreateInvoice={handleOpenCreateModal} />
+                );
+            case 'quotations':
+                return (
                     <div className="text-center py-5">
                         <p>Quotation management features will be available here.</p>
                     </div>
-                </Tab>
-                <Tab eventKey="reports" title="Reports">
+                );
+            case 'reports':
+                return (
                     <div className="text-center py-5">
                         <p>Sales reports and analytics will be available here.</p>
                     </div>
-                </Tab>
-            </Tabs>
+                );
+            default:
+                return (
+                    <div className="text-center py-5">
+                        <p>Content not found.</p>
+                    </div>
+                );
+        }
+    };
 
-            {/* Modals */}
-            <SalesModal
-                show={showCreateModal}
-                onHide={handleCloseModal}
-                editingSale={editingSale}
-                formData={formData}
-                parties={parties}
-                onInputChange={handleInputChange}
-                onPartySelection={handlePartySelection}
-                onItemChange={handleItemChange}
-                onAddItem={addItem}
-                onRemoveItem={removeItem}
-                onSaveInvoice={handleSaveInvoice}
-                onShowAddPartyModal={handleShowAddPartyModal}
-            />
+    return (
+        <Container fluid className="py-4">
+            {/* Page Header - Only show for non-SalesInvoices tabs */}
+            {activeTab !== 'invoices' && (
+                <Row className="mb-4 align-items-center">
+                    <Col>
+                        <h1 className="page-title mb-0">
+                            Sales Management
+                            {hasSales && (
+                                <Badge bg="secondary" className="ms-2">{sales.length}</Badge>
+                            )}
+                        </h1>
+                    </Col>
+                    <Col xs="auto">
+                        <Button
+                            variant="primary"
+                            className="d-flex align-items-center"
+                            onClick={handleOpenCreateModal}
+                        >
+                            <FontAwesomeIcon icon={faPlus} className="me-2" />
+                            Create Invoice
+                        </Button>
+                    </Col>
+                </Row>
+            )}
 
-            <QuickPartyModal
-                show={showAddPartyModal}
-                onHide={() => setShowAddPartyModal(false)}
-                quickPartyData={quickPartyData}
-                onQuickPartyChange={handleQuickPartyChange}
-                onAddQuickParty={handleAddQuickParty}
-            />
+            {/* Tabs - Only show for non-SalesInvoices tabs */}
+            {activeTab !== 'invoices' && (
+                <Tabs
+                    activeKey={activeTab}
+                    onSelect={(k) => setActiveTab(k)}
+                    className="mb-4 custom-tabs"
+                >
+                    <Tab eventKey="allSales" title="All Sales">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                    <Tab eventKey="quotations" title="Quotations">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                    <Tab eventKey="reports" title="Reports">
+                        {/* Content handled by renderTabContent */}
+                    </Tab>
+                </Tabs>
+            )}
 
-            {/* Payment Modal for Existing Invoices */}
-            <PaymentModal
-                show={showPaymentModal}
-                onHide={handleClosePaymentModal}
-                invoiceData={selectedSaleForPayment}
-                onSavePayment={handleSavePaymentPlan}
-                onSetReminder={(data) => {
-                    console.log('Setting payment reminder for existing invoice:', data);
-                }}
-            />
+            {/* Render Tab Content */}
+            {renderTabContent()}
 
-            {/* Payment Modal After Invoice Creation */}
-            <PaymentModal
-                show={showPaymentAfterInvoice}
-                onHide={handleClosePaymentAfterInvoice}
-                invoiceData={newlyCreatedInvoice}
-                onSavePayment={handleSavePaymentPlan}
-                onSetReminder={(data) => {
-                    console.log('Setting payment reminder for new invoice:', data);
-                }}
-            />
+            {/* Modals - Only show for non-SalesInvoices tabs */}
+            {activeTab !== 'invoices' && (
+                <>
+                    <SalesModal
+                        show={showCreateModal}
+                        onHide={handleCloseModal}
+                        editingSale={editingSale}
+                        formData={formData}
+                        parties={parties}
+                        onInputChange={handleInputChange}
+                        onPartySelection={handlePartySelection}
+                        onItemChange={handleItemChange}
+                        onAddItem={addItem}
+                        onRemoveItem={removeItem}
+                        onSaveInvoice={handleSaveInvoice}
+                        onShowAddPartyModal={handleShowAddPartyModal}
+                    />
 
-            <PrintInvoiceModal
-                show={showPrintModal}
-                onHide={() => setShowPrintModal(false)}
-                sale={selectedSaleForPrint}
-            />
+                    <QuickPartyModal
+                        show={showAddPartyModal}
+                        onHide={() => setShowAddPartyModal(false)}
+                        quickPartyData={quickPartyData}
+                        onQuickPartyChange={handleQuickPartyChange}
+                        onAddQuickParty={handleAddQuickParty}
+                    />
+
+                    {/* Payment Modal for Existing Invoices */}
+                    <PaymentModal
+                        show={showPaymentModal}
+                        onHide={handleClosePaymentModal}
+                        invoiceData={selectedSaleForPayment}
+                        onSavePayment={handleSavePaymentPlan}
+                        onSetReminder={(data) => {
+                            console.log('Setting payment reminder for existing invoice:', data);
+                        }}
+                    />
+
+                    {/* Payment Modal After Invoice Creation */}
+                    <PaymentModal
+                        show={showPaymentAfterInvoice}
+                        onHide={handleClosePaymentAfterInvoice}
+                        invoiceData={newlyCreatedInvoice}
+                        onSavePayment={handleSavePaymentPlan}
+                        onSetReminder={(data) => {
+                            console.log('Setting payment reminder for new invoice:', data);
+                        }}
+                    />
+
+                    <PrintInvoiceModal
+                        show={showPrintModal}
+                        onHide={() => setShowPrintModal(false)}
+                        sale={selectedSaleForPrint}
+                    />
+                </>
+            )}
         </Container>
     );
 }

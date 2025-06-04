@@ -9,7 +9,7 @@ import Purchases from '../components/Home/Purchases';
 import Inventory from '../components/Home/Inventory';
 import StaffManagement from '../components/Home/StaffManagement';
 import PurchaseOrders from '../components/Home/PurchaseOrders';
-
+import Bank from '../components/Home/Bank'; // Import the new Bank component
 
 /**
  * HomePage component that serves as the main container for the application
@@ -38,45 +38,81 @@ function HomePage({ onNavigate, currentView: propCurrentView }) {
     // Render the appropriate component based on the current view
     const renderContent = () => {
         switch (currentView) {
+            // Day Book cases
             case 'dailySummary':
                 return <DayBook view={currentView} onNavigate={handleNavigation} />;
             case 'transactions':
                 return <DayBook view={currentView} onNavigate={handleNavigation} />;
             case 'cashAndBank':
                 return <DayBook view={currentView} onNavigate={handleNavigation} />;
+
+            // Parties case
             case 'parties':
                 return <Parties onNavigate={handleNavigation} />;
+
+            // Sales cases
             case 'allSales':
             case 'invoices':
             case 'createInvoice':
             case 'creditNotes':
                 return <Sales view={currentView} onNavigate={handleNavigation} />;
-            // Add new cases for sales orders
+
+            // Sales Orders cases
             case 'salesOrders':
             case 'createSalesOrder':
                 return <SalesOrders view={currentView} onNavigate={handleNavigation} />;
+
+            // Purchase & Expense cases
+            case 'purchaseBills':
+            case 'paymentOut':
+            case 'expenses':
+            case 'purchaseOrder':
+            case 'purchaseReturn':
             case 'allPurchases':
             case 'createPurchase':
             case 'purchaseOrders':
                 return <Purchases view={currentView} onNavigate={handleNavigation} />;
+
+            // Legacy Purchase Order case (keep for backward compatibility)
             case 'createPurchaseOrder':
                 return <PurchaseOrders view={currentView} onNavigate={handleNavigation} />;
+
+            // Bank & Cash cases - NEW SECTION
+            case 'bankAccounts':
+                return <Bank view="bankAccounts" activeType="bank" onNavigate={handleNavigation} />;
+            case 'cashAccounts':
+                return <Bank view="cashAccounts" activeType="cash" onNavigate={handleNavigation} />;
+            case 'bankTransactions':
+                return <Bank view="bankTransactions" onNavigate={handleNavigation} />;
+            case 'bankReconciliation':
+                return <Bank view="bankReconciliation" onNavigate={handleNavigation} />;
+            case 'cashFlow':
+                return <Bank view="cashFlow" onNavigate={handleNavigation} />;
+
+            // Products & Services case
             case 'products':
                 return <div className="placeholder-content">Products & Services</div>;
-            // Fix the inventory routing - add all inventory-related cases
+
+            // Inventory cases
             case 'inventory':
             case 'allProducts':
             case 'lowStock':
             case 'stockMovement':
                 return <Inventory view={currentView} onNavigate={handleNavigation} />;
+
+            // Staff Management case
             case 'staff':
                 return <StaffManagement view={currentView} onNavigate={handleNavigation} />;
+
+            // Other cases
             case 'insights':
                 return <div className="placeholder-content">Insights Dashboard</div>;
             case 'reports':
                 return <div className="placeholder-content">Reports & Analytics</div>;
             case 'settings':
                 return <div className="placeholder-content">Settings</div>;
+
+            // Default case
             default:
                 return <DayBook view="dailySummary" onNavigate={handleNavigation} />;
         }

@@ -1,0 +1,234 @@
+.purchase-bills-container {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+.page-title {
+    color: #2c3e50;
+    font-weight: 600;
+    font-size: 1.75rem;
+}
+
+/* Filter Card */
+.filter-card {
+    border: 1px solid #e3e6f0;
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+}
+
+.filter-card .card-body {
+    background-color: #ffffff;
+}
+
+/* Summary Cards */
+.summary-card {
+    border: none;
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    transition: transform 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+}
+
+.paid-card {
+    border-left: 4px solid #28a745;
+}
+
+.unpaid-card {
+    border-left: 4px solid #6c757d;
+}
+
+.total-card {
+    border-left: 4px solid #ffc107;
+    background: linear-gradient(135deg, #fff3cd 0%, #ffffff 100%);
+}
+
+.summary-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: white;
+}
+
+.summary-icon.paid {
+    background-color: #28a745;
+}
+
+.summary-equal {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #6c757d;
+}
+
+.summary-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-amount {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-top: 5px;
+}
+
+.summary-amount.total {
+    font-size: 1.5rem;
+    color: #e67e22;
+}
+
+/* Transactions Card */
+.transactions-card {
+    border: none;
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+}
+
+.transactions-card .card-header {
+    border-bottom: 1px solid #e3e6f0;
+    padding: 1rem 1.5rem;
+}
+
+.transactions-card .card-header h5 {
+    color: #5a5c69;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+/* Table Styles */
+.transactions-table {
+    font-size: 0.875rem;
+}
+
+.transactions-table thead th {
+    background-color: #f8f9fc;
+    border-bottom: 1px solid #e3e6f0;
+    color: #5a5c69;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1rem 0.75rem;
+}
+
+.transactions-table tbody td {
+    padding: 1rem 0.75rem;
+    border-bottom: 1px solid #e3e6f0;
+    vertical-align: middle;
+}
+
+.transactions-table tbody tr:hover {
+    background-color: #f8f9fc;
+}
+
+.payment-type-badge {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid #dee2e6;
+}
+
+/* Button Styles */
+.btn-sm {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+}
+
+.no-caret::after {
+    display: none;
+}
+
+/* Search Input */
+.input-group-text {
+    background-color: #ffffff;
+    border-right: none;
+}
+
+.form-control:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Dropdown Styles */
+.dropdown-toggle {
+    text-align: left;
+}
+
+.dropdown-menu {
+    font-size: 0.875rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.dropdown-item:hover {
+    background-color: #f8f9fc;
+}
+
+.dropdown-item.active {
+    background-color: #007bff;
+    color: white;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .purchase-bills-container {
+        padding: 1rem !important;
+    }
+    
+    .page-title {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .summary-card {
+        margin-bottom: 1rem;
+    }
+    
+    .filter-card .row {
+        row-gap: 1rem;
+    }
+    
+    .transactions-table {
+        font-size: 0.75rem;
+    }
+    
+    .transactions-table thead th,
+    .transactions-table tbody td {
+        padding: 0.5rem 0.25rem;
+    }
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.summary-card,
+.filter-card,
+.transactions-card {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Custom Scrollbar */
+.table-responsive::-webkit-scrollbar {
+    height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}

@@ -1,0 +1,173 @@
+/* Sales Form Wrapper */
+.sales-form-wrapper {
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* Compact Cards */
+.sales-form-wrapper .card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  border-radius: 0.375rem;
+}
+
+.sales-form-wrapper .card-body {
+  padding: 1rem !important;
+}
+
+/* Compact Form Controls */
+.sales-form-wrapper .form-control-sm,
+.sales-form-wrapper .input-group-sm > .form-control,
+.sales-form-wrapper .input-group-sm > .input-group-text {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border-radius: 0.25rem;
+}
+
+.sales-form-wrapper .input-group-text {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+/* Section Headers */
+.sales-form-wrapper .text-primary.fw-semibold {
+  font-size: 0.875rem;
+  font-weight: 600 !important;
+  color: #0d6efd !important;
+}
+
+/* Small Text */
+.sales-form-wrapper .text-muted {
+  color: #6c757d !important;
+}
+
+.sales-form-wrapper .small,
+.sales-form-wrapper small {
+  font-size: 0.75rem;
+}
+
+/* Button Styling */
+.sales-form-wrapper .btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  border-radius: 0.25rem;
+}
+
+/* Toggle Buttons */
+.sales-form-wrapper .btn-outline-secondary {
+  color: #6c757d;
+  border-color: #dee2e6;
+}
+
+.sales-form-wrapper .btn-outline-secondary:hover {
+  color: #fff;
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+/* Keyboard Shortcuts */
+.sales-form-wrapper kbd {
+  padding: 0.125rem 0.25rem;
+  font-size: 0.65rem;
+  color: #fff;
+  background-color: #212529;
+  border-radius: 0.125rem;
+}
+
+/* List Groups */
+.sales-form-wrapper .list-group-item {
+  padding: 0.5rem 0.75rem;
+  border-color: #dee2e6;
+}
+
+.sales-form-wrapper .list-group-item-action:hover {
+  background-color: #f8f9fa;
+}
+
+/* Badges */
+.sales-form-wrapper .badge {
+  padding: 0.25em 0.4em;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* Customer Selection */
+.sales-form-wrapper .bg-success {
+  background-color: #198754 !important;
+}
+
+/* Invoice Type Indicators */
+.sales-form-wrapper .bg-info.bg-opacity-10 {
+  background-color: rgba(13, 202, 240, 0.1) !important;
+}
+
+.sales-form-wrapper .border-info.border-opacity-25 {
+  border-color: rgba(13, 202, 240, 0.25) !important;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 991.98px) {
+  .sales-form-wrapper .container-fluid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .sales-form-wrapper .card-body {
+    padding: 0.75rem !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .sales-form-wrapper .container-fluid {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .sales-form-wrapper .card-body {
+    padding: 0.5rem !important;
+  }
+
+  .sales-form-wrapper .btn-sm {
+    padding: 0.125rem 0.25rem;
+    font-size: 0.7rem;
+  }
+}
+
+/* Sticky Action Buttons */
+.sales-form-wrapper .position-sticky.bottom-0 {
+  background: linear-gradient(
+    to top,
+    rgba(248, 249, 250, 1) 70%,
+    rgba(248, 249, 250, 0)
+  );
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+/* Z-index fixes */
+.sales-form-wrapper .position-absolute {
+  z-index: 1060;
+}
+
+.sales-form-wrapper .dropdown-menu {
+  z-index: 1070;
+}
+
+/* Focus states */
+.sales-form-wrapper .form-control:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Loading states */
+.sales-form-wrapper .opacity-50 {
+  opacity: 0.5 !important;
+}
+
+.sales-form-wrapper .pointer-events-none {
+  pointer-events: none !important;
+}
