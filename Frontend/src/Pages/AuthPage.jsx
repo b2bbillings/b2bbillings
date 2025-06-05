@@ -61,14 +61,17 @@ function AuthPage({ onLogin }) {
     }
 
     // Handle successful login/signup
-    const handleAuthSuccess = () => {
-        console.log("Authentication successful in AuthPage, calling onLogin");
+    const handleAuthSuccess = (userData) => {
+        console.log("✅ Authentication successful in AuthPage:", userData?.name || 'User');
+
         if (onLogin) {
-            onLogin(); // This should trigger App.jsx to change routes
+            // Pass user data to parent component (App.jsx)
+            onLogin(userData);
         } else {
-            console.error("onLogin prop is not defined in AuthPage!");
+            console.error("❌ onLogin prop is not defined in AuthPage!");
         }
     };
+
     return (
         <div className="container">
             <div className="row justify-content-center">

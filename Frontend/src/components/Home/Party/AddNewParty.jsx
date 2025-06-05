@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Button, Form, Row, Col, InputGroup } from 'react-bootstrap';
+import { Modal, Button, Form, Row, Col, InputGroup, Nav, Tab } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faTimes,
@@ -8,7 +8,10 @@ import {
     faEdit,
     faUser,
     faRocket,
-    faKeyboard
+    faKeyboard,
+    faHome,
+    faTruck,
+    faCopy
 } from '@fortawesome/free-solid-svg-icons';
 import useKeyboardNavigation from '../../../hooks/useKeyboardNavigation';
 import KeyboardShortcutsHelp from '../../../hooks/KeyboardShortcutsHelp';
@@ -23,6 +26,7 @@ function AddNewParty({
 }) {
     const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
+    const [activeAddressTab, setActiveAddressTab] = useState('home');
 
     // Form refs for keyboard navigation
     const nameRef = useRef(null);
@@ -30,11 +34,21 @@ function AddNewParty({
     const phoneRef = useRef(null);
     const companyRef = useRef(null);
     const gstRef = useRef(null);
-    const addressRef = useRef(null);
-    const pincodeRef = useRef(null);
-    const stateRef = useRef(null);
-    const districtRef = useRef(null);
-    const talukaRef = useRef(null);
+
+    // Home address refs
+    const homeAddressRef = useRef(null);
+    const homePincodeRef = useRef(null);
+    const homeStateRef = useRef(null);
+    const homeDistrictRef = useRef(null);
+    const homeTalukaRef = useRef(null);
+
+    // Delivery address refs
+    const deliveryAddressRef = useRef(null);
+    const deliveryPincodeRef = useRef(null);
+    const deliveryStateRef = useRef(null);
+    const deliveryDistrictRef = useRef(null);
+    const deliveryTalukaRef = useRef(null);
+
     const balanceRef = useRef(null);
     const saveButtonRef = useRef(null);
     const cancelButtonRef = useRef(null);
@@ -42,7 +56,8 @@ function AddNewParty({
     // Navigation refs array
     const navigationRefs = [
         nameRef, emailRef, phoneRef, companyRef, gstRef,
-        addressRef, pincodeRef, stateRef, districtRef, talukaRef,
+        homeAddressRef, homePincodeRef, homeStateRef, homeDistrictRef, homeTalukaRef,
+        deliveryAddressRef, deliveryPincodeRef, deliveryStateRef, deliveryDistrictRef, deliveryTalukaRef,
         balanceRef, saveButtonRef, cancelButtonRef
     ];
 
@@ -63,11 +78,22 @@ function AddNewParty({
         companyName: '',
         gstNumber: '',
         country: 'INDIA',
-        addressLine: '',
-        pincode: '',
-        state: '',
-        district: '',
-        taluka: '',
+
+        // Home Address
+        homeAddressLine: '',
+        homePincode: '',
+        homeState: '',
+        homeDistrict: '',
+        homeTaluka: '',
+
+        // Delivery Address
+        deliveryAddressLine: '',
+        deliveryPincode: '',
+        deliveryState: '',
+        deliveryDistrict: '',
+        deliveryTaluka: '',
+        sameAsHomeAddress: false,
+
         openingBalanceType: 'debit',
         openingBalance: 0,
         phoneNumbers: [{ number: '', label: '' }]
@@ -84,7 +110,21 @@ function AddNewParty({
         'Ctrl+S': 'Save party',
         'Ctrl+Q': isQuickAdd ? 'Save quick customer' : 'Toggle quick add mode',
         'Ctrl+P': 'Add additional phone number',
+        'Ctrl+D': 'Copy home address to delivery address',
         'F1': 'Show keyboard shortcuts'
+    };
+
+    // Copy home address to delivery address
+    const copyHomeToDelivery = () => {
+        setFormData(prev => ({
+            ...prev,
+            deliveryAddressLine: prev.homeAddressLine,
+            deliveryPincode: prev.homePincode,
+            deliveryState: prev.homeState,
+            deliveryDistrict: prev.homeDistrict,
+            deliveryTaluka: prev.homeTaluka,
+            sameAsHomeAddress: true
+        }));
     };
 
     // Keyboard navigation setup
@@ -100,6 +140,11 @@ function AddNewParty({
             'ctrl+p': () => {
                 if (!isQuickAdd && !showAdditionalPhones) {
                     setShowAdditionalPhones(true);
+                }
+            },
+            'ctrl+d': () => {
+                if (!isQuickAdd) {
+                    copyHomeToDelivery();
                 }
             },
             'f1': () => setShowShortcuts(true)
@@ -132,16 +177,28 @@ function AddNewParty({
                         companyName: '',
                         gstNumber: '',
                         country: 'INDIA',
-                        addressLine: '',
-                        pincode: '',
-                        state: '',
-                        district: '',
-                        taluka: '',
+
+                        // Home Address
+                        homeAddressLine: '',
+                        homePincode: '',
+                        homeState: '',
+                        homeDistrict: '',
+                        homeTaluka: '',
+
+                        // Delivery Address
+                        deliveryAddressLine: '',
+                        deliveryPincode: '',
+                        deliveryState: '',
+                        deliveryDistrict: '',
+                        deliveryTaluka: '',
+                        sameAsHomeAddress: false,
+
                         openingBalanceType: 'debit',
                         openingBalance: 0,
                         phoneNumbers: [{ number: '', label: '' }]
                     });
                     setShowAdditionalPhones(false);
+                    setActiveAddressTab('home');
                 }
             } else {
                 // Populate form for editing
@@ -153,11 +210,22 @@ function AddNewParty({
                     companyName: editingParty.companyName || '',
                     gstNumber: editingParty.gstNumber || '',
                     country: editingParty.country || 'INDIA',
-                    addressLine: editingParty.addressLine || editingParty.address || '',
-                    pincode: editingParty.pincode || '',
-                    state: editingParty.state || '',
-                    district: editingParty.district || '',
-                    taluka: editingParty.taluka || '',
+
+                    // Home Address (backward compatibility)
+                    homeAddressLine: editingParty.homeAddressLine || editingParty.addressLine || editingParty.address || '',
+                    homePincode: editingParty.homePincode || editingParty.pincode || '',
+                    homeState: editingParty.homeState || editingParty.state || '',
+                    homeDistrict: editingParty.homeDistrict || editingParty.district || '',
+                    homeTaluka: editingParty.homeTaluka || editingParty.taluka || '',
+
+                    // Delivery Address
+                    deliveryAddressLine: editingParty.deliveryAddressLine || '',
+                    deliveryPincode: editingParty.deliveryPincode || '',
+                    deliveryState: editingParty.deliveryState || '',
+                    deliveryDistrict: editingParty.deliveryDistrict || '',
+                    deliveryTaluka: editingParty.deliveryTaluka || '',
+                    sameAsHomeAddress: editingParty.sameAsHomeAddress || false,
+
                     openingBalanceType: editingParty.openingBalanceType || 'debit',
                     openingBalance: editingParty.openingBalance || 0,
                     phoneNumbers: editingParty.phoneNumbers || [{ number: editingParty.phone || '', label: 'Primary' }]
@@ -179,8 +247,28 @@ function AddNewParty({
 
     // Handle form input changes
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        const fieldValue = type === 'checkbox' ? checked : value;
+
+        setFormData(prev => {
+            const newData = { ...prev, [name]: fieldValue };
+
+            // If "Same as Home Address" is checked, copy home address to delivery
+            if (name === 'sameAsHomeAddress' && checked) {
+                newData.deliveryAddressLine = prev.homeAddressLine;
+                newData.deliveryPincode = prev.homePincode;
+                newData.deliveryState = prev.homeState;
+                newData.deliveryDistrict = prev.homeDistrict;
+                newData.deliveryTaluka = prev.homeTaluka;
+            }
+
+            // If any delivery field is manually changed, uncheck "Same as Home Address"
+            if (name.startsWith('delivery') && name !== 'sameAsHomeAddress') {
+                newData.sameAsHomeAddress = false;
+            }
+
+            return newData;
+        });
     };
 
     // Handle quick form input changes
@@ -233,11 +321,17 @@ function AddNewParty({
                 partyType: 'customer',
                 isRunningCustomer: true,
                 email: '',
-                address: '',
-                pincode: '',
-                state: '',
-                district: '',
-                taluka: '',
+                homeAddressLine: '',
+                homePincode: '',
+                homeState: '',
+                homeDistrict: '',
+                homeTaluka: '',
+                deliveryAddressLine: '',
+                deliveryPincode: '',
+                deliveryState: '',
+                deliveryDistrict: '',
+                deliveryTaluka: '',
+                sameAsHomeAddress: false,
                 gstNumber: '',
                 companyName: '',
                 openingBalance: 0,
@@ -257,7 +351,13 @@ function AddNewParty({
             const partyData = {
                 ...formData,
                 phone: formData.phoneNumber,
-                address: formData.addressLine,
+                // Keep backward compatibility
+                address: formData.homeAddressLine,
+                addressLine: formData.homeAddressLine,
+                pincode: formData.homePincode,
+                state: formData.homeState,
+                district: formData.homeDistrict,
+                taluka: formData.homeTaluka,
                 isRunningCustomer: false
             };
 
@@ -378,7 +478,7 @@ function AddNewParty({
 
     return (
         <>
-            <Modal show={show} onHide={onHide} centered size="lg">
+            <Modal show={show} onHide={onHide} centered size="xl" className="add-party-modal">
                 <Modal.Header className="d-flex justify-content-between align-items-center border-0 bg-light">
                     <Modal.Title className="fw-bold text-dark mb-0">
                         <FontAwesomeIcon icon={editingParty ? faEdit : faUser} className="me-2 text-primary" />
@@ -586,80 +686,207 @@ function AddNewParty({
                             </Row>
                         </div>
 
-                        {/* Address Information */}
+                        {/* Address Information - Enhanced with Tabs */}
                         <div className="mb-4 p-3 bg-light rounded">
-                            <h6 className="text-muted mb-3 small">Address Information</h6>
-                            <Row>
-                                <Col md={12}>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">Address</Form.Label>
-                                        <Form.Control
-                                            ref={addressRef}
-                                            as="textarea"
-                                            rows={2}
-                                            name="addressLine"
-                                            value={formData.addressLine}
-                                            onChange={handleInputChange}
-                                            placeholder="Enter full address"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                            </Row>
-                            <Row>
-                                <Col md={3}>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">PIN Code</Form.Label>
-                                        <Form.Control
-                                            ref={pincodeRef}
-                                            type="text"
-                                            name="pincode"
-                                            value={formData.pincode}
-                                            onChange={handleInputChange}
-                                            placeholder="PIN Code"
-                                            maxLength="6"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                                <Col md={3}>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">State</Form.Label>
-                                        <Form.Control
-                                            ref={stateRef}
-                                            type="text"
-                                            name="state"
-                                            value={formData.state}
-                                            onChange={handleInputChange}
-                                            placeholder="State"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                                <Col md={3}>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">District</Form.Label>
-                                        <Form.Control
-                                            ref={districtRef}
-                                            type="text"
-                                            name="district"
-                                            value={formData.district}
-                                            onChange={handleInputChange}
-                                            placeholder="District"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                                <Col md={3}>
-                                    <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">Taluka</Form.Label>
-                                        <Form.Control
-                                            ref={talukaRef}
-                                            type="text"
-                                            name="taluka"
-                                            value={formData.taluka}
-                                            onChange={handleInputChange}
-                                            placeholder="Taluka"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                            </Row>
+                            <div className="d-flex justify-content-between align-items-center mb-3">
+                                <h6 className="text-muted mb-0 small">Address Information</h6>
+                                <Button
+                                    variant="outline-info"
+                                    size="sm"
+                                    onClick={copyHomeToDelivery}
+                                    type="button"
+                                    title="Copy home address to delivery address (Ctrl+D)"
+                                >
+                                    <FontAwesomeIcon icon={faCopy} className="me-1" />
+                                    Copy Home to Delivery
+                                </Button>
+                            </div>
+
+                            <Tab.Container activeKey={activeAddressTab} onSelect={setActiveAddressTab}>
+                                <Nav variant="tabs" className="mb-3">
+                                    <Nav.Item>
+                                        <Nav.Link eventKey="home" className="small">
+                                            <FontAwesomeIcon icon={faHome} className="me-1" />
+                                            Home Address
+                                        </Nav.Link>
+                                    </Nav.Item>
+                                    <Nav.Item>
+                                        <Nav.Link eventKey="delivery" className="small">
+                                            <FontAwesomeIcon icon={faTruck} className="me-1" />
+                                            Delivery Address
+                                        </Nav.Link>
+                                    </Nav.Item>
+                                </Nav>
+
+                                <Tab.Content>
+                                    {/* Home Address Tab */}
+                                    <Tab.Pane eventKey="home">
+                                        <Row>
+                                            <Col md={12}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">Home Address</Form.Label>
+                                                    <Form.Control
+                                                        ref={homeAddressRef}
+                                                        as="textarea"
+                                                        rows={2}
+                                                        name="homeAddressLine"
+                                                        value={formData.homeAddressLine}
+                                                        onChange={handleInputChange}
+                                                        placeholder="Enter home address"
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                        </Row>
+                                        <Row>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">PIN Code</Form.Label>
+                                                    <Form.Control
+                                                        ref={homePincodeRef}
+                                                        type="text"
+                                                        name="homePincode"
+                                                        value={formData.homePincode}
+                                                        onChange={handleInputChange}
+                                                        placeholder="PIN Code"
+                                                        maxLength="6"
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">State</Form.Label>
+                                                    <Form.Control
+                                                        ref={homeStateRef}
+                                                        type="text"
+                                                        name="homeState"
+                                                        value={formData.homeState}
+                                                        onChange={handleInputChange}
+                                                        placeholder="State"
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">District</Form.Label>
+                                                    <Form.Control
+                                                        ref={homeDistrictRef}
+                                                        type="text"
+                                                        name="homeDistrict"
+                                                        value={formData.homeDistrict}
+                                                        onChange={handleInputChange}
+                                                        placeholder="District"
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">Taluka</Form.Label>
+                                                    <Form.Control
+                                                        ref={homeTalukaRef}
+                                                        type="text"
+                                                        name="homeTaluka"
+                                                        value={formData.homeTaluka}
+                                                        onChange={handleInputChange}
+                                                        placeholder="Taluka"
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                        </Row>
+                                    </Tab.Pane>
+
+                                    {/* Delivery Address Tab */}
+                                    <Tab.Pane eventKey="delivery">
+                                        <div className="mb-3">
+                                            <Form.Check
+                                                type="checkbox"
+                                                name="sameAsHomeAddress"
+                                                id="sameAsHomeAddress"
+                                                label="Same as home address"
+                                                checked={formData.sameAsHomeAddress}
+                                                onChange={handleInputChange}
+                                                className="mb-3"
+                                            />
+                                        </div>
+
+                                        <Row>
+                                            <Col md={12}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">Delivery Address</Form.Label>
+                                                    <Form.Control
+                                                        ref={deliveryAddressRef}
+                                                        as="textarea"
+                                                        rows={2}
+                                                        name="deliveryAddressLine"
+                                                        value={formData.deliveryAddressLine}
+                                                        onChange={handleInputChange}
+                                                        placeholder="Enter delivery address"
+                                                        disabled={formData.sameAsHomeAddress}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                        </Row>
+                                        <Row>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">PIN Code</Form.Label>
+                                                    <Form.Control
+                                                        ref={deliveryPincodeRef}
+                                                        type="text"
+                                                        name="deliveryPincode"
+                                                        value={formData.deliveryPincode}
+                                                        onChange={handleInputChange}
+                                                        placeholder="PIN Code"
+                                                        maxLength="6"
+                                                        disabled={formData.sameAsHomeAddress}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">State</Form.Label>
+                                                    <Form.Control
+                                                        ref={deliveryStateRef}
+                                                        type="text"
+                                                        name="deliveryState"
+                                                        value={formData.deliveryState}
+                                                        onChange={handleInputChange}
+                                                        placeholder="State"
+                                                        disabled={formData.sameAsHomeAddress}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">District</Form.Label>
+                                                    <Form.Control
+                                                        ref={deliveryDistrictRef}
+                                                        type="text"
+                                                        name="deliveryDistrict"
+                                                        value={formData.deliveryDistrict}
+                                                        onChange={handleInputChange}
+                                                        placeholder="District"
+                                                        disabled={formData.sameAsHomeAddress}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                            <Col md={3}>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label className="text-muted small">Taluka</Form.Label>
+                                                    <Form.Control
+                                                        ref={deliveryTalukaRef}
+                                                        type="text"
+                                                        name="deliveryTaluka"
+                                                        value={formData.deliveryTaluka}
+                                                        onChange={handleInputChange}
+                                                        placeholder="Taluka"
+                                                        disabled={formData.sameAsHomeAddress}
+                                                    />
+                                                </Form.Group>
+                                            </Col>
+                                        </Row>
+                                    </Tab.Pane>
+                                </Tab.Content>
+                            </Tab.Container>
                         </div>
 
                         {/* Opening Balance */}
@@ -735,6 +962,32 @@ function AddNewParty({
                 onHide={() => setShowShortcuts(false)}
                 shortcuts={shortcuts}
             />
+
+            <style>
+                {`
+                .add-party-modal .modal-dialog {
+                    max-width: 1200px;
+                }
+                
+                .add-party-modal .nav-tabs .nav-link {
+                    padding: 0.5rem 1rem;
+                    font-size: 0.875rem;
+                }
+                
+                .add-party-modal .nav-tabs .nav-link.active {
+                    background-color: #f8f9fa;
+                    border-color: #dee2e6 #dee2e6 #f8f9fa;
+                }
+                
+                .add-party-modal .tab-content {
+                    border: 1px solid #dee2e6;
+                    border-top: none;
+                    padding: 1rem;
+                    border-radius: 0 0 0.375rem 0.375rem;
+                    background-color: white;
+                }
+                `}
+            </style>
         </>
     );
 }

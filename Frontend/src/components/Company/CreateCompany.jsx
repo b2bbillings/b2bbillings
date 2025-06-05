@@ -8,10 +8,12 @@ import {
     faImage,
     faPlus,
     faUpload,
-    faFileSignature
+    faFileSignature,
+    faSpinner
 } from '@fortawesome/free-solid-svg-icons';
 import useKeyboardNavigation from '../../hooks/useKeyboardNavigation';
 import './CreateCompany.css';
+import companyService from '../../services/companyService';
 
 function CreateCompany({ show, onHide, onCompanyCreated }) {
     // Business Categories
@@ -87,6 +89,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
     const [additionalPhones, setAdditionalPhones] = useState([]);
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [apiError, setApiError] = useState('');
 
     // Refs for keyboard navigation
     const businessNameRef = useRef(null);
@@ -118,51 +121,57 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
         addressRef
     ]);
 
+    // Validation function
+    const validateForm = useCallback(() => {
+        const newErrors = {};
+
+        // Required fields validation
+        if (!formData.businessName.trim()) {
+            newErrors.businessName = 'Business name is required';
+        } else if (formData.businessName.trim().length < 2) {
+            newErrors.businessName = 'Business name must be at least 2 characters';
+        }
+
+        if (!formData.phoneNumber.trim()) {
+            newErrors.phoneNumber = 'Phone number is required';
+        } else if (!/^[0-9]{10}$/.test(formData.phoneNumber.replace(/\D/g, ''))) {
+            newErrors.phoneNumber = 'Please enter a valid 10-digit phone number';
+        }
+
+        // Optional field validations
+        if (formData.email && !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(formData.email)) {
+            newErrors.email = 'Please enter a valid email address';
+        }
+
+        if (formData.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(formData.gstin.toUpperCase())) {
+            newErrors.gstin = 'Please enter a valid GSTIN';
+        }
+
+        if (formData.pincode && !/^[0-9]{6}$/.test(formData.pincode)) {
+            newErrors.pincode = 'Please enter a valid 6-digit PIN code';
+        }
+
+        // Validate additional phone numbers
+        additionalPhones.forEach((phone, index) => {
+            if (phone.trim() && !/^[0-9]{10}$/.test(phone.replace(/\D/g, ''))) {
+                newErrors[`additionalPhone${index}`] = 'Please enter a valid 10-digit phone number';
+            }
+        });
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    }, [formData, additionalPhones]);
+
     // Handle form submission
-    const handleSubmit = useCallback((e) => {
+    const handleSubmit = useCallback(async (e) => {
         if (e) e.preventDefault();
 
         if (isSubmitting) return;
 
-        // Validate form function
-        const validateForm = () => {
-            const newErrors = {};
+        // Clear previous API errors
+        setApiError('');
 
-            // Required fields
-            if (!formData.businessName.trim()) {
-                newErrors.businessName = 'Business name is required';
-            }
-
-            if (!formData.phoneNumber.trim()) {
-                newErrors.phoneNumber = 'Phone number is required';
-            } else if (!/^\d{10}$/.test(formData.phoneNumber.replace(/\D/g, ''))) {
-                newErrors.phoneNumber = 'Please enter a valid 10-digit phone number';
-            }
-
-            // Optional field validations
-            if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
-                newErrors.email = 'Please enter a valid email address';
-            }
-
-            if (formData.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(formData.gstin)) {
-                newErrors.gstin = 'Please enter a valid GSTIN';
-            }
-
-            if (formData.pincode && !/^\d{6}$/.test(formData.pincode)) {
-                newErrors.pincode = 'Please enter a valid 6-digit PIN code';
-            }
-
-            // Validate additional phone numbers
-            additionalPhones.forEach((phone, index) => {
-                if (phone && !/^\d{10}$/.test(phone.replace(/\D/g, ''))) {
-                    newErrors[`additionalPhone${index}`] = 'Please enter a valid 10-digit phone number';
-                }
-            });
-
-            setErrors(newErrors);
-            return Object.keys(newErrors).length === 0;
-        };
-
+        // Validate form
         if (!validateForm()) {
             // Focus first error field
             const firstErrorField = Object.keys(errors)[0];
@@ -176,29 +185,107 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
         setIsSubmitting(true);
 
         try {
+            // Prepare company data for API
             const companyData = {
-                ...formData,
+                businessName: formData.businessName.trim(),
+                phoneNumber: formData.phoneNumber.replace(/\D/g, ''),
+                gstin: formData.gstin.trim().toUpperCase() || undefined,
+                email: formData.email.trim() || undefined,
+                businessType: formData.businessType || undefined,
+                businessCategory: formData.businessCategory || undefined,
+                state: formData.state.trim() || undefined,
+                pincode: formData.pincode.trim() || undefined,
+                city: formData.city.trim() || undefined,
+                tehsil: formData.tehsil.trim() || undefined,
+                address: formData.address.trim() || undefined,
                 logo: companyLogo,
                 signatureImage: signatureImage,
-                additionalPhones: additionalPhones.filter(phone => phone.trim()),
-                createdAt: new Date().toISOString(),
-                id: Date.now() // Simple ID generation
+                additionalPhones: additionalPhones.filter(phone => phone.trim()).map(phone => phone.replace(/\D/g, ''))
+            };
+
+            // Call API to create company
+            const response = await companyService.createCompany(companyData);
+
+            // Success handling
+            console.log('✅ Company created successfully:', response);
+
+            // Prepare data for parent component
+            const companyDataForParent = {
+                ...response.data.company,
+                id: response.data.company._id || response.data.company.id,
+                name: response.data.company.businessName,
+                logo: response.data.company.logo?.url || response.data.company.logo?.base64,
+                signatureImage: response.data.company.signatureImage?.url || response.data.company.signatureImage?.base64
             };
 
             // Call the callback function
             if (onCompanyCreated) {
-                onCompanyCreated(companyData);
+                onCompanyCreated(companyDataForParent);
             }
 
-            // Close modal
+            // Show success message
+            alert(`Company "${response.data.company.businessName}" created successfully!`);
+
+            // Reset form and close modal
+            resetForm();
             onHide();
+
         } catch (error) {
-            console.error('Error creating company:', error);
-            alert('Error creating company. Please try again.');
+            console.error('❌ Error creating company:', error);
+
+            // Handle specific error types
+            if (error.message.includes('phone number already exists')) {
+                setErrors({ phoneNumber: 'A company with this phone number already exists' });
+            } else if (error.message.includes('email already exists')) {
+                setErrors({ email: 'A company with this email already exists' });
+            } else if (error.message.includes('GSTIN already exists')) {
+                setErrors({ gstin: 'A company with this GSTIN already exists' });
+            } else if (error.message.includes('Validation failed')) {
+                // Handle validation errors from backend
+                try {
+                    const errorData = JSON.parse(error.message);
+                    if (errorData.errors) {
+                        const backendErrors = {};
+                        errorData.errors.forEach(err => {
+                            backendErrors[err.param] = err.msg;
+                        });
+                        setErrors(backendErrors);
+                    }
+                } catch {
+                    setApiError(error.message);
+                }
+            } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
+                setApiError('Unable to connect to server. Please check your internet connection and try again.');
+            } else {
+                setApiError(error.message || 'An unexpected error occurred. Please try again.');
+            }
         } finally {
             setIsSubmitting(false);
         }
-    }, [formData, additionalPhones, companyLogo, signatureImage, isSubmitting, errors, onCompanyCreated, onHide]);
+    }, [formData, additionalPhones, companyLogo, signatureImage, isSubmitting, errors, onCompanyCreated, onHide, validateForm]);
+
+    // Reset form function
+    const resetForm = useCallback(() => {
+        setFormData({
+            businessName: '',
+            phoneNumber: '',
+            gstin: '',
+            email: '',
+            businessType: '',
+            businessCategory: '',
+            state: '',
+            pincode: '',
+            city: '',
+            tehsil: '',
+            address: ''
+        });
+        setCompanyLogo(null);
+        setSignatureImage(null);
+        setAdditionalPhones([]);
+        setErrors({});
+        setApiError('');
+        setIsSubmitting(false);
+    }, []);
 
     // Add additional phone number
     const addPhoneNumber = useCallback(() => {
@@ -208,13 +295,14 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
     // Handle cancel - close modal without saving
     const handleCancel = useCallback(() => {
         if (isSubmitting) return;
+        resetForm();
         onHide();
-    }, [isSubmitting, onHide]);
+    }, [isSubmitting, onHide, resetForm]);
 
     // Keyboard shortcuts
     const keyboardShortcuts = useRef({
         'Ctrl+S': (e) => handleSubmit(e),
-        'Escape': onHide,
+        'Escape': handleCancel,
         'Ctrl+L': () => logoInputRef.current?.click(),
         'Ctrl+P': addPhoneNumber,
         'Ctrl+G': () => signatureInputRef.current?.click()
@@ -224,12 +312,12 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
     useEffect(() => {
         keyboardShortcuts.current = {
             'Ctrl+S': (e) => handleSubmit(e),
-            'Escape': onHide,
+            'Escape': handleCancel,
             'Ctrl+L': () => logoInputRef.current?.click(),
             'Ctrl+P': addPhoneNumber,
             'Ctrl+G': () => signatureInputRef.current?.click()
         };
-    }, [handleSubmit, onHide, addPhoneNumber]);
+    }, [handleSubmit, handleCancel, addPhoneNumber]);
 
     // Initialize keyboard navigation
     const { focusNext, focusPrev } = useKeyboardNavigation({
@@ -237,7 +325,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
         refs: formRefs.current,
         loop: true,
         shortcuts: keyboardShortcuts.current,
-        onEscape: onHide,
+        onEscape: handleCancel,
         onEnter: (e) => {
             if (e.target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
@@ -257,26 +345,9 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
 
             return () => clearTimeout(timer);
         } else {
-            setFormData({
-                businessName: '',
-                phoneNumber: '',
-                gstin: '',
-                email: '',
-                businessType: '',
-                businessCategory: '',
-                state: '',
-                pincode: '',
-                city: '',
-                tehsil: '',
-                address: ''
-            });
-            setCompanyLogo(null);
-            setSignatureImage(null);
-            setAdditionalPhones([]);
-            setErrors({});
-            setIsSubmitting(false);
+            resetForm();
         }
-    }, [show]);
+    }, [show, resetForm]);
 
     // Handle input changes
     const handleInputChange = useCallback((e) => {
@@ -292,21 +363,33 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
             }
             return prev;
         });
-    }, []);
 
-    // Handle logo upload
+        // Clear API error when user makes changes
+        if (apiError) {
+            setApiError('');
+        }
+    }, [apiError]);
+
+    // Handle logo upload with enhanced error handling
     const handleLogoUpload = useCallback((e) => {
         const file = e.target.files[0];
         if (file) {
+            // Clear previous errors
+            setErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors.logo;
+                return newErrors;
+            });
+
             // Validate file size (max 2MB)
             if (file.size > 2 * 1024 * 1024) {
-                alert('File size should be less than 2MB');
+                setErrors(prev => ({ ...prev, logo: 'Logo file size should be less than 2MB' }));
                 return;
             }
 
             // Validate file type
             if (!file.type.startsWith('image/')) {
-                alert('Please select an image file');
+                setErrors(prev => ({ ...prev, logo: 'Please select an image file for logo' }));
                 return;
             }
 
@@ -314,29 +397,42 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
             reader.onload = (e) => {
                 setCompanyLogo(e.target.result);
             };
+            reader.onerror = () => {
+                setErrors(prev => ({ ...prev, logo: 'Error reading logo file' }));
+            };
             reader.readAsDataURL(file);
         }
     }, []);
 
-    // Handle signature upload
+    // Handle signature upload with enhanced error handling
     const handleSignatureUpload = useCallback((e) => {
         const file = e.target.files[0];
         if (file) {
+            // Clear previous errors
+            setErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors.signature;
+                return newErrors;
+            });
+
             // Validate file size (max 1MB)
             if (file.size > 1 * 1024 * 1024) {
-                alert('Signature file size should be less than 1MB');
+                setErrors(prev => ({ ...prev, signature: 'Signature file size should be less than 1MB' }));
                 return;
             }
 
             // Validate file type
             if (!file.type.startsWith('image/')) {
-                alert('Please select an image file for signature');
+                setErrors(prev => ({ ...prev, signature: 'Please select an image file for signature' }));
                 return;
             }
 
             const reader = new FileReader();
             reader.onload = (e) => {
                 setSignatureImage(e.target.result);
+            };
+            reader.onerror = () => {
+                setErrors(prev => ({ ...prev, signature: 'Error reading signature file' }));
             };
             reader.readAsDataURL(file);
         }
@@ -345,6 +441,12 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
     // Remove additional phone number
     const removePhoneNumber = useCallback((index) => {
         setAdditionalPhones(prev => prev.filter((_, i) => i !== index));
+        // Clear related errors
+        setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[`additionalPhone${index}`];
+            return newErrors;
+        });
     }, []);
 
     // Handle additional phone number change
@@ -352,6 +454,12 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
         setAdditionalPhones(prev =>
             prev.map((phone, i) => i === index ? value : phone)
         );
+        // Clear error for this field
+        setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[`additionalPhone${index}`];
+            return newErrors;
+        });
     }, []);
 
     // Handle key down for navigation
@@ -368,7 +476,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
     return (
         <Modal
             show={show}
-            onHide={onHide}
+            onHide={handleCancel}
             size="xl"
             centered
             className="create-company-modal"
@@ -392,14 +500,36 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                 </Button>
             </Modal.Header>
 
-            <Modal.Body className="px-4 py-3">
+            <Modal.Body className="px-4 py-3" style={{ position: 'relative' }}>
+                {/* Loading overlay */}
+                {isSubmitting && (
+                    <div
+                        className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-white bg-opacity-75"
+                        style={{ zIndex: 1050 }}
+                    >
+                        <div className="text-center">
+                            <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-primary mb-2" />
+                            <div className="fw-bold">Creating company...</div>
+                            <small className="text-muted">Please wait while we save your company details</small>
+                        </div>
+                    </div>
+                )}
+
+                {/* API Error Alert */}
+                {apiError && (
+                    <Alert variant="danger" className="mb-3" onClose={() => setApiError('')} dismissible>
+                        <Alert.Heading>Error</Alert.Heading>
+                        <p className="mb-0">{apiError}</p>
+                    </Alert>
+                )}
+
                 {/* Keyboard shortcuts info */}
                 <Alert variant="info" className="py-2 mb-3 small">
                     <strong>Shortcuts:</strong> Ctrl+S (Save), Esc (Close), Ctrl+L (Logo), Ctrl+G (Signature), Ctrl+P (Add Phone), Alt+↑↓ (Navigate)
                 </Alert>
 
                 <Form onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
-                    {/* Company Logo Upload Section - Smaller */}
+                    {/* Company Logo Upload Section */}
                     <Row className="mb-3">
                         <Col md={6}>
                             <Form.Group as={Row} className="mb-3">
@@ -416,13 +546,17 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                                 onClick={() => logoInputRef.current?.click()}
                                                 title="Ctrl+L"
                                                 className="w-100"
+                                                disabled={isSubmitting}
                                             >
                                                 <FontAwesomeIcon icon={faUpload} className="me-2" />
                                                 {companyLogo ? 'Change Logo' : 'Upload Logo'}
                                             </Button>
-                                            <Form.Text className="text-muted">
+                                            <Form.Text className="text-muted d-block">
                                                 Max 2MB, Image files only
                                             </Form.Text>
+                                            {errors.logo && (
+                                                <div className="text-danger small mt-1">{errors.logo}</div>
+                                            )}
                                         </div>
                                         {companyLogo && (
                                             <div className="d-flex align-items-center gap-2">
@@ -437,6 +571,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                                     size="sm"
                                                     onClick={() => setCompanyLogo(null)}
                                                     title="Remove logo"
+                                                    disabled={isSubmitting}
                                                 >
                                                     <FontAwesomeIcon icon={faTimes} />
                                                 </Button>
@@ -449,6 +584,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                         accept="image/*"
                                         onChange={handleLogoUpload}
                                         style={{ display: 'none' }}
+                                        disabled={isSubmitting}
                                     />
                                 </Col>
                             </Form.Group>
@@ -478,6 +614,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             placeholder="Enter business name"
                                             isInvalid={!!errors.businessName}
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                         <Form.Control.Feedback type="invalid">
                                             {errors.businessName}
@@ -497,6 +634,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             value={formData.businessType}
                                             onChange={handleInputChange}
                                             size="sm"
+                                            disabled={isSubmitting}
                                         >
                                             <option value="">Select business type</option>
                                             {businessTypes.map((type, index) => (
@@ -527,12 +665,14 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                                 placeholder="Enter phone number"
                                                 isInvalid={!!errors.phoneNumber}
                                                 size="sm"
+                                                disabled={isSubmitting}
                                             />
                                             <Button
                                                 variant="outline-secondary"
                                                 size="sm"
                                                 onClick={addPhoneNumber}
                                                 title="Ctrl+P"
+                                                disabled={isSubmitting}
                                             >
                                                 <FontAwesomeIcon icon={faPlus} />
                                             </Button>
@@ -551,14 +691,19 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                                     placeholder="Additional phone"
                                                     isInvalid={!!errors[`additionalPhone${index}`]}
                                                     size="sm"
+                                                    disabled={isSubmitting}
                                                 />
                                                 <Button
                                                     variant="outline-danger"
                                                     size="sm"
                                                     onClick={() => removePhoneNumber(index)}
+                                                    disabled={isSubmitting}
                                                 >
                                                     <FontAwesomeIcon icon={faTimes} />
                                                 </Button>
+                                                {errors[`additionalPhone${index}`] && (
+                                                    <div className="text-danger small">{errors[`additionalPhone${index}`]}</div>
+                                                )}
                                             </div>
                                         ))}
                                     </Col>
@@ -576,6 +721,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             value={formData.businessCategory}
                                             onChange={handleInputChange}
                                             size="sm"
+                                            disabled={isSubmitting}
                                         >
                                             <option value="">Select business category</option>
                                             {businessCategories.map((category, index) => (
@@ -607,6 +753,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             style={{ textTransform: 'uppercase' }}
                                             maxLength="15"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                         <Form.Control.Feedback type="invalid">
                                             {errors.gstin}
@@ -629,6 +776,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             placeholder="Enter email address"
                                             isInvalid={!!errors.email}
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                         <Form.Control.Feedback type="invalid">
                                             {errors.email}
@@ -660,6 +808,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             onChange={handleInputChange}
                                             placeholder="Enter state"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                     </Col>
                                 </Form.Group>
@@ -680,6 +829,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             isInvalid={!!errors.pincode}
                                             maxLength="6"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                         <Form.Control.Feedback type="invalid">
                                             {errors.pincode}
@@ -704,6 +854,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             onChange={handleInputChange}
                                             placeholder="Enter city"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                     </Col>
                                 </Form.Group>
@@ -722,6 +873,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             onChange={handleInputChange}
                                             placeholder="Enter tehsil/taluka"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                     </Col>
                                 </Form.Group>
@@ -744,6 +896,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                             onChange={handleInputChange}
                                             placeholder="Enter full address"
                                             size="sm"
+                                            disabled={isSubmitting}
                                         />
                                     </Col>
                                 </Form.Group>
@@ -761,18 +914,22 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                     <Col sm={10}>
                                         <div className="d-flex align-items-center gap-3">
                                             <div className="flex-grow-1">
-                                                <Form.Control
-                                                    ref={signatureInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={handleSignatureUpload}
+                                                <Button
+                                                    variant="outline-success"
                                                     size="sm"
-                                                    className="d-inline-block"
-                                                    style={{ width: 'auto' }}
-                                                />
+                                                    onClick={() => signatureInputRef.current?.click()}
+                                                    title="Ctrl+G"
+                                                    disabled={isSubmitting}
+                                                >
+                                                    <FontAwesomeIcon icon={faUpload} className="me-2" />
+                                                    {signatureImage ? 'Change Signature' : 'Upload Signature'}
+                                                </Button>
                                                 <Form.Text className="text-muted ms-2">
                                                     Max 1MB, Image files only
                                                 </Form.Text>
+                                                {errors.signature && (
+                                                    <div className="text-danger small mt-1">{errors.signature}</div>
+                                                )}
                                             </div>
                                             {signatureImage && (
                                                 <div className="d-flex align-items-center gap-2">
@@ -787,12 +944,21 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                                                         size="sm"
                                                         onClick={() => setSignatureImage(null)}
                                                         title="Remove signature"
+                                                        disabled={isSubmitting}
                                                     >
                                                         <FontAwesomeIcon icon={faTimes} />
                                                     </Button>
                                                 </div>
                                             )}
                                         </div>
+                                        <input
+                                            ref={signatureInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleSignatureUpload}
+                                            style={{ display: 'none' }}
+                                            disabled={isSubmitting}
+                                        />
                                     </Col>
                                 </Form.Group>
                             </Col>
@@ -821,7 +987,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                     size="lg"
                     className="px-4"
                 >
-                    <FontAwesomeIcon icon={faSave} className="me-2" />
+                    <FontAwesomeIcon icon={isSubmitting ? faSpinner : faSave} className={`me-2 ${isSubmitting ? 'fa-spin' : ''}`} />
                     {isSubmitting ? 'Saving...' : 'Save & Exit'}
                 </Button>
             </Modal.Footer>

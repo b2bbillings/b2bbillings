@@ -2,11 +2,12 @@ import { useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './Login.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUser, faLock, faSignInAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { faEnvelope, faLock, faSignInAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import authService from '../../services/authService';
 
 function Login({ onToggleView, bgImage, onLoginSuccess }) {
     const [formData, setFormData] = useState({
-        username: '',
+        email: '',
         password: '',
         rememberMe: false
     });
@@ -34,8 +35,10 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
     const validateForm = () => {
         const newErrors = {};
 
-        if (!formData.username.trim()) {
-            newErrors.username = 'Username, email, or phone number is required';
+        if (!formData.email.trim()) {
+            newErrors.email = 'Email is required';
+        } else if (!/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(formData.email)) {
+            newErrors.email = 'Please enter a valid email address';
         }
 
         if (!formData.password) {
@@ -45,8 +48,6 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
         return newErrors;
     };
 
-    // In Login.jsx, update the handleSubmit function:
-
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -54,21 +55,9 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
         setErrors({});
 
         // Validate form
-        let hasErrors = false;
-        const newErrors = {};
-
-        if (!formData.username.trim()) {
-            newErrors.username = "Username is required";
-            hasErrors = true;
-        }
-
-        if (!formData.password) {
-            newErrors.password = "Password is required";
-            hasErrors = true;
-        }
-
-        if (hasErrors) {
-            setErrors(newErrors);
+        const validationErrors = validateForm();
+        if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
             return;
         }
 
@@ -76,23 +65,42 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
         setIsSubmitting(true);
 
         try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log('🔐 Attempting login...', formData.email);
 
-            // In a real app, you would verify credentials with an API
-            // For demo, we'll just consider the login successful
-            console.log('Login successful:', formData);
+            const response = await authService.login({
+                email: formData.email,
+                password: formData.password
+            });
 
-            // Call the onLoginSuccess callback if provided
-            if (onLoginSuccess) { // Change from props.onLoginSuccess to onLoginSuccess
-                onLoginSuccess();
+            if (response.success) {
+                console.log('✅ Login successful:', response.data);
+
+                // Store token and user data
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+
+                // Call the onLoginSuccess callback with user data
+                if (onLoginSuccess) {
+                    onLoginSuccess(response.data.user);
+                }
+            } else {
+                setErrors({ general: response.message || 'Login failed. Please try again.' });
             }
         } catch (error) {
-            console.error('Login failed:', error);
-            setErrors({ general: 'Login failed. Please check your credentials.' });
+            console.error('❌ Login error:', error);
+            setErrors({ general: 'Login failed. Please check your credentials and try again.' });
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    // Demo credentials function
+    const fillDemoCredentials = () => {
+        setFormData({
+            ...formData,
+            email: 'demo@shopmanager.com',
+            password: 'demo123'
+        });
     };
 
     return (
@@ -108,26 +116,36 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                         <p className="text-muted mb-4">Enter your credentials to access your account</p>
                     </div>
 
+                    {/* General error message */}
+                    {errors.general && (
+                        <div className="alert alert-danger" role="alert">
+                            {errors.general}
+                        </div>
+                    )}
+
                     <form className="user auth-form" onSubmit={handleSubmit}>
+                        {/* Email Input */}
                         <div className="mb-4 input-group">
                             <span className="input-group-text">
-                                <FontAwesomeIcon icon={faUser} />
+                                <FontAwesomeIcon icon={faEnvelope} />
                             </span>
                             <input
-                                type="text"
-                                className={`form-control ${errors.username ? 'is-invalid' : ''}`}
-                                id="username"
-                                name="username"
-                                value={formData.username}
+                                type="email"
+                                className={`form-control ${errors.email ? 'is-invalid' : ''}`}
+                                id="email"
+                                name="email"
+                                value={formData.email}
                                 onChange={handleChange}
-                                placeholder="Username, Email, or Phone Number"
-                                autoComplete="username email"
+                                placeholder="Enter your email address"
+                                autoComplete="email"
+                                disabled={isSubmitting}
                             />
-                            {errors.username && (
-                                <div className="invalid-feedback">{errors.username}</div>
+                            {errors.email && (
+                                <div className="invalid-feedback">{errors.email}</div>
                             )}
                         </div>
 
+                        {/* Password Input */}
                         <div className="mb-4 input-group">
                             <span className="input-group-text">
                                 <FontAwesomeIcon icon={faLock} />
@@ -139,14 +157,16 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                                 name="password"
                                 value={formData.password}
                                 onChange={handleChange}
-                                placeholder="Password"
+                                placeholder="Enter your password"
                                 autoComplete="current-password"
+                                disabled={isSubmitting}
                             />
                             <button
                                 type="button"
                                 className="btn btn-outline-secondary"
                                 onClick={() => setShowPassword(!showPassword)}
                                 tabIndex="-1"
+                                disabled={isSubmitting}
                             >
                                 <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
                             </button>
@@ -155,6 +175,7 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                             )}
                         </div>
 
+                        {/* Remember Me Checkbox */}
                         <div className="mb-4 form-check">
                             <input
                                 type="checkbox"
@@ -163,14 +184,15 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                                 name="rememberMe"
                                 checked={formData.rememberMe}
                                 onChange={handleChange}
+                                disabled={isSubmitting}
                             />
                             <label className="form-check-label" htmlFor="rememberMe">
                                 Remember me
                             </label>
-                            <a href="#" className="float-end small text-decoration-none">Forgot Password?</a>
                         </div>
 
-                        <div className="d-grid gap-2">
+                        {/* Login Button */}
+                        <div className="d-grid gap-2 mb-3">
                             <button
                                 type="submit"
                                 className="btn btn-primary btn-lg btn-block rounded-pill"
@@ -188,9 +210,23 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                                 )}
                             </button>
                         </div>
+
+                        {/* Demo Credentials Button */}
+                        <div className="d-grid gap-2">
+                            <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm rounded-pill"
+                                onClick={fillDemoCredentials}
+                                disabled={isSubmitting}
+                            >
+                                Use Demo Credentials
+                            </button>
+                        </div>
                     </form>
+
                     <hr className="my-4" />
 
+                    {/* Toggle to Sign Up */}
                     <div className="text-center mt-2">
                         <a
                             className="small text-decoration-none"
@@ -203,24 +239,14 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
                             Don't have an account? Sign Up!
                         </a>
                     </div>
-
-                    {/* <div className="mt-4 text-center">
-                        <div className="divider-text">OR</div>
-                        <div className="d-grid gap-2 mt-3">
-                            <button type="button" className="btn btn-outline-secondary rounded-pill">
-                                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/google/google-original.svg" alt="Google" width="18" height="18" className="me-2" />
-                                Continue with Google
-                            </button>
-                        </div>
-                    </div> */}
                 </div>
             </div>
         </div>
     );
 }
 
-
 Login.defaultProps = {
     bgImage: "https://images.pexels.com/photos/3987020/pexels-photo-3987020.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
 };
+
 export default Login;

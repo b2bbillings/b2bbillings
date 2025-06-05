@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button } from 'react-bootstrap';
+import React, { useState, useEffect, useContext } from 'react';
+import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
+import { faArrowLeft, faExclamationTriangle, faSync } from '@fortawesome/free-solid-svg-icons';
 import './Inventory.css';
+
+// Import services
+import itemService from '../../services/itemService';
 
 // Import components
 import InventoryHeader from './Inventory/InventoryHeader';
@@ -16,7 +19,7 @@ import BulkImportModal from './Inventory/BulkImportModal';
 import SalesForm from './Sales/SalesInvoice/SalesForm';
 import PurchaseForm from './Purchases/PurchaseForm';
 
-function Inventory({ view = 'allProducts', onNavigate }) {
+function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
     // Add current view state for form navigation
     const [currentView, setCurrentView] = useState('inventory'); // 'inventory', 'sale', 'purchase'
 
@@ -29,6 +32,18 @@ function Inventory({ view = 'allProducts', onNavigate }) {
     const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
     const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
 
+    // Loading and error states
+    const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingItems, setIsLoadingItems] = useState(false);
+    const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+    const [error, setError] = useState(null);
+    const [pagination, setPagination] = useState({
+        current: 1,
+        total: 1,
+        count: 0,
+        totalItems: 0
+    });
+
     // Modal states
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showStockModal, setShowStockModal] = useState(false);
@@ -40,12 +55,10 @@ function Inventory({ view = 'allProducts', onNavigate }) {
     // Form data states
     const [formData, setFormData] = useState({
         name: '',
-        sku: '',
         itemCode: '',
         hsnNumber: '',
         category: '',
         description: '',
-        price: 0,
         buyPrice: 0,
         salePrice: 0,
         gstRate: 18,
@@ -54,6 +67,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         minStockLevel: 10,
         currentStock: 0,
         openingStock: 0,
+        asOfDate: new Date().toISOString().split('T')[0],
         isActive: true
     });
 
@@ -63,92 +77,154 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         isActive: true
     });
 
-    // Load sample data
-    useEffect(() => {
-        const sampleCategories = [
-            { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
-            { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
-            { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
-            { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
-        ];
+    // Load items from backend
+    const loadItems = async (searchQuery = '', page = 1, limit = 50) => {
+        if (!currentCompany?.id) {
+            console.warn('⚠️ No company selected for loading items');
+            return;
+        }
 
-        const sampleProducts = [
-            {
-                id: 1,
-                name: 'Laptop',
-                itemCode: 'DELL-INS-15-001',
-                hsnNumber: '8471',
-                category: 'Electronics',
-                buyPrice: 42000,
-                salePrice: 100000,
-                gstRate: 18,
-                unit: 'PCS',
-                currentStock: 0,
-                minStockLevel: 5,
-                description: 'Dell Inspiron 15 3000 Series Laptop with i5 processor and 8GB RAM',
-                type: 'product',
+        try {
+            setIsLoadingItems(true);
+            setError(null);
+
+            console.log('📋 Loading items for company:', currentCompany.id);
+
+            const params = {
+                page,
+                limit,
+                search: searchQuery,
+                type: activeType === 'products' ? 'product' : 'service',
                 isActive: true,
-                createdAt: new Date().toISOString()
-            },
-            {
-                id: 2,
-                name: 'Sample Item',
-                itemCode: 'SAMPLE-001',
-                hsnNumber: '9401',
-                category: 'Furniture',
-                buyPrice: 7500,
-                salePrice: 8500,
-                gstRate: 12,
-                unit: 'PCS',
-                currentStock: 1,
-                minStockLevel: 10,
-                description: 'Sample item for testing purposes',
-                type: 'product',
-                isActive: true,
-                createdAt: new Date().toISOString()
-            },
-            {
-                id: 3,
-                name: 'Business Consultation',
-                itemCode: 'SVC-CONS-001',
-                hsnNumber: '998314',
-                category: 'Services',
-                buyPrice: 0,
-                salePrice: 2000,
-                gstRate: 18,
-                unit: 'HRS',
-                currentStock: null,
-                minStockLevel: null,
-                description: 'Professional business consultation service per hour',
-                type: 'service',
-                isActive: true,
-                createdAt: new Date().toISOString()
-            },
-            {
-                id: 4,
-                name: 'Wireless Mouse',
-                itemCode: 'MOU-WL-001',
-                hsnNumber: '8471',
-                category: 'Electronics',
-                buyPrice: 1000,
-                salePrice: 1200,
-                gstRate: 18,
-                unit: 'PCS',
-                currentStock: 15,
-                minStockLevel: 20,
-                description: 'Optical wireless mouse with USB receiver',
-                type: 'product',
-                isActive: true,
-                createdAt: new Date().toISOString()
+                sortBy: 'name',
+                sortOrder: 'asc'
+            };
+
+            const response = await itemService.getItems(currentCompany.id, params);
+
+            if (response.success) {
+                const items = response.data.items || [];
+                setProducts(items);
+                setPagination(response.data.pagination || {});
+
+                // Set first item as selected if no item is selected
+                if (!selectedItem && items.length > 0) {
+                    setSelectedItem(items[0]);
+                }
+
+                console.log('✅ Items loaded successfully:', items.length);
+            } else {
+                throw new Error(response.message || 'Failed to load items');
             }
-        ];
 
+        } catch (error) {
+            console.error('❌ Error loading items:', error);
+            setError(`Failed to load items: ${error.message}`);
+            setProducts([]);
+        } finally {
+            setIsLoadingItems(false);
+        }
+    };
+
+    // Load categories from backend
+    const loadCategories = async () => {
+        if (!currentCompany?.id) {
+            console.warn('⚠️ No company selected for loading categories');
+            return;
+        }
+
+        try {
+            setIsLoadingCategories(true);
+
+            console.log('📂 Loading categories for company:', currentCompany.id);
+
+            const response = await itemService.getCategories(currentCompany.id);
+
+            if (response.success) {
+                const categoriesFromAPI = response.data.categories || [];
+
+                // Convert API response to match component format
+                const formattedCategories = categoriesFromAPI.map((categoryName, index) => ({
+                    id: index + 1,
+                    name: categoryName,
+                    description: `${categoryName} category`,
+                    isActive: true
+                }));
+
+                // Add default categories if none exist
+                if (formattedCategories.length === 0) {
+                    const defaultCategories = [
+                        { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+                        { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+                        { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
+                        { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
+                    ];
+                    setCategories(defaultCategories);
+                } else {
+                    setCategories(formattedCategories);
+                }
+
+                console.log('✅ Categories loaded successfully:', formattedCategories.length);
+            } else {
+                throw new Error(response.message || 'Failed to load categories');
+            }
+
+        } catch (error) {
+            console.error('❌ Error loading categories:', error);
+            // Set default categories on error
+            const defaultCategories = [
+                { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+                { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+                { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
+                { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
+            ];
+            setCategories(defaultCategories);
+        } finally {
+            setIsLoadingCategories(false);
+        }
+    };
+
+    // Load data when component mounts or company changes
+    useEffect(() => {
+        if (currentCompany?.id) {
+            console.log('🔄 Company changed, loading data for:', currentCompany.companyName);
+            loadItems();
+            loadCategories();
+        } else {
+            console.warn('⚠️ No company selected, clearing data');
+            setProducts([]);
+            setCategories([]);
+            setSelectedItem(null);
+        }
+    }, [currentCompany?.id]);
+
+    // Reload items when activeType changes
+    useEffect(() => {
+        if (currentCompany?.id) {
+            console.log('🔄 Type changed to:', activeType);
+            loadItems(sidebarSearchQuery);
+        }
+    }, [activeType]);
+
+    // Handle search query changes
+    useEffect(() => {
+        if (currentCompany?.id) {
+            const debounceTimer = setTimeout(() => {
+                loadItems(sidebarSearchQuery);
+            }, 300);
+
+            return () => clearTimeout(debounceTimer);
+        }
+    }, [sidebarSearchQuery]);
+
+    // Sample transactions (to be replaced with API later)
+    useEffect(() => {
         const sampleTransactions = [
             {
                 id: 1,
                 type: 'Sale',
                 invoiceNumber: '1',
-                itemId: 1,
+                itemId: selectedItem?.id || selectedItem?._id,
                 customerName: 'IT Solution',
                 date: '03/06/2025',
                 quantity: 1,
@@ -159,37 +235,18 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 id: 2,
                 type: 'Purchase',
                 invoiceNumber: '',
-                itemId: 1,
+                itemId: selectedItem?.id || selectedItem?._id,
                 customerName: 'IT Solution',
                 date: '03/06/2025',
                 quantity: 1,
                 pricePerUnit: 11111,
                 status: 'Paid'
-            },
-            {
-                id: 3,
-                type: 'Sale',
-                invoiceNumber: '2',
-                itemId: 2,
-                customerName: 'ABC Corp',
-                date: '02/06/2025',
-                quantity: 2,
-                pricePerUnit: 8500,
-                status: 'Paid'
             }
         ];
-
-        setCategories(sampleCategories);
-        setProducts(sampleProducts);
         setTransactions(sampleTransactions);
+    }, [selectedItem]);
 
-        // Set first product as selected by default
-        if (sampleProducts.length > 0) {
-            setSelectedItem(sampleProducts[0]);
-        }
-    }, []);
-
-    // Filter products/services based on active type
+    // Filter products/services based on active type (client-side filtering as backup)
     const filteredItems = products.filter(product => {
         const typeMatch = activeType === 'products' ? product.type === 'product' : product.type === 'service';
         return typeMatch;
@@ -199,23 +256,16 @@ function Inventory({ view = 'allProducts', onNavigate }) {
     const handleTypeChange = (type) => {
         setActiveType(type);
         setSidebarSearchQuery('');
-        // Reset selection when switching types
-        const typeItems = products.filter(product =>
-            type === 'products' ? product.type === 'product' : product.type === 'service'
-        );
-        if (typeItems.length > 0) {
-            setSelectedItem(typeItems[0]);
-        } else {
-            setSelectedItem(null);
-        }
+        setSelectedItem(null);
     };
 
     // Handle item selection
     const handleItemSelect = (item) => {
+        console.log('🎯 Item selected:', item);
         setSelectedItem(item);
     };
 
-    // Navigation handlers for Sales/Purchase forms (matching Bank.jsx pattern)
+    // Navigation handlers for Sales/Purchase forms
     const handleAddSale = () => {
         setCurrentView('sale');
     };
@@ -228,8 +278,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         setCurrentView('inventory');
     };
 
-
-    // Form save handlers (matching Bank.jsx pattern)
+    // Form save handlers
     const handleSaleFormSave = (saleData) => {
         console.log('💾 Saving sale data from Inventory component:', saleData);
 
@@ -238,7 +287,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             id: Date.now(),
             type: 'Sale',
             invoiceNumber: saleData.invoiceNumber,
-            itemId: selectedItem?.id || 1,
+            itemId: selectedItem?.id || selectedItem?._id,
             customerName: saleData.customer?.name || 'Customer',
             date: new Date().toLocaleDateString('en-GB'),
             quantity: saleData.items?.reduce((total, item) => total + item.quantity, 0) || 1,
@@ -246,21 +295,19 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             status: saleData.paymentStatus || 'Unpaid'
         };
 
-        // Update transactions
         setTransactions(prev => [...prev, newTransaction]);
 
-        // Update product stock if applicable
+        // Update product stock if applicable (optimistic update)
         if (saleData.items) {
             saleData.items.forEach(item => {
                 setProducts(prev => prev.map(product =>
-                    product.id === item.productId
+                    (product.id === item.productId || product._id === item.productId)
                         ? { ...product, currentStock: Math.max(0, product.currentStock - item.quantity) }
                         : product
                 ));
             });
         }
 
-        // Go back to inventory view
         setCurrentView('inventory');
         alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
     };
@@ -273,7 +320,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             id: Date.now(),
             type: 'Purchase',
             invoiceNumber: purchaseData.purchaseNumber,
-            itemId: selectedItem?.id || 1,
+            itemId: selectedItem?.id || selectedItem?._id,
             customerName: purchaseData.supplier?.name || 'Supplier',
             date: new Date().toLocaleDateString('en-GB'),
             quantity: purchaseData.items?.reduce((total, item) => total + item.quantity, 0) || 1,
@@ -281,35 +328,56 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             status: purchaseData.paymentStatus || 'Paid'
         };
 
-        // Update transactions
         setTransactions(prev => [...prev, newTransaction]);
 
-        // Update product stock if applicable
+        // Update product stock if applicable (optimistic update)
         if (purchaseData.items) {
             purchaseData.items.forEach(item => {
                 setProducts(prev => prev.map(product =>
-                    product.id === item.productId
+                    (product.id === item.productId || product._id === item.productId)
                         ? { ...product, currentStock: product.currentStock + item.quantity }
                         : product
                 ));
             });
         }
 
-        // Go back to inventory view
         setCurrentView('inventory');
         alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
     };
 
-    const handleAddCategory = (categoryData) => {
+    // Handle Add Category with backend integration
+    const handleAddCategory = async (categoryData) => {
         console.log('Adding new category:', categoryData);
-        setCategories(prev => [...prev, categoryData]);
+
+        // For now, add locally (will be enhanced when category API is ready)
+        const newCategory = {
+            id: Date.now(),
+            name: categoryData.name,
+            description: categoryData.description,
+            isActive: categoryData.isActive
+        };
+
+        setCategories(prev => [...prev, newCategory]);
+
+        // TODO: Integrate with category API when available
+        // try {
+        //     await categoryService.createCategory(currentCompany.id, categoryData);
+        //     loadCategories(); // Reload categories
+        // } catch (error) {
+        //     console.error('Error adding category:', error);
+        // }
     };
+
     // Handle Add Item
     const handleAddItem = (itemType) => {
+        if (!currentCompany?.id) {
+            alert('Please select a company first');
+            return;
+        }
+
         setEditingProduct(null);
         setFormData({
             name: '',
-            sku: '',
             itemCode: '',
             hsnNumber: '',
             category: '',
@@ -322,6 +390,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
             minStockLevel: 10,
             currentStock: 0,
             openingStock: 0,
+            asOfDate: new Date().toISOString().split('T')[0],
             isActive: true
         });
         setShowCreateModal(true);
@@ -329,13 +398,44 @@ function Inventory({ view = 'allProducts', onNavigate }) {
 
     // Handle Edit Item
     const handleEditItem = (item) => {
+        if (!currentCompany?.id) {
+            alert('Please select a company first');
+            return;
+        }
+
+        console.log('✏️ Editing item:', item);
         setEditingProduct(item);
-        setFormData(item);
+
+        // Format item data for form
+        const formattedData = {
+            name: item.name || '',
+            itemCode: item.itemCode || '',
+            hsnNumber: item.hsnNumber || '',
+            category: item.category || '',
+            description: item.description || '',
+            buyPrice: item.buyPrice || 0,
+            salePrice: item.salePrice || 0,
+            gstRate: item.gstRate || 0,
+            unit: item.unit || 'PCS',
+            type: item.type || 'product',
+            minStockLevel: item.minStockLevel || 0,
+            currentStock: item.currentStock || 0,
+            openingStock: item.openingStock || 0,
+            asOfDate: item.asOfDate ? item.asOfDate.split('T')[0] : new Date().toISOString().split('T')[0],
+            isActive: item.isActive !== undefined ? item.isActive : true
+        };
+
+        setFormData(formattedData);
         setShowCreateModal(true);
     };
 
     // Handle Adjust Stock
     const handleAdjustStock = (item) => {
+        if (item.type === 'service') {
+            alert('Stock adjustment is not applicable for services');
+            return;
+        }
+
         setSelectedProductForStock(item);
         setShowStockModal(true);
     };
@@ -362,47 +462,37 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         }));
     };
 
+    // Enhanced save product with backend integration
     const handleSaveProduct = async (e, isSaveAndAdd = false) => {
         e.preventDefault();
 
+        if (!currentCompany?.id) {
+            alert('Please select a company first');
+            return false;
+        }
+
         try {
-            const productData = {
-                ...formData,
-                id: editingProduct ? editingProduct.id : Date.now(),
-                createdAt: editingProduct ? editingProduct.createdAt : new Date().toISOString()
-            };
+            setIsLoading(true);
 
-            if (editingProduct) {
-                setProducts(products.map(product =>
-                    product.id === editingProduct.id ? productData : product
-                ));
-                // Update selected item if it's the one being edited
-                if (selectedItem?.id === editingProduct.id) {
-                    setSelectedItem(productData);
-                }
-            } else {
-                setProducts(prev => [...prev, productData]);
-            }
+            // Let ProductModal handle the API call and response
+            // This is called after successful save in ProductModal
+            console.log('✅ Product saved, reloading items...');
 
+            // Reload items to get updated data
+            await loadItems(sidebarSearchQuery);
+
+            // If not save and add, close modal
             if (!isSaveAndAdd) {
                 handleCloseModal();
-            } else {
-                // Reset form for new item
-                setFormData({
-                    ...formData,
-                    name: '',
-                    itemCode: '',
-                    description: '',
-                    buyPrice: 0,
-                    salePrice: 0,
-                    currentStock: 0,
-                    openingStock: 0
-                });
             }
+
             return true;
+
         } catch (error) {
-            console.error('Error saving product:', error);
+            console.error('❌ Error in handleSaveProduct:', error);
             return false;
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -417,17 +507,31 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         setShowCategoryModal(false);
     };
 
-    const handleUpdateStock = (productId, newStock, reason) => {
-        setProducts(products.map(product =>
-            product.id === productId
-                ? { ...product, currentStock: newStock }
-                : product
-        ));
-        setShowStockModal(false);
-        setSelectedProductForStock(null);
-        // Update selected item if it's the one being updated
-        if (selectedItem?.id === productId) {
-            setSelectedItem(prev => ({ ...prev, currentStock: newStock }));
+    const handleUpdateStock = async (productId, newStock, reason) => {
+        try {
+            // TODO: Implement stock adjustment API call
+            // await itemService.updateStock(currentCompany.id, productId, newStock, reason);
+
+            // For now, update locally
+            setProducts(products.map(product =>
+                (product.id === productId || product._id === productId)
+                    ? { ...product, currentStock: newStock }
+                    : product
+            ));
+
+            // Update selected item if it's the one being updated
+            if (selectedItem && (selectedItem.id === productId || selectedItem._id === productId)) {
+                setSelectedItem(prev => ({ ...prev, currentStock: newStock }));
+            }
+
+            setShowStockModal(false);
+            setSelectedProductForStock(null);
+
+            console.log('✅ Stock updated successfully');
+
+        } catch (error) {
+            console.error('❌ Error updating stock:', error);
+            alert(`Error updating stock: ${error.message}`);
         }
     };
 
@@ -442,11 +546,36 @@ function Inventory({ view = 'allProducts', onNavigate }) {
         // Add your logic here
     };
 
+    // Refresh data handler
+    const handleRefresh = () => {
+        if (currentCompany?.id) {
+            console.log('🔄 Refreshing inventory data...');
+            loadItems(sidebarSearchQuery);
+            loadCategories();
+        }
+    };
+
+    // Render company not selected state
+    if (!currentCompany?.id) {
+        return (
+            <div className="d-flex flex-column vh-100">
+                <div className="flex-grow-1 d-flex align-items-center justify-content-center">
+                    <div className="text-center">
+                        <FontAwesomeIcon icon={faExclamationTriangle} size="3x" className="text-warning mb-3" />
+                        <h4 className="text-muted">No Company Selected</h4>
+                        <p className="text-muted">
+                            Please select a company from the header to manage inventory.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // Render Sales Form View
     if (currentView === 'sale') {
         return (
             <div className="d-flex flex-column vh-100">
-                {/* Header with Back Button */}
                 <div className="sales-form-header bg-white border-bottom">
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
@@ -460,15 +589,18 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                                     Back to Inventory
                                 </Button>
                                 <span className="page-title-text fw-bold">Create New Sale</span>
+                                <small className="text-muted ms-2">
+                                    for {currentCompany.companyName}
+                                </small>
                             </Col>
                         </Row>
                     </Container>
                 </div>
 
-                {/* Sales Form */}
                 <SalesForm
                     onSave={handleSaleFormSave}
                     onCancel={handleBackToInventory}
+                    currentCompany={currentCompany}
                 />
             </div>
         );
@@ -478,7 +610,6 @@ function Inventory({ view = 'allProducts', onNavigate }) {
     if (currentView === 'purchase') {
         return (
             <div className="d-flex flex-column vh-100">
-                {/* Header with Back Button */}
                 <div className="sales-form-header bg-white border-bottom">
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
@@ -492,15 +623,18 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                                     Back to Inventory
                                 </Button>
                                 <span className="page-title-text fw-bold">Create New Purchase</span>
+                                <small className="text-muted ms-2">
+                                    for {currentCompany.companyName}
+                                </small>
                             </Col>
                         </Row>
                     </Container>
                 </div>
 
-                {/* Purchase Form */}
                 <PurchaseForm
                     onSave={handlePurchaseFormSave}
                     onCancel={handleBackToInventory}
+                    currentCompany={currentCompany}
                 />
             </div>
         );
@@ -509,6 +643,18 @@ function Inventory({ view = 'allProducts', onNavigate }) {
     // Render Inventory View (Default)
     return (
         <div className="d-flex flex-column vh-100">
+            {/* Error Alert */}
+            {error && (
+                <Alert variant="danger" className="m-3 mb-0" dismissible onClose={() => setError(null)}>
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                    {error}
+                    <Button variant="link" className="ms-2 p-0" onClick={handleRefresh}>
+                        <FontAwesomeIcon icon={faSync} className="me-1" />
+                        Retry
+                    </Button>
+                </Alert>
+            )}
+
             {/* Header */}
             <InventoryHeader
                 activeType={activeType}
@@ -520,6 +666,10 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 onBulkImport={() => setShowBulkImportModal(true)}
                 onMoreOptions={handleMoreOptions}
                 onSettings={handleSettings}
+                onRefresh={handleRefresh}
+                currentCompany={currentCompany}
+                totalItems={pagination.totalItems}
+                isLoading={isLoadingItems}
             />
 
             {/* Main Content */}
@@ -533,10 +683,14 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                                 selectedItem={selectedItem}
                                 onItemSelect={handleItemSelect}
                                 onAddItem={handleAddItem}
-                                onAddCategory={handleAddCategory} // Now passes category data
+                                onAddCategory={handleAddCategory}
                                 searchQuery={sidebarSearchQuery}
                                 onSearchChange={setSidebarSearchQuery}
                                 activeType={activeType}
+                                isLoading={isLoadingItems}
+                                pagination={pagination}
+                                onLoadMore={() => loadItems(sidebarSearchQuery, pagination.current + 1)}
+                                currentCompany={currentCompany}
                             />
                         </Col>
 
@@ -549,6 +703,8 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                                         selectedItem={selectedItem}
                                         onEditItem={handleEditItem}
                                         onAdjustStock={handleAdjustStock}
+                                        currentCompany={currentCompany}
+                                        isLoading={isLoadingItems && !selectedItem}
                                     />
                                 </div>
 
@@ -559,6 +715,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                                         selectedItem={selectedItem}
                                         searchQuery={transactionSearchQuery}
                                         onSearchChange={setTransactionSearchQuery}
+                                        currentCompany={currentCompany}
                                     />
                                 </div>
                             </div>
@@ -576,6 +733,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 categories={categories}
                 onInputChange={handleInputChange}
                 onSaveProduct={handleSaveProduct}
+                currentCompany={currentCompany}
             />
 
             <StockAdjustmentModal
@@ -583,6 +741,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 onHide={() => setShowStockModal(false)}
                 product={selectedProductForStock}
                 onUpdateStock={handleUpdateStock}
+                currentCompany={currentCompany}
             />
 
             <CategoryModal
@@ -591,6 +750,7 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 categoryFormData={categoryFormData}
                 onCategoryInputChange={handleCategoryInputChange}
                 onSaveCategory={handleSaveCategory}
+                currentCompany={currentCompany}
             />
 
             <BulkImportModal
@@ -598,8 +758,10 @@ function Inventory({ view = 'allProducts', onNavigate }) {
                 onHide={() => setShowBulkImportModal(false)}
                 categories={categories}
                 onProductsImported={(importedProducts) => {
-                    setProducts([...products, ...importedProducts]);
+                    // After successful import, reload items
+                    loadItems(sidebarSearchQuery);
                 }}
+                currentCompany={currentCompany}
             />
         </div>
     );

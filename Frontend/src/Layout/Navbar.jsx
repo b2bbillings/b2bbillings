@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Navbar as BootstrapNavbar, Container, Nav, Button, Image } from 'react-bootstrap';
+import { Navbar as BootstrapNavbar, Container, Nav, Button, Image, Spinner, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faBell,
@@ -10,17 +10,34 @@ import {
     faBars,
     faQuestionCircle,
     faPlus,
-    faBuilding
+    faBuilding,
+    faExclamationTriangle,
+    faSync,
+    faWifi,
+    faTimes,
+    faCheck
 } from '@fortawesome/free-solid-svg-icons';
 import CreateCompany from '../components/Company/CreateCompany';
 import './Navbar.css';
 
-function Navbar({ onLogout, toggleSidebar }) {
+function Navbar({
+    onLogout,
+    toggleSidebar,
+    currentCompany,
+    companies,
+    onCompanyChange,
+    onCompanyCreated,
+    currentUser,
+    isLoadingCompanies,
+    isOnline
+}) {
+    // Dropdown states
     const [showNotifications, setShowNotifications] = useState(false);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
     const [showCreateCompany, setShowCreateCompany] = useState(false);
 
+    // Refs for click outside detection
     const notificationRef = useRef(null);
     const userDropdownRef = useRef(null);
     const businessDropdownRef = useRef(null);
@@ -28,16 +45,7 @@ function Navbar({ onLogout, toggleSidebar }) {
     // Temporary logo as base64 SVG - shop/cart icon with gradient
     const tempLogo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM1ZTYwY2UiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4MDYwZmYiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI1MCIgZmlsbD0id2hpdGUiLz48cGF0aCBmaWxsPSJ1cmwoI2EpIiBkPSJNMTgwIDgwQzE4MCA1Ny45MDkgMTk3LjkwOSA0MCAyMjAgNDBIMjkyQzMxNC4wOTEgNDAgMzMyIDU3LjkwOSAzMzIgODBWOTZIMzgwLjY0TDQzMiAyMjRMNDMyIDM3Nkg4MFYyMjRMMTMxLjM2IDk2SDE4MFY4MFpNODAgMzc2VjQzMkgxMzZWNDAwSDE4OFY0MzJIMzI0VjQwMEgzNzZWNDMySDQzMlYzNzZIODBaIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iMzA0IiByPSIzMiIgZmlsbD0id2hpdGUiLz48Y2lyY2xlIGN4PSIzNTIiIGN5PSIzMDQiIHI9IjMyIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==";
 
-    // Mock businesses
-    const [businesses, setBusinesses] = useState([
-        { id: 1, name: "YOUR BUSINESS NAME", initials: "YB", color: "#ff9e43" },
-        { id: 2, name: "Another Shop", initials: "AS", color: "#4e73df" },
-        { id: 3, name: "Third Enterprise", initials: "TE", color: "#1cc88a" }
-    ]);
-
-    const [currentBusiness, setCurrentBusiness] = useState(businesses[0]);
-
-    // Mock notifications
+    // Mock notifications (to be replaced with real notifications from backend)
     const notifications = [
         { id: 1, message: 'New order received - ORD-2023-7865', time: '2 minutes ago', isRead: false },
         { id: 2, message: 'Payment confirmed for order ORD-2023-7860', time: '1 hour ago', isRead: false },
@@ -46,6 +54,23 @@ function Navbar({ onLogout, toggleSidebar }) {
     ];
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    // Generate initials from company name
+    const generateInitials = (name) => {
+        if (!name) return 'NA';
+        return name
+            .split(' ')
+            .map(word => word.charAt(0))
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
+    };
+
+    // Generate random color for company
+    const getRandomColor = () => {
+        const colors = ['#ff9e43', '#4e73df', '#1cc88a', '#e74a3b', '#f39c12', '#9b59b6', '#34495e', '#17a2b8', '#6f42c1', '#e83e8c'];
+        return colors[Math.floor(Math.random() * colors.length)];
+    };
 
     // Handle clicks outside of dropdowns
     useEffect(() => {
@@ -75,6 +100,17 @@ function Navbar({ onLogout, toggleSidebar }) {
         };
     }, [showNotifications, showUserDropdown, showBusinessDropdown]);
 
+    // Handle company selection
+    const handleCompanySelect = (company) => {
+        console.log('🏢 Navbar: Company selected:', company?.companyName || company?.name);
+
+        if (onCompanyChange) {
+            onCompanyChange(company);
+        }
+
+        setShowBusinessDropdown(false);
+    };
+
     // Handle opening create company modal
     const handleAddNewBusiness = () => {
         setShowCreateCompany(true);
@@ -87,41 +123,95 @@ function Navbar({ onLogout, toggleSidebar }) {
     };
 
     // Handle company creation success
-    const handleCompanyCreated = (companyData) => {
-        // Generate initials from business name
-        const generateInitials = (name) => {
-            return name
-                .split(' ')
-                .map(word => word.charAt(0))
-                .join('')
-                .toUpperCase()
-                .slice(0, 2);
-        };
+    const handleCompanyCreated = (newCompany) => {
+        console.log('🆕 Navbar: Company created:', newCompany);
 
-        // Generate random color for new business
-        const colors = ['#ff9e43', '#4e73df', '#1cc88a', '#e74a3b', '#f39c12', '#9b59b6', '#34495e'];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        if (onCompanyCreated) {
+            onCompanyCreated(newCompany);
+        }
 
-        // Create new business object
-        const newBusiness = {
-            id: Date.now(),
-            name: companyData.businessName,
-            initials: generateInitials(companyData.businessName),
-            color: randomColor,
-            ...companyData
-        };
-
-        // Add to businesses list
-        setBusinesses(prev => [...prev, newBusiness]);
-
-        // Switch to the new business
-        setCurrentBusiness(newBusiness);
-
-        // Close modal
         setShowCreateCompany(false);
+    };
 
-        // Optional: Show success message
-        console.log('New business created:', newBusiness);
+    // Get user display name
+    const getUserDisplayName = () => {
+        if (currentUser?.name) {
+            return currentUser.name;
+        }
+        if (currentUser?.email) {
+            return currentUser.email.split('@')[0];
+        }
+        return 'User';
+    };
+
+    // Get user avatar URL
+    const getUserAvatarUrl = () => {
+        const displayName = getUserDisplayName();
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=5e60ce&color=fff&size=36`;
+    };
+
+    // Render company selector content
+    const renderCompanySelector = () => {
+        if (isLoadingCompanies) {
+            return (
+                <div className="d-flex align-items-center">
+                    <div className="business-avatar bg-secondary d-flex align-items-center justify-content-center">
+                        <Spinner animation="border" size="sm" variant="light" />
+                    </div>
+                    <div className="business-name-container ms-2 d-none d-md-flex flex-column">
+                        <div className="business-name text-muted">Loading...</div>
+                        <div className="add-business">
+                            <span>Loading companies...</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (!currentCompany) {
+            return (
+                <div className="d-flex align-items-center">
+                    <div className="business-avatar bg-secondary d-flex align-items-center justify-content-center">
+                        <FontAwesomeIcon icon={faBuilding} className="text-white" />
+                    </div>
+                    <div className="business-name-container ms-2 d-none d-md-flex flex-column">
+                        <div className="business-name">No Company</div>
+                        <div className="add-business">
+                            <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
+                            <span>Add Company</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Generate company display data
+        const companyName = currentCompany.companyName || currentCompany.businessName || currentCompany.name || 'Company';
+        const companyInitials = generateInitials(companyName);
+        const companyColor = currentCompany.color || getRandomColor();
+
+        return (
+            <div className="d-flex align-items-center">
+                <div
+                    className="business-avatar"
+                    style={{ backgroundColor: companyColor }}
+                >
+                    {companyInitials}
+                </div>
+                <div className="business-name-container ms-2 d-none d-md-flex flex-column">
+                    <div className="business-name" title={companyName}>
+                        {companyName.length > 20
+                            ? `${companyName.substring(0, 20)}...`
+                            : companyName
+                        }
+                    </div>
+                    <div className="add-business">
+                        <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
+                        <span>Add Another Company</span>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -158,7 +248,7 @@ function Navbar({ onLogout, toggleSidebar }) {
                                 <span className="brand-text">ShopManager</span>
                             </BootstrapNavbar.Brand>
 
-                            {/* Business Selector - RIGHT of logo/brand */}
+                            {/* Company Selector */}
                             <div
                                 ref={businessDropdownRef}
                                 className="business-selector d-flex align-items-center position-relative"
@@ -166,59 +256,104 @@ function Navbar({ onLogout, toggleSidebar }) {
                                 <div
                                     className="d-flex align-items-center business-dropdown-toggle"
                                     onClick={() => setShowBusinessDropdown(!showBusinessDropdown)}
+                                    style={{ cursor: 'pointer' }}
                                 >
-                                    <div
-                                        className="business-avatar"
-                                        style={{ backgroundColor: currentBusiness.color }}
-                                    >
-                                        {currentBusiness.initials}
-                                    </div>
-                                    <div className="business-name-container ms-2 d-none d-md-flex flex-column">
-                                        <div className="business-name">{currentBusiness.name}</div>
-                                        <div className="add-business">
-                                            <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
-                                            <span>Add Another Company</span>
-                                        </div>
-                                    </div>
+                                    {renderCompanySelector()}
                                 </div>
 
                                 {showBusinessDropdown && (
                                     <div className="dropdown-menu business-dropdown-menu shadow animated--grow-in show">
-                                        <h6 className="dropdown-header">Switch Business</h6>
-                                        {businesses.map(business => (
-                                            <a
-                                                key={business.id}
-                                                className={`dropdown-item d-flex align-items-center ${business.id === currentBusiness.id ? 'active' : ''}`}
-                                                onClick={() => {
-                                                    setCurrentBusiness(business);
-                                                    setShowBusinessDropdown(false);
-                                                }}
-                                            >
-                                                <div
-                                                    className="business-dropdown-avatar me-2"
-                                                    style={{ backgroundColor: business.color }}
+                                        <div className="d-flex justify-content-between align-items-center px-3 py-2">
+                                            <h6 className="mb-0">Switch Company</h6>
+                                            {/* Network status indicator */}
+                                            <div className="d-flex align-items-center">
+                                                <FontAwesomeIcon
+                                                    icon={isOnline ? faWifi : faTimes}
+                                                    className={`me-2 ${isOnline ? 'text-success' : 'text-danger'}`}
+                                                    title={isOnline ? 'Online' : 'Offline'}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {!isOnline && (
+                                            <div className="px-3 py-2">
+                                                <Alert variant="warning" className="mb-0 py-1 small">
+                                                    <FontAwesomeIcon icon={faTimes} className="me-1" />
+                                                    You're offline. Company data may be outdated.
+                                                </Alert>
+                                            </div>
+                                        )}
+
+                                        {isLoadingCompanies ? (
+                                            <div className="px-3 py-2 text-center">
+                                                <Spinner animation="border" size="sm" className="me-2" />
+                                                <span className="small text-muted">Loading companies...</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {companies && companies.length > 0 ? (
+                                                    companies.map(company => {
+                                                        const companyName = company.companyName || company.businessName || company.name || 'Unnamed Company';
+                                                        const companyId = company.id || company._id;
+                                                        const currentCompanyId = currentCompany?.id || currentCompany?._id;
+                                                        const isCurrentCompany = companyId === currentCompanyId;
+
+                                                        return (
+                                                            <a
+                                                                key={companyId}
+                                                                className={`dropdown-item d-flex align-items-center ${isCurrentCompany ? 'active' : ''}`}
+                                                                onClick={() => handleCompanySelect(company)}
+                                                                style={{ cursor: 'pointer' }}
+                                                            >
+                                                                <div
+                                                                    className="business-dropdown-avatar me-2"
+                                                                    style={{ backgroundColor: company.color || getRandomColor() }}
+                                                                >
+                                                                    {generateInitials(companyName)}
+                                                                </div>
+                                                                <div className="flex-grow-1">
+                                                                    <div className="business-dropdown-name">{companyName}</div>
+                                                                    {(company.city || company.state) && (
+                                                                        <small className="text-muted">
+                                                                            {[company.city, company.state].filter(Boolean).join(', ')}
+                                                                        </small>
+                                                                    )}
+                                                                    {company.email && (
+                                                                        <small className="text-muted d-block">{company.email}</small>
+                                                                    )}
+                                                                </div>
+                                                                {isCurrentCompany && (
+                                                                    <FontAwesomeIcon icon={faCheck} className="text-success ms-2" />
+                                                                )}
+                                                            </a>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="px-3 py-2 text-center text-muted small">
+                                                        {isOnline ? 'No companies found' : 'No companies available offline'}
+                                                    </div>
+                                                )}
+
+                                                <div className="dropdown-divider"></div>
+                                                <a
+                                                    className="dropdown-item"
+                                                    href="#"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        handleAddNewBusiness();
+                                                    }}
+                                                    style={{ opacity: isOnline ? 1 : 0.5 }}
+                                                    title={!isOnline ? 'Available when online' : ''}
                                                 >
-                                                    {business.initials}
-                                                </div>
-                                                <span className="business-dropdown-name">{business.name}</span>
-                                            </a>
-                                        ))}
-                                        <div className="dropdown-divider"></div>
-                                        <a
-                                            className="dropdown-item"
-                                            href="#"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                handleAddNewBusiness();
-                                            }}
-                                        >
-                                            <FontAwesomeIcon icon={faPlus} className="me-2" />
-                                            Add New Business
-                                        </a>
-                                        <a className="dropdown-item" href="#">
-                                            <FontAwesomeIcon icon={faBuilding} className="me-2" />
-                                            Manage Businesses
-                                        </a>
+                                                    <FontAwesomeIcon icon={faPlus} className="me-2" />
+                                                    Add New Company
+                                                </a>
+                                                <a className="dropdown-item" href="#" title="Coming soon">
+                                                    <FontAwesomeIcon icon={faBuilding} className="me-2" />
+                                                    Manage Companies
+                                                </a>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -226,9 +361,18 @@ function Navbar({ onLogout, toggleSidebar }) {
 
                         {/* Right section - Notifications and profile */}
                         <div className="ms-auto d-flex align-items-center navbar-right">
+                            {/* Network status icon (visible on smaller screens) */}
+                            <Nav.Item className="d-lg-none me-2">
+                                <FontAwesomeIcon
+                                    icon={isOnline ? faWifi : faTimes}
+                                    className={isOnline ? 'text-success' : 'text-danger'}
+                                    title={isOnline ? 'Online' : 'Offline'}
+                                />
+                            </Nav.Item>
+
                             {/* Help icon */}
                             <Nav.Item className="d-none d-lg-block">
-                                <Nav.Link href="#" className="icon-link">
+                                <Nav.Link href="#" className="icon-link" title="Help & Support">
                                     <FontAwesomeIcon icon={faQuestionCircle} />
                                 </Nav.Link>
                             </Nav.Item>
@@ -243,34 +387,51 @@ function Navbar({ onLogout, toggleSidebar }) {
                                         setShowUserDropdown(false);
                                         setShowBusinessDropdown(false);
                                     }}
+                                    title="Notifications"
                                 >
                                     <FontAwesomeIcon icon={faBell} />
                                     {unreadCount > 0 && (
                                         <span className="notification-badge">
-                                            {unreadCount}
+                                            {unreadCount > 99 ? '99+' : unreadCount}
                                         </span>
                                     )}
                                 </div>
 
                                 {showNotifications && (
                                     <div className="dropdown-menu dropdown-menu-end shadow animated--grow-in show notifications-dropdown">
-                                        <h6 className="dropdown-header">
-                                            Notifications
+                                        <h6 className="dropdown-header d-flex justify-content-between align-items-center">
+                                            <span>Notifications</span>
+                                            {unreadCount > 0 && (
+                                                <span className="badge bg-primary">{unreadCount}</span>
+                                            )}
                                         </h6>
-                                        {notifications.map(notification => (
-                                            <a key={notification.id} className={`dropdown-item d-flex align-items-center ${!notification.isRead ? 'unread' : ''}`} href="#">
-                                                <div className="notification-icon me-3">
-                                                    <div className={`icon-circle ${!notification.isRead ? 'bg-primary' : 'bg-secondary'}`}>
-                                                        <FontAwesomeIcon icon={faBell} className="text-white" />
+                                        {notifications.length > 0 ? (
+                                            notifications.map(notification => (
+                                                <a
+                                                    key={notification.id}
+                                                    className={`dropdown-item d-flex align-items-center ${!notification.isRead ? 'unread' : ''}`}
+                                                    href="#"
+                                                >
+                                                    <div className="notification-icon me-3">
+                                                        <div className={`icon-circle ${!notification.isRead ? 'bg-primary' : 'bg-secondary'}`}>
+                                                            <FontAwesomeIcon icon={faBell} className="text-white" />
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="notification-content">
-                                                    <div className="small text-gray-500">{notification.time}</div>
-                                                    <span className={!notification.isRead ? 'fw-bold' : ''}>{notification.message}</span>
-                                                </div>
-                                            </a>
-                                        ))}
-                                        <a className="dropdown-item text-center small text-gray-500" href="#">Show All Alerts</a>
+                                                    <div className="notification-content">
+                                                        <div className="small text-gray-500">{notification.time}</div>
+                                                        <span className={!notification.isRead ? 'fw-bold' : ''}>{notification.message}</span>
+                                                    </div>
+                                                </a>
+                                            ))
+                                        ) : (
+                                            <div className="px-3 py-2 text-center text-muted small">
+                                                No notifications
+                                            </div>
+                                        )}
+                                        <div className="dropdown-divider"></div>
+                                        <a className="dropdown-item text-center small text-gray-500" href="#">
+                                            View All Notifications
+                                        </a>
                                     </div>
                                 )}
                             </Nav.Item>
@@ -285,10 +446,13 @@ function Navbar({ onLogout, toggleSidebar }) {
                                         setShowNotifications(false);
                                         setShowBusinessDropdown(false);
                                     }}
+                                    title="User Menu"
                                 >
-                                    <span className="me-2 d-none d-xl-inline user-name">Business Admin</span>
+                                    <span className="me-2 d-none d-xl-inline user-name">
+                                        {getUserDisplayName()}
+                                    </span>
                                     <Image
-                                        src="https://ui-avatars.com/api/?name=Business+Admin&background=5e60ce&color=fff&size=36"
+                                        src={getUserAvatarUrl()}
                                         alt="User"
                                         roundedCircle
                                         className="img-profile"
@@ -297,21 +461,32 @@ function Navbar({ onLogout, toggleSidebar }) {
 
                                 {showUserDropdown && (
                                     <div className="dropdown-menu dropdown-menu-end shadow animated--grow-in show">
-                                        <a className="dropdown-item" href="#">
+                                        {/* User info header */}
+                                        <div className="dropdown-header">
+                                            <div className="fw-bold">{getUserDisplayName()}</div>
+                                            {currentUser?.email && (
+                                                <small className="text-muted">{currentUser.email}</small>
+                                            )}
+                                        </div>
+                                        <div className="dropdown-divider"></div>
+
+                                        <a className="dropdown-item" href="#" title="View and edit profile">
                                             <FontAwesomeIcon icon={faUser} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Profile
                                         </a>
-                                        <a className="dropdown-item" href="#">
+                                        <a className="dropdown-item" href="#" title="Application settings">
                                             <FontAwesomeIcon icon={faCog} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Settings
                                         </a>
-                                        <a className="dropdown-item" href="#">
+                                        <a className="dropdown-item" href="#" title="View activity history">
                                             <FontAwesomeIcon icon={faClipboardList} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Activity Log
                                         </a>
+
                                         <div className="dropdown-divider"></div>
+
                                         <a
-                                            className="dropdown-item"
+                                            className="dropdown-item text-danger"
                                             href="#"
                                             onClick={(e) => {
                                                 e.preventDefault();
@@ -319,8 +494,9 @@ function Navbar({ onLogout, toggleSidebar }) {
                                                     onLogout();
                                                 }
                                             }}
+                                            title="Sign out of your account"
                                         >
-                                            <FontAwesomeIcon icon={faSignOutAlt} className="fa-sm fa-fw me-2 text-gray-400" />
+                                            <FontAwesomeIcon icon={faSignOutAlt} className="fa-sm fa-fw me-2" />
                                             Logout
                                         </a>
                                     </div>
@@ -336,6 +512,7 @@ function Navbar({ onLogout, toggleSidebar }) {
                 show={showCreateCompany}
                 onHide={handleCloseCreateCompany}
                 onCompanyCreated={handleCompanyCreated}
+                isOnline={isOnline}
             />
         </>
     );
