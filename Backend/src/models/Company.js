@@ -1,6 +1,43 @@
 const mongoose = require('mongoose');
 
 const companySchema = new mongoose.Schema({
+    // Owner/Creator Information
+    owner: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: [true, 'Company owner is required'],
+        index: true
+    },
+
+    // Users associated with this company
+    users: [{
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },
+        role: {
+            type: String,
+            enum: ['owner', 'admin', 'manager', 'employee'],
+            default: 'employee'
+        },
+        permissions: [{
+            type: String,
+            enum: [
+                'view_dashboard', 'manage_parties', 'create_invoices', 'view_reports',
+                'manage_inventory', 'manage_users', 'company_settings', 'delete_records'
+            ]
+        }],
+        joinedAt: {
+            type: Date,
+            default: Date.now
+        },
+        isActive: {
+            type: Boolean,
+            default: true
+        }
+    }],
+
     // Basic Company Information (matching frontend fields)
     businessName: {
         type: String,
@@ -122,6 +159,14 @@ const companySchema = new mongoose.Schema({
         autoGenerateInvoice: {
             type: Boolean,
             default: true
+        },
+        allowMultipleUsers: {
+            type: Boolean,
+            default: false
+        },
+        requireApprovalForUsers: {
+            type: Boolean,
+            default: true
         }
     },
 
@@ -150,6 +195,37 @@ const companySchema = new mongoose.Schema({
         maxTransactions: {
             type: Number,
             default: 100
+        },
+        features: [{
+            type: String,
+            enum: [
+                'basic_invoicing', 'inventory_management', 'reports', 'multi_user',
+                'advanced_reports', 'api_access', 'custom_branding', 'priority_support'
+            ]
+        }]
+    },
+
+    // Company Statistics (for analytics)
+    stats: {
+        totalUsers: {
+            type: Number,
+            default: 1
+        },
+        totalParties: {
+            type: Number,
+            default: 0
+        },
+        totalTransactions: {
+            type: Number,
+            default: 0
+        },
+        totalRevenue: {
+            type: Number,
+            default: 0
+        },
+        lastActivityAt: {
+            type: Date,
+            default: Date.now
         }
     }
 }, {
@@ -170,6 +246,110 @@ companySchema.virtual('subscriptionStatus').get(function () {
     return this.subscription.endDate > now ? 'Active' : 'Expired';
 });
 
+// Virtual for active users count
+companySchema.virtual('activeUsersCount').get(function () {
+    return this.users.filter(user => user.isActive).length;
+});
+
+// Virtual to check if user has access to company
+companySchema.virtual('hasUserAccess').get(function () {
+    return function(userId) {
+        return this.users.some(user => 
+            user.user.toString() === userId.toString() && user.isActive
+        ) || this.owner.toString() === userId.toString();
+    };
+});
+
+// Instance method to check if user is owner
+companySchema.methods.isOwner = function(userId) {
+    return this.owner.toString() === userId.toString();
+};
+
+// Instance method to get user role in company
+companySchema.methods.getUserRole = function(userId) {
+    if (this.isOwner(userId)) {
+        return 'owner';
+    }
+    
+    const userEntry = this.users.find(user => 
+        user.user.toString() === userId.toString() && user.isActive
+    );
+    
+    return userEntry ? userEntry.role : null;
+};
+
+// Instance method to check user permissions
+companySchema.methods.hasPermission = function(userId, permission) {
+    if (this.isOwner(userId)) {
+        return true; // Owner has all permissions
+    }
+    
+    const userEntry = this.users.find(user => 
+        user.user.toString() === userId.toString() && user.isActive
+    );
+    
+    return userEntry ? userEntry.permissions.includes(permission) : false;
+};
+
+// Instance method to add user to company
+companySchema.methods.addUser = function(userId, role = 'employee', permissions = []) {
+    // Check if user already exists
+    const existingUser = this.users.find(user => user.user.toString() === userId.toString());
+    
+    if (existingUser) {
+        // Update existing user
+        existingUser.role = role;
+        existingUser.permissions = permissions;
+        existingUser.isActive = true;
+        existingUser.joinedAt = new Date();
+    } else {
+        // Add new user
+        this.users.push({
+            user: userId,
+            role: role,
+            permissions: permissions,
+            joinedAt: new Date(),
+            isActive: true
+        });
+    }
+    
+    // Update stats
+    this.stats.totalUsers = this.users.filter(user => user.isActive).length + 1; // +1 for owner
+    this.stats.lastActivityAt = new Date();
+    
+    return this.save();
+};
+
+// Instance method to remove user from company
+companySchema.methods.removeUser = function(userId) {
+    this.users = this.users.filter(user => user.user.toString() !== userId.toString());
+    
+    // Update stats
+    this.stats.totalUsers = this.users.filter(user => user.isActive).length + 1; // +1 for owner
+    this.stats.lastActivityAt = new Date();
+    
+    return this.save();
+};
+
+// Static method to find companies by user
+companySchema.statics.findByUser = function(userId) {
+    return this.find({
+        $or: [
+            { owner: userId },
+            { 'users.user': userId, 'users.isActive': true }
+        ],
+        isActive: true
+    }).populate('owner', 'name email').populate('users.user', 'name email');
+};
+
+// Static method to find companies owned by user
+companySchema.statics.findByOwner = function(userId) {
+    return this.find({ 
+        owner: userId, 
+        isActive: true 
+    }).populate('owner', 'name email').populate('users.user', 'name email');
+};
+
 // Pre-save middleware
 companySchema.pre('save', function (next) {
     // Convert business name to title case
@@ -187,19 +367,43 @@ companySchema.pre('save', function (next) {
         this.phoneNumber = this.phoneNumber.replace(/\D/g, '');
     }
 
-    if (this.additionalPhones) {
-        this.additionalPhones = this.additionalPhones.map(phone => phone.replace(/\D/g, '')).filter(phone => phone.length === 10);
+    if (this.additionalPhones && this.additionalPhones.length > 0) {
+        this.additionalPhones = this.additionalPhones
+            .map(phone => phone.replace(/\D/g, ''))
+            .filter(phone => phone.length === 10);
     }
+
+    // Update last activity
+    this.stats.lastActivityAt = new Date();
 
     next();
 });
 
+// Post-save middleware to update user stats
+companySchema.post('save', async function(doc) {
+    try {
+        // Update total users count
+        const activeUsersCount = doc.users.filter(user => user.isActive).length + 1; // +1 for owner
+        if (doc.stats.totalUsers !== activeUsersCount) {
+            doc.stats.totalUsers = activeUsersCount;
+            await doc.save();
+        }
+    } catch (error) {
+        console.error('Error updating company stats:', error);
+    }
+});
+
 // Create indexes for better performance
+companySchema.index({ owner: 1 });
+companySchema.index({ 'users.user': 1 });
 companySchema.index({ businessName: 1 });
 companySchema.index({ phoneNumber: 1 });
 companySchema.index({ email: 1 });
 companySchema.index({ gstin: 1 });
 companySchema.index({ state: 1, city: 1 });
 companySchema.index({ isActive: 1 });
+companySchema.index({ 'subscription.plan': 1 });
+companySchema.index({ 'subscription.endDate': 1 });
+companySchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Company', companySchema);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faExclamationTriangle, faSync } from '@fortawesome/free-solid-svg-icons';
@@ -44,15 +44,18 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         totalItems: 0
     });
 
-    // Modal states
+    // Modal states - Updated for edit functionality
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showProductModal, setShowProductModal] = useState(false); // New state for product modal
     const [showStockModal, setShowStockModal] = useState(false);
     const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [showBulkImportModal, setShowBulkImportModal] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
+    const [editingItem, setEditingItem] = useState(null); // New state for editing items
+    const [modalType, setModalType] = useState('add'); // 'add' or 'edit'
     const [selectedProductForStock, setSelectedProductForStock] = useState(null);
 
-    // Form data states
+    // Updated form data states to match ProductModal
     const [formData, setFormData] = useState({
         name: '',
         itemCode: '',
@@ -61,13 +64,24 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         description: '',
         buyPrice: 0,
         salePrice: 0,
+        atPrice: 0, // Added atPrice field
         gstRate: 18,
         unit: 'PCS',
         type: 'product',
-        minStockLevel: 10,
+        // Updated stock field names to match backend model
+        minStockLevel: 0,
+        minStockToMaintain: 0, // Alternative name for minStockLevel
         currentStock: 0,
         openingStock: 0,
+        openingQuantity: 0, // Alternative name for openingStock
         asOfDate: new Date().toISOString().split('T')[0],
+        // Tax-related fields
+        isBuyPriceTaxInclusive: false,
+        isSalePriceTaxInclusive: false,
+        buyPriceWithTax: 0,
+        buyPriceWithoutTax: 0,
+        salePriceWithTax: 0,
+        salePriceWithoutTax: 0,
         isActive: true
     });
 
@@ -77,7 +91,7 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         isActive: true
     });
 
-    // Load items from backend
+    // Improved loadItems function with better data handling
     const loadItems = async (searchQuery = '', page = 1, limit = 50) => {
         if (!currentCompany?.id) {
             console.warn('⚠️ No company selected for loading items');
@@ -88,7 +102,12 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
             setIsLoadingItems(true);
             setError(null);
 
-            console.log('📋 Loading items for company:', currentCompany.id);
+            console.log('📋 Loading items for company:', currentCompany.id, {
+                searchQuery,
+                activeType,
+                page,
+                limit
+            });
 
             const params = {
                 page,
@@ -101,26 +120,88 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
             };
 
             const response = await itemService.getItems(currentCompany.id, params);
+            
+            console.log('📋 Raw response from itemService:', response);
 
-            if (response.success) {
-                const items = response.data.items || [];
-                setProducts(items);
-                setPagination(response.data.pagination || {});
+            if (response && response.success) {
+                const items = response.data?.items || response.data?.data || response.data || [];
+                
+                console.log('📋 Raw items from response:', items);
+                
+                // Enhanced item normalization with proper price handling
+                const normalizedItems = items.map(item => {
+                    const normalized = {
+                        ...item,
+                        // Ensure ID consistency
+                        id: item.id || item._id,
+                        _id: item._id || item.id,
+                        // Ensure stock field consistency with proper number conversion
+                        currentStock: Number(item.currentStock || item.openingStock || item.openingQuantity || item.stock || item.quantity || 0),
+                        openingStock: Number(item.openingStock || item.currentStock || item.openingQuantity || item.stock || item.quantity || 0),
+                        openingQuantity: Number(item.openingQuantity || item.currentStock || item.openingStock || item.stock || item.quantity || 0),
+                        // Handle price fields - prioritize actual stored prices over calculated ones
+                        salePrice: Number(item.salePrice || item.salePriceWithoutTax || item.salePriceWithTax || 0),
+                        buyPrice: Number(item.buyPrice || item.buyPriceWithoutTax || item.buyPriceWithTax || 0),
+                        atPrice: Number(item.atPrice || 0),
+                        gstRate: Number(item.gstRate || 18),
+                        // Preserve calculated price fields
+                        salePriceWithTax: Number(item.salePriceWithTax || 0),
+                        salePriceWithoutTax: Number(item.salePriceWithoutTax || 0),
+                        buyPriceWithTax: Number(item.buyPriceWithTax || 0),
+                        buyPriceWithoutTax: Number(item.buyPriceWithoutTax || 0),
+                        // Preserve tax flags
+                        isBuyPriceTaxInclusive: item.isBuyPriceTaxInclusive || false,
+                        isSalePriceTaxInclusive: item.isSalePriceTaxInclusive || false,
+                        // Ensure other fields
+                        unit: item.unit || 'PCS',
+                        minStockLevel: Number(item.minStockLevel || item.minStockToMaintain || 0),
+                        minStockToMaintain: Number(item.minStockToMaintain || item.minStockLevel || 0),
+                        isActive: item.isActive !== undefined ? item.isActive : true,
+                        // Ensure string fields
+                        name: item.name || '',
+                        itemCode: item.itemCode || '',
+                        category: item.category || '',
+                        type: item.type || 'product'
+                    };
+                    
+                    console.log('📋 Normalized item:', normalized);
+                    return normalized;
+                });
 
-                // Set first item as selected if no item is selected
-                if (!selectedItem && items.length > 0) {
-                    setSelectedItem(items[0]);
+                setProducts(normalizedItems);
+                setPagination(response.data?.pagination || {});
+
+                // Update selected item if it exists in the new data
+                if (selectedItem) {
+                    const selectedItemId = selectedItem.id || selectedItem._id;
+                    const updatedSelectedItem = normalizedItems.find(item => 
+                        (item.id === selectedItemId || item._id === selectedItemId)
+                    );
+                    
+                    if (updatedSelectedItem) {
+                        console.log('🎯 Updating selected item with fresh data from reload');
+                        setSelectedItem(updatedSelectedItem);
+                    } else {
+                        console.log('🎯 Selected item no longer exists, clearing selection');
+                        setSelectedItem(null);
+                    }
+                } else if (normalizedItems.length > 0) {
+                    // Set first item as selected if no item is selected
+                    setSelectedItem(normalizedItems[0]);
+                    console.log('🎯 Auto-selected first item:', normalizedItems[0]);
                 }
 
-                console.log('✅ Items loaded successfully:', items.length);
+                console.log('✅ Items loaded and normalized successfully:', normalizedItems.length);
             } else {
-                throw new Error(response.message || 'Failed to load items');
+                console.error('❌ Invalid response structure:', response);
+                throw new Error(response?.message || 'Invalid response from server');
             }
 
         } catch (error) {
             console.error('❌ Error loading items:', error);
             setError(`Failed to load items: ${error.message}`);
             setProducts([]);
+            setSelectedItem(null);
         } finally {
             setIsLoadingItems(false);
         }
@@ -368,14 +449,17 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         // }
     };
 
-    // Handle Add Item
+    // Handle Add Item with updated form structure
     const handleAddItem = (itemType) => {
         if (!currentCompany?.id) {
             alert('Please select a company first');
             return;
         }
 
+        setEditingItem(null); // Clear editing item
+        setModalType('add'); // Set to add mode
         setEditingProduct(null);
+        // Reset form data with all the new fields
         setFormData({
             name: '',
             itemCode: '',
@@ -384,52 +468,71 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
             description: '',
             buyPrice: 0,
             salePrice: 0,
+            atPrice: 0,
             gstRate: 18,
             unit: 'PCS',
             type: itemType,
-            minStockLevel: 10,
+            minStockLevel: 0,
+            minStockToMaintain: 0,
             currentStock: 0,
             openingStock: 0,
+            openingQuantity: 0,
             asOfDate: new Date().toISOString().split('T')[0],
+            isBuyPriceTaxInclusive: false,
+            isSalePriceTaxInclusive: false,
+            buyPriceWithTax: 0,
+            buyPriceWithoutTax: 0,
+            salePriceWithTax: 0,
+            salePriceWithoutTax: 0,
             isActive: true
         });
-        setShowCreateModal(true);
+        setShowProductModal(true); // Use showProductModal instead of showCreateModal
     };
 
-    // Handle Edit Item
-    const handleEditItem = (item) => {
-        if (!currentCompany?.id) {
-            alert('Please select a company first');
-            return;
-        }
+    // Enhanced edit item handler with proper form data population
+    const handleEditItem = useCallback((item) => {
+        console.log('🔧 Opening edit modal for item:', item);
+        setEditingItem(item);
+        setModalType('edit');
 
-        console.log('✏️ Editing item:', item);
-        setEditingProduct(item);
-
-        // Format item data for form
-        const formattedData = {
+        // Pre-populate formData with comprehensive price handling
+        const prePopulatedFormData = {
             name: item.name || '',
             itemCode: item.itemCode || '',
             hsnNumber: item.hsnNumber || '',
             category: item.category || '',
             description: item.description || '',
-            buyPrice: item.buyPrice || 0,
-            salePrice: item.salePrice || 0,
-            gstRate: item.gstRate || 0,
+            // 🚨 CRITICAL FIX: Use the correct price fields
+            buyPrice: Number(item.buyPrice) || Number(item.buyPriceWithoutTax) || 0,
+            salePrice: Number(item.salePrice) || Number(item.salePriceWithoutTax) || 0,
+            atPrice: Number(item.atPrice) || 0,
+            gstRate: Number(item.gstRate) || 18,
             unit: item.unit || 'PCS',
             type: item.type || 'product',
-            minStockLevel: item.minStockLevel || 0,
-            currentStock: item.currentStock || 0,
-            openingStock: item.openingStock || 0,
+            minStockLevel: Number(item.minStockLevel) || Number(item.minStockToMaintain) || 0,
+            minStockToMaintain: Number(item.minStockToMaintain) || Number(item.minStockLevel) || 0,
+            currentStock: Number(item.currentStock) || Number(item.openingStock) || Number(item.openingQuantity) || 0,
+            openingStock: Number(item.openingStock) || Number(item.currentStock) || Number(item.openingQuantity) || 0,
+            openingQuantity: Number(item.openingQuantity) || Number(item.openingStock) || Number(item.currentStock) || 0,
             asOfDate: item.asOfDate ? item.asOfDate.split('T')[0] : new Date().toISOString().split('T')[0],
-            isActive: item.isActive !== undefined ? item.isActive : true
+            // Tax flags - ensure boolean values
+            isBuyPriceTaxInclusive: Boolean(item.isBuyPriceTaxInclusive),
+            isSalePriceTaxInclusive: Boolean(item.isSalePriceTaxInclusive),
+            // Include calculated price fields for reference
+            buyPriceWithTax: Number(item.buyPriceWithTax) || 0,
+            buyPriceWithoutTax: Number(item.buyPriceWithoutTax) || 0,
+            salePriceWithTax: Number(item.salePriceWithTax) || 0,
+            salePriceWithoutTax: Number(item.salePriceWithoutTax) || 0,
+            isActive: item.isActive !== undefined ? Boolean(item.isActive) : true
         };
 
-        setFormData(formattedData);
-        setShowCreateModal(true);
-    };
+        console.log('🔧 Pre-populated form data:', prePopulatedFormData);
+        
+        // Set the form data before opening modal
+        setFormData(prePopulatedFormData);
+        setShowProductModal(true);
+    }, []); // Empty dependency array since it only uses setter functions
 
-    // Handle Adjust Stock
     const handleAdjustStock = (item) => {
         if (item.type === 'service') {
             alert('Stock adjustment is not applicable for services');
@@ -440,32 +543,34 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         setShowStockModal(true);
     };
 
-    // Modal handlers
+    // Modal handlers - Updated
     const handleCloseModal = () => {
         setShowCreateModal(false);
+        setShowProductModal(false); // Close product modal
         setEditingProduct(null);
+        setEditingItem(null);
+        setModalType('add');
     };
 
-    const handleInputChange = (e) => {
+    const handleInputChange = useCallback((e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
-    };
+    }, []); // Empty dependency array since it only uses setFormData which is stable
 
-    const handleCategoryInputChange = (e) => {
+    // Also memoize handleCategoryInputChange
+    const handleCategoryInputChange = useCallback((e) => {
         const { name, value, type, checked } = e.target;
         setCategoryFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
-    };
+    }, []);
 
     // Enhanced save product with backend integration
-    const handleSaveProduct = async (e, isSaveAndAdd = false) => {
-        e.preventDefault();
-
+    const handleSaveProduct = async (productData, isSaveAndAdd = false) => {
         if (!currentCompany?.id) {
             alert('Please select a company first');
             return false;
@@ -473,23 +578,159 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
 
         try {
             setIsLoading(true);
+            console.log('💾 Creating new item with data:', productData);
 
-            // Let ProductModal handle the API call and response
-            // This is called after successful save in ProductModal
-            console.log('✅ Product saved, reloading items...');
+            // Call the itemService to create the item
+            const response = await itemService.createItem(currentCompany.id, productData);
 
-            // Reload items to get updated data
-            await loadItems(sidebarSearchQuery);
+            if (response && response.success) {
+                console.log('✅ Item created successfully:', response.data);
 
-            // If not save and add, close modal
-            if (!isSaveAndAdd) {
-                handleCloseModal();
+                // Reload items to get updated data
+                await loadItems(sidebarSearchQuery);
+
+                // If not save and add, close modal
+                if (!isSaveAndAdd) {
+                    handleCloseModal();
+                }
+
+                return true;
+            } else {
+                throw new Error(response?.message || 'Failed to create item');
             }
 
-            return true;
-
         } catch (error) {
-            console.error('❌ Error in handleSaveProduct:', error);
+            console.error('❌ Error creating item:', error);
+            alert(`Failed to create item: ${error.message}`);
+            return false;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // 🚨 FIXED UPDATE ITEM HANDLER
+    const handleUpdateItem = async (updatedItemData) => {
+        if (!currentCompany?.id) {
+            alert('No company selected');
+            return false;
+        }
+
+        if (!editingItem?.id && !editingItem?._id) {
+            console.error('❌ No editing item ID found');
+            alert('Cannot update item: Invalid item data');
+            return false;
+        }
+
+        try {
+            setIsLoading(true);
+            
+            // 🚨 ENHANCED DEBUG LOGGING
+            console.log('🔧 Inventory - Starting update process:', {
+                editingItem: editingItem,
+                formData: formData,
+                updatedItemData: updatedItemData
+            });
+
+            // Call the backend API to update the item
+            const itemIdToUpdate = editingItem._id || editingItem.id;
+            const response = await itemService.updateItem(currentCompany.id, itemIdToUpdate, updatedItemData);
+            
+            console.log('📝 Inventory - Backend response:', response);
+
+            // Check if the response indicates success
+            if (response && response.success) {
+                console.log('✅ Inventory - Item updated successfully');
+
+                // 🚨 SIMPLIFIED STATE UPDATE - Just reload everything
+                await loadItems(sidebarSearchQuery);
+
+                // Close modal and reset state
+                setShowProductModal(false);
+                setEditingItem(null);
+                setModalType('add');
+
+                // Show success message
+                alert(`${updatedItemData.name || editingItem.name} has been updated successfully!`);
+
+                return true;
+            } else {
+                // Handle failed response
+                const errorMessage = response?.message || 'Failed to update item - no success flag';
+                console.error('❌ Inventory - Update failed:', errorMessage);
+                throw new Error(errorMessage);
+            }
+        } catch (error) {
+            console.error('❌ Inventory - Error updating item:', error);
+
+            // Show user-friendly error message
+            const errorMessage = error.message || 'Unknown error occurred';
+            alert(`Failed to update "${editingItem.name}": ${errorMessage}`);
+
+            // Reload items to sync with backend state on error
+            console.log('🔄 Inventory - Reloading items after update error...');
+            try {
+                await loadItems(sidebarSearchQuery);
+            } catch (reloadError) {
+                console.error('❌ Inventory - Error reloading items after update failure:', reloadError);
+            }
+
+            return false;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Handle Delete Item - Updated with backend integration
+    const handleDeleteItem = async (item) => {
+        console.log('🗑️ Delete item requested:', item);
+
+        if (!currentCompany?.id) {
+            alert('No company selected');
+            return false;
+        }
+
+        if (!item?.id && !item?._id) {
+            console.error('❌ No item ID found');
+            alert('Cannot delete item: Invalid item data');
+            return false;
+        }
+
+        try {
+            setIsLoading(true);
+            console.log('🗑️ Deleting item from backend...');
+
+            // Call the backend API to delete the item
+            const itemIdToDelete = item._id || item.id;
+            const response = await itemService.deleteItem(currentCompany.id, itemIdToDelete);
+
+            if (response.success) {
+                console.log('✅ Item deleted successfully from backend');
+
+                // Reload items to get updated data
+                await loadItems(sidebarSearchQuery);
+
+                // Show success message
+                alert(`${item.name} has been deleted successfully!`);
+
+                return true;
+            } else {
+                throw new Error(response.message || 'Failed to delete item');
+            }
+        } catch (error) {
+            console.error('❌ Error deleting item:', error);
+
+            // Show user-friendly error message
+            const errorMessage = error.message || 'Unknown error occurred';
+            alert(`Failed to delete "${item.name}": ${errorMessage}`);
+
+            // Reload items to sync with backend state
+            console.log('🔄 Reloading items after delete error...');
+            try {
+                await loadItems(sidebarSearchQuery);
+            } catch (reloadError) {
+                console.error('❌ Error reloading items after delete failure:', reloadError);
+            }
+
             return false;
         } finally {
             setIsLoading(false);
@@ -507,31 +748,41 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
         setShowCategoryModal(false);
     };
 
-    const handleUpdateStock = async (productId, newStock, reason) => {
+        const handleUpdateStock = async (productId, adjustmentData) => {
+        if (!currentCompany?.id) {
+            alert('Please select a company first');
+            return false;
+        }
         try {
-            // TODO: Implement stock adjustment API call
-            // await itemService.updateStock(currentCompany.id, productId, newStock, reason);
-
-            // For now, update locally
-            setProducts(products.map(product =>
-                (product.id === productId || product._id === productId)
-                    ? { ...product, currentStock: newStock }
-                    : product
-            ));
-
-            // Update selected item if it's the one being updated
-            if (selectedItem && (selectedItem.id === productId || selectedItem._id === productId)) {
-                setSelectedItem(prev => ({ ...prev, currentStock: newStock }));
+            setIsLoading(true);
+            console.log('📊 Inventory: Updating stock for product:', productId, adjustmentData);
+    
+            // Call the backend API to adjust stock
+            const response = await itemService.adjustStock(currentCompany.id, productId, adjustmentData);
+    
+            if (response && response.success) {
+                console.log('✅ Stock adjusted successfully:', response.data);
+    
+                // Reload items to get updated stock data
+                await loadItems(sidebarSearchQuery);
+    
+                // Close the stock modal
+                setShowStockModal(false);
+                setSelectedProductForStock(null);
+    
+                // Show success message
+                alert(`Stock adjusted successfully! New quantity: ${response.data.newStock || adjustmentData.newStock}`);
+    
+                return true;
+            } else {
+                throw new Error(response?.message || 'Failed to adjust stock');
             }
-
-            setShowStockModal(false);
-            setSelectedProductForStock(null);
-
-            console.log('✅ Stock updated successfully');
-
         } catch (error) {
-            console.error('❌ Error updating stock:', error);
-            alert(`Error updating stock: ${error.message}`);
+            console.error('❌ Error adjusting stock:', error);
+            alert(`Failed to adjust stock: ${error.message}`);
+            return false;
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -676,7 +927,7 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
             <div className="flex-grow-1 overflow-hidden">
                 <Container fluid className="h-100 p-0">
                     <Row className="h-100 g-0">
-                        {/* Left Sidebar */}
+                        {/* Left Sidebar - Updated with edit and delete handlers */}
                         <Col md={4} lg={3}>
                             <InventorySidebar
                                 items={filteredItems}
@@ -684,6 +935,8 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
                                 onItemSelect={handleItemSelect}
                                 onAddItem={handleAddItem}
                                 onAddCategory={handleAddCategory}
+                                onEditItem={handleEditItem} // Add this line
+                                onDeleteItem={handleDeleteItem} // Add this line
                                 searchQuery={sidebarSearchQuery}
                                 onSearchChange={setSidebarSearchQuery}
                                 activeType={activeType}
@@ -724,16 +977,18 @@ function Inventory({ view = 'allProducts', onNavigate, currentCompany }) {
                 </Container>
             </div>
 
-            {/* Modals */}
+            {/* Modals - Updated ProductModal with edit functionality */}
             <ProductModal
-                show={showCreateModal}
+                show={showProductModal} // Use showProductModal instead of showCreateModal
                 onHide={handleCloseModal}
-                editingProduct={editingProduct}
+                editingProduct={modalType === 'edit' ? editingItem : null} // Pass editingItem when in edit mode
                 formData={formData}
                 categories={categories}
                 onInputChange={handleInputChange}
-                onSaveProduct={handleSaveProduct}
+                onSaveProduct={modalType === 'edit' ? handleUpdateItem : handleSaveProduct} // Use different handler for edit
                 currentCompany={currentCompany}
+                mode={modalType} // Pass the mode ('add' or 'edit')
+                type={modalType === 'edit' ? editingItem?.type : formData.type} // Pass the type
             />
 
             <StockAdjustmentModal

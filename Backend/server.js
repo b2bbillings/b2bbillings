@@ -10,7 +10,9 @@ dotenv.config();
 // Import routes
 const companyRoutes = require('./src/routes/companies');
 const itemRoutes = require('./src/routes/items');
-const authRoutes = require('./src/routes/authRoutes'); // Add auth routes
+const authRoutes = require('./src/routes/authRoutes');
+const partyRoutes = require('./src/routes/partyRoutes');
+const paymentRoutes = require('./src/routes/paymentRoutes'); // Add payment routes
 
 const app = express();
 
@@ -42,6 +44,12 @@ app.use('/api/auth', authRoutes);
 // Company routes
 app.use('/api/companies', companyRoutes);
 
+// Party routes
+app.use('/api/parties', partyRoutes);
+
+// Payment routes
+app.use('/api/payments', paymentRoutes);
+
 // Items routes - nested under companies
 // ⭐ Make sure this line is exactly like this:
 app.use('/api/companies/:companyId/items', itemRoutes);
@@ -65,6 +73,23 @@ app.get('/api/health', (req, res) => {
             'GET /api/companies/:id',
             'PUT /api/companies/:id',
             'DELETE /api/companies/:id',
+            // Party endpoints
+            'GET /api/parties',
+            'POST /api/parties',
+            'POST /api/parties/quick',
+            'GET /api/parties/search/:query',
+            'GET /api/parties/:id',
+            'PUT /api/parties/:id',
+            'DELETE /api/parties/:id',
+            // Payment endpoints
+            'POST /api/payments/pay-in',
+            'POST /api/payments/pay-out',
+            'GET /api/payments',
+            'GET /api/payments/:paymentId',
+            'GET /api/payments/party/:partyId/summary',
+            'PUT /api/payments/:paymentId',
+            'PATCH /api/payments/:paymentId/cancel',
+            'GET /api/payments/test',
             // Item endpoints
             'GET /api/companies/:companyId/items',
             'POST /api/companies/:companyId/items',
@@ -139,6 +164,26 @@ app.listen(PORT, () => {
     console.log(`   POST ${PORT}/api/auth/signup`);
     console.log(`   POST ${PORT}/api/auth/login`);
     console.log(`   POST ${PORT}/api/auth/logout`);
+    console.log('👥 Party Endpoints:');
+    console.log(`   GET ${PORT}/api/parties`);
+    console.log(`   POST ${PORT}/api/parties`);
+    console.log(`   POST ${PORT}/api/parties/quick`);
+    console.log(`   GET ${PORT}/api/parties/search/:query`);
+    console.log(`   GET ${PORT}/api/parties/:id`);
+    console.log(`   PUT ${PORT}/api/parties/:id`);
+    console.log(`   DELETE ${PORT}/api/parties/:id`);
+    console.log('💰 Payment Endpoints:');
+    console.log(`   POST http://localhost:${PORT}/api/payments/pay-in`);
+    console.log(`   POST http://localhost:${PORT}/api/payments/pay-out`);
+    console.log(`   GET  http://localhost:${PORT}/api/payments`);
+    console.log(`   GET  http://localhost:${PORT}/api/payments/:id`);
+    console.log(`   GET  http://localhost:${PORT}/api/payments/party/:partyId/summary`);
+    console.log(`   PUT  http://localhost:${PORT}/api/payments/:id`);
+    console.log(`   PATCH http://localhost:${PORT}/api/payments/:id/cancel`);
+    console.log(`   GET  http://localhost:${PORT}/api/payments/test (for testing)`);
+    console.log('📦 Item Endpoints:');
+    console.log(`   GET ${PORT}/api/companies/:companyId/items`);
+    console.log(`   POST ${PORT}/api/companies/:companyId/items`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 });
 

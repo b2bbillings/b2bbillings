@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Button, Form, Row, Col, InputGroup, Nav, Tab } from 'react-bootstrap';
+import { Modal, Button, Form, Row, Col, InputGroup, Nav, Tab, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faTimes,
@@ -15,6 +15,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import useKeyboardNavigation from '../../../hooks/useKeyboardNavigation';
 import KeyboardShortcutsHelp from '../../../hooks/KeyboardShortcutsHelp';
+import partyService from '../../../services/partyService';
 
 function AddNewParty({
     show,
@@ -27,6 +28,11 @@ function AddNewParty({
     const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [activeAddressTab, setActiveAddressTab] = useState('home');
+    
+    // Loading and error states
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     // Form refs for keyboard navigation
     const nameRef = useRef(null);
@@ -127,6 +133,19 @@ function AddNewParty({
         }));
     };
 
+    // Clear alerts after 5 seconds
+    useEffect(() => {
+        if (error || success) {
+            const timer = setTimeout(() => {
+                setError('');
+                setSuccess('');
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [error, success]);
+
+
+
     // Keyboard navigation setup
     const { focusFirst } = useKeyboardNavigation({
         enabled: show,
@@ -165,6 +184,9 @@ function AddNewParty({
     // Reset form when modal opens/closes
     useEffect(() => {
         if (show) {
+            setError('');
+            setSuccess('');
+            
             if (!editingParty) {
                 if (isQuickAdd) {
                     setQuickFormData({ name: '', phone: '' });
@@ -201,34 +223,35 @@ function AddNewParty({
                     setActiveAddressTab('home');
                 }
             } else {
-                // Populate form for editing
+                // Populate form for editing - map backend data to frontend format
+                const party = editingParty;
                 const editData = {
-                    partyType: editingParty.partyType || 'customer',
-                    name: editingParty.name || '',
-                    email: editingParty.email || '',
-                    phoneNumber: editingParty.phoneNumber || editingParty.phone || '',
-                    companyName: editingParty.companyName || '',
-                    gstNumber: editingParty.gstNumber || '',
-                    country: editingParty.country || 'INDIA',
+                    partyType: party.partyType || 'customer',
+                    name: party.name || '',
+                    email: party.email || '',
+                    phoneNumber: party.phoneNumber || party.phone || '',
+                    companyName: party.companyName || '',
+                    gstNumber: party.gstNumber || '',
+                    country: party.country || 'INDIA',
 
-                    // Home Address (backward compatibility)
-                    homeAddressLine: editingParty.homeAddressLine || editingParty.addressLine || editingParty.address || '',
-                    homePincode: editingParty.homePincode || editingParty.pincode || '',
-                    homeState: editingParty.homeState || editingParty.state || '',
-                    homeDistrict: editingParty.homeDistrict || editingParty.district || '',
-                    homeTaluka: editingParty.homeTaluka || editingParty.taluka || '',
+                    // Home Address - handle both nested object and flat structure
+                    homeAddressLine: party.homeAddress?.addressLine || party.homeAddressLine || party.addressLine || party.address || '',
+                    homePincode: party.homeAddress?.pincode || party.homePincode || party.pincode || '',
+                    homeState: party.homeAddress?.state || party.homeState || party.state || '',
+                    homeDistrict: party.homeAddress?.district || party.homeDistrict || party.district || '',
+                    homeTaluka: party.homeAddress?.taluka || party.homeTaluka || party.taluka || '',
 
                     // Delivery Address
-                    deliveryAddressLine: editingParty.deliveryAddressLine || '',
-                    deliveryPincode: editingParty.deliveryPincode || '',
-                    deliveryState: editingParty.deliveryState || '',
-                    deliveryDistrict: editingParty.deliveryDistrict || '',
-                    deliveryTaluka: editingParty.deliveryTaluka || '',
-                    sameAsHomeAddress: editingParty.sameAsHomeAddress || false,
+                    deliveryAddressLine: party.deliveryAddress?.addressLine || party.deliveryAddressLine || '',
+                    deliveryPincode: party.deliveryAddress?.pincode || party.deliveryPincode || '',
+                    deliveryState: party.deliveryAddress?.state || party.deliveryState || '',
+                    deliveryDistrict: party.deliveryAddress?.district || party.deliveryDistrict || '',
+                    deliveryTaluka: party.deliveryAddress?.taluka || party.deliveryTaluka || '',
+                    sameAsHomeAddress: party.sameAsHomeAddress || false,
 
-                    openingBalanceType: editingParty.openingBalanceType || 'debit',
-                    openingBalance: editingParty.openingBalance || 0,
-                    phoneNumbers: editingParty.phoneNumbers || [{ number: editingParty.phone || '', label: 'Primary' }]
+                    openingBalanceType: party.openingBalanceType || 'debit',
+                    openingBalance: party.openingBalance || 0,
+                    phoneNumbers: party.phoneNumbers?.length > 0 ? party.phoneNumbers : [{ number: party.phoneNumber || party.phone || '', label: 'Primary' }]
                 };
                 setFormData(editData);
                 setShowAdditionalPhones(editData.phoneNumbers?.length > 1);
@@ -303,82 +326,293 @@ function AddNewParty({
         }
     };
 
-    // Handle form submission
-    const handleSubmit = (e) => {
+     const checkDuplicatePhone = async (phoneNumber) => {
+        try {
+            // Call backend to check if phone number already exists
+            const response = await partyService.checkPhoneExists(phoneNumber);
+            return response.exists || false;
+        } catch (error) {
+            // If the service doesn't exist, we'll skip this check
+            console.warn('Phone duplicate check service not available:', error);
+            return false;
+        }
+    };
+
+
+   const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
 
         if (isQuickAdd) {
+            // Quick add validation
             if (!quickFormData.name.trim() || !quickFormData.phone.trim()) {
-                alert('Please enter both name and phone number');
+                setError('Please enter both name and phone number');
                 return;
             }
 
-            const newRunningCustomer = {
-                id: Date.now(),
-                name: quickFormData.name.trim(),
-                phone: quickFormData.phone.trim(),
-                phoneNumber: quickFormData.phone.trim(),
-                partyType: 'customer',
-                isRunningCustomer: true,
-                email: '',
-                homeAddressLine: '',
-                homePincode: '',
-                homeState: '',
-                homeDistrict: '',
-                homeTaluka: '',
-                deliveryAddressLine: '',
-                deliveryPincode: '',
-                deliveryState: '',
-                deliveryDistrict: '',
-                deliveryTaluka: '',
-                sameAsHomeAddress: false,
-                gstNumber: '',
-                companyName: '',
-                openingBalance: 0,
-                openingBalanceType: 'debit',
-                country: 'INDIA',
-                phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }],
-                createdAt: new Date().toISOString()
-            };
+            // Validate phone number format
+            const phoneRegex = /^[6-9]\d{9}$/;
+            if (!phoneRegex.test(quickFormData.phone.trim())) {
+                setError('Please enter a valid 10-digit phone number starting with 6, 7, 8, or 9');
+                return;
+            }
 
-            onSaveParty(newRunningCustomer, true);
+            try {
+                setIsLoading(true);
+
+                // Check for duplicate phone number
+                const isDuplicate = await checkDuplicatePhone(quickFormData.phone.trim());
+                if (isDuplicate) {
+                    setError(`A customer with phone number ${quickFormData.phone.trim()} already exists. Please use a different phone number or edit the existing customer.`);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const newRunningCustomer = {
+                    partyType: 'customer',
+                    name: quickFormData.name.trim(),
+                    phoneNumber: quickFormData.phone.trim(),
+                    email: '',
+                    companyName: '',
+                    gstNumber: '',
+                    country: 'INDIA',
+                    homeAddressLine: '',
+                    homePincode: '',
+                    homeState: '',
+                    homeDistrict: '',
+                    homeTaluka: '',
+                    deliveryAddressLine: '',
+                    deliveryPincode: '',
+                    deliveryState: '',
+                    deliveryDistrict: '',
+                    deliveryTaluka: '',
+                    sameAsHomeAddress: false,
+                    openingBalance: 0,
+                    openingBalanceType: 'debit',
+                    phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }]
+                };
+
+                console.log('🚀 Creating quick customer:', newRunningCustomer);
+
+                // Call backend API
+                const response = await partyService.createParty(newRunningCustomer);
+                console.log('📥 Quick customer response:', response);
+
+                if (response.success) {
+                    setSuccess('Quick customer added successfully!');
+                    
+                    // Handle different response structures safely
+                    const backendParty = response.data?.party || response.party || response.data || {};
+                    const partyId = backendParty._id || backendParty.id || Date.now().toString();
+                    
+                    const savedParty = {
+                        ...newRunningCustomer,
+                        id: partyId,
+                        _id: partyId,
+                        isRunningCustomer: true,
+                        createdAt: backendParty.createdAt || new Date().toISOString(),
+                        updatedAt: backendParty.updatedAt || new Date().toISOString()
+                    };
+
+                    console.log('✅ Quick customer saved:', savedParty);
+
+                    // Call parent callback
+                    onSaveParty(savedParty, true);
+                    
+                    // Close modal after short delay
+                    setTimeout(() => {
+                        onHide();
+                    }, 1000);
+                } else {
+                    throw new Error(response.message || response.error || 'Failed to create party');
+                }
+
+            } catch (error) {
+                console.error('❌ Error creating quick customer:', error);
+                
+                // Handle specific duplicate phone error from backend
+                if (error.message?.toLowerCase().includes('phone') && 
+                    (error.message?.toLowerCase().includes('exists') || 
+                     error.message?.toLowerCase().includes('duplicate') ||
+                     error.message?.toLowerCase().includes('already'))) {
+                    setError(`A customer with phone number ${quickFormData.phone.trim()} already exists. Please use a different phone number or edit the existing customer.`);
+                } else {
+                    setError(error.message || 'Failed to create customer. Please try again.');
+                }
+            } finally {
+                setIsLoading(false);
+            }
         } else {
+            // Regular party validation
             if (!formData.name.trim()) {
-                alert('Please enter a name');
+                setError('Please enter a name');
                 return;
             }
 
-            const partyData = {
-                ...formData,
-                phone: formData.phoneNumber,
-                // Keep backward compatibility
-                address: formData.homeAddressLine,
-                addressLine: formData.homeAddressLine,
-                pincode: formData.homePincode,
-                state: formData.homeState,
-                district: formData.homeDistrict,
-                taluka: formData.homeTaluka,
-                isRunningCustomer: false
-            };
+            if (!formData.phoneNumber.trim()) {
+                setError('Please enter a phone number');
+                return;
+            }
 
-            if (editingParty) {
-                const updatedParty = {
-                    ...partyData,
-                    id: editingParty.id,
-                    createdAt: editingParty.createdAt,
-                    updatedAt: new Date().toISOString()
+            // Validate phone number format
+            const phoneRegex = /^[6-9]\d{9}$/;
+            if (!phoneRegex.test(formData.phoneNumber.trim())) {
+                setError('Please enter a valid 10-digit phone number starting with 6, 7, 8, or 9');
+                return;
+            }
+
+            // Validate email format if provided
+            if (formData.email.trim()) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(formData.email.trim())) {
+                    setError('Please enter a valid email address');
+                    return;
+                }
+            }
+
+            // Validate GST number format if provided
+            if (formData.gstNumber.trim()) {
+                const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+                if (!gstRegex.test(formData.gstNumber.trim().toUpperCase())) {
+                    setError('Please enter a valid GST number (e.g., 22AAAAA0000A1Z5)');
+                    return;
+                }
+            }
+
+            try {
+                setIsLoading(true);
+
+                // Check for duplicate phone number (only for new parties or if phone changed)
+                if (!editingParty || editingParty.phoneNumber !== formData.phoneNumber.trim()) {
+                    const isDuplicate = await checkDuplicatePhone(formData.phoneNumber.trim());
+                    if (isDuplicate) {
+                        setError(`A party with phone number ${formData.phoneNumber.trim()} already exists. Please use a different phone number or edit the existing party.`);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+
+                const partyData = {
+                    ...formData,
+                    // Ensure phone field is set for backward compatibility
+                    phone: formData.phoneNumber,
+                    // Keep backward compatibility fields
+                    address: formData.homeAddressLine,
+                    addressLine: formData.homeAddressLine,
+                    pincode: formData.homePincode,
+                    state: formData.homeState,
+                    district: formData.homeDistrict,
+                    taluka: formData.homeTaluka,
+                    // Normalize GST number to uppercase
+                    gstNumber: formData.gstNumber.trim().toUpperCase()
                 };
-                onSaveParty(updatedParty, false, true);
-            } else {
-                const newParty = {
-                    ...partyData,
-                    id: Date.now(),
-                    createdAt: new Date().toISOString()
-                };
-                onSaveParty(newParty, false, false);
+
+                console.log('💾 Saving party data:', partyData);
+
+                let response;
+                let savedParty;
+
+                if (editingParty) {
+                    // Update existing party
+                    const partyId = editingParty._id || editingParty.id;
+                    console.log('✏️ Updating party with ID:', partyId);
+                    
+                    response = await partyService.updateParty(partyId, partyData);
+                    console.log('📥 Update response:', response);
+                    
+                    if (response.success || response.data) {
+                        setSuccess('Party updated successfully!');
+                        
+                        // Handle different response structures safely
+                        const backendParty = response.data?.party || response.party || response.data || {};
+                        
+                        savedParty = {
+                            ...partyData,
+                            id: partyId,
+                            _id: partyId,
+                            createdAt: editingParty.createdAt || backendParty.createdAt || new Date().toISOString(),
+                            updatedAt: backendParty.updatedAt || new Date().toISOString(),
+                            isRunningCustomer: false
+                        };
+
+                        console.log('✅ Party updated:', savedParty);
+
+                        // Call parent callback
+                        onSaveParty(savedParty, false, true);
+                    } else {
+                        throw new Error(response.message || response.error || 'Failed to update party');
+                    }
+                } else {
+                    // Create new party
+                    console.log('➕ Creating new party');
+                    
+                    response = await partyService.createParty(partyData);
+                    console.log('📥 Create response:', response);
+                    
+                    if (response.success || response.data) {
+                        setSuccess('Party created successfully!');
+                        
+                        // Handle different response structures safely
+                        const backendParty = response.data?.party || response.party || response.data || {};
+                        const partyId = backendParty._id || backendParty.id || Date.now().toString();
+                        
+                        savedParty = {
+                            ...partyData,
+                            id: partyId,
+                            _id: partyId,
+                            createdAt: backendParty.createdAt || new Date().toISOString(),
+                            updatedAt: backendParty.updatedAt || new Date().toISOString(),
+                            isRunningCustomer: false
+                        };
+
+                        console.log('✅ Party created:', savedParty);
+
+                        // Call parent callback
+                        onSaveParty(savedParty, false, false);
+                    } else {
+                        throw new Error(response.message || response.error || 'Failed to create party');
+                    }
+                }
+
+                // Close modal after short delay
+                setTimeout(() => {
+                    onHide();
+                }, 1000);
+
+            } catch (error) {
+                console.error('❌ Error saving party:', error);
+                
+                // Enhanced error handling with specific duplicate phone error
+                let errorMessage = 'Failed to save party. Please try again.';
+                
+                if (error.response?.data?.message) {
+                    errorMessage = error.response.data.message;
+                } else if (error.response?.data?.error) {
+                    errorMessage = error.response.data.error;
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+
+                // Handle specific duplicate phone error
+                if (errorMessage.toLowerCase().includes('phone') && 
+                    (errorMessage.toLowerCase().includes('exists') || 
+                     errorMessage.toLowerCase().includes('duplicate') ||
+                     errorMessage.toLowerCase().includes('already'))) {
+                    setError(`A party with phone number ${formData.phoneNumber.trim()} already exists. Please use a different phone number or edit the existing party.`);
+                } else if (errorMessage.toLowerCase().includes('email') && 
+                          errorMessage.toLowerCase().includes('exists')) {
+                    setError(`A party with email ${formData.email.trim()} already exists. Please use a different email or edit the existing party.`);
+                } else {
+                    setError(errorMessage);
+                }
+            } finally {
+                setIsLoading(false);
             }
         }
     };
+
+
 
     if (isQuickAdd) {
         return (
@@ -405,6 +639,7 @@ function AddNewParty({
                                 onClick={onHide}
                                 className="border-0 p-1"
                                 aria-label="Close"
+                                disabled={isLoading}
                             >
                                 <FontAwesomeIcon icon={faTimes} />
                             </Button>
@@ -412,6 +647,18 @@ function AddNewParty({
                     </Modal.Header>
 
                     <Modal.Body className="p-4">
+                        {/* Error/Success Messages */}
+                        {error && (
+                            <Alert variant="danger" className="mb-3" dismissible onClose={() => setError('')}>
+                                {error}
+                            </Alert>
+                        )}
+                        {success && (
+                            <Alert variant="success" className="mb-3" dismissible onClose={() => setSuccess('')}>
+                                {success}
+                            </Alert>
+                        )}
+
                         <Form onSubmit={handleSubmit}>
                             <Row>
                                 <Col md={6}>
@@ -425,6 +672,7 @@ function AddNewParty({
                                             onChange={handleQuickInputChange}
                                             placeholder="Enter customer name"
                                             required
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
@@ -439,6 +687,7 @@ function AddNewParty({
                                             onChange={handleQuickInputChange}
                                             placeholder="Enter phone number"
                                             required
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
@@ -450,6 +699,7 @@ function AddNewParty({
                                     variant="outline-secondary"
                                     onClick={onHide}
                                     size="sm"
+                                    disabled={isLoading}
                                 >
                                     Cancel
                                 </Button>
@@ -458,9 +708,19 @@ function AddNewParty({
                                     variant="warning"
                                     type="submit"
                                     size="sm"
+                                    disabled={isLoading}
                                 >
-                                    <FontAwesomeIcon icon={faRocket} className="me-1" />
-                                    Add Customer
+                                    {isLoading ? (
+                                        <>
+                                            <Spinner size="sm" className="me-1" />
+                                            Adding...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FontAwesomeIcon icon={faRocket} className="me-1" />
+                                            Add Customer
+                                        </>
+                                    )}
                                 </Button>
                             </div>
                         </Form>
@@ -500,6 +760,7 @@ function AddNewParty({
                             onClick={onHide}
                             className="border-0 p-1"
                             aria-label="Close"
+                            disabled={isLoading}
                         >
                             <FontAwesomeIcon icon={faTimes} />
                         </Button>
@@ -507,6 +768,18 @@ function AddNewParty({
                 </Modal.Header>
 
                 <Modal.Body className="p-4">
+                    {/* Error/Success Messages */}
+                    {error && (
+                        <Alert variant="danger" className="mb-3" dismissible onClose={() => setError('')}>
+                            {error}
+                        </Alert>
+                    )}
+                    {success && (
+                        <Alert variant="success" className="mb-3" dismissible onClose={() => setSuccess('')}>
+                            {success}
+                        </Alert>
+                    )}
+
                     <Form onSubmit={handleSubmit}>
                         {/* Party Type */}
                         <div className="mb-4">
@@ -520,6 +793,7 @@ function AddNewParty({
                                     value="customer"
                                     checked={formData.partyType === 'customer'}
                                     onChange={handleInputChange}
+                                    disabled={isLoading}
                                 />
                                 <Form.Check
                                     type="radio"
@@ -529,6 +803,7 @@ function AddNewParty({
                                     value="supplier"
                                     checked={formData.partyType === 'supplier'}
                                     onChange={handleInputChange}
+                                    disabled={isLoading}
                                 />
                             </div>
                         </div>
@@ -550,6 +825,7 @@ function AddNewParty({
                                             onChange={handleInputChange}
                                             placeholder={`Enter ${formData.partyType} name`}
                                             required
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
@@ -563,12 +839,13 @@ function AddNewParty({
                                             value={formData.email}
                                             onChange={handleInputChange}
                                             placeholder="Email address"
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
                                 <Col md={4}>
                                     <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">Phone Number</Form.Label>
+                                        <Form.Label className="text-muted small">Phone Number *</Form.Label>
                                         <InputGroup>
                                             <InputGroup.Text className="small">+91</InputGroup.Text>
                                             <Form.Control
@@ -579,6 +856,8 @@ function AddNewParty({
                                                 onChange={handleInputChange}
                                                 placeholder="Phone number"
                                                 maxLength="10"
+                                                required
+                                                disabled={isLoading}
                                             />
                                         </InputGroup>
                                     </Form.Group>
@@ -595,6 +874,7 @@ function AddNewParty({
                                             size="sm"
                                             onClick={addPhoneNumber}
                                             type="button"
+                                            disabled={isLoading}
                                         >
                                             <FontAwesomeIcon icon={faPlus} className="me-1" />
                                             Add
@@ -609,6 +889,7 @@ function AddNewParty({
                                                     onChange={(e) => handlePhoneNumberChange(index, 'label', e.target.value)}
                                                     placeholder="Label (e.g., Office)"
                                                     size="sm"
+                                                    disabled={isLoading}
                                                 />
                                             </Col>
                                             <Col md={6}>
@@ -618,6 +899,7 @@ function AddNewParty({
                                                     onChange={(e) => handlePhoneNumberChange(index, 'number', e.target.value)}
                                                     placeholder="Phone number"
                                                     size="sm"
+                                                    disabled={isLoading}
                                                 />
                                             </Col>
                                             <Col md={2}>
@@ -627,6 +909,7 @@ function AddNewParty({
                                                     onClick={() => removePhoneNumber(index)}
                                                     className="w-100"
                                                     type="button"
+                                                    disabled={isLoading}
                                                 >
                                                     <FontAwesomeIcon icon={faMinus} />
                                                 </Button>
@@ -644,6 +927,7 @@ function AddNewParty({
                                         size="sm"
                                         onClick={() => setShowAdditionalPhones(true)}
                                         type="button"
+                                        disabled={isLoading}
                                     >
                                         <FontAwesomeIcon icon={faPlus} className="me-1" />
                                         Add Additional Phone Numbers
@@ -666,6 +950,7 @@ function AddNewParty({
                                             value={formData.companyName}
                                             onChange={handleInputChange}
                                             placeholder="Company name"
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
@@ -680,6 +965,7 @@ function AddNewParty({
                                             onChange={handleInputChange}
                                             placeholder="GST number"
                                             style={{ textTransform: 'uppercase' }}
+                                            disabled={isLoading}
                                         />
                                     </Form.Group>
                                 </Col>
@@ -696,6 +982,7 @@ function AddNewParty({
                                     onClick={copyHomeToDelivery}
                                     type="button"
                                     title="Copy home address to delivery address (Ctrl+D)"
+                                    disabled={isLoading}
                                 >
                                     <FontAwesomeIcon icon={faCopy} className="me-1" />
                                     Copy Home to Delivery
@@ -733,6 +1020,7 @@ function AddNewParty({
                                                         value={formData.homeAddressLine}
                                                         onChange={handleInputChange}
                                                         placeholder="Enter home address"
+                                                        disabled={isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -749,6 +1037,7 @@ function AddNewParty({
                                                         onChange={handleInputChange}
                                                         placeholder="PIN Code"
                                                         maxLength="6"
+                                                        disabled={isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -762,6 +1051,7 @@ function AddNewParty({
                                                         value={formData.homeState}
                                                         onChange={handleInputChange}
                                                         placeholder="State"
+                                                        disabled={isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -775,6 +1065,7 @@ function AddNewParty({
                                                         value={formData.homeDistrict}
                                                         onChange={handleInputChange}
                                                         placeholder="District"
+                                                        disabled={isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -788,6 +1079,7 @@ function AddNewParty({
                                                         value={formData.homeTaluka}
                                                         onChange={handleInputChange}
                                                         placeholder="Taluka"
+                                                        disabled={isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -805,6 +1097,7 @@ function AddNewParty({
                                                 checked={formData.sameAsHomeAddress}
                                                 onChange={handleInputChange}
                                                 className="mb-3"
+                                                disabled={isLoading}
                                             />
                                         </div>
 
@@ -820,7 +1113,7 @@ function AddNewParty({
                                                         value={formData.deliveryAddressLine}
                                                         onChange={handleInputChange}
                                                         placeholder="Enter delivery address"
-                                                        disabled={formData.sameAsHomeAddress}
+                                                        disabled={formData.sameAsHomeAddress || isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -837,7 +1130,7 @@ function AddNewParty({
                                                         onChange={handleInputChange}
                                                         placeholder="PIN Code"
                                                         maxLength="6"
-                                                        disabled={formData.sameAsHomeAddress}
+                                                        disabled={formData.sameAsHomeAddress || isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -851,7 +1144,7 @@ function AddNewParty({
                                                         value={formData.deliveryState}
                                                         onChange={handleInputChange}
                                                         placeholder="State"
-                                                        disabled={formData.sameAsHomeAddress}
+                                                        disabled={formData.sameAsHomeAddress || isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -865,7 +1158,7 @@ function AddNewParty({
                                                         value={formData.deliveryDistrict}
                                                         onChange={handleInputChange}
                                                         placeholder="District"
-                                                        disabled={formData.sameAsHomeAddress}
+                                                        disabled={formData.sameAsHomeAddress || isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -879,7 +1172,7 @@ function AddNewParty({
                                                         value={formData.deliveryTaluka}
                                                         onChange={handleInputChange}
                                                         placeholder="Taluka"
-                                                        disabled={formData.sameAsHomeAddress}
+                                                        disabled={formData.sameAsHomeAddress || isLoading}
                                                     />
                                                 </Form.Group>
                                             </Col>
@@ -903,6 +1196,7 @@ function AddNewParty({
                                             value="credit"
                                             checked={formData.openingBalanceType === 'credit'}
                                             onChange={handleInputChange}
+                                            disabled={isLoading}
                                         />
                                         <Form.Check
                                             type="radio"
@@ -912,6 +1206,7 @@ function AddNewParty({
                                             value="debit"
                                             checked={formData.openingBalanceType === 'debit'}
                                             onChange={handleInputChange}
+                                            disabled={isLoading}
                                         />
                                     </div>
                                 </Col>
@@ -927,6 +1222,7 @@ function AddNewParty({
                                             placeholder="0.00"
                                             min="0"
                                             step="0.01"
+                                            disabled={isLoading}
                                         />
                                     </InputGroup>
                                 </Col>
@@ -940,6 +1236,7 @@ function AddNewParty({
                                 variant="outline-secondary"
                                 onClick={onHide}
                                 size="sm"
+                                disabled={isLoading}
                             >
                                 Cancel
                             </Button>
@@ -948,9 +1245,19 @@ function AddNewParty({
                                 variant="primary"
                                 type="submit"
                                 size="sm"
+                                disabled={isLoading}
                             >
-                                <FontAwesomeIcon icon={editingParty ? faEdit : faPlus} className="me-1" />
-                                {editingParty ? 'Update' : 'Save'} Party
+                                {isLoading ? (
+                                    <>
+                                        <Spinner size="sm" className="me-1" />
+                                        {editingParty ? 'Updating...' : 'Saving...'}
+                                    </>
+                                ) : (
+                                    <>
+                                        <FontAwesomeIcon icon={editingParty ? faEdit : faPlus} className="me-1" />
+                                        {editingParty ? 'Update' : 'Save'} Party
+                                    </>
+                                )}
                             </Button>
                         </div>
                     </Form>

@@ -1,6 +1,58 @@
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../config/jwt');
 
+
+// @desc    Verify JWT token
+// @route   GET /api/auth/verify
+// @access  Private
+const verifyToken = async (req, res) => {
+    try {
+        console.log('🔍 Token verification request received');
+        console.log('🔍 User from middleware:', req.user);
+        
+        // If we reach here, the token is valid (verified by auth middleware)
+        const user = await User.findById(req.user.id).select('-password');
+        
+        if (!user) {
+            console.log('❌ User not found for ID:', req.user.id);
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (!user.isActive) {
+            console.log('❌ User account is inactive:', user.email);
+            return res.status(401).json({
+                success: false,
+                message: 'Account is inactive'
+            });
+        }
+
+        console.log('✅ Token verification successful for:', user.email);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    phone: user.phone,
+                    role: user.role,
+                    isActive: user.isActive,
+                    createdAt: user.createdAt
+                }
+            }
+        });
+    } catch (error) {
+        console.error('❌ Token verification error:', error);
+        res.status(401).json({
+            success: false,
+            message: 'Invalid token'
+        });
+    }
+};
 // Helper function to generate user tokens
 const generateUserTokens = (user) => {
     const payload = {
@@ -210,8 +262,11 @@ const logout = async (req, res) => {
     }
 };
 
+
+
 module.exports = {
     signup,
     login,
-    logout
+    logout,
+    verifyToken
 };

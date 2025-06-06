@@ -48,51 +48,64 @@ function Login({ onToggleView, bgImage, onLoginSuccess }) {
         return newErrors;
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+const handleSubmit = async (e) => {
+    e.preventDefault();
 
-        // Reset errors
-        setErrors({});
+    // Reset errors
+    setErrors({});
 
-        // Validate form
-        const validationErrors = validateForm();
-        if (Object.keys(validationErrors).length > 0) {
-            setErrors(validationErrors);
-            return;
-        }
+    // Validate form
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors);
+        return;
+    }
 
-        // Proceed with login
-        setIsSubmitting(true);
+    // Proceed with login
+    setIsSubmitting(true);
 
-        try {
-            console.log('🔐 Attempting login...', formData.email);
+    try {
+        console.log('🔐 Attempting login for:', formData.email);
 
-            const response = await authService.login({
-                email: formData.email,
-                password: formData.password
-            });
+        const response = await authService.login({
+            email: formData.email,
+            password: formData.password
+        });
 
-            if (response.success) {
-                console.log('✅ Login successful:', response.data);
+        if (response.success && response.data) {
+            console.log('✅ Login successful:', response.data.user);
 
-                // Store token and user data
-                localStorage.setItem('token', response.data.token);
-                localStorage.setItem('user', JSON.stringify(response.data.user));
+            // Store token and user data
+            localStorage.setItem('token', response.data.token);
+            localStorage.setItem('user', JSON.stringify(response.data.user));
 
-                // Call the onLoginSuccess callback with user data
-                if (onLoginSuccess) {
-                    onLoginSuccess(response.data.user);
-                }
-            } else {
-                setErrors({ general: response.message || 'Login failed. Please try again.' });
+            // Small delay to ensure localStorage is written
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Verify the data was stored
+            const storedToken = localStorage.getItem('token');
+            const storedUser = localStorage.getItem('user');
+            
+            if (!storedToken || !storedUser) {
+                throw new Error('Failed to store authentication data');
             }
-        } catch (error) {
-            console.error('❌ Login error:', error);
-            setErrors({ general: 'Login failed. Please check your credentials and try again.' });
-        } finally {
-            setIsSubmitting(false);
+
+            console.log('✅ Authentication data stored successfully');
+
+            // Call the onLoginSuccess callback with user data
+            if (onLoginSuccess) {
+                onLoginSuccess(response.data.user);
+            }
+        } else {
+            setErrors({ general: response.message || 'Login failed. Please try again.' });
         }
-    };
+    } catch (error) {
+        console.error('❌ Login error:', error);
+        setErrors({ general: error.message || 'Login failed. Please check your credentials and try again.' });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
 
     // Demo credentials function
     const fillDemoCredentials = () => {

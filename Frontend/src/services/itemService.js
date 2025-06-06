@@ -222,7 +222,31 @@ class ItemService {
                 throw new Error('Item ID is required');
             }
 
-            // Clean the data similar to create
+            // Validate required fields
+            if (itemData.name && !itemData.name.trim()) {
+                throw new Error('Item name cannot be empty');
+            }
+
+            // Clean and properly handle price calculations
+            const gstRate = parseFloat(itemData.gstRate) || 0;
+            const buyPrice = parseFloat(itemData.buyPrice) || 0;
+            const salePrice = parseFloat(itemData.salePrice) || 0;
+            
+            // Calculate tax-inclusive and tax-exclusive prices
+            const buyPriceWithTax = itemData.isBuyPriceTaxInclusive 
+                ? buyPrice 
+                : buyPrice * (1 + gstRate / 100);
+            const buyPriceWithoutTax = itemData.isBuyPriceTaxInclusive 
+                ? buyPrice / (1 + gstRate / 100) 
+                : buyPrice;
+                
+            const salePriceWithTax = itemData.isSalePriceTaxInclusive 
+                ? salePrice 
+                : salePrice * (1 + gstRate / 100);
+            const salePriceWithoutTax = itemData.isSalePriceTaxInclusive 
+                ? salePrice / (1 + gstRate / 100) 
+                : salePrice;
+
             const cleanedData = {
                 name: itemData.name?.trim(),
                 itemCode: itemData.itemCode?.trim() || undefined,
@@ -231,13 +255,49 @@ class ItemService {
                 category: itemData.category?.trim(),
                 unit: itemData.unit,
                 description: itemData.description?.trim() || undefined,
-                buyPrice: parseFloat(itemData.buyPrice) || 0,
-                salePrice: parseFloat(itemData.salePrice) || 0,
-                gstRate: parseFloat(itemData.gstRate) || 0,
-                openingStock: itemData.type === 'service' ? 0 : (parseFloat(itemData.openingStock) || 0),
-                minStockLevel: itemData.type === 'service' ? 0 : (parseFloat(itemData.minStockLevel) || 0),
-                asOfDate: itemData.asOfDate,
-                isActive: itemData.isActive
+                
+                // Store both base prices and calculated prices
+                buyPrice: buyPrice,
+                salePrice: salePrice,
+                atPrice: parseFloat(itemData.atPrice) || 0,
+                gstRate: gstRate,
+                
+                // Store calculated tax prices
+                buyPriceWithTax: Math.round(buyPriceWithTax * 100) / 100,
+                buyPriceWithoutTax: Math.round(buyPriceWithoutTax * 100) / 100,
+                salePriceWithTax: Math.round(salePriceWithTax * 100) / 100,
+                salePriceWithoutTax: Math.round(salePriceWithoutTax * 100) / 100,
+                
+                // Tax inclusion flags
+                isBuyPriceTaxInclusive: itemData.isBuyPriceTaxInclusive || false,
+                isSalePriceTaxInclusive: itemData.isSalePriceTaxInclusive || false,
+                
+                // Handle stock fields
+                openingStock: itemData.type === 'service' ? 0 : (
+                    parseFloat(itemData.openingStock) || 
+                    parseFloat(itemData.currentStock) || 
+                    parseFloat(itemData.openingQuantity) || 0
+                ),
+                currentStock: itemData.type === 'service' ? 0 : (
+                    parseFloat(itemData.currentStock) || 
+                    parseFloat(itemData.openingStock) || 
+                    parseFloat(itemData.openingQuantity) || 0
+                ),
+                openingQuantity: itemData.type === 'service' ? 0 : (
+                    parseFloat(itemData.openingQuantity) || 
+                    parseFloat(itemData.currentStock) || 
+                    parseFloat(itemData.openingStock) || 0
+                ),
+                minStockLevel: itemData.type === 'service' ? 0 : (
+                    parseFloat(itemData.minStockLevel) || 
+                    parseFloat(itemData.minStockToMaintain) || 0
+                ),
+                minStockToMaintain: itemData.type === 'service' ? 0 : (
+                    parseFloat(itemData.minStockToMaintain) || 
+                    parseFloat(itemData.minStockLevel) || 0
+                ),
+                asOfDate: itemData.asOfDate || new Date().toISOString().split('T')[0],
+                isActive: itemData.isActive !== undefined ? itemData.isActive : true
             };
 
             // Remove undefined fields
@@ -247,14 +307,28 @@ class ItemService {
                 }
             });
 
+            console.log('📝 Cleaned data being sent to API:', cleanedData);
+
             const response = await apiClient.put(`/api/companies/${companyId}/items/${itemId}`, cleanedData);
 
             console.log('✅ Item updated successfully:', response.data);
-            return response.data;
+            
+            // Return the response in the expected format
+            return {
+                success: true,
+                data: response.data,
+                message: response.data.message || 'Item updated successfully'
+            };
 
         } catch (error) {
             console.error('❌ Error updating item:', error);
-            throw error;
+            
+            // Return consistent error format
+            return {
+                success: false,
+                message: error.response?.data?.message || error.message || 'Failed to update item',
+                error: error
+            };
         }
     }
 
@@ -283,6 +357,157 @@ class ItemService {
 
         } catch (error) {
             console.error('❌ Error deleting item:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 📊 NEW: Adjust stock for an item
+     * @param {string} companyId - Company ID
+     * @param {string} itemId - Item ID
+     * @param {Object} adjustmentData - Stock adjustment data
+     * @param {string} adjustmentData.adjustmentType - Type: 'set', 'add', 'subtract'
+     * @param {number} adjustmentData.quantity - Quantity to adjust
+     * @param {number} adjustmentData.newStock - New stock level (for 'set' type)
+     * @param {string} adjustmentData.reason - Reason for adjustment
+     * @param {string} adjustmentData.asOfDate - Date of adjustment
+     * @returns {Promise<Object>} Stock adjustment result
+     */
+    async adjustStock(companyId, itemId, adjustmentData) {
+        try {
+            console.log('📊 Adjusting stock for item:', itemId, 'in company:', companyId, 'data:', adjustmentData);
+
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            if (!itemId) {
+                throw new Error('Item ID is required');
+            }
+
+            // Validate adjustment data
+            if (!adjustmentData.adjustmentType) {
+                throw new Error('Adjustment type is required');
+            }
+
+            if (adjustmentData.quantity === undefined && adjustmentData.newStock === undefined) {
+                throw new Error('Either quantity or newStock is required');
+            }
+
+            const cleanedData = {
+                adjustmentType: adjustmentData.adjustmentType,
+                quantity: adjustmentData.quantity !== undefined ? Number(adjustmentData.quantity) : undefined,
+                newStock: adjustmentData.newStock !== undefined ? Number(adjustmentData.newStock) : undefined,
+                reason: adjustmentData.reason?.trim() || 'Manual stock adjustment',
+                asOfDate: adjustmentData.asOfDate || new Date().toISOString().split('T')[0],
+                currentStock: adjustmentData.currentStock !== undefined ? Number(adjustmentData.currentStock) : undefined
+            };
+
+            // Remove undefined fields
+            Object.keys(cleanedData).forEach(key => {
+                if (cleanedData[key] === undefined) {
+                    delete cleanedData[key];
+                }
+            });
+
+            const response = await apiClient.put(`/api/companies/${companyId}/items/${itemId}/adjust-stock`, cleanedData);
+
+            console.log('✅ Stock adjusted successfully:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Error adjusting stock:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 📊 NEW: Get stock history for an item
+     * @param {string} companyId - Company ID
+     * @param {string} itemId - Item ID
+     * @param {Object} params - Query parameters
+     * @param {number} params.page - Page number
+     * @param {number} params.limit - Items per page
+     * @returns {Promise<Object>} Stock history data
+     */
+    async getStockHistory(companyId, itemId, params = {}) {
+        try {
+            console.log('📊 Fetching stock history for item:', itemId, 'in company:', companyId, 'params:', params);
+
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            if (!itemId) {
+                throw new Error('Item ID is required');
+            }
+
+            const response = await apiClient.get(`/api/companies/${companyId}/items/${itemId}/stock-history`, {
+                params: {
+                    page: params.page || 1,
+                    limit: params.limit || 20
+                }
+            });
+
+            console.log('✅ Stock history fetched successfully:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Error fetching stock history:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 📊 NEW: Get items with low stock levels
+     * @param {string} companyId - Company ID
+     * @param {Object} params - Query parameters
+     * @param {number} params.limit - Maximum number of items to return
+     * @returns {Promise<Object>} Low stock items data
+     */
+    async getLowStockItems(companyId, params = {}) {
+        try {
+            console.log('⚠️ Fetching low stock items for company:', companyId, 'params:', params);
+
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            const response = await apiClient.get(`/api/companies/${companyId}/items/low-stock`, {
+                params: {
+                    limit: params.limit || 50
+                }
+            });
+
+            console.log('✅ Low stock items fetched successfully:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Error fetching low stock items:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 📊 NEW: Get stock summary/analytics
+     * @param {string} companyId - Company ID
+     * @returns {Promise<Object>} Stock summary data
+     */
+    async getStockSummary(companyId) {
+        try {
+            console.log('📊 Fetching stock summary for company:', companyId);
+
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            const response = await apiClient.get(`/api/companies/${companyId}/stock-summary`);
+
+            console.log('✅ Stock summary fetched successfully:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Error fetching stock summary:', error);
             throw error;
         }
     }
@@ -415,28 +640,6 @@ class ItemService {
     }
 
     /**
-     * Get items with low stock
-     * @param {string} companyId - Company ID
-     * @returns {Promise<Object>} Low stock items
-     */
-    async getLowStockItems(companyId) {
-        try {
-            console.log('⚠️ Fetching low stock items for company:', companyId);
-
-            return await this.getItems(companyId, {
-                type: 'product',
-                isActive: true,
-                sortBy: 'currentStock',
-                sortOrder: 'asc'
-            });
-
-        } catch (error) {
-            console.error('❌ Error fetching low stock items:', error);
-            throw error;
-        }
-    }
-
-    /**
      * Get items by category
      * @param {string} companyId - Company ID
      * @param {string} category - Category name
@@ -492,6 +695,70 @@ class ItemService {
             console.error('❌ Items service health check failed:', error);
             throw error;
         }
+    }
+
+    /**
+     * 📊 NEW: Utility method to calculate stock metrics
+     * @param {Array} items - Array of items
+     * @returns {Object} Stock metrics
+     */
+    calculateStockMetrics(items) {
+        if (!Array.isArray(items)) {
+            return {
+                totalItems: 0,
+                totalStockValue: 0,
+                outOfStockItems: 0,
+                lowStockItems: 0,
+                avgStockValue: 0
+            };
+        }
+
+        const metrics = items.reduce((acc, item) => {
+            if (item.type === 'product') {
+                const currentStock = Number(item.currentStock) || 0;
+                const salePrice = Number(item.salePrice) || 0;
+                const minStock = Number(item.minStockLevel) || Number(item.minStockToMaintain) || 0;
+
+                acc.totalItems++;
+                acc.totalStockValue += currentStock * salePrice;
+
+                if (currentStock === 0) {
+                    acc.outOfStockItems++;
+                } else if (currentStock <= minStock && minStock > 0) {
+                    acc.lowStockItems++;
+                }
+            }
+            return acc;
+        }, {
+            totalItems: 0,
+            totalStockValue: 0,
+            outOfStockItems: 0,
+            lowStockItems: 0
+        });
+
+        metrics.avgStockValue = metrics.totalItems > 0 ? metrics.totalStockValue / metrics.totalItems : 0;
+
+        return metrics;
+    }
+
+    /**
+     * 📊 NEW: Format stock adjustment data for UI
+     * @param {Object} adjustmentData - Raw adjustment data
+     * @returns {Object} Formatted adjustment data
+     */
+    formatStockAdjustment(adjustmentData) {
+        return {
+            id: adjustmentData.id || adjustmentData._id,
+            date: adjustmentData.date || adjustmentData.adjustedAt,
+            type: adjustmentData.adjustmentType,
+            previousStock: Number(adjustmentData.previousStock) || 0,
+            newStock: Number(adjustmentData.newStock) || 0,
+            quantity: Number(adjustmentData.quantity) || 0,
+            reason: adjustmentData.reason || 'Manual adjustment',
+            adjustedBy: adjustmentData.adjustedBy || 'Unknown',
+            formattedDate: adjustmentData.date ? new Date(adjustmentData.date).toLocaleDateString() : 'Unknown',
+            formattedTime: adjustmentData.date ? new Date(adjustmentData.date).toLocaleTimeString() : 'Unknown'
+        };
     }
 }
 

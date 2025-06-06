@@ -38,134 +38,258 @@ function App() {
     }
   }, [isLoggedIn]);
 
-  // Check if user is already authenticated
-  const checkExistingAuth = async () => {
-    try {
-      // First check if we have basic auth data
-      const token = localStorage.getItem('token');
-      const savedUser = localStorage.getItem('user');
-      const savedCompanyId = localStorage.getItem('currentCompanyId');
-
-      if (token && savedUser) {
-        console.log('🔐 Found existing auth token, verifying...');
-
-        // Verify token with backend
-        const verificationResponse = await authService.verifyToken();
-
-        if (verificationResponse.success) {
-          // Parse saved user data
-          const userData = JSON.parse(savedUser);
-          setCurrentUser(userData);
-          setIsLoggedIn(true);
-
-          console.log('✅ Token verified successfully');
-
-          // Load companies after setting logged in state
-          await loadCompanies();
-
-          // If there's a saved company ID, try to load that company
-          if (savedCompanyId) {
-            await loadSavedCompany(savedCompanyId);
-          }
-        } else {
-          console.log('❌ Token verification failed:', verificationResponse.message);
-          // Clear invalid auth data
-          await authService.logout();
+  // Restore company selection from localStorage on component mount
+  useEffect(() => {
+    const restoreCompanySelection = () => {
+      try {
+        const savedCompany = localStorage.getItem('currentCompany');
+        if (savedCompany) {
+          const company = JSON.parse(savedCompany);
+          console.log('🔄 Restoring company from localStorage:', company.name || company.businessName);
+          setCurrentCompany(company);
         }
-      } else {
-        console.log('ℹ️ No existing authentication found');
+      } catch (error) {
+        console.warn('⚠️ Failed to restore company from localStorage:', error);
+        localStorage.removeItem('currentCompany');
       }
-    } catch (error) {
-      console.error('❌ Error checking existing auth:', error);
-      // Clear potentially corrupted data
-      await authService.logout();
-    } finally {
-      setIsCheckingAuth(false);
-    }
-  };
+    };
 
-  // Load companies from backend
+    if (isLoggedIn) {
+      restoreCompanySelection();
+    }
+  }, [isLoggedIn]);
+
   const loadCompanies = async () => {
     try {
       setIsLoadingCompanies(true);
       console.log('🏢 Loading companies...');
 
       const response = await companyService.getCompanies();
+      console.log('🔍 Companies API response:', response);
 
-      if (response.success) {
-        const companiesList = response.data.companies || [];
+      // Handle different response formats from backend
+      const isSuccess = response?.success === true || response?.status === 'success';
+      
+      if (isSuccess) {
+        // Extract companies array from various possible response structures
+        const companiesList = response.data?.companies || response.data || response.companies || [];
+        
         setCompanies(companiesList);
-
         console.log('✅ Companies loaded:', companiesList.length);
+        console.log('📋 Companies list:', companiesList.map(c => ({ 
+          id: c.id || c._id, 
+          name: c.businessName || c.name 
+        })));
 
-        // If no current company is selected and we have companies, select the first one
-        if (!currentCompany && companiesList.length > 0) {
-          const firstCompany = companiesList[0];
-          setCurrentCompany(firstCompany);
-          localStorage.setItem('currentCompanyId', firstCompany.id || firstCompany._id);
-          console.log('🎯 Auto-selected first company:', firstCompany.companyName);
-        }
+        // Auto-select company logic
+        await handleAutoCompanySelection(companiesList);
+        
       } else {
-        console.warn('⚠️ Failed to load companies:', response.message);
+        console.warn('⚠️ Failed to load companies. Response:', response);
+        // If no companies exist, show appropriate message
+        if (response?.message?.includes('No companies found')) {
+          console.log('ℹ️ No companies found - user needs to create one');
+        }
       }
     } catch (error) {
       console.error('❌ Error loading companies:', error);
+      
+      // Handle specific error cases
+      if (error.message?.includes('No company selected')) {
+        console.log('ℹ️ User needs to create or select a company first');
+      }
     } finally {
       setIsLoadingCompanies(false);
     }
   };
 
-  // Load a previously saved company
-  const loadSavedCompany = async (companyId) => {
+  const handleAutoCompanySelection = async (companiesList) => {
     try {
-      console.log('🔍 Loading saved company:', companyId);
+      if (!companiesList || companiesList.length === 0) {
+        console.log('ℹ️ No companies available for auto-selection');
+        return;
+      }
 
-      // For now, just find the company in the loaded companies list
-      // TODO: Implement getCompanyById when ready
-      const company = companies.find(c => (c.id || c._id) === companyId);
+      // Check if we already have a current company set
+      if (currentCompany) {
+        console.log('ℹ️ Company already selected:', currentCompany.name || currentCompany.businessName);
+        return;
+      }
 
-      if (company) {
-        setCurrentCompany(company);
-        console.log('✅ Saved company loaded:', company.companyName);
+      // Try to restore from localStorage first
+      const savedCompany = localStorage.getItem('currentCompany');
+      if (savedCompany) {
+        try {
+          const company = JSON.parse(savedCompany);
+          const companyId = company.id || company._id;
+          
+          // Verify the saved company still exists in the list
+          const foundCompany = companiesList.find(c => (c.id || c._id) === companyId);
+          
+          if (foundCompany) {
+            await setCompanyAsActive(foundCompany);
+            console.log('✅ Restored saved company:', foundCompany.businessName || foundCompany.name);
+            return;
+          } else {
+            console.warn('⚠️ Saved company not found in current list, clearing localStorage');
+            localStorage.removeItem('currentCompany');
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to parse saved company, clearing localStorage:', error);
+          localStorage.removeItem('currentCompany');
+        }
+      }
+
+      // No valid saved company, auto-select the first one
+      const firstCompany = companiesList[0];
+      await setCompanyAsActive(firstCompany);
+      console.log('🎯 Auto-selected first company:', firstCompany.businessName || firstCompany.name);
+      
+    } catch (error) {
+      console.error('❌ Error in auto company selection:', error);
+    }
+  };
+
+  const setCompanyAsActive = async (company) => {
+    try {
+      if (!company) {
+        console.warn('⚠️ No company provided to setCompanyAsActive');
+        return;
+      }
+
+      // Standardize company object format
+      const standardizedCompany = {
+        id: company.id || company._id,
+        _id: company.id || company._id,
+        name: company.businessName || company.name,
+        businessName: company.businessName || company.name,
+        // Include other important fields
+        email: company.email,
+        phoneNumber: company.phoneNumber,
+        businessType: company.businessType,
+        address: company.address,
+        city: company.city,
+        state: company.state,
+        pincode: company.pincode,
+        gstNumber: company.gstNumber
+      };
+
+      // Set in component state
+      setCurrentCompany(standardizedCompany);
+
+      // Save to localStorage for persistence
+      localStorage.setItem('currentCompany', JSON.stringify(standardizedCompany));
+      
+      console.log('✅ Company set as active:', {
+        id: standardizedCompany.id,
+        name: standardizedCompany.name
+      });
+
+    } catch (error) {
+      console.error('❌ Error setting company as active:', error);
+    }
+  };
+
+  const checkExistingAuth = async () => {
+    try {
+      console.log('🔍 Checking existing authentication...');
+
+      // First check if we have basic auth data
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
+
+      if (!token || !savedUser) {
+        console.log('ℹ️ No existing authentication found');
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      console.log('🔐 Found existing auth token, verifying...');
+
+      // Verify token with backend
+      const verificationResponse = await authService.verifyToken();
+
+      if (verificationResponse && verificationResponse.success === true) {
+        // Parse saved user data
+        const userData = JSON.parse(savedUser);
+        setCurrentUser(userData);
+        setIsLoggedIn(true);
+
+        console.log('✅ Token verified successfully for:', userData.name);
+
+        // Load companies after setting logged in state
+        await loadCompanies();
+        
+      } else if (verificationResponse?.shouldRetry) {
+        // Network error - keep user logged in but show warning
+        console.log('⚠️ Network error during token verification, keeping user logged in');
+        const userData = JSON.parse(savedUser);
+        setCurrentUser(userData);
+        setIsLoggedIn(true);
+        
+        // Still try to load companies
+        await loadCompanies();
+        
       } else {
-        console.warn('⚠️ Saved company not found in companies list');
-        localStorage.removeItem('currentCompanyId');
+        console.log('❌ Token verification failed:', verificationResponse?.message || 'Invalid token');
+        // Clear invalid auth data
+        await authService.clearAuthData();
+        // Also clear company data
+        localStorage.removeItem('currentCompany');
       }
     } catch (error) {
-      console.error('❌ Error loading saved company:', error);
-      localStorage.removeItem('currentCompanyId');
+      console.error('❌ Error checking existing auth:', error);
+      // Clear potentially corrupted data
+      await authService.clearAuthData();
+      localStorage.removeItem('currentCompany');
+    } finally {
+      setIsCheckingAuth(false);
     }
   };
 
   // Handle successful login
-  const handleLogin = (userData) => {
-    console.log("✅ Login successful in App component:", userData);
+  const handleLogin = async (userData) => {
+    try {
+      console.log("✅ Login successful in App component:", userData);
 
-    setIsLoggedIn(true);
-    setCurrentUser(userData);
+      setIsLoggedIn(true);
+      setCurrentUser(userData);
 
-    // Save user data to localStorage (token already saved by authService)
-    localStorage.setItem('user', JSON.stringify(userData));
+      // Save user data to localStorage (token already saved by authService)
+      localStorage.setItem('user', JSON.stringify(userData));
 
-    // Load companies after login
-    loadCompanies();
+      console.log("🏢 Loading companies after successful login...");
+      
+      // Load companies after login
+      await loadCompanies();
+      
+    } catch (error) {
+      console.error('❌ Error in handleLogin:', error);
+    }
   };
 
   // Handle logout
   const handleLogout = async () => {
-    console.log("👋 Logging out...");
+    try {
+      console.log("👋 Logging out...");
 
-    // Call auth service logout
-    await authService.logout();
+      // Call auth service logout
+      await authService.logout();
 
-    // Clear all state
-    setIsLoggedIn(false);
-    setCurrentUser(null);
-    setCurrentCompany(null);
-    setCompanies([]);
-    setCurrentView('dailySummary');
+      // Clear all state
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setCurrentCompany(null);
+      setCompanies([]);
+      setCurrentView('dailySummary');
 
-    console.log("✅ Logout completed");
+      // Clear localStorage
+      localStorage.removeItem('currentCompany');
+
+      console.log("✅ Logout completed");
+    } catch (error) {
+      console.error('❌ Error during logout:', error);
+    }
   };
 
   // Handle navigation changes
@@ -175,29 +299,92 @@ function App() {
   };
 
   // Handle company selection changes
-  const handleCompanyChange = (company) => {
-    console.log('🏢 App: Company changed to:', company?.companyName || 'None');
-    setCurrentCompany(company);
-
-    // Save company selection to localStorage
-    if (company?.id || company?._id) {
-      localStorage.setItem('currentCompanyId', company.id || company._id);
-    } else {
-      localStorage.removeItem('currentCompanyId');
+  const handleCompanyChange = async (company) => {
+    try {
+      console.log('🏢 App: Company change request:', company?.businessName || company?.name || 'None');
+      
+      if (company) {
+        await setCompanyAsActive(company);
+      } else {
+        // Clear company selection
+        setCurrentCompany(null);
+        localStorage.removeItem('currentCompany');
+        console.log('🗑️ Company selection cleared');
+      }
+    } catch (error) {
+      console.error('❌ Error handling company change:', error);
     }
   };
 
   // Handle company creation (when a new company is added)
-  const handleCompanyCreated = (newCompany) => {
-    console.log('🆕 New company created:', newCompany);
+  const handleCompanyCreated = async (newCompany) => {
+    try {
+      console.log('🆕 New company created:', newCompany);
 
-    // Add to companies list
-    setCompanies(prev => [...prev, newCompany]);
+      // Add to companies list
+      setCompanies(prev => [...prev, newCompany]);
 
-    // Select the new company
-    setCurrentCompany(newCompany);
-    localStorage.setItem('currentCompanyId', newCompany.id || newCompany._id);
+      // Automatically select the new company
+      await setCompanyAsActive(newCompany);
+      
+      console.log('✅ New company automatically selected');
+    } catch (error) {
+      console.error('❌ Error handling company creation:', error);
+    }
   };
+
+  // Handle company updates
+  const handleCompanyUpdated = async (updatedCompany) => {
+    try {
+      console.log('📝 Company updated:', updatedCompany);
+
+      // Update in companies list
+      setCompanies(prev => 
+        prev.map(company => 
+          (company.id || company._id) === (updatedCompany.id || updatedCompany._id) 
+            ? updatedCompany 
+            : company
+        )
+      );
+
+      // If it's the current company, update current company too
+      if (currentCompany && (currentCompany.id === updatedCompany.id || currentCompany._id === updatedCompany._id)) {
+        await setCompanyAsActive(updatedCompany);
+        console.log('✅ Current company updated');
+      }
+    } catch (error) {
+      console.error('❌ Error handling company update:', error);
+    }
+  };
+
+  // Debug function to check app state
+  const debugAppState = () => {
+    console.log('🔍 App Debug State:', {
+      isLoggedIn,
+      currentUser: currentUser ? { 
+        id: currentUser.id, 
+        name: currentUser.name, 
+        email: currentUser.email 
+      } : null,
+      currentCompany: currentCompany ? {
+        id: currentCompany.id,
+        name: currentCompany.name
+      } : null,
+      companiesCount: companies.length,
+      currentView,
+      localStorage: {
+        hasToken: !!localStorage.getItem('token'),
+        hasUser: !!localStorage.getItem('user'),
+        hasCurrentCompany: !!localStorage.getItem('currentCompany'),
+        currentCompanyValue: localStorage.getItem('currentCompany')
+      }
+    });
+  };
+
+  // Expose debug function in development
+  if (process.env.NODE_ENV === 'development') {
+    window.debugAppState = debugAppState;
+  }
 
   // Show loading screen while checking authentication
   if (isCheckingAuth) {
@@ -209,6 +396,7 @@ function App() {
               <span className="visually-hidden">Loading...</span>
             </div>
             <h5 className="text-muted">Checking authentication...</h5>
+            <p className="text-muted small">Please wait while we verify your session...</p>
           </div>
         </div>
       </div>
@@ -227,6 +415,7 @@ function App() {
             companies={companies}
             onCompanyChange={handleCompanyChange}
             onCompanyCreated={handleCompanyCreated}
+            onCompanyUpdated={handleCompanyUpdated}
             currentUser={currentUser}
             isLoadingCompanies={isLoadingCompanies}
           >
@@ -235,6 +424,8 @@ function App() {
               currentView={currentView}
               currentCompany={currentCompany}
               onCompanyChange={handleCompanyChange}
+              companies={companies}
+              currentUser={currentUser}
             />
           </Layout>
         ) : (

@@ -203,20 +203,50 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
                 additionalPhones: additionalPhones.filter(phone => phone.trim()).map(phone => phone.replace(/\D/g, ''))
             };
 
+            console.log('🚀 Sending company data:', companyData);
+
             // Call API to create company
             const response = await companyService.createCompany(companyData);
 
-            // Success handling
-            console.log('✅ Company created successfully:', response);
+            console.log('✅ Company API Response:', response);
 
-            // Prepare data for parent component
+            // Handle response based on the actual backend structure
+            let companyResponseData = null;
+            
+            if (response?.success && response?.data) {
+                // Backend returns response.data directly (not response.data.company)
+                companyResponseData = response.data;
+            } else {
+                throw new Error('Invalid response format from server');
+            }
+
+            // Prepare data for parent component with fallbacks
             const companyDataForParent = {
-                ...response.data.company,
-                id: response.data.company._id || response.data.company.id,
-                name: response.data.company.businessName,
-                logo: response.data.company.logo?.url || response.data.company.logo?.base64,
-                signatureImage: response.data.company.signatureImage?.url || response.data.company.signatureImage?.base64
+                id: companyResponseData._id || companyResponseData.id,
+                _id: companyResponseData._id || companyResponseData.id,
+                businessName: companyResponseData.businessName,
+                name: companyResponseData.businessName, // Alias for name
+                phoneNumber: companyResponseData.phoneNumber,
+                email: companyResponseData.email,
+                businessType: companyResponseData.businessType,
+                businessCategory: companyResponseData.businessCategory,
+                gstin: companyResponseData.gstin,
+                state: companyResponseData.state,
+                city: companyResponseData.city,
+                address: companyResponseData.address,
+                pincode: companyResponseData.pincode,
+                tehsil: companyResponseData.tehsil,
+                isActive: companyResponseData.isActive,
+                settings: companyResponseData.settings,
+                subscription: companyResponseData.subscription,
+                stats: companyResponseData.stats,
+                createdAt: companyResponseData.createdAt,
+                updatedAt: companyResponseData.updatedAt,
+                logo: companyResponseData.logo?.url || companyResponseData.logo?.base64 || companyLogo,
+                signatureImage: companyResponseData.signatureImage?.url || companyResponseData.signatureImage?.base64 || signatureImage
             };
+
+            console.log('📤 Sending to parent:', companyDataForParent);
 
             // Call the callback function
             if (onCompanyCreated) {
@@ -224,7 +254,7 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
             }
 
             // Show success message
-            alert(`Company "${response.data.company.businessName}" created successfully!`);
+            alert(`Company "${companyResponseData.businessName}" created successfully!`);
 
             // Reset form and close modal
             resetForm();
@@ -233,31 +263,54 @@ function CreateCompany({ show, onHide, onCompanyCreated }) {
         } catch (error) {
             console.error('❌ Error creating company:', error);
 
-            // Handle specific error types
-            if (error.message.includes('phone number already exists')) {
-                setErrors({ phoneNumber: 'A company with this phone number already exists' });
-            } else if (error.message.includes('email already exists')) {
-                setErrors({ email: 'A company with this email already exists' });
-            } else if (error.message.includes('GSTIN already exists')) {
-                setErrors({ gstin: 'A company with this GSTIN already exists' });
-            } else if (error.message.includes('Validation failed')) {
-                // Handle validation errors from backend
-                try {
-                    const errorData = JSON.parse(error.message);
-                    if (errorData.errors) {
-                        const backendErrors = {};
-                        errorData.errors.forEach(err => {
-                            backendErrors[err.param] = err.msg;
-                        });
-                        setErrors(backendErrors);
-                    }
-                } catch {
+            // Handle specific error types based on error structure
+            if (error?.response?.data?.message) {
+                // Server responded with error
+                const errorMessage = error.response.data.message;
+                const errorCode = error.response.data.code;
+
+                switch (errorCode) {
+                    case 'PHONE_EXISTS':
+                        setErrors({ phoneNumber: 'A company with this phone number already exists' });
+                        break;
+                    case 'EMAIL_EXISTS':
+                        setErrors({ email: 'A company with this email already exists' });
+                        break;
+                    case 'GSTIN_EXISTS':
+                        setErrors({ gstin: 'A company with this GSTIN already exists' });
+                        break;
+                    case 'VALIDATION_ERROR':
+                        if (error.response.data.errors) {
+                            const backendErrors = {};
+                            error.response.data.errors.forEach(err => {
+                                backendErrors[err.field || err.param] = err.message || err.msg;
+                            });
+                            setErrors(backendErrors);
+                        } else {
+                            setApiError(errorMessage);
+                        }
+                        break;
+                    case 'AUTH_REQUIRED':
+                        setApiError('Authentication required. Please log in again.');
+                        break;
+                    default:
+                        setApiError(errorMessage);
+                }
+            } else if (error?.message) {
+                // Handle specific error messages
+                if (error.message.includes('phone number already exists')) {
+                    setErrors({ phoneNumber: 'A company with this phone number already exists' });
+                } else if (error.message.includes('email already exists')) {
+                    setErrors({ email: 'A company with this email already exists' });
+                } else if (error.message.includes('GSTIN already exists')) {
+                    setErrors({ gstin: 'A company with this GSTIN already exists' });
+                } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
+                    setApiError('Unable to connect to server. Please check your internet connection and try again.');
+                } else {
                     setApiError(error.message);
                 }
-            } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
-                setApiError('Unable to connect to server. Please check your internet connection and try again.');
             } else {
-                setApiError(error.message || 'An unexpected error occurred. Please try again.');
+                setApiError('An unexpected error occurred. Please try again.');
             }
         } finally {
             setIsSubmitting(false);

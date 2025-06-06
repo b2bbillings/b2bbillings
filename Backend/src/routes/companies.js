@@ -7,6 +7,7 @@ const {
     updateCompany,
     deleteCompany
 } = require('../controllers/companyController');
+const { authenticate } = require('../middleware/authMiddleware'); // Import authentication middleware
 
 const router = express.Router();
 
@@ -111,27 +112,27 @@ const createCompanyValidation = [
 
 // @route   POST /api/companies
 // @desc    Create a new company
-// @access  Public
-router.post('/', createCompanyValidation, createCompany);
+// @access  Private (requires authentication)
+router.post('/', authenticate, createCompanyValidation, createCompany);
 
 // @route   GET /api/companies
 // @desc    Get all companies with pagination and filters
-// @access  Private
-router.get('/', getAllCompanies);
+// @access  Private (requires authentication)
+router.get('/', authenticate, getAllCompanies);
 
 // @route   GET /api/companies/:id
 // @desc    Get company by ID
-// @access  Private
-router.get('/:id', getCompanyById);
+// @access  Private (requires authentication)
+router.get('/:id', authenticate, getCompanyById);
 
 // @route   PUT /api/companies/:id
 // @desc    Update company
-// @access  Private
-router.put('/:id', createCompanyValidation, updateCompany);
+// @access  Private (requires authentication)
+router.put('/:id', authenticate, createCompanyValidation, updateCompany);
 
 // @route   DELETE /api/companies/:id
 // @desc    Delete company
-// @access  Private
-router.delete('/:id', deleteCompany);
+// @access  Private (requires authentication)
+router.delete('/:id', authenticate, deleteCompany);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Modal, Form, Button, Row, Col, InputGroup, Toast, ToastContainer } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faTimes, faSearch, faDatabase, faPlus, faCheck, faToggleOn, faToggleOff, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faTimes, faSearch, faDatabase, faPlus, faCheck, faToggleOn, faToggleOff, faSpinner, faEdit } from '@fortawesome/free-solid-svg-icons';
 import ProductSearchModal from './ProductSearchModal';
 import itemService from '../../../services/itemService';
 import './ProductModal.css';
@@ -14,7 +14,9 @@ function ProductModal({
     categories,
     onInputChange,
     onSaveProduct,
-    currentCompany // Add this prop to get current company
+    currentCompany,
+    mode = 'add', // 'add' or 'edit'
+    type = 'product' // 'product' or 'service'
 }) {
     // Refs for keyboard navigation
     const productServiceToggleRef = useRef(null);
@@ -27,9 +29,12 @@ function ProductModal({
     const categoryRef = useRef(null);
     const gstRateRef = useRef(null);
     const descriptionRef = useRef(null);
-    const openingStockRef = useRef(null);
+    // Stock refs
+    const openingQuantityRef = useRef(null);
+    const atPriceRef = useRef(null);
     const asOfDateRef = useRef(null);
-    const minStockLevelRef = useRef(null);
+    const minStockToMaintainRef = useRef(null);
+    // Pricing refs
     const buyPriceRef = useRef(null);
     const buyTaxToggleRef = useRef(null);
     const salePriceRef = useRef(null);
@@ -43,12 +48,12 @@ function ProductModal({
     const [showProductSearch, setShowProductSearch] = useState(false);
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
-    const [toastType, setToastType] = useState('success'); // 'success' or 'error'
+    const [toastType, setToastType] = useState('success');
     const [isSaveAndAdd, setIsSaveAndAdd] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [buyPriceTaxInclusive, setBuyPriceTaxInclusive] = useState(false);
     const [salePriceTaxInclusive, setSalePriceTaxInclusive] = useState(false);
-    
+
     // Database search products state
     const [searchProducts, setSearchProducts] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -83,11 +88,29 @@ function ProductModal({
         }
     }, [show, currentCompany?.id]);
 
+    // 🚨 SIMPLIFIED PRE-POPULATION - Only set tax states, form data handled by parent
+    useEffect(() => {
+        if (editingProduct && mode === 'edit' && show) {
+            console.log('🔧 ProductModal - Edit mode detected, setting tax states only');
+            console.log('🔧 ProductModal - Editing product:', editingProduct);
+            console.log('🔧 ProductModal - Current form data:', formData);
+            
+            // Only set tax inclusive states here - form data is handled by parent
+            setBuyPriceTaxInclusive(editingProduct.isBuyPriceTaxInclusive || false);
+            setSalePriceTaxInclusive(editingProduct.isSalePriceTaxInclusive || false);
+            
+            console.log('🔧 ProductModal - Tax states set:', {
+                buyPriceTaxInclusive: editingProduct.isBuyPriceTaxInclusive || false,
+                salePriceTaxInclusive: editingProduct.isSalePriceTaxInclusive || false
+            });
+        }
+    }, [editingProduct?.id, editingProduct?._id, mode, show]); // Use stable ID references
+
     // Load products for search modal
     const loadSearchProducts = async () => {
         try {
             if (!currentCompany?.id) return;
-            
+
             setIsSearching(true);
             const response = await itemService.getItems(currentCompany.id, {
                 limit: 50,
@@ -95,7 +118,7 @@ function ProductModal({
                 sortBy: 'name',
                 sortOrder: 'asc'
             });
-            
+
             if (response.success) {
                 setSearchProducts(response.data.items || []);
             }
@@ -159,9 +182,10 @@ function ProductModal({
         ];
 
         const stockRefs = formData.type !== 'service' ? [
-            openingStockRef,
+            openingQuantityRef,
+            atPriceRef,
             asOfDateRef,
-            minStockLevelRef
+            minStockToMaintainRef
         ] : [];
 
         // For services, only show sale price (service rate). For products, show both buy and sale price
@@ -178,7 +202,7 @@ function ProductModal({
         const endRefs = [
             isActiveRef,
             cancelButtonRef,
-            ...(editingProduct ? [] : [saveAndAddButtonRef]),
+            ...(mode === 'edit' ? [] : [saveAndAddButtonRef]), // Hide Save & New for edit mode
             saveButtonRef
         ];
 
@@ -204,12 +228,10 @@ function ProductModal({
             return;
         }
 
-        // Handle Ctrl+Shift+S for save and add another
-        if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        // Handle Ctrl+Shift+S for save and add another (only in add mode)
+        if (e.ctrlKey && e.shiftKey && e.key === 'S' && mode === 'add') {
             e.preventDefault();
-            if (!editingProduct) {
-                handleSaveAndAddAnother(e);
-            }
+            handleSaveAndAddAnother(e);
             return;
         }
 
@@ -220,8 +242,8 @@ function ProductModal({
             return;
         }
 
-        // Handle Ctrl+D for database search
-        if (e.ctrlKey && e.key === 'd') {
+        // Handle Ctrl+D for database search (only in add mode)
+        if (e.ctrlKey && e.key === 'd' && mode === 'add') {
             e.preventDefault();
             setShowProductSearch(true);
             return;
@@ -320,7 +342,7 @@ function ProductModal({
     // Clear form fields but keep common ones
     const clearFormForNext = () => {
         // Reset specific fields to empty
-        const fieldsToReset = ['name', 'itemCode', 'hsnNumber', 'description', 'openingStock', 'minStockLevel', 'buyPrice', 'salePrice'];
+        const fieldsToReset = ['name', 'itemCode', 'hsnNumber', 'description', 'openingQuantity', 'atPrice', 'minStockToMaintain', 'buyPrice', 'salePrice'];
 
         fieldsToReset.forEach(field => {
             onInputChange({
@@ -338,7 +360,7 @@ function ProductModal({
         });
     };
 
-    // Handle form submission using backend API
+    // 🚨 ENHANCED FORM SUBMISSION WITH DEBUG LOGGING
     const handleSubmit = async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -347,66 +369,64 @@ function ProductModal({
             return;
         }
 
+        // 🚨 DEBUG LOG - What data is being sent
+        console.log('🚀 ProductModal - Submitting form data:', {
+            mode: mode,
+            formData: formData,
+            buyPriceTaxInclusive: buyPriceTaxInclusive,
+            salePriceTaxInclusive: salePriceTaxInclusive,
+            editingProduct: editingProduct
+        });
+
+        // Prepare the complete data to send to parent
+        const dataToSend = {
+            ...formData,
+            // Include tax states from local component state
+            isBuyPriceTaxInclusive: buyPriceTaxInclusive,
+            isSalePriceTaxInclusive: salePriceTaxInclusive,
+            // Ensure proper data types
+            buyPrice: parseFloat(formData.buyPrice) || 0,
+            salePrice: parseFloat(formData.salePrice) || 0,
+            atPrice: parseFloat(formData.atPrice) || 0,
+            gstRate: parseFloat(formData.gstRate) || 18,
+            openingQuantity: formData.type === 'service' ? 0 : (parseFloat(formData.openingQuantity) || parseFloat(formData.currentStock) || parseFloat(formData.openingStock) || 0),
+            currentStock: formData.type === 'service' ? 0 : (parseFloat(formData.currentStock) || parseFloat(formData.openingQuantity) || parseFloat(formData.openingStock) || 0),
+            openingStock: formData.type === 'service' ? 0 : (parseFloat(formData.openingStock) || parseFloat(formData.openingQuantity) || parseFloat(formData.currentStock) || 0),
+            minStockLevel: formData.type === 'service' ? 0 : (parseFloat(formData.minStockLevel) || parseFloat(formData.minStockToMaintain) || 0),
+            minStockToMaintain: formData.type === 'service' ? 0 : (parseFloat(formData.minStockToMaintain) || parseFloat(formData.minStockLevel) || 0)
+        };
+
+        console.log('🚀 ProductModal - Prepared data to send to parent:', dataToSend);
+
         setIsLoading(true);
 
         try {
-            console.log('🚀 Submitting item data:', formData);
-
-            // Prepare item data for API
-            const itemData = {
-                name: formData.name?.trim(),
-                itemCode: formData.itemCode?.trim() || undefined,
-                hsnNumber: formData.hsnNumber?.trim() || undefined,
-                type: formData.type || 'product',
-                category: formData.category?.trim(),
-                unit: formData.unit,
-                description: formData.description?.trim() || undefined,
-                buyPrice: parseFloat(formData.buyPrice) || 0,
-                salePrice: parseFloat(formData.salePrice) || 0,
-                gstRate: parseFloat(formData.gstRate) || 0,
-                openingStock: formData.type === 'service' ? 0 : (parseFloat(formData.openingStock) || 0),
-                minStockLevel: formData.type === 'service' ? 0 : (parseFloat(formData.minStockLevel) || 0),
-                asOfDate: formData.asOfDate || new Date().toISOString().split('T')[0],
-                isActive: formData.isActive !== undefined ? formData.isActive : true
-            };
-
-            let result;
-            if (editingProduct) {
-                // Update existing item
-                result = await itemService.updateItem(currentCompany.id, editingProduct.id || editingProduct._id, itemData);
-                showToastMessage(`${formData.name} updated successfully!`);
-            } else {
-                // Create new item
-                result = await itemService.createItem(currentCompany.id, itemData);
-                showToastMessage(`${formData.name} created successfully!`);
-            }
-
-            console.log('✅ Item saved successfully:', result);
-
-            // Call parent's onSaveProduct callback if provided
+            // Call parent's onSaveProduct function
             if (onSaveProduct) {
-                await onSaveProduct({
-                    ...e,
-                    saveAndAdd: false,
-                    result: result.data.item
-                }, false);
+                const success = await onSaveProduct(dataToSend, false);
+                
+                if (success) {
+                    showToastMessage(`${formData.name} ${mode === 'edit' ? 'updated' : 'created'} successfully!`);
+                    
+                    // Close modal after successful save
+                    setTimeout(() => {
+                        onHide();
+                    }, 1000);
+                }
             }
-
-            // Close modal after successful save
-            setTimeout(() => {
-                onHide();
-            }, 1000);
 
         } catch (error) {
-            console.error('❌ Error saving item:', error);
-            showToastMessage(`Error saving item: ${error.message}`, 'error');
+            console.error(`❌ ProductModal - Error ${mode === 'edit' ? 'updating' : 'saving'} item:`, error);
+            showToastMessage(`Error ${mode === 'edit' ? 'updating' : 'saving'} item: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Handle save and add another
+    // Handle save and add another (only for add mode)
     const handleSaveAndAddAnother = async (e) => {
+        if (mode === 'edit') return; // Don't allow save and add in edit mode
+
         e.preventDefault();
         e.stopPropagation();
 
@@ -419,53 +439,52 @@ function ProductModal({
 
         try {
             const currentProductName = formData.name;
-            console.log('🚀 Saving and adding another item:', formData);
+            
+            // 🚨 DEBUG LOG - Save and add data
+            console.log('🚀 ProductModal - Save and add form data:', {
+                formData: formData,
+                buyPriceTaxInclusive: buyPriceTaxInclusive,
+                salePriceTaxInclusive: salePriceTaxInclusive
+            });
 
-            // Prepare item data for API
-            const itemData = {
-                name: formData.name?.trim(),
-                itemCode: formData.itemCode?.trim() || undefined,
-                hsnNumber: formData.hsnNumber?.trim() || undefined,
-                type: formData.type || 'product',
-                category: formData.category?.trim(),
-                unit: formData.unit,
-                description: formData.description?.trim() || undefined,
+            // Prepare the complete data to send to parent
+            const dataToSend = {
+                ...formData,
+                // Include tax states from local component state
+                isBuyPriceTaxInclusive: buyPriceTaxInclusive,
+                isSalePriceTaxInclusive: salePriceTaxInclusive,
+                // Ensure proper data types
                 buyPrice: parseFloat(formData.buyPrice) || 0,
                 salePrice: parseFloat(formData.salePrice) || 0,
-                gstRate: parseFloat(formData.gstRate) || 0,
-                openingStock: formData.type === 'service' ? 0 : (parseFloat(formData.openingStock) || 0),
-                minStockLevel: formData.type === 'service' ? 0 : (parseFloat(formData.minStockLevel) || 0),
-                asOfDate: formData.asOfDate || new Date().toISOString().split('T')[0],
-                isActive: formData.isActive !== undefined ? formData.isActive : true
+                atPrice: parseFloat(formData.atPrice) || 0,
+                gstRate: parseFloat(formData.gstRate) || 18,
+                openingQuantity: formData.type === 'service' ? 0 : (parseFloat(formData.openingQuantity) || parseFloat(formData.currentStock) || parseFloat(formData.openingStock) || 0),
+                currentStock: formData.type === 'service' ? 0 : (parseFloat(formData.currentStock) || parseFloat(formData.openingQuantity) || parseFloat(formData.openingStock) || 0),
+                openingStock: formData.type === 'service' ? 0 : (parseFloat(formData.openingStock) || parseFloat(formData.openingQuantity) || parseFloat(formData.currentStock) || 0),
+                minStockLevel: formData.type === 'service' ? 0 : (parseFloat(formData.minStockLevel) || parseFloat(formData.minStockToMaintain) || 0),
+                minStockToMaintain: formData.type === 'service' ? 0 : (parseFloat(formData.minStockToMaintain) || parseFloat(formData.minStockLevel) || 0)
             };
 
-            // Create new item via API
-            const result = await itemService.createItem(currentCompany.id, itemData);
-            
-            console.log('✅ Item created successfully:', result);
-
-            // Show success message
-            showToastMessage(`${currentProductName} saved successfully! Ready to add another...`);
-
-            // Call parent's onSaveProduct callback if provided
+            // Call parent's onSaveProduct function
             if (onSaveProduct) {
-                await onSaveProduct({
-                    ...e,
-                    saveAndAdd: true,
-                    result: result.data.item
-                }, true);
+                const success = await onSaveProduct(dataToSend, true);
+                
+                if (success) {
+                    // Show success message
+                    showToastMessage(`${currentProductName} saved successfully! Ready to add another...`);
+
+                    // Clear form for new product while keeping common fields
+                    clearFormForNext();
+
+                    // Focus on name field for next product
+                    setTimeout(() => {
+                        nameRef.current?.focus();
+                    }, 200);
+                }
             }
 
-            // Clear form for new product while keeping common fields
-            clearFormForNext();
-
-            // Focus on name field for next product
-            setTimeout(() => {
-                nameRef.current?.focus();
-            }, 200);
-
         } catch (error) {
-            console.error('❌ Error saving item:', error);
+            console.error('❌ ProductModal - Error saving item:', error);
             showToastMessage(`Error saving item: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
@@ -481,8 +500,10 @@ function ProductModal({
         onHide();
     };
 
-    // Handle product selection from search modal
+    // Handle product selection from search modal (only for add mode)
     const handleProductSelection = (product) => {
+        if (mode === 'edit') return; // Don't allow database search in edit mode
+
         console.log('🔍 Selected product from search:', product);
 
         // Auto-fill form with selected product data
@@ -497,6 +518,7 @@ function ProductModal({
             type: product.type || 'product',
             buyPrice: product.buyPrice,
             salePrice: product.salePrice,
+            atPrice: product.atPrice,
             isActive: true
         };
 
@@ -515,7 +537,7 @@ function ProductModal({
         // Focus on the next relevant field after auto-fill
         setTimeout(() => {
             if (formData.type !== 'service') {
-                openingStockRef.current?.focus();
+                openingQuantityRef.current?.focus();
             } else {
                 isActiveRef.current?.focus();
             }
@@ -536,14 +558,26 @@ function ProductModal({
                 <div className={`modal-content-wrapper ${showProductSearch ? 'content-blurred' : ''}`}>
                     <Modal.Header className="border-0 pb-0">
                         <Modal.Title className="fw-bold">
-                            {editingProduct ? 'Edit Item' : 'Add New Item'}
+                            {mode === 'edit' ? (
+                                <>
+                                    <FontAwesomeIcon icon={faEdit} className="me-2 text-primary" />
+                                    Edit {type === 'service' ? 'Service' : 'Product'}
+                                </>
+                            ) : (
+                                <>
+                                    <FontAwesomeIcon icon={faPlus} className="me-2 text-success" />
+                                    Add New {type === 'service' ? 'Service' : 'Product'}
+                                </>
+                            )}
                             {currentCompany && (
                                 <small className="text-muted ms-2">
                                     for {currentCompany.companyName}
                                 </small>
                             )}
                             <small className="text-muted ms-2 fw-normal d-block">
-                                (Tab/Enter: navigate, Esc: close, Ctrl+S: save, Ctrl+Shift+S: save & add, Ctrl+G: generate code, Ctrl+D: search database)
+                                (Tab/Enter: navigate, Esc: close, Ctrl+S: save
+                                {mode === 'add' && ', Ctrl+Shift+S: save & add, Ctrl+D: search database'}
+                                , Ctrl+G: generate code)
                             </small>
                         </Modal.Title>
                         <Button
@@ -557,6 +591,25 @@ function ProductModal({
                     </Modal.Header>
 
                     <Modal.Body className="px-4 pb-4">
+                        {/* 🚨 DEBUG SECTION - REMOVE THIS AFTER TESTING */}
+                        {mode === 'edit' && (
+                            <div style={{ background: '#fff3cd', border: '1px solid #ffeaa7', padding: '10px', margin: '10px 0', borderRadius: '5px' }}>
+                                <strong>🚨 DEBUG INFO (Remove after testing):</strong>
+                                <div><strong>Buy Price:</strong> {formData.buyPrice} (Type: {typeof formData.buyPrice})</div>
+                                <div><strong>Sale Price:</strong> {formData.salePrice} (Type: {typeof formData.salePrice})</div>
+                                <div><strong>GST Rate:</strong> {formData.gstRate} (Type: {typeof formData.gstRate})</div>
+                                <div><strong>Current Stock:</strong> {formData.currentStock || formData.openingQuantity} (Type: {typeof (formData.currentStock || formData.openingQuantity)})</div>
+                                <div><strong>Buy Tax Inclusive:</strong> {buyPriceTaxInclusive ? 'Yes' : 'No'}</div>
+                                <div><strong>Sale Tax Inclusive:</strong> {salePriceTaxInclusive ? 'Yes' : 'No'}</div>
+                                <details style={{ marginTop: '10px' }}>
+                                    <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Full Form Data</summary>
+                                    <pre style={{ fontSize: '10px', background: '#f8f9fa', padding: '5px', marginTop: '5px', borderRadius: '3px' }}>
+                                        {JSON.stringify(formData, null, 2)}
+                                    </pre>
+                                </details>
+                            </div>
+                        )}
+
                         {/* Enhanced Toast */}
                         <ToastContainer
                             position="top-end"
@@ -576,9 +629,9 @@ function ProductModal({
                                 delay={4000}
                             >
                                 <Toast.Header className={`${toastType === 'success' ? 'bg-success' : 'bg-danger'} text-white border-0`}>
-                                    <FontAwesomeIcon 
-                                        icon={toastType === 'success' ? faCheck : faTimes} 
-                                        className="me-2" 
+                                    <FontAwesomeIcon
+                                        icon={toastType === 'success' ? faCheck : faTimes}
+                                        className="me-2"
                                     />
                                     <strong className="me-auto">
                                         {toastType === 'success' ? 'Success' : 'Error'}
@@ -586,9 +639,9 @@ function ProductModal({
                                 </Toast.Header>
                                 <Toast.Body className="bg-light border-0">
                                     <div className="d-flex align-items-center">
-                                        <FontAwesomeIcon 
-                                            icon={toastType === 'success' ? faCheck : faTimes} 
-                                            className={`${toastType === 'success' ? 'text-success' : 'text-danger'} me-2`} 
+                                        <FontAwesomeIcon
+                                            icon={toastType === 'success' ? faCheck : faTimes}
+                                            className={`${toastType === 'success' ? 'text-success' : 'text-danger'} me-2`}
                                         />
                                         <span>{toastMessage}</span>
                                     </div>
@@ -607,7 +660,7 @@ function ProductModal({
                                 <div className="text-center">
                                     <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-primary mb-3" />
                                     <div className="fw-bold text-primary">
-                                        {editingProduct ? 'Updating item...' : (isSaveAndAdd ? 'Saving item and preparing for next...' : 'Saving item...')}
+                                        {mode === 'edit' ? 'Updating item...' : (isSaveAndAdd ? 'Saving item and preparing for next...' : 'Saving item...')}
                                     </div>
                                 </div>
                             </div>
@@ -615,7 +668,7 @@ function ProductModal({
 
                         {/* Header Section with Type Toggle and Database Search */}
                         <Row className="mb-4">
-                            <Col md={6}>
+                            <Col md={mode === 'edit' ? 12 : 6}>
                                 {/* Product/Service Toggle */}
                                 <div className="product-service-toggle p-3 bg-light rounded border">
                                     <div className="d-flex align-items-center justify-content-center">
@@ -626,7 +679,7 @@ function ProductModal({
                                             ref={productServiceToggleRef}
                                             className="custom-toggle mx-3"
                                             onClick={() => {
-                                                if (!isLoading) {
+                                                if (!isLoading && mode === 'add') { // Only allow type change in add mode
                                                     const newType = formData.type === 'product' ? 'service' : 'product';
                                                     onInputChange({
                                                         target: { name: 'type', value: newType }
@@ -634,7 +687,7 @@ function ProductModal({
                                                 }
                                             }}
                                             onKeyDown={(e) => handleToggleKeyDown(e, () => {
-                                                if (!isLoading) {
+                                                if (!isLoading && mode === 'add') {
                                                     const newType = formData.type === 'product' ? 'service' : 'product';
                                                     onInputChange({
                                                         target: { name: 'type', value: newType }
@@ -644,7 +697,10 @@ function ProductModal({
                                             tabIndex={0}
                                             role="button"
                                             aria-label={`Switch to ${formData.type === 'product' ? 'service' : 'product'} mode`}
-                                            style={{ opacity: isLoading ? 0.6 : 1 }}
+                                            style={{ 
+                                                opacity: isLoading || mode === 'edit' ? 0.6 : 1,
+                                                cursor: mode === 'edit' ? 'not-allowed' : 'pointer'
+                                            }}
                                         >
                                             <div className={`toggle-slider ${formData.type === 'service' ? 'active' : ''}`}>
                                                 <FontAwesomeIcon
@@ -658,49 +714,51 @@ function ProductModal({
                                             Services
                                         </span>
                                     </div>
+                                    {mode === 'edit' && (
+                                        <small className="text-muted text-center d-block mt-2">
+                                            Type cannot be changed in edit mode
+                                        </small>
+                                    )}
                                 </div>
                             </Col>
 
-                            <Col md={6}>
-                                {/* Enhanced Database Search Section */}
-                                <div className="p-3 bg-light rounded border">
-                                    <div className="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 className="mb-1 fw-bold text-primary">
-                                                <FontAwesomeIcon icon={faDatabase} className="me-2" />
-                                                Search Items in Database
-                                                {isSearching && (
-                                                    <FontAwesomeIcon icon={faSpinner} spin className="ms-2 text-muted" />
-                                                )}
-                                            </h6>
-                                            <small className="text-muted">
-                                                Import details to save time (Ctrl+D)
-                                                {searchProducts.length > 0 && (
-                                                    <span className="ms-1">• {searchProducts.length} items available</span>
-                                                )}
-                                            </small>
+                            {/* Database Search - Only show in add mode */}
+                            {mode === 'add' && (
+                                <Col md={6}>
+                                    <div className="p-3 bg-light rounded border">
+                                        <div className="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 className="mb-1 fw-bold text-primary">
+                                                    <FontAwesomeIcon icon={faDatabase} className="me-2" />
+                                                    Search Items in Database
+                                                    {isSearching && (
+                                                        <FontAwesomeIcon icon={faSpinner} spin className="ms-2 text-muted" />
+                                                    )}
+                                                </h6>
+                                                <small className="text-muted">
+                                                    Import details to save time (Ctrl+D)
+                                                    {searchProducts.length > 0 && (
+                                                        <span className="ms-1">• {searchProducts.length} items available</span>
+                                                    )}
+                                                </small>
+                                            </div>
+                                            <Button
+                                                ref={searchDatabaseRef}
+                                                variant="outline-primary"
+                                                onClick={() => !isLoading && setShowProductSearch(true)}
+                                                className="search-database-btn"
+                                                tabIndex={0}
+                                                disabled={isLoading || isSearching}
+                                            >
+                                                <FontAwesomeIcon icon={faSearch} />
+                                            </Button>
                                         </div>
-                                        <Button
-                                            ref={searchDatabaseRef}
-                                            variant="outline-primary"
-                                            onClick={() => !isLoading && setShowProductSearch(true)}
-                                            className="search-database-btn"
-                                            tabIndex={0}
-                                            disabled={isLoading || isSearching}
-                                        >
-                                            <FontAwesomeIcon icon={faSearch} />
-                                        </Button>
                                     </div>
-                                </div>
-                            </Col>
+                                </Col>
+                            )}
                         </Row>
 
                         <Form onSubmit={handleSubmit} autoComplete="off">
-                            {/* All the existing form fields remain the same */}
-                            {/* Just update the action buttons at the bottom */}
-                            
-                            {/* ... (all existing form fields remain unchanged) ... */}
-                            
                             {/* First Row - Item Details */}
                             <Row className="mb-4">
                                 <Col md={4}>
@@ -723,7 +781,7 @@ function ProductModal({
                                     </Form.Group>
                                 </Col>
 
-                                <Col md={3}>
+                                <Col md={2}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="fw-semibold">
                                             {formData.type === 'service' ? 'SAC Code' : 'HSN Code'}
@@ -773,7 +831,7 @@ function ProductModal({
                                     </Form.Group>
                                 </Col>
 
-                                <Col md={2}>
+                                <Col md={3}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="fw-semibold">
                                             Select Unit <span className="text-danger">*</span>
@@ -866,10 +924,275 @@ function ProductModal({
                                 </Col>
                             </Row>
 
-                            {/* ... (continue with all other form sections - Stock, Pricing, Status) ... */}
-                            
+                            {/* Stock Section - Only for Products */}
+                            {formData.type !== 'service' && (
+                                <Row className="mb-4">
+                                    <Col md={12}>
+                                        <div className="bg-light p-3 rounded border">
+                                            <h6 className="fw-bold text-primary mb-3">
+                                                📦 Stock
+                                            </h6>
+                                            <Row>
+                                                <Col md={3}>
+                                                    <Form.Group className="mb-3">
+                                                        <Form.Label className="fw-semibold">
+                                                            {mode === 'edit' ? 'Current Quantity' : 'Opening Quantity'}
+                                                        </Form.Label>
+                                                        <Form.Control
+                                                            ref={openingQuantityRef}
+                                                            type="number"
+                                                            name={mode === 'edit' ? 'currentStock' : 'openingQuantity'}
+                                                            value={mode === 'edit' ? (formData.currentStock || '') : (formData.openingQuantity || '')}
+                                                            onChange={onInputChange}
+                                                            placeholder="0"
+                                                            min="0"
+                                                            step="1"
+                                                            className="form-input"
+                                                            tabIndex={0}
+                                                            disabled={isLoading}
+                                                        />
+                                                    </Form.Group>
+                                                </Col>
+
+                                                <Col md={3}>
+                                                    <Form.Group className="mb-3">
+                                                        <Form.Label className="fw-semibold">At Price</Form.Label>
+                                                        <InputGroup>
+                                                            <InputGroup.Text>₹</InputGroup.Text>
+                                                            <Form.Control
+                                                                ref={atPriceRef}
+                                                                type="number"
+                                                                name="atPrice"
+                                                                value={formData.atPrice || ''}
+                                                                onChange={onInputChange}
+                                                                placeholder="0.00"
+                                                                min="0"
+                                                                step="0.01"
+                                                                className="form-input"
+                                                                tabIndex={0}
+                                                                disabled={isLoading}
+                                                            />
+                                                        </InputGroup>
+                                                    </Form.Group>
+                                                </Col>
+
+                                                <Col md={3}>
+                                                    <Form.Group className="mb-3">
+                                                        <Form.Label className="fw-semibold">As of Date</Form.Label>
+                                                        <Form.Control
+                                                            ref={asOfDateRef}
+                                                            type="date"
+                                                            name="asOfDate"
+                                                            value={formData.asOfDate || new Date().toISOString().split('T')[0]}
+                                                            onChange={onInputChange}
+                                                            className="form-input"
+                                                            tabIndex={0}
+                                                            disabled={isLoading}
+                                                        />
+                                                    </Form.Group>
+                                                </Col>
+
+                                                <Col md={3}>
+                                                    <Form.Group className="mb-3">
+                                                        <Form.Label className="fw-semibold">Minimum Stock to Maintain</Form.Label>
+                                                        <Form.Control
+                                                            ref={minStockToMaintainRef}
+                                                            type="number"
+                                                            name="minStockToMaintain"
+                                                            value={formData.minStockToMaintain || ''}
+                                                            onChange={onInputChange}
+                                                            placeholder="0"
+                                                            min="0"
+                                                            step="1"
+                                                            className="form-input"
+                                                            tabIndex={0}
+                                                            disabled={isLoading}
+                                                        />
+                                                    </Form.Group>
+                                                </Col>
+                                            </Row>
+                                        </div>
+                                    </Col>
+                                </Row>
+                            )}
+
+                            {/* Pricing Section */}
+                            <Row className="mb-4">
+                                <Col md={12}>
+                                    <div className="bg-light p-3 rounded border">
+                                        <h6 className="fw-bold text-primary mb-3">
+                                            💰 Pricing
+                                        </h6>
+                                        <Row>
+                                            {/* For Products - Show both Buy and Sale Price */}
+                                            {formData.type !== 'service' && (
+                                                <>
+                                                    <Col md={6}>
+                                                        <Form.Group className="mb-3">
+                                                            <Form.Label className="fw-semibold">Buy Price</Form.Label>
+                                                            <InputGroup>
+                                                                <InputGroup.Text>₹</InputGroup.Text>
+                                                                <Form.Control
+                                                                    ref={buyPriceRef}
+                                                                    type="number"
+                                                                    name="buyPrice"
+                                                                    value={formData.buyPrice || ''}
+                                                                    onChange={onInputChange}
+                                                                    placeholder="0.00"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    className="form-input"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                            </InputGroup>
+                                                            <div className="d-flex align-items-center mt-2">
+                                                                <Form.Check
+                                                                    ref={buyTaxToggleRef}
+                                                                    type="checkbox"
+                                                                    id="buyPriceTaxInclusive"
+                                                                    checked={buyPriceTaxInclusive}
+                                                                    onChange={(e) => setBuyPriceTaxInclusive(e.target.checked)}
+                                                                    className="me-2"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                                <Form.Label htmlFor="buyPriceTaxInclusive" className="mb-0 text-muted small">
+                                                                    With Tax
+                                                                </Form.Label>
+                                                            </div>
+                                                            <div className="d-flex align-items-center">
+                                                                <Form.Check
+                                                                    type="checkbox"
+                                                                    id="buyPriceWithoutTax"
+                                                                    checked={!buyPriceTaxInclusive}
+                                                                    onChange={(e) => setBuyPriceTaxInclusive(!e.target.checked)}
+                                                                    className="me-2"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                                <Form.Label htmlFor="buyPriceWithoutTax" className="mb-0 text-muted small">
+                                                                    Without Tax
+                                                                </Form.Label>
+                                                            </div>
+                                                            {buyPriceTaxInclusive && formData.buyPrice && formData.gstRate > 0 && (
+                                                                <Form.Text className="text-muted">
+                                                                    Price without tax: ₹{calculatePriceWithTax(formData.buyPrice, formData.gstRate, true)}
+                                                                </Form.Text>
+                                                            )}
+                                                        </Form.Group>
+                                                    </Col>
+
+                                                    <Col md={6}>
+                                                        <Form.Group className="mb-3">
+                                                            <Form.Label className="fw-semibold">Sale Price</Form.Label>
+                                                            <InputGroup>
+                                                                <InputGroup.Text>₹</InputGroup.Text>
+                                                                <Form.Control
+                                                                    ref={salePriceRef}
+                                                                    type="number"
+                                                                    name="salePrice"
+                                                                    value={formData.salePrice || ''}
+                                                                    onChange={onInputChange}
+                                                                    placeholder="0.00"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    className="form-input"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                            </InputGroup>
+                                                            <div className="d-flex align-items-center mt-2">
+                                                                <Form.Check
+                                                                    ref={saleTaxToggleRef}
+                                                                    type="checkbox"
+                                                                    id="salePriceTaxInclusive"
+                                                                    checked={salePriceTaxInclusive}
+                                                                    onChange={(e) => setSalePriceTaxInclusive(e.target.checked)}
+                                                                    className="me-2"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                                <Form.Label htmlFor="salePriceTaxInclusive" className="mb-0 text-muted small">
+                                                                    With Tax
+                                                                </Form.Label>
+                                                            </div>
+                                                            <div className="d-flex align-items-center">
+                                                                <Form.Check
+                                                                    type="checkbox"
+                                                                    id="salePriceWithoutTax"
+                                                                    checked={!salePriceTaxInclusive}
+                                                                    onChange={(e) => setSalePriceTaxInclusive(!e.target.checked)}
+                                                                    className="me-2"
+                                                                    tabIndex={0}
+                                                                    disabled={isLoading}
+                                                                />
+                                                                <Form.Label htmlFor="salePriceWithoutTax" className="mb-0 text-muted small">
+                                                                    Without Tax
+                                                                </Form.Label>
+                                                            </div>
+                                                            {salePriceTaxInclusive && formData.salePrice && formData.gstRate > 0 && (
+                                                                <Form.Text className="text-muted">
+                                                                    Price without tax: ₹{calculatePriceWithTax(formData.salePrice, formData.gstRate, true)}
+                                                                </Form.Text>
+                                                            )}
+                                                        </Form.Group>
+                                                    </Col>
+                                                </>
+                                            )}
+
+                                            {/* For Services - Show only Service Rate */}
+                                            {formData.type === 'service' && (
+                                                <Col md={6}>
+                                                    <Form.Group className="mb-3">
+                                                        <Form.Label className="fw-semibold">Service Rate</Form.Label>
+                                                        <InputGroup>
+                                                            <InputGroup.Text>₹</InputGroup.Text>
+                                                            <Form.Control
+                                                                ref={salePriceRef}
+                                                                type="number"
+                                                                name="salePrice"
+                                                                value={formData.salePrice || ''}
+                                                                onChange={onInputChange}
+                                                                placeholder="0.00"
+                                                                min="0"
+                                                                step="0.01"
+                                                                className="form-input"
+                                                                tabIndex={0}
+                                                                disabled={isLoading}
+                                                            />
+                                                            <InputGroup.Text>/hr</InputGroup.Text>
+                                                        </InputGroup>
+                                                        <div className="d-flex align-items-center mt-2">
+                                                            <Form.Check
+                                                                ref={saleTaxToggleRef}
+                                                                type="checkbox"
+                                                                id="serviceRateTaxInclusive"
+                                                                checked={salePriceTaxInclusive}
+                                                                onChange={(e) => setSalePriceTaxInclusive(e.target.checked)}
+                                                                className="me-2"
+                                                                tabIndex={0}
+                                                                disabled={isLoading}
+                                                            />
+                                                            <Form.Label htmlFor="serviceRateTaxInclusive" className="mb-0 text-muted small">
+                                                                Tax inclusive
+                                                            </Form.Label>
+                                                        </div>
+                                                        {salePriceTaxInclusive && formData.salePrice && formData.gstRate > 0 && (
+                                                            <Form.Text className="text-muted">
+                                                                Rate without tax: ₹{calculatePriceWithTax(formData.salePrice, formData.gstRate, true)}/hr
+                                                            </Form.Text>
+                                                        )}
+                                                    </Form.Group>
+                                                </Col>
+                                            )}
+                                        </Row>
+                                    </div>
+                                </Col>
+                            </Row>
+
                             {/* Enhanced Action Buttons */}
-                            <div className="action-buttons">
+                            <div className="action-buttons mt-4 pt-3 border-top d-flex justify-content-end gap-2">
                                 <Button
                                     ref={cancelButtonRef}
                                     variant="outline-secondary"
@@ -883,8 +1206,8 @@ function ProductModal({
                                     Cancel
                                 </Button>
 
-                                {/* Save & Add Another Button - Only show for new items */}
-                                {!editingProduct && (
+                                {/* Save & New Button - Only show for add mode */}
+                                {mode === 'add' && (
                                     <Button
                                         ref={saveAndAddButtonRef}
                                         variant="outline-success"
@@ -900,7 +1223,7 @@ function ProductModal({
                                         ) : (
                                             <FontAwesomeIcon icon={faPlus} className="me-2" />
                                         )}
-                                        Save & Add New
+                                        Save & New
                                     </Button>
                                 )}
 
@@ -918,24 +1241,25 @@ function ProductModal({
                                     ) : (
                                         <FontAwesomeIcon icon={faSave} className="me-2" />
                                     )}
-                                    {editingProduct ? 'Update' : 'Save'} & Close
+                                    {mode === 'edit' ? 'Update' : 'Save'} & Exit
                                 </Button>
                             </div>
-
                         </Form>
                     </Modal.Body>
                 </div>
             </Modal>
 
-            {/* Enhanced Product Search Modal */}
-            <ProductSearchModal
-                show={showProductSearch}
-                onHide={() => setShowProductSearch(false)}
-                products={searchProducts}
-                onProductSelect={handleProductSelection}
-                isLoading={isSearching}
-                companyName={currentCompany?.companyName}
-            />
+            {/* Enhanced Product Search Modal - Only show in add mode */}
+            {mode === 'add' && (
+                <ProductSearchModal
+                    show={showProductSearch}
+                    onHide={() => setShowProductSearch(false)}
+                    products={searchProducts}
+                    onProductSelect={handleProductSelection}
+                    isLoading={isSearching}
+                    companyName={currentCompany?.companyName}
+                />
+            )}
         </>
     );
 }

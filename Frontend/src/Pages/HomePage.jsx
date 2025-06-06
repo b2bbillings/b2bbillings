@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Alert, Spinner, Container } from 'react-bootstrap';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Alert, Spinner, Container, Toast, ToastContainer } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExclamationTriangle, faBuilding } from '@fortawesome/free-solid-svg-icons';
+import { 
+    faExclamationTriangle, 
+    faBuilding, 
+    faCheckCircle, 
+    faInfoCircle,
+    faWifi,
+    faTimesCircle,     // Use this for offline status
+    faExclamationCircle // Alternative for warnings
+} from '@fortawesome/free-solid-svg-icons';
 
 // Import the components
 import DayBook from '../components/Home/DayBook';
@@ -16,6 +24,11 @@ import Bank from '../components/Home/Bank';
 
 // Import services
 import companyService from '../services/companyService';
+import partyService from '../services/partyService';
+
+// Import utility components
+import ErrorBoundary from '../components/ErrorBoundary';
+import Loading from '../components/Loading';
 
 import './HomePage.css';
 
@@ -31,14 +44,94 @@ function HomePage({
     onCompanyChange
 }) {
     // Current view state - tracks which component is being displayed
-    const [currentView, setCurrentView] = useState('dailySummary');
+    const [currentView, setCurrentView] = useState(propCurrentView || 'dailySummary');
 
     // Company state - tracks current selected company
-    const [currentCompany, setCurrentCompany] = useState(null);
+    const [currentCompany, setCurrentCompany] = useState(propCurrentCompany || null);
 
     // Loading and error states
     const [isLoadingCompany, setIsLoadingCompany] = useState(false);
     const [companyError, setCompanyError] = useState(null);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    // Toast notifications state
+    const [toasts, setToasts] = useState([]);
+
+    // Component health check state
+    const [componentHealth, setComponentHealth] = useState({
+        parties: 'unknown',
+        sales: 'unknown',
+        purchases: 'unknown',
+        inventory: 'unknown'
+    });
+
+    // Add toast notification helper
+    const addToast = useCallback((message, type = 'info', duration = 5000) => {
+        const id = Date.now() + Math.random();
+        const toast = { id, message, type, duration };
+        
+        setToasts(prev => [...prev, toast]);
+        
+        // Auto remove toast after duration
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, duration);
+    }, []);
+
+    // Remove toast manually
+    const removeToast = useCallback((id) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    }, []);
+
+    // Monitor online/offline status
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            addToast('Connection restored', 'success', 3000);
+        };
+
+        const handleOffline = () => {
+            setIsOnline(false);
+            addToast('Connection lost. Some features may not work.', 'warning', 10000);
+        };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [addToast]);
+
+    // Health check for components
+    const performHealthCheck = useCallback(async () => {
+        if (!isOnline || !currentCompany?.id) return;
+
+        try {
+            // Test parties service
+            try {
+                await partyService.getParties({ limit: 1 });
+                setComponentHealth(prev => ({ ...prev, parties: 'healthy' }));
+            } catch (error) {
+                console.warn('Parties service health check failed:', error);
+                setComponentHealth(prev => ({ ...prev, parties: 'error' }));
+            }
+
+            // Add other service health checks here as they're implemented
+            // Test sales service, inventory service, etc.
+
+        } catch (error) {
+            console.error('Health check failed:', error);
+        }
+    }, [isOnline, currentCompany]);
+
+    // Perform health check when company changes or comes online
+    useEffect(() => {
+        if (currentCompany?.id && isOnline) {
+            performHealthCheck();
+        }
+    }, [currentCompany, isOnline, performHealthCheck]);
 
     // Update internal view state when props change
     useEffect(() => {
@@ -46,7 +139,7 @@ function HomePage({
             console.log('📍 HomePage: Updating view from props:', propCurrentView);
             setCurrentView(propCurrentView);
         }
-    }, [propCurrentView]);
+    }, [propCurrentView, currentView]);
 
     // Update internal company state when props change
     useEffect(() => {
@@ -54,53 +147,18 @@ function HomePage({
             console.log('🏢 HomePage: Updating company from props:', propCurrentCompany);
             setCurrentCompany(propCurrentCompany);
             setCompanyError(null);
+            
+            if (propCurrentCompany) {
+                addToast(`Switched to ${propCurrentCompany.companyName || propCurrentCompany.name}`, 'info', 3000);
+            }
         }
-    }, [propCurrentCompany]);
+    }, [propCurrentCompany, currentCompany, addToast]);
 
     // Handle navigation changes, potentially propagating up to parent
-    const handleNavigation = (page) => {
+    const handleNavigation = useCallback((page) => {
         console.log('🧭 HomePage: Navigating to:', page);
-        setCurrentView(page);
-        if (onNavigate) {
-            onNavigate(page);
-        }
-    };
-
-    // Handle company change from child components
-    const handleCompanyChange = (company) => {
-        console.log('🏢 HomePage: Company changed from child component:', company);
-        setCurrentCompany(company);
-        setCompanyError(null);
-
-        // Propagate to parent
-        if (onCompanyChange) {
-            onCompanyChange(company);
-        }
-    };
-
-    // Common props to pass to all components
-    const commonProps = {
-        currentCompany,
-        onNavigate: handleNavigation,
-        onCompanyChange: handleCompanyChange
-    };
-
-    // Render no company selected state for components that require it
-    const renderNoCompanyState = (componentName) => (
-        <div className="homepage-container">
-            <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
-                <FontAwesomeIcon icon={faBuilding} size="3x" className="text-muted mb-3" />
-                <h4 className="text-muted">No Company Selected</h4>
-                <p className="text-muted text-center">
-                    Please select a company from the header to access {componentName}.
-                </p>
-            </Container>
-        </div>
-    );
-
-    // Render the appropriate component based on the current view
-    const renderContent = () => {
-        // Components that require a company to be selected
+        
+        // Check if component requires company and we don't have one
         const companyRequiredViews = [
             'inventory', 'allProducts', 'lowStock', 'stockMovement',
             'allSales', 'invoices', 'createInvoice', 'creditNotes',
@@ -113,8 +171,151 @@ function HomePage({
             'parties'
         ];
 
+        if (companyRequiredViews.includes(page) && !currentCompany?.id) {
+            addToast('Please select a company first to access this feature', 'warning', 5000);
+            return;
+        }
+
+        setCurrentView(page);
+        if (onNavigate) {
+            onNavigate(page);
+        }
+    }, [currentCompany, onNavigate, addToast]);
+
+    // Handle company change from child components
+    const handleCompanyChange = useCallback(async (company) => {
+        console.log('🏢 HomePage: Company changed from child component:', company);
+        
+        setIsLoadingCompany(true);
+        setCompanyError(null);
+
+        try {
+            // Validate company data
+            if (company && (!company.id && !company._id)) {
+                throw new Error('Invalid company data: missing ID');
+            }
+
+            setCurrentCompany(company);
+            
+            if (company) {
+                addToast(`Company changed to ${company.companyName || company.name}`, 'success', 3000);
+            }
+
+            // Propagate to parent
+            if (onCompanyChange) {
+                onCompanyChange(company);
+            }
+
+        } catch (error) {
+            console.error('Error changing company:', error);
+            setCompanyError(error.message);
+            addToast('Failed to change company: ' + error.message, 'error', 5000);
+        } finally {
+            setIsLoadingCompany(false);
+        }
+    }, [onCompanyChange, addToast]);
+
+    // Common props to pass to all components
+    const commonProps = {
+        currentCompany,
+        onNavigate: handleNavigation,
+        onCompanyChange: handleCompanyChange,
+        isOnline,
+        addToast
+    };
+
+    // Render loading state
+    const renderLoadingState = (message = 'Loading...') => (
+        <div className="homepage-container">
+            <Container className="d-flex justify-content-center align-items-center min-vh-100">
+                <Loading message={message} size="lg" />
+            </Container>
+        </div>
+    );
+
+    // Render error state
+    const renderErrorState = (error, onRetry = null) => (
+        <div className="homepage-container">
+            <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
+                <FontAwesomeIcon icon={faExclamationTriangle} size="3x" className="text-danger mb-3" />
+                <h4 className="text-danger">Something went wrong</h4>
+                <p className="text-muted text-center mb-3">{error}</p>
+                {onRetry && (
+                    <button className="btn btn-outline-primary" onClick={onRetry}>
+                        Try Again
+                    </button>
+                )}
+            </Container>
+        </div>
+    );
+
+    // Render no company selected state for components that require it
+    const renderNoCompanyState = (componentName) => (
+        <div className="homepage-container">
+            <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
+                <FontAwesomeIcon icon={faBuilding} size="3x" className="text-muted mb-3" />
+                <h4 className="text-muted">No Company Selected</h4>
+                <p className="text-muted text-center">
+                    Please select a company from the header to access {componentName}.
+                </p>
+                <small className="text-muted">
+                    You can create a new company or select an existing one from the company dropdown in the header.
+                </small>
+            </Container>
+        </div>
+    );
+
+    // Render offline state
+    const renderOfflineState = () => (
+        <div className="homepage-container">
+            <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
+                <FontAwesomeIcon icon={faTimesCircle} size="3x" className="text-warning mb-3" />
+                <h4 className="text-warning">You're Offline</h4>
+                <p className="text-muted text-center">
+                    Please check your internet connection and try again.
+                </p>
+                <small className="text-muted">
+                    Some features may be limited in offline mode.
+                </small>
+            </Container>
+        </div>
+    );
+
+    // Check if component requires company
+    const requiresCompany = (viewName) => {
+        const companyRequiredViews = [
+            'inventory', 'allProducts', 'lowStock', 'stockMovement',
+            'allSales', 'invoices', 'createInvoice', 'creditNotes',
+            'salesOrders', 'createSalesOrder',
+            'purchaseBills', 'paymentOut', 'expenses', 'purchaseOrder',
+            'purchaseReturn', 'allPurchases', 'createPurchase', 'purchaseOrders',
+            'createPurchaseOrder',
+            'bankAccounts', 'cashAccounts', 'bankTransactions',
+            'bankReconciliation', 'cashFlow',
+            'parties'
+        ];
+        return companyRequiredViews.includes(viewName);
+    };
+
+    // Render the appropriate component based on the current view
+    const renderContent = () => {
+        // Show loading state if company is being loaded
+        if (isLoadingCompany) {
+            return renderLoadingState('Loading company data...');
+        }
+
+        // Show error state if there's a company error
+        if (companyError) {
+            return renderErrorState(companyError, () => {
+                setCompanyError(null);
+                if (currentCompany) {
+                    handleCompanyChange(currentCompany);
+                }
+            });
+        }
+
         // Check if current view requires a company and if we don't have one
-        if (companyRequiredViews.includes(currentView) && !currentCompany?.id && !currentCompany?._id) {
+        if (requiresCompany(currentView) && !currentCompany?.id && !currentCompany?._id) {
             const componentNameMap = {
                 'inventory': 'Inventory Management',
                 'allProducts': 'Products & Services',
@@ -146,30 +347,43 @@ function HomePage({
             return renderNoCompanyState(componentNameMap[currentView] || 'this feature');
         }
 
+        // Wrap each component in error boundary for better error handling
+        const wrapWithErrorBoundary = (component) => (
+            <ErrorBoundary>
+                {component}
+            </ErrorBoundary>
+        );
+
         switch (currentView) {
             // Day Book cases - These can work without a company (show general info)
             case 'dailySummary':
-                return <DayBook view={currentView} {...commonProps} />;
             case 'transactions':
-                return <DayBook view={currentView} {...commonProps} />;
             case 'cashAndBank':
-                return <DayBook view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <DayBook view={currentView} {...commonProps} />
+                );
 
             // Parties case - Requires company
             case 'parties':
-                return <Parties {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Parties {...commonProps} />
+                );
 
             // Sales cases - Requires company
             case 'allSales':
             case 'invoices':
             case 'createInvoice':
             case 'creditNotes':
-                return <Sales view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Sales view={currentView} {...commonProps} />
+                );
 
             // Sales Orders cases - Requires company
             case 'salesOrders':
             case 'createSalesOrder':
-                return <SalesOrders view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <SalesOrders view={currentView} {...commonProps} />
+                );
 
             // Purchase & Expense cases - Requires company
             case 'purchaseBills':
@@ -180,27 +394,41 @@ function HomePage({
             case 'allPurchases':
             case 'createPurchase':
             case 'purchaseOrders':
-                return <Purchases view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Purchases view={currentView} {...commonProps} />
+                );
 
             // Legacy Purchase Order case (keep for backward compatibility) - Requires company
             case 'createPurchaseOrder':
-                return <PurchaseOrders view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <PurchaseOrders view={currentView} {...commonProps} />
+                );
 
             // Bank & Cash cases - Requires company
             case 'bankAccounts':
-                return <Bank view="bankAccounts" activeType="bank" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Bank view="bankAccounts" activeType="bank" {...commonProps} />
+                );
             case 'cashAccounts':
-                return <Bank view="cashAccounts" activeType="cash" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Bank view="cashAccounts" activeType="cash" {...commonProps} />
+                );
             case 'bankTransactions':
-                return <Bank view="bankTransactions" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Bank view="bankTransactions" {...commonProps} />
+                );
             case 'bankReconciliation':
-                return <Bank view="bankReconciliation" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Bank view="bankReconciliation" {...commonProps} />
+                );
             case 'cashFlow':
-                return <Bank view="cashFlow" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Bank view="cashFlow" {...commonProps} />
+                );
 
-            // Products & Services case - Basic placeholder (doesn't require company for now)
+            // Products & Services case - Basic placeholder
             case 'products':
-                return (
+                return wrapWithErrorBoundary(
                     <div className="placeholder-content">
                         <Container className="py-5 text-center">
                             <h3>Products & Services</h3>
@@ -219,15 +447,19 @@ function HomePage({
             case 'allProducts':
             case 'lowStock':
             case 'stockMovement':
-                return <Inventory view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <Inventory view={currentView} {...commonProps} />
+                );
 
             // Staff Management case - May require company in future
             case 'staff':
-                return <StaffManagement view={currentView} {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <StaffManagement view={currentView} {...commonProps} />
+                );
 
             // Other cases - General features that don't require company
             case 'insights':
-                return (
+                return wrapWithErrorBoundary(
                     <div className="placeholder-content">
                         <Container className="py-5 text-center">
                             <h3>Insights Dashboard</h3>
@@ -242,7 +474,7 @@ function HomePage({
                 );
 
             case 'reports':
-                return (
+                return wrapWithErrorBoundary(
                     <div className="placeholder-content">
                         <Container className="py-5 text-center">
                             <h3>Reports & Analytics</h3>
@@ -257,7 +489,7 @@ function HomePage({
                 );
 
             case 'settings':
-                return (
+                return wrapWithErrorBoundary(
                     <div className="placeholder-content">
                         <Container className="py-5 text-center">
                             <h3>Settings</h3>
@@ -273,23 +505,86 @@ function HomePage({
 
             // Default case
             default:
-                return <DayBook view="dailySummary" {...commonProps} />;
+                return wrapWithErrorBoundary(
+                    <DayBook view="dailySummary" {...commonProps} />
+                );
         }
     };
 
     return (
         <div className="homepage-container">
-            {/* Company Context Debug Info (only in development) */}
+            {/* Online/Offline Indicator */}
+            <div className="position-fixed top-0 end-0 m-3" style={{ zIndex: 1050 }}>
+                <div className={`badge ${isOnline ? 'bg-success' : 'bg-danger'}`}>
+                    <FontAwesomeIcon icon={isOnline ? faWifi : faTimesCircle} className="me-1" />
+                    {isOnline ? 'Online' : 'Offline'}
+                </div>
+            </div>
+
+            {/* Component Health Indicators (Development Only) */}
             {process.env.NODE_ENV === 'development' && currentCompany && (
                 <div className="position-fixed bottom-0 end-0 m-3" style={{ zIndex: 1000 }}>
-                    <div className="bg-info text-white p-2 rounded small" style={{ fontSize: '0.75rem' }}>
-                        <strong>Company:</strong> {currentCompany.companyName || currentCompany.name}<br />
-                        <strong>ID:</strong> {currentCompany.id || currentCompany._id}<br />
-                        <strong>View:</strong> {currentView}
+                    <div className="bg-dark text-white p-2 rounded small" style={{ fontSize: '0.75rem' }}>
+                        <div><strong>Company:</strong> {currentCompany.companyName || currentCompany.name}</div>
+                        <div><strong>ID:</strong> {currentCompany.id || currentCompany._id}</div>
+                        <div><strong>View:</strong> {currentView}</div>
+                        <hr className="my-1" />
+                        <div><strong>Health:</strong></div>
+                        {Object.entries(componentHealth).map(([service, status]) => (
+                            <div key={service} className="d-flex justify-content-between">
+                                <span>{service}:</span>
+                                <span className={
+                                    status === 'healthy' ? 'text-success' :
+                                    status === 'error' ? 'text-danger' : 'text-warning'
+                                }>
+                                    {status}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
 
+            {/* Toast Notifications */}
+            <ToastContainer position="top-end" className="p-3" style={{ zIndex: 1055 }}>
+                {toasts.map((toast) => (
+                    <Toast
+                        key={toast.id}
+                        show={true}
+                        onClose={() => removeToast(toast.id)}
+                        delay={toast.duration}
+                        autohide
+                        className={`border-${
+                            toast.type === 'success' ? 'success' :
+                            toast.type === 'error' ? 'danger' :
+                            toast.type === 'warning' ? 'warning' : 'info'
+                        }`}
+                    >
+                        <Toast.Header className={`bg-${
+                            toast.type === 'success' ? 'success' :
+                            toast.type === 'error' ? 'danger' :
+                            toast.type === 'warning' ? 'warning' : 'info'
+                        } text-white`}>
+                            <FontAwesomeIcon 
+                                icon={
+                                    toast.type === 'success' ? faCheckCircle :
+                                    toast.type === 'error' ? faExclamationTriangle :
+                                    toast.type === 'warning' ? faExclamationTriangle : faInfoCircle
+                                } 
+                                className="me-2" 
+                            />
+                            <strong className="me-auto">
+                                {toast.type === 'success' ? 'Success' :
+                                 toast.type === 'error' ? 'Error' :
+                                 toast.type === 'warning' ? 'Warning' : 'Info'}
+                            </strong>
+                        </Toast.Header>
+                        <Toast.Body>{toast.message}</Toast.Body>
+                    </Toast>
+                ))}
+            </ToastContainer>
+
+            {/* Main Content */}
             {renderContent()}
         </div>
     );

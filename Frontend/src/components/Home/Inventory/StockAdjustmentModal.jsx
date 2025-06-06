@@ -64,27 +64,39 @@ function StockAdjustmentModal({ show, onHide, product, onUpdateStock }) {
         }
     }, [quantity, adjustmentType, product]);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+   const handleSubmit = (e) => {
+    e.preventDefault();
 
-        if (!quantity || parseFloat(quantity) < 0) {
-            alert('Please enter a valid quantity');
+    if (!quantity || parseFloat(quantity) < 0) {
+        alert('Please enter a valid quantity');
+        return;
+    }
+
+    if (!reason) {
+        alert('Please select or enter a reason for adjustment');
+        return;
+    }
+
+    if (adjustmentType === 'remove' && parseFloat(quantity) > (product.currentStock || 0)) {
+        if (!window.confirm('This will result in negative stock. Continue?')) {
             return;
         }
+    }
 
-        if (!reason) {
-            alert('Please select or enter a reason for adjustment');
-            return;
-        }
-
-        if (adjustmentType === 'remove' && parseFloat(quantity) > (product.currentStock || 0)) {
-            if (!window.confirm('This will result in negative stock. Continue?')) {
-                return;
-            }
-        }
-
-        onUpdateStock(product.id, newStock, reason);
+    // Create the adjustment data object with all required fields
+    const adjustmentData = {
+        adjustmentType: adjustmentType,
+        quantity: parseFloat(quantity),
+        newStock: newStock,
+        reason: reason,
+        asOfDate: new Date().toISOString().split('T')[0]
     };
+
+    console.log('📊 StockAdjustmentModal: Submitting adjustment data:', adjustmentData);
+
+    // Call the parent's update handler with the product ID and adjustment data
+    onUpdateStock(product.id || product._id, adjustmentData);
+};
 
     const handleQuickAdjust = (amount) => {
         setQuantity(Math.abs(amount).toString());
