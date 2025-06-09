@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Alert, Container } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExclamationTriangle, faWifi, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import Footer from './Footer';
@@ -10,20 +11,21 @@ import '../App.css';
 function Layout({
   children,
   onLogout,
-  onNavigate,
-  currentView,
   currentCompany,
   companies,
   onCompanyChange,
   onCompanyCreated,
+  onCompanyUpdated,
   currentUser,
   isLoadingCompanies
 }) {
+  // React Router hooks
+  const { companyId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // Current page state (fallback if not provided via props)
-  const [currentPage, setCurrentPage] = useState(currentView || 'dailySummary');
 
   // Network status state
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -31,13 +33,59 @@ function Layout({
   // Company error state
   const [companyError, setCompanyError] = useState(null);
 
-  // Sync internal page state with props
+  // Get current view from URL path
+  const getCurrentViewFromPath = () => {
+    const pathParts = location.pathname.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+
+    // Map URL paths to views
+    const pathViewMap = {
+      'dashboard': 'dailySummary',
+      'daybook': 'dailySummary',
+      'transactions': 'transactions',
+      'cash-bank': 'cashAndBank',
+      'parties': 'parties',
+      'sales': 'allSales',
+      'invoices': 'invoices',
+      'create-invoice': 'createInvoice',
+      'credit-notes': 'creditNotes',
+      'sales-orders': 'salesOrders',
+      'create-sales-order': 'createSalesOrder',
+      'purchases': 'allPurchases',
+      'purchase-bills': 'purchaseBills',
+      'create-purchase': 'createPurchase',
+      'purchase-orders': 'purchaseOrders',
+      'create-purchase-order': 'createPurchaseOrder',
+      'inventory': 'inventory',
+      'products': 'allProducts',
+      'low-stock': 'lowStock',
+      'stock-movement': 'stockMovement',
+      'bank-accounts': 'bankAccounts',
+      'cash-accounts': 'cashAccounts',
+      'bank-transactions': 'bankTransactions',
+      'bank-reconciliation': 'bankReconciliation',
+      'cash-flow': 'cashFlow',
+      'staff': 'staff',
+      'insights': 'insights',
+      'reports': 'reports',
+      'settings': 'settings'
+    };
+
+    return pathViewMap[lastPart] || 'dailySummary';
+  };
+
+  // Current page derived from URL
+  const currentPage = getCurrentViewFromPath();
+
+  // Debug current routing info
   useEffect(() => {
-    if (currentView && currentView !== currentPage) {
-      console.log('📍 Layout: Updating current page from props:', currentView);
-      setCurrentPage(currentView);
-    }
-  }, [currentView]);
+    console.log('🧭 Layout: Route info:', {
+      companyId,
+      currentPage,
+      pathname: location.pathname,
+      currentCompany: currentCompany?.businessName || currentCompany?.name
+    });
+  }, [companyId, currentPage, location.pathname, currentCompany]);
 
   // Check screen size on mount and resize
   useEffect(() => {
@@ -91,26 +139,110 @@ function Layout({
     setSidebarOpen(!sidebarOpen);
   };
 
-  // Handle navigation with proper prop propagation
+  // Handle navigation - now uses React Router navigation
   const handleNavigation = (page) => {
     console.log('🧭 Layout: Navigation request for:', page);
-    setCurrentPage(page);
 
     // Clear any company errors when navigating
     setCompanyError(null);
 
-    // Propagate navigation to parent if provided
-    if (onNavigate) {
-      onNavigate(page);
+    // Check if we have a company ID to navigate to
+    const effectiveCompanyId = companyId || currentCompany?.id || currentCompany?._id;
+
+    if (!effectiveCompanyId) {
+      console.warn('⚠️ No company ID available for navigation');
+      setCompanyError('Please select a company to access this feature');
+      return;
     }
+
+    // Map views to URL paths
+    const viewPathMap = {
+      'dailySummary': 'dashboard',
+      'transactions': 'transactions',
+      'cashAndBank': 'cash-bank',
+      'parties': 'parties',
+      'allSales': 'sales',
+      'invoices': 'invoices',
+      'createInvoice': 'create-invoice',
+      'creditNotes': 'credit-notes',
+      'salesOrders': 'sales-orders',
+      'createSalesOrder': 'create-sales-order',
+      'allPurchases': 'purchases',
+      'purchaseBills': 'purchase-bills',
+      'createPurchase': 'create-purchase',
+      'purchaseOrders': 'purchase-orders',
+      'createPurchaseOrder': 'create-purchase-order',
+      'inventory': 'inventory',
+      'allProducts': 'products',
+      'lowStock': 'low-stock',
+      'stockMovement': 'stock-movement',
+      'bankAccounts': 'bank-accounts',
+      'cashAccounts': 'cash-accounts',
+      'bankTransactions': 'bank-transactions',
+      'bankReconciliation': 'bank-reconciliation',
+      'cashFlow': 'cash-flow',
+      'staff': 'staff',
+      'insights': 'insights',
+      'reports': 'reports',
+      'settings': 'settings'
+    };
+
+    const urlPath = viewPathMap[page] || 'dashboard';
+    const newPath = `/companies/${effectiveCompanyId}/${urlPath}`;
+
+    console.log('🧭 Navigating to:', newPath);
+    navigate(newPath);
   };
 
-  // Handle company change with error handling
+  // Handle company change with error handling and navigation
   const handleCompanyChange = (company) => {
-    console.log('🏢 Layout: Company change request:', company?.companyName || 'None');
+    console.log('🏢 Layout: Company change request:', company?.businessName || company?.name || 'None');
     setCompanyError(null);
 
     try {
+      if (company) {
+        // Navigate to new company's dashboard
+        const newCompanyId = company.id || company._id;
+        const currentView = getCurrentViewFromPath();
+        const viewPathMap = {
+          'dailySummary': 'dashboard',
+          'transactions': 'transactions',
+          'cashAndBank': 'cash-bank',
+          'parties': 'parties',
+          'allSales': 'sales',
+          'invoices': 'invoices',
+          'createInvoice': 'create-invoice',
+          'creditNotes': 'credit-notes',
+          'salesOrders': 'sales-orders',
+          'createSalesOrder': 'create-sales-order',
+          'allPurchases': 'purchases',
+          'purchaseBills': 'purchase-bills',
+          'createPurchase': 'create-purchase',
+          'purchaseOrders': 'purchase-orders',
+          'createPurchaseOrder': 'create-purchase-order',
+          'inventory': 'inventory',
+          'allProducts': 'products',
+          'lowStock': 'low-stock',
+          'stockMovement': 'stock-movement',
+          'bankAccounts': 'bank-accounts',
+          'cashAccounts': 'cash-accounts',
+          'bankTransactions': 'bank-transactions',
+          'bankReconciliation': 'bank-reconciliation',
+          'cashFlow': 'cash-flow',
+          'staff': 'staff',
+          'insights': 'insights',
+          'reports': 'reports',
+          'settings': 'settings'
+        };
+
+        const urlPath = viewPathMap[currentView] || 'dashboard';
+        const newPath = `/companies/${newCompanyId}/${urlPath}`;
+
+        console.log('🧭 Navigating to new company:', newPath);
+        navigate(newPath);
+      }
+
+      // Propagate to parent component
       if (onCompanyChange) {
         onCompanyChange(company);
       }
@@ -129,9 +261,35 @@ function Layout({
       if (onCompanyCreated) {
         onCompanyCreated(newCompany);
       }
+
+      // Automatically navigate to new company's dashboard
+      if (newCompany) {
+        const newCompanyId = newCompany.id || newCompany._id;
+        const newPath = `/companies/${newCompanyId}/dashboard`;
+
+        console.log('🧭 Navigating to new company dashboard:', newPath);
+        setTimeout(() => {
+          navigate(newPath);
+        }, 100); // Small delay to ensure state is updated
+      }
     } catch (error) {
       console.error('❌ Error handling new company:', error);
       setCompanyError(`Failed to create company: ${error.message}`);
+    }
+  };
+
+  // Handle company updates
+  const handleCompanyUpdated = (updatedCompany) => {
+    console.log('📝 Layout: Company updated:', updatedCompany);
+    setCompanyError(null);
+
+    try {
+      if (onCompanyUpdated) {
+        onCompanyUpdated(updatedCompany);
+      }
+    } catch (error) {
+      console.error('❌ Error handling company update:', error);
+      setCompanyError(`Failed to update company: ${error.message}`);
     }
   };
 
@@ -143,8 +301,11 @@ function Layout({
         currentView: currentPage,
         currentCompany,
         onCompanyChange: handleCompanyChange,
+        onCompanyCreated: handleCompanyCreated,
+        onCompanyUpdated: handleCompanyUpdated,
         currentUser,
-        isOnline
+        isOnline,
+        companyId: companyId || currentCompany?.id || currentCompany?._id
       });
     }
     return child;
@@ -181,9 +342,11 @@ function Layout({
         companies={companies}
         onCompanyChange={handleCompanyChange}
         onCompanyCreated={handleCompanyCreated}
+        onCompanyUpdated={handleCompanyUpdated}
         currentUser={currentUser}
         isLoadingCompanies={isLoadingCompanies}
         isOnline={isOnline}
+        companyId={companyId}
       />
 
       {/* Main content section with sidebar */}
@@ -196,6 +359,7 @@ function Layout({
           currentCompany={currentCompany}
           currentUser={currentUser}
           isOnline={isOnline}
+          companyId={companyId}
         />
 
         <div className={`content-wrapper ${sidebarOpen ? '' : 'expanded'}`}>
@@ -225,34 +389,67 @@ function Layout({
               </Container>
             )}
 
+            {/* Company ID Mismatch Warning */}
+            {companyId && currentCompany && (currentCompany.id !== companyId && currentCompany._id !== companyId) && (
+              <Container className="py-2">
+                <Alert variant="warning" className="mb-3">
+                  <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                  <strong>Company Mismatch:</strong> URL company ID doesn't match selected company.
+                  <button
+                    className="btn btn-sm btn-outline-warning ms-2"
+                    onClick={() => {
+                      const correctId = currentCompany.id || currentCompany._id;
+                      const currentView = getCurrentViewFromPath();
+                      const viewPathMap = {
+                        'dailySummary': 'dashboard',
+                        'transactions': 'transactions',
+                        'cashAndBank': 'cash-bank',
+                        'parties': 'parties',
+                        'allSales': 'sales',
+                        'invoices': 'invoices',
+                        'createInvoice': 'create-invoice',
+                        'creditNotes': 'credit-notes',
+                        'salesOrders': 'sales-orders',
+                        'createSalesOrder': 'create-sales-order',
+                        'allPurchases': 'purchases',
+                        'purchaseBills': 'purchase-bills',
+                        'createPurchase': 'create-purchase',
+                        'purchaseOrders': 'purchase-orders',
+                        'createPurchaseOrder': 'create-purchase-order',
+                        'inventory': 'inventory',
+                        'allProducts': 'products',
+                        'lowStock': 'low-stock',
+                        'stockMovement': 'stock-movement',
+                        'bankAccounts': 'bank-accounts',
+                        'cashAccounts': 'cash-accounts',
+                        'bankTransactions': 'bank-transactions',
+                        'bankReconciliation': 'bank-reconciliation',
+                        'cashFlow': 'cash-flow',
+                        'staff': 'staff',
+                        'insights': 'insights',
+                        'reports': 'reports',
+                        'settings': 'settings'
+                      };
+                      const urlPath = viewPathMap[currentView] || 'dashboard';
+                      navigate(`/companies/${correctId}/${urlPath}`);
+                    }}
+                  >
+                    Fix URL
+                  </button>
+                </Alert>
+              </Container>
+            )}
+
             {childrenWithProps}
           </main>
 
           <Footer
             currentCompany={currentCompany}
             isOnline={isOnline}
+            companyId={companyId}
           />
         </div>
       </div>
-
-      {/* Development Debug Info */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="position-fixed bottom-0 start-0 m-3" style={{ zIndex: 1000 }}>
-          <div className="bg-dark text-white p-2 rounded small" style={{ fontSize: '0.75rem' }}>
-            <div><strong>User:</strong> {currentUser?.name || 'Not logged in'}</div>
-            <div><strong>Company:</strong> {currentCompany?.companyName || 'None selected'}</div>
-            <div><strong>Page:</strong> {currentPage}</div>
-            <div><strong>Sidebar:</strong> {sidebarOpen ? 'Open' : 'Closed'}</div>
-            <div><strong>Online:</strong>
-              <FontAwesomeIcon
-                icon={isOnline ? faWifi : faTimes}
-                className={`ms-1 ${isOnline ? 'text-success' : 'text-danger'}`}
-              />
-            </div>
-            <div><strong>Companies:</strong> {companies.length}</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

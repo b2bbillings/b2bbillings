@@ -15,8 +15,11 @@ import {
     faSync,
     faWifi,
     faTimes,
-    faCheck
+    faCheck,
+    faHome,
+    faChevronDown
 } from '@fortawesome/free-solid-svg-icons';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import CreateCompany from '../components/Company/CreateCompany';
 import './Navbar.css';
 
@@ -27,10 +30,20 @@ function Navbar({
     companies,
     onCompanyChange,
     onCompanyCreated,
+    onCompanyUpdated,
     currentUser,
     isLoadingCompanies,
-    isOnline
+    isOnline,
+    companyId
 }) {
+    // React Router hooks
+    const { companyId: urlCompanyId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // Use companyId from props or URL
+    const effectiveCompanyId = companyId || urlCompanyId;
+
     // Dropdown states
     const [showNotifications, setShowNotifications] = useState(false);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -54,6 +67,17 @@ function Navbar({
     ];
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    // Debug logging
+    useEffect(() => {
+        console.log('🧭 Navbar: Route info:', {
+            urlCompanyId,
+            companyId,
+            effectiveCompanyId,
+            currentCompany: currentCompany?.businessName || currentCompany?.name,
+            pathname: location.pathname
+        });
+    }, [urlCompanyId, companyId, effectiveCompanyId, currentCompany, location.pathname]);
 
     // Generate initials from company name
     const generateInitials = (name) => {
@@ -100,19 +124,91 @@ function Navbar({
         };
     }, [showNotifications, showUserDropdown, showBusinessDropdown]);
 
-    // Handle company selection
+    // Get current view from URL path for context
+    const getCurrentView = () => {
+        const pathParts = location.pathname.split('/');
+        const lastPart = pathParts[pathParts.length - 1];
+
+        const viewDisplayNames = {
+            'dashboard': 'Dashboard',
+            'daybook': 'Day Book',
+            'transactions': 'Transactions',
+            'cash-bank': 'Cash & Bank',
+            'parties': 'Parties',
+            'sales': 'Sales',
+            'invoices': 'Invoices',
+            'create-invoice': 'Create Invoice',
+            'credit-notes': 'Credit Notes',
+            'sales-orders': 'Sales Orders',
+            'create-sales-order': 'Create Sales Order',
+            'purchases': 'Purchases',
+            'purchase-bills': 'Purchase Bills',
+            'create-purchase': 'Create Purchase',
+            'purchase-orders': 'Purchase Orders',
+            'create-purchase-order': 'Create Purchase Order',
+            'inventory': 'Inventory',
+            'products': 'Products',
+            'low-stock': 'Low Stock',
+            'stock-movement': 'Stock Movement',
+            'bank-accounts': 'Bank Accounts',
+            'cash-accounts': 'Cash Accounts',
+            'bank-transactions': 'Bank Transactions',
+            'bank-reconciliation': 'Bank Reconciliation',
+            'cash-flow': 'Cash Flow',
+            'staff': 'Staff',
+            'insights': 'Insights',
+            'reports': 'Reports',
+            'settings': 'Settings'
+        };
+
+        return viewDisplayNames[lastPart] || 'Dashboard';
+    };
+
+    // Handle company selection with navigation
     const handleCompanySelect = (company) => {
-        console.log('🏢 Navbar: Company selected:', company?.companyName || company?.name);
+        console.log('🏢 Navbar: Company selected:', company?.businessName || company?.name);
 
-        if (onCompanyChange) {
-            onCompanyChange(company);
+        try {
+            if (!company) {
+                console.warn('⚠️ No company provided to select');
+                return;
+            }
+
+            const newCompanyId = company.id || company._id;
+            if (!newCompanyId) {
+                console.error('❌ Selected company has no ID');
+                return;
+            }
+
+            // Determine current view to maintain context when switching companies
+            const pathParts = location.pathname.split('/');
+            const currentView = pathParts[pathParts.length - 1] || 'dashboard';
+
+            // Navigate to the same view but with new company
+            const newPath = `/companies/${newCompanyId}/${currentView}`;
+            console.log('🧭 Navigating to new company path:', newPath);
+
+            navigate(newPath);
+
+            // Notify parent component
+            if (onCompanyChange) {
+                onCompanyChange(company);
+            }
+
+        } catch (error) {
+            console.error('❌ Error selecting company:', error);
+        } finally {
+            setShowBusinessDropdown(false);
         }
-
-        setShowBusinessDropdown(false);
     };
 
     // Handle opening create company modal
     const handleAddNewBusiness = () => {
+        if (!isOnline) {
+            console.warn('⚠️ Cannot create company while offline');
+            return;
+        }
+
         setShowCreateCompany(true);
         setShowBusinessDropdown(false);
     };
@@ -126,11 +222,43 @@ function Navbar({
     const handleCompanyCreated = (newCompany) => {
         console.log('🆕 Navbar: Company created:', newCompany);
 
-        if (onCompanyCreated) {
-            onCompanyCreated(newCompany);
-        }
+        try {
+            // Notify parent component first
+            if (onCompanyCreated) {
+                onCompanyCreated(newCompany);
+            }
 
-        setShowCreateCompany(false);
+            // Auto-navigate to new company's dashboard
+            if (newCompany) {
+                const newCompanyId = newCompany.id || newCompany._id;
+                if (newCompanyId) {
+                    const newPath = `/companies/${newCompanyId}/dashboard`;
+                    console.log('🧭 Navigating to new company dashboard:', newPath);
+
+                    // Small delay to ensure state updates are processed
+                    setTimeout(() => {
+                        navigate(newPath);
+                    }, 100);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error handling company creation:', error);
+        } finally {
+            setShowCreateCompany(false);
+        }
+    };
+
+    // Handle navigation to home
+    const handleNavigateHome = () => {
+        if (effectiveCompanyId) {
+            navigate(`/companies/${effectiveCompanyId}/dashboard`);
+        } else if (companies.length > 0) {
+            const firstCompany = companies[0];
+            const companyId = firstCompany.id || firstCompany._id;
+            navigate(`/companies/${companyId}/dashboard`);
+        } else {
+            navigate('/');
+        }
     };
 
     // Get user display name
@@ -164,6 +292,7 @@ function Navbar({
                             <span>Loading companies...</span>
                         </div>
                     </div>
+                    <FontAwesomeIcon icon={faChevronDown} className="ms-2 text-muted" size="sm" />
                 </div>
             );
         }
@@ -181,12 +310,13 @@ function Navbar({
                             <span>Add Company</span>
                         </div>
                     </div>
+                    <FontAwesomeIcon icon={faChevronDown} className="ms-2 text-muted" size="sm" />
                 </div>
             );
         }
 
         // Generate company display data
-        const companyName = currentCompany.companyName || currentCompany.businessName || currentCompany.name || 'Company';
+        const companyName = currentCompany.businessName || currentCompany.name || 'Company';
         const companyInitials = generateInitials(companyName);
         const companyColor = currentCompany.color || getRandomColor();
 
@@ -207,11 +337,30 @@ function Navbar({
                     </div>
                     <div className="add-business">
                         <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
-                        <span>Add Another Company</span>
+                        <span>Switch Company</span>
                     </div>
                 </div>
+                <FontAwesomeIcon icon={faChevronDown} className="ms-2 text-muted" size="sm" />
             </div>
         );
+    };
+
+    // Render company validation warning if needed
+    const renderCompanyValidationWarning = () => {
+        if (!effectiveCompanyId || !currentCompany) return null;
+
+        const currentCompanyId = currentCompany.id || currentCompany._id;
+        if (effectiveCompanyId !== currentCompanyId) {
+            return (
+                <div className="company-validation-warning">
+                    <small className="text-warning">
+                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                        Company mismatch detected
+                    </small>
+                </div>
+            );
+        }
+        return null;
     };
 
     return (
@@ -232,12 +381,18 @@ function Navbar({
                                 variant="link"
                                 className="p-0 me-2 sidebar-toggle"
                                 onClick={toggleSidebar}
+                                title="Toggle Sidebar"
                             >
                                 <FontAwesomeIcon icon={faBars} />
                             </Button>
 
                             {/* Logo and brand name */}
-                            <BootstrapNavbar.Brand href="#" className="d-flex align-items-center me-2">
+                            <BootstrapNavbar.Brand
+                                className="d-flex align-items-center me-2"
+                                onClick={handleNavigateHome}
+                                style={{ cursor: 'pointer' }}
+                                title="Go to Dashboard"
+                            >
                                 <img
                                     src={tempLogo}
                                     alt="ShopManager Logo"
@@ -248,7 +403,16 @@ function Navbar({
                                 <span className="brand-text">ShopManager</span>
                             </BootstrapNavbar.Brand>
 
-                            {/* Company Selector */}
+                            {/* Current page breadcrumb (visible on larger screens) */}
+                            <div className="d-none d-lg-flex align-items-center text-muted">
+                                <FontAwesomeIcon icon={faHome} className="me-2" size="sm" />
+                                <span className="me-2">/</span>
+                                <span className="current-page-name">{getCurrentView()}</span>
+                            </div>
+                        </div>
+
+                        {/* Center section - Company Selector */}
+                        <div className="mx-auto d-flex align-items-center">
                             <div
                                 ref={businessDropdownRef}
                                 className="business-selector d-flex align-items-center position-relative"
@@ -257,6 +421,7 @@ function Navbar({
                                     className="d-flex align-items-center business-dropdown-toggle"
                                     onClick={() => setShowBusinessDropdown(!showBusinessDropdown)}
                                     style={{ cursor: 'pointer' }}
+                                    title="Switch Company"
                                 >
                                     {renderCompanySelector()}
                                 </div>
@@ -272,6 +437,9 @@ function Navbar({
                                                     className={`me-2 ${isOnline ? 'text-success' : 'text-danger'}`}
                                                     title={isOnline ? 'Online' : 'Offline'}
                                                 />
+                                                <small className="text-muted">
+                                                    {getCurrentView()}
+                                                </small>
                                             </div>
                                         </div>
 
@@ -284,6 +452,15 @@ function Navbar({
                                             </div>
                                         )}
 
+                                        {/* Company ID Debug Info (Development Only) */}
+                                        {process.env.NODE_ENV === 'development' && effectiveCompanyId && (
+                                            <div className="px-3 py-1">
+                                                <small className="text-muted">
+                                                    Current ID: {effectiveCompanyId}
+                                                </small>
+                                            </div>
+                                        )}
+
                                         {isLoadingCompanies ? (
                                             <div className="px-3 py-2 text-center">
                                                 <Spinner animation="border" size="sm" className="me-2" />
@@ -293,10 +470,10 @@ function Navbar({
                                             <>
                                                 {companies && companies.length > 0 ? (
                                                     companies.map(company => {
-                                                        const companyName = company.companyName || company.businessName || company.name || 'Unnamed Company';
+                                                        const companyName = company.businessName || company.name || 'Unnamed Company';
                                                         const companyId = company.id || company._id;
-                                                        const currentCompanyId = currentCompany?.id || currentCompany?._id;
-                                                        const isCurrentCompany = companyId === currentCompanyId;
+                                                        const isCurrentCompany = companyId === effectiveCompanyId ||
+                                                            (currentCompany && companyId === (currentCompany.id || currentCompany._id));
 
                                                         return (
                                                             <a
@@ -321,6 +498,11 @@ function Navbar({
                                                                     {company.email && (
                                                                         <small className="text-muted d-block">{company.email}</small>
                                                                     )}
+                                                                    {process.env.NODE_ENV === 'development' && (
+                                                                        <small className="text-muted d-block">
+                                                                            ID: {companyId}
+                                                                        </small>
+                                                                    )}
                                                                 </div>
                                                                 {isCurrentCompany && (
                                                                     <FontAwesomeIcon icon={faCheck} className="text-success ms-2" />
@@ -342,13 +524,21 @@ function Navbar({
                                                         e.preventDefault();
                                                         handleAddNewBusiness();
                                                     }}
-                                                    style={{ opacity: isOnline ? 1 : 0.5 }}
-                                                    title={!isOnline ? 'Available when online' : ''}
+                                                    style={{
+                                                        opacity: isOnline ? 1 : 0.5,
+                                                        cursor: isOnline ? 'pointer' : 'not-allowed'
+                                                    }}
+                                                    title={!isOnline ? 'Available when online' : 'Create a new company'}
                                                 >
                                                     <FontAwesomeIcon icon={faPlus} className="me-2" />
                                                     Add New Company
                                                 </a>
-                                                <a className="dropdown-item" href="#" title="Coming soon">
+                                                <a
+                                                    className="dropdown-item"
+                                                    href="#"
+                                                    title="Manage companies (Coming soon)"
+                                                    onClick={(e) => e.preventDefault()}
+                                                >
                                                     <FontAwesomeIcon icon={faBuilding} className="me-2" />
                                                     Manage Companies
                                                 </a>
@@ -357,6 +547,9 @@ function Navbar({
                                     </div>
                                 )}
                             </div>
+
+                            {/* Company validation warning */}
+                            {renderCompanyValidationWarning()}
                         </div>
 
                         {/* Right section - Notifications and profile */}
@@ -372,7 +565,12 @@ function Navbar({
 
                             {/* Help icon */}
                             <Nav.Item className="d-none d-lg-block">
-                                <Nav.Link href="#" className="icon-link" title="Help & Support">
+                                <Nav.Link
+                                    href="#"
+                                    className="icon-link"
+                                    title="Help & Support"
+                                    onClick={(e) => e.preventDefault()}
+                                >
                                     <FontAwesomeIcon icon={faQuestionCircle} />
                                 </Nav.Link>
                             </Nav.Item>
@@ -411,6 +609,7 @@ function Navbar({
                                                     key={notification.id}
                                                     className={`dropdown-item d-flex align-items-center ${!notification.isRead ? 'unread' : ''}`}
                                                     href="#"
+                                                    onClick={(e) => e.preventDefault()}
                                                 >
                                                     <div className="notification-icon me-3">
                                                         <div className={`icon-circle ${!notification.isRead ? 'bg-primary' : 'bg-secondary'}`}>
@@ -429,7 +628,11 @@ function Navbar({
                                             </div>
                                         )}
                                         <div className="dropdown-divider"></div>
-                                        <a className="dropdown-item text-center small text-gray-500" href="#">
+                                        <a
+                                            className="dropdown-item text-center small text-gray-500"
+                                            href="#"
+                                            onClick={(e) => e.preventDefault()}
+                                        >
                                             View All Notifications
                                         </a>
                                     </div>
@@ -467,18 +670,38 @@ function Navbar({
                                             {currentUser?.email && (
                                                 <small className="text-muted">{currentUser.email}</small>
                                             )}
+                                            {effectiveCompanyId && (
+                                                <small className="text-muted d-block">
+                                                    Company: {currentCompany?.businessName || currentCompany?.name || 'Selected'}
+                                                </small>
+                                            )}
                                         </div>
                                         <div className="dropdown-divider"></div>
 
-                                        <a className="dropdown-item" href="#" title="View and edit profile">
+                                        <a
+                                            className="dropdown-item"
+                                            href="#"
+                                            title="View and edit profile"
+                                            onClick={(e) => e.preventDefault()}
+                                        >
                                             <FontAwesomeIcon icon={faUser} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Profile
                                         </a>
-                                        <a className="dropdown-item" href="#" title="Application settings">
+                                        <a
+                                            className="dropdown-item"
+                                            href="#"
+                                            title="Application settings"
+                                            onClick={(e) => e.preventDefault()}
+                                        >
                                             <FontAwesomeIcon icon={faCog} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Settings
                                         </a>
-                                        <a className="dropdown-item" href="#" title="View activity history">
+                                        <a
+                                            className="dropdown-item"
+                                            href="#"
+                                            title="View activity history"
+                                            onClick={(e) => e.preventDefault()}
+                                        >
                                             <FontAwesomeIcon icon={faClipboardList} className="fa-sm fa-fw me-2 text-gray-400" />
                                             Activity Log
                                         </a>
@@ -513,6 +736,7 @@ function Navbar({
                 onHide={handleCloseCreateCompany}
                 onCompanyCreated={handleCompanyCreated}
                 isOnline={isOnline}
+                currentUser={currentUser}
             />
         </>
     );

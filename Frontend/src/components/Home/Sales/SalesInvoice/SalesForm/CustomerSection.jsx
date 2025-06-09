@@ -1,131 +1,373 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Form, ListGroup, Card, Button } from 'react-bootstrap';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Form, ListGroup, Card, Button, Spinner, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUser, faPhone, faUserPlus, faSearch, faTimes } from '@fortawesome/free-solid-svg-icons';
-// Correct import path for AddNewParty
+import {
+    faUser,
+    faPhone,
+    faUserPlus,
+    faSearch,
+    faTimes,
+    faEnvelope,
+    faMapMarkerAlt,
+    faBuilding,
+    faIdCard,
+    faExclamationTriangle,
+    faTruck
+} from '@fortawesome/free-solid-svg-icons';
 import AddNewParty from '../../../Party/AddNewParty';
+import partyService from '../../../../../services/partyService';
 
-function CustomerSection({ customer, mobileNumber, onCustomerChange, onMobileChange }) {
+function CustomerSection({
+    customer,
+    onCustomerChange,
+    companyId,
+    isSupplierMode = false,
+    mobileNumber,
+    onMobileChange
+}) {
+    // Determine entity type based on mode
+    const entityType = isSupplierMode ? 'supplier' : 'customer';
+    const EntityTypeCapitalized = isSupplierMode ? 'Supplier' : 'Customer';
+    const entityIcon = isSupplierMode ? faTruck : faUser;
+
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [filteredCustomers, setFilteredCustomers] = useState([]);
     const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [hasSearched, setHasSearched] = useState(false);
     const inputRef = useRef(null);
+    const searchTimeoutRef = useRef(null);
+    const isUserTyping = useRef(false);
 
-    // Sample customers data
-    const [customers, setCustomers] = useState([
-        { id: 1, name: 'John Doe', phone: '9876543210', email: 'john@example.com', address: 'Mumbai' },
-        { id: 2, name: 'Jane Smith', phone: '9876543211', email: 'jane@example.com', address: 'Delhi' },
-        { id: 3, name: 'Mike Johnson', phone: '9876543212', email: 'mike@example.com', address: 'Pune' },
-    ]);
-
-    // Keyboard shortcut handler
+    // Initialize search query with customer name or mobile number
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.altKey && e.key.toLowerCase() === 'c') {
-                e.preventDefault();
-                setShowAddCustomerModal(true);
+        if (customer) {
+            setSearchQuery(customer.name || '');
+        } else if (mobileNumber) {
+            setSearchQuery(mobileNumber);
+        }
+    }, [customer, mobileNumber]);
+
+    // Search entities function
+    const searchEntities = useCallback(async (query) => {
+        if (!query.trim() || query.length < 2) {
+            setFilteredCustomers([]);
+            setShowSuggestions(false);
+            setHasSearched(false);
+            return;
+        }
+
+        // Validate companyId
+        if (!companyId) {
+            console.warn('⚠️ No companyId provided for search - skipping search');
+            setError(`Company ID is required for ${entityType} search. Please ensure you're in a valid company context.`);
+            setFilteredCustomers([]);
+            setShowSuggestions(false);
+            setHasSearched(false);
+            return;
+        }
+
+        console.log(`🔍 Starting ${entityType} search for:`, query, 'with companyId:', companyId);
+        setSearchLoading(true);
+        setError(null);
+
+        try {
+            const response = await partyService.searchParties(query, entityType, 8, companyId);
+            console.log(`🔍 ${EntityTypeCapitalized} search response:`, response);
+
+            if (response && response.success && response.data && Array.isArray(response.data)) {
+                // Transform the response data to match our expected format
+                const entities = response.data.map(party => {
+                    console.log(`🔄 Transforming ${entityType}:`, party);
+                    return {
+                        id: party._id || party.id,
+                        _id: party._id || party.id,
+                        name: party.name || '',
+                        mobile: party.phoneNumber || party.mobile || '',
+                        email: party.email || '',
+                        companyName: party.companyName || '',
+                        gstNumber: party.gstNumber || '',
+                        partyType: party.partyType || entityType,
+                        currentBalance: party.currentBalance || 0,
+                        creditLimit: party.creditLimit || 0,
+                        address: {
+                            street: party.homeAddressLine || '',
+                            city: party.homeDistrict || '',
+                            state: party.homeState || '',
+                            pincode: party.homePincode || '',
+                            country: party.country || 'India'
+                        }
+                    };
+                });
+
+                console.log(`✅ Transformed ${entityType}s:`, entities);
+                setFilteredCustomers(entities);
+                setShowSuggestions(true);
+                setHasSearched(true);
+
+                // Maintain focus after search results appear
+                setTimeout(() => {
+                    if (inputRef.current && isUserTyping.current && !customer) {
+                        inputRef.current.focus();
+                    }
+                }, 50);
+
+            } else {
+                console.log(`❌ No ${entityType} data in response or response not successful`);
+                setFilteredCustomers([]);
+                setShowSuggestions(searchQuery.trim().length >= 2);
+                setHasSearched(true);
             }
-        };
+        } catch (err) {
+            console.error(`❌ Error searching ${entityType}s:`, err);
+            setError(err.message || `Failed to search ${entityType}s`);
+            setFilteredCustomers([]);
+            setShowSuggestions(false);
+            setHasSearched(false);
+        } finally {
+            setSearchLoading(false);
+        }
+    }, [customer, searchQuery, companyId, entityType, EntityTypeCapitalized]);
 
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, []);
-
-    // Filter customers based on search
+    // CompanyId validation effect
     useEffect(() => {
-        if (searchQuery.trim() && !customer) {
-            const filtered = customers.filter(cust =>
-                cust.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                cust.phone.includes(searchQuery)
-            ).slice(0, 5);
+        if (!companyId) {
+            console.warn('⚠️ CustomerSection: No companyId provided');
 
-            setFilteredCustomers(filtered);
-            setShowSuggestions(true);
+            // Don't show error immediately, wait for companyId to load
+            const timer = setTimeout(() => {
+                if (!companyId) {
+                    setError(`Please select a company first to search ${entityType}s`);
+                    setFilteredCustomers([]);
+                    setShowSuggestions(false);
+                    setHasSearched(false);
+                }
+            }, 1000);
+
+            return () => clearTimeout(timer);
+        } else {
+            // Clear error when companyId is provided
+            setError(null);
+            console.log('✅ CustomerSection: companyId provided:', companyId);
+        }
+    }, [companyId, entityType]);
+
+    // Debounced search trigger
+    useEffect(() => {
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        if (searchQuery.trim().length >= 2 && !customer && isUserTyping.current) {
+            searchTimeoutRef.current = setTimeout(() => {
+                searchEntities(searchQuery);
+            }, 300);
         } else {
             setFilteredCustomers([]);
             setShowSuggestions(false);
+            setHasSearched(false);
         }
-    }, [searchQuery, customer, customers]);
 
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [searchQuery, customer, searchEntities]);
+
+    // Handle new customer save
+    const handleSaveNewCustomer = async (newEntityData) => {
+        try {
+            console.log(`💾 Creating new ${entityType}:`, newEntityData);
+
+            if (!companyId) {
+                throw new Error('Company ID is required to create a new party');
+            }
+
+            // Transform data to match backend schema
+            const partyData = {
+                name: newEntityData.name.trim(),
+                phoneNumber: newEntityData.phoneNumber || newEntityData.mobile,
+                email: newEntityData.email || '',
+                partyType: entityType,
+                companyId: companyId,
+                companyName: newEntityData.companyName || '',
+                gstNumber: newEntityData.gstNumber || '',
+                gstType: newEntityData.gstType || 'unregistered',
+                creditLimit: parseFloat(newEntityData.creditLimit) || 0,
+                openingBalance: parseFloat(newEntityData.openingBalance) || 0,
+                homeAddressLine: newEntityData.homeAddressLine || newEntityData.addressLine || '',
+                homeState: newEntityData.homeState || newEntityData.state || '',
+                homeDistrict: newEntityData.homeDistrict || newEntityData.city || '',
+                homePincode: newEntityData.homePincode || newEntityData.pincode || '',
+                country: newEntityData.country || 'INDIA'
+            };
+
+            const response = await partyService.createParty(partyData);
+
+            if (response.success && response.data) {
+                const createdEntity = response.data;
+
+                // Transform response to match our expected format
+                const normalizedEntity = {
+                    id: createdEntity._id,
+                    _id: createdEntity._id,
+                    name: createdEntity.name,
+                    mobile: createdEntity.phoneNumber,
+                    email: createdEntity.email || '',
+                    companyName: createdEntity.companyName || '',
+                    gstNumber: createdEntity.gstNumber || '',
+                    partyType: createdEntity.partyType,
+                    currentBalance: createdEntity.currentBalance || 0,
+                    creditLimit: createdEntity.creditLimit || 0,
+                    address: {
+                        street: createdEntity.homeAddressLine || '',
+                        city: createdEntity.homeDistrict || '',
+                        state: createdEntity.homeState || '',
+                        pincode: createdEntity.homePincode || '',
+                        country: createdEntity.country || 'India'
+                    }
+                };
+
+                // Select the new entity immediately
+                handleCustomerSelect(normalizedEntity);
+                setShowAddCustomerModal(false);
+
+                console.log(`✅ ${EntityTypeCapitalized} created and selected successfully`);
+            } else {
+                throw new Error(`Failed to create ${entityType}`);
+            }
+        } catch (error) {
+            console.error(`❌ Error creating ${entityType}:`, error);
+            setError(error.message || `Failed to create ${entityType}`);
+        }
+    };
+
+    // Handle search input change
     const handleSearchChange = (e) => {
         const value = e.target.value;
+        console.log(`📝 ${EntityTypeCapitalized} search input changed:`, value);
+
         setSearchQuery(value);
+        setError(null);
+        isUserTyping.current = true;
+
+        // Handle mobile number change if in mobile mode
+        if (onMobileChange && !customer) {
+            onMobileChange(value);
+        }
 
         if (customer && value !== customer.name) {
             onCustomerChange(null);
-            onMobileChange('');
         }
     };
 
-    const handleCustomerSelect = (selectedCustomer) => {
-        setSearchQuery(selectedCustomer.name);
-        onCustomerChange(selectedCustomer);
-        onMobileChange(selectedCustomer.phone);
+    // Handle customer selection
+    const handleCustomerSelect = (selectedEntity) => {
+        console.log(`🎯 Selecting ${entityType}:`, selectedEntity);
+
+        isUserTyping.current = false;
+        setSearchQuery(selectedEntity.name);
+        onCustomerChange(selectedEntity);
+
+        // Update mobile number if handler provided
+        if (onMobileChange) {
+            onMobileChange(selectedEntity.mobile || '');
+        }
+
         setShowSuggestions(false);
+        setFilteredCustomers([]);
+        setHasSearched(false);
+        setError(null);
     };
 
+    // Handle customer removal
     const handleRemoveCustomer = () => {
+        console.log(`🗑️ Removing ${entityType}`);
+
         setSearchQuery('');
         onCustomerChange(null);
-        onMobileChange('');
+
+        if (onMobileChange) {
+            onMobileChange('');
+        }
+
+        setShowSuggestions(false);
+        setFilteredCustomers([]);
+        setHasSearched(false);
+        setError(null);
+        isUserTyping.current = false;
+
+        // Focus input after removal
+        setTimeout(() => {
+            if (inputRef.current) {
+                inputRef.current.focus();
+            }
+        }, 50);
     };
 
+    // Handle add new customer
     const handleAddNewCustomer = () => {
-        // Close suggestions when opening modal to prevent overlap
+        console.log(`➕ Opening add ${entityType} modal`);
+
+        isUserTyping.current = false;
         setShowSuggestions(false);
         setShowAddCustomerModal(true);
     };
 
-    const handleSaveNewCustomer = (newCustomer, isQuickAdd = false, isEdit = false) => {
-        console.log('💾 Saving new customer:', newCustomer);
-        
-        // Normalize the customer data to handle different field structures
-        const normalizedCustomer = {
-            id: newCustomer.id || Date.now(),
-            name: newCustomer.name,
-            phone: newCustomer.phone || newCustomer.phoneNumber,
-            phoneNumber: newCustomer.phoneNumber || newCustomer.phone,
-            email: newCustomer.email || '',
-            address: newCustomer.address || newCustomer.addressLine || '',
-            addressLine: newCustomer.addressLine || newCustomer.address || '',
-            partyType: newCustomer.partyType || 'customer',
-            isRunningCustomer: newCustomer.isRunningCustomer || false,
-            companyName: newCustomer.companyName || '',
-            gstNumber: newCustomer.gstNumber || '',
-            city: newCustomer.city || '',
-            state: newCustomer.state || '',
-            pincode: newCustomer.pincode || '',
-            taluka: newCustomer.taluka || '',
-            district: newCustomer.district || '',
-            whatsappNumber: newCustomer.whatsappNumber || newCustomer.phone || newCustomer.phoneNumber,
-            phoneNumbers: newCustomer.phoneNumbers || [],
-            openingBalance: newCustomer.openingBalance || 0,
-            openingBalanceType: newCustomer.openingBalanceType || 'debit',
-            createdAt: newCustomer.createdAt || new Date().toISOString()
-        };
-
-        // Add to customers list
-        setCustomers(prev => [...prev, normalizedCustomer]);
-        
-        // Select the new customer immediately
-        handleCustomerSelect(normalizedCustomer);
-        
-        // Close modal
-        setShowAddCustomerModal(false);
-        
-        console.log('✅ Customer added and selected successfully');
-    };
-
+    // Handle modal close
     const handleCloseModal = () => {
         setShowAddCustomerModal(false);
+        // Restore focus to input when modal closes
+        setTimeout(() => {
+            if (inputRef.current && !customer) {
+                inputRef.current.focus();
+            }
+        }, 100);
+    };
+
+    // Handle input focus
+    const handleInputFocus = () => {
+        console.log(`🎯 ${EntityTypeCapitalized} input focused`);
+        isUserTyping.current = true;
+
+        if (searchQuery.trim().length >= 2 && !customer && filteredCustomers.length > 0) {
+            setShowSuggestions(true);
+        }
+    };
+
+    // Handle input blur
+    const handleInputBlur = (e) => {
+        const relatedTarget = e.relatedTarget;
+        const isClickingOnSuggestions = relatedTarget && relatedTarget.closest('.suggestions-container');
+
+        if (!isClickingOnSuggestions) {
+            setTimeout(() => {
+                setShowSuggestions(false);
+                isUserTyping.current = false;
+            }, 150);
+        }
+    };
+
+    // Handle keyboard events
+    const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            setShowSuggestions(false);
+            e.preventDefault();
+        }
     };
 
     // Click outside to close suggestions
     useEffect(() => {
         const handleClickOutside = (e) => {
-            if (inputRef.current && !inputRef.current.contains(e.target)) {
+            const searchContainer = e.target.closest('.position-relative');
+            const suggestionsContainer = e.target.closest('.suggestions-container');
+
+            if (!searchContainer && !suggestionsContainer) {
                 setShowSuggestions(false);
+                isUserTyping.current = false;
             }
         };
 
@@ -133,52 +375,79 @@ function CustomerSection({ customer, mobileNumber, onCustomerChange, onMobileCha
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Handle keyboard navigation in suggestions
-    const handleKeyDown = (e) => {
-        if (!showSuggestions) return;
-
-        if (e.key === 'Escape') {
-            setShowSuggestions(false);
-            e.preventDefault();
-        } else if (e.key === 'ArrowDown' && filteredCustomers.length > 0) {
-            e.preventDefault();
-            // Focus first suggestion or implement arrow navigation
-        }
-    };
-
     // Auto-hide suggestions when modal opens
     useEffect(() => {
         if (showAddCustomerModal) {
             setShowSuggestions(false);
+            isUserTyping.current = false;
         }
     }, [showAddCustomerModal]);
+
+    // ✅ FIXED: Define styles as regular CSS classes or inline styles
+    const componentStyles = {
+        maxHeight200: {
+            maxHeight: '200px'
+        },
+        customerSearchInput: {
+            borderColor: '#0d6efd',
+            boxShadow: '0 0 0 0.2rem rgba(13, 110, 253, 0.25)'
+        },
+        suggestionsCard: {
+            border: '1px solid #dee2e6',
+            boxShadow: '0 0.5rem 1rem rgba(0, 0, 0, 0.15)'
+        },
+        cursorPointer: {
+            cursor: 'pointer'
+        }
+    };
 
     return (
         <>
             <div className="h-100">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                    <small className="text-primary fw-semibold">Customer Details</small>
+                    <small className="text-primary fw-semibold">
+                        <FontAwesomeIcon icon={entityIcon} className="me-1" />
+                        {EntityTypeCapitalized} Details
+                    </small>
                     <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                        Press <kbd>Alt + C</kbd> to add new
+                        Search & Select
                     </small>
                 </div>
 
-                {/* Customer Search */}
-                <div className="position-relative mb-3" ref={inputRef}>
-                    <Form.Label className="text-muted small mb-1">Search Customer</Form.Label>
+                {/* Error Alert */}
+                {error && (
+                    <Alert variant="warning" className="py-2 mb-3" dismissible onClose={() => setError(null)}>
+                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                        <small>{error}</small>
+                    </Alert>
+                )}
+
+                {/* Entity Search */}
+                <div className="position-relative mb-3">
+                    <Form.Label className="text-muted small mb-1">
+                        {isSupplierMode ? 'Search Supplier' : 'Search Customer'}
+                    </Form.Label>
                     <div className="input-group input-group-sm">
                         <span className="input-group-text">
-                            <FontAwesomeIcon icon={faSearch} size="sm" />
+                            {searchLoading ? (
+                                <Spinner size="sm" />
+                            ) : (
+                                <FontAwesomeIcon icon={faSearch} size="sm" />
+                            )}
                         </span>
                         <Form.Control
+                            ref={inputRef}
                             type="text"
-                            placeholder="Search by name or phone"
+                            placeholder={`Search by name, phone or company`}
                             value={searchQuery}
                             onChange={handleSearchChange}
                             onKeyDown={handleKeyDown}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
                             className="customer-search-input"
                             size="sm"
                             autoComplete="off"
+                            disabled={searchLoading}
                         />
                         {customer && (
                             <Button
@@ -186,47 +455,69 @@ function CustomerSection({ customer, mobileNumber, onCustomerChange, onMobileCha
                                 size="sm"
                                 onClick={handleRemoveCustomer}
                                 className="border-0"
+                                type="button"
                             >
                                 <FontAwesomeIcon icon={faTimes} size="sm" />
                             </Button>
                         )}
                     </div>
 
-                    {/* Customer Suggestions - Fixed z-index */}
+                    {/* Entity Suggestions */}
                     {showSuggestions && !showAddCustomerModal && (
-                        <div 
-                            className="position-absolute w-100 mt-1" 
-                            style={{ zIndex: 1050 }}  // Lower than modal backdrop (1055)
+                        <div
+                            className="suggestions-container position-absolute w-100 mt-1"
+                            style={{ zIndex: 1050 }}
                         >
-                            <Card className="border shadow-lg">
+                            <Card className="border shadow-lg" style={componentStyles.suggestionsCard}>
                                 <Card.Body className="p-0">
-                                    {filteredCustomers.length > 0 ? (
-                                        <ListGroup variant="flush" className="small">
-                                            {filteredCustomers.map((cust) => (
-                                                <ListGroup.Item
-                                                    key={cust.id}
-                                                    action
-                                                    onClick={() => handleCustomerSelect(cust)}
-                                                    className="cursor-pointer py-2"
-                                                    style={{ cursor: 'pointer' }}
-                                                >
-                                                    <div className="d-flex align-items-center">
-                                                        <FontAwesomeIcon
-                                                            icon={faUser}
-                                                            className="text-primary me-2"
-                                                            size="sm"
-                                                        />
-                                                        <div className="flex-grow-1">
-                                                            <div className="fw-semibold small">{cust.name}</div>
-                                                            <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                                {cust.phone}
-                                                                {cust.address && ` • ${cust.address}`}
+                                    {searchLoading ? (
+                                        <div className="p-3 text-center">
+                                            <Spinner size="sm" className="me-2" />
+                                            <small>Searching {entityType}s...</small>
+                                        </div>
+                                    ) : filteredCustomers.length > 0 ? (
+                                        <>
+                                            <div className="px-3 py-2 bg-light border-bottom">
+                                                <small className="text-muted fw-semibold">
+                                                    Found {filteredCustomers.length} {entityType}{filteredCustomers.length !== 1 ? 's' : ''}
+                                                </small>
+                                            </div>
+                                            <div style={componentStyles.maxHeight200} className="overflow-auto">
+                                                <ListGroup variant="flush" className="small">
+                                                    {filteredCustomers.map((entity) => (
+                                                        <ListGroup.Item
+                                                            key={entity.id}
+                                                            action
+                                                            onClick={() => handleCustomerSelect(entity)}
+                                                            className="py-2"
+                                                            style={componentStyles.cursorPointer}
+                                                        >
+                                                            <div className="d-flex align-items-center">
+                                                                <FontAwesomeIcon
+                                                                    icon={entityIcon}
+                                                                    className="text-primary me-2"
+                                                                    size="sm"
+                                                                />
+                                                                <div className="flex-grow-1">
+                                                                    <div className="fw-semibold small">{entity.name}</div>
+                                                                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                                        <FontAwesomeIcon icon={faPhone} className="me-1" />
+                                                                        {entity.mobile || 'No phone'}
+                                                                        {entity.companyName && (
+                                                                            <>
+                                                                                <span className="mx-1">•</span>
+                                                                                <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                                                                                {entity.companyName}
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    </div>
-                                                </ListGroup.Item>
-                                            ))}
-                                            <ListGroup.Item className="text-center py-2 bg-light">
+                                                        </ListGroup.Item>
+                                                    ))}
+                                                </ListGroup>
+                                            </div>
+                                            <ListGroup.Item className="text-center py-2 bg-light border-0">
                                                 <Button
                                                     variant="link"
                                                     size="sm"
@@ -234,14 +525,14 @@ function CustomerSection({ customer, mobileNumber, onCustomerChange, onMobileCha
                                                     className="text-decoration-none"
                                                 >
                                                     <FontAwesomeIcon icon={faUserPlus} className="me-1" size="sm" />
-                                                    Add New Party
+                                                    Add New {EntityTypeCapitalized}
                                                 </Button>
                                             </ListGroup.Item>
-                                        </ListGroup>
-                                    ) : searchQuery.trim() && (
+                                        </>
+                                    ) : hasSearched && searchQuery.trim() ? (
                                         <div className="p-3 text-center">
                                             <div className="mb-2 text-muted small">
-                                                No customer found for "<strong>{searchQuery}</strong>"
+                                                No {entityType} found for "<strong>{searchQuery}</strong>"
                                             </div>
                                             <Button
                                                 variant="primary"
@@ -250,73 +541,83 @@ function CustomerSection({ customer, mobileNumber, onCustomerChange, onMobileCha
                                                 className="btn-sm"
                                             >
                                                 <FontAwesomeIcon icon={faUserPlus} className="me-1" size="sm" />
-                                                Add New Party
+                                                Add New {EntityTypeCapitalized}
                                             </Button>
                                         </div>
-                                    )}
+                                    ) : null}
                                 </Card.Body>
                             </Card>
                         </div>
                     )}
                 </div>
 
-                {/* Selected Customer Display - Compact */}
+                {/* Selected Entity Details - Simplified */}
                 {customer && (
                     <div className="mb-3">
-                        <div className="bg-success text-white p-2 rounded small d-flex align-items-center justify-content-between">
-                            <div>
-                                <FontAwesomeIcon icon={faUser} className="me-1" size="sm" />
-                                <strong>{customer.name}</strong> • {customer.phone}
-                                {customer.isRunningCustomer && (
-                                    <span className="ms-2 badge bg-warning text-dark">Quick</span>
-                                )}
-                            </div>
-                            <Button
-                                variant="link"
-                                size="sm"
-                                onClick={handleRemoveCustomer}
-                                className="text-white p-0 border-0"
-                            >
-                                <FontAwesomeIcon icon={faTimes} size="sm" />
-                            </Button>
-                        </div>
+                        <Card className={`border-${isSupplierMode ? 'warning' : 'success'} bg-light`}>
+                            <Card.Body className="p-3">
+                                <div className="d-flex justify-content-between align-items-start">
+                                    <div className="flex-grow-1">
+                                        <div className="d-flex align-items-center mb-2">
+                                            <FontAwesomeIcon icon={entityIcon} className="text-primary me-2" />
+                                            <div className="fw-bold text-primary">{customer.name}</div>
+                                        </div>
+
+                                        <div className="small text-muted">
+                                            {customer.mobile && (
+                                                <div>
+                                                    <FontAwesomeIcon icon={faPhone} className="me-1" />
+                                                    {customer.mobile}
+                                                </div>
+                                            )}
+                                            {customer.email && (
+                                                <div>
+                                                    <FontAwesomeIcon icon={faEnvelope} className="me-1" />
+                                                    {customer.email}
+                                                </div>
+                                            )}
+                                            {customer.companyName && (
+                                                <div>
+                                                    <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                                                    {customer.companyName}
+                                                </div>
+                                            )}
+                                            {customer.gstNumber && (
+                                                <div>
+                                                    <FontAwesomeIcon icon={faIdCard} className="me-1" />
+                                                    {customer.gstNumber}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <Button
+                                        variant="outline-secondary"
+                                        size="sm"
+                                        onClick={handleRemoveCustomer}
+                                        className="border-0"
+                                        title={`Remove ${entityType}`}
+                                    >
+                                        <FontAwesomeIcon icon={faTimes} size="sm" />
+                                    </Button>
+                                </div>
+                            </Card.Body>
+                        </Card>
                     </div>
                 )}
-
-                {/* Mobile Number - Compact */}
-                <div>
-                    <Form.Label className="text-muted small mb-1">Mobile Number</Form.Label>
-                    <div className="input-group input-group-sm">
-                        <span className="input-group-text">
-                            <FontAwesomeIcon icon={faPhone} size="sm" />
-                        </span>
-                        <Form.Control
-                            type="tel"
-                            placeholder="Enter mobile number"
-                            value={mobileNumber}
-                            onChange={(e) => onMobileChange(e.target.value)}
-                            maxLength="10"
-                            pattern="[0-9]{10}"
-                            size="sm"
-                        />
-                    </div>
-                    {mobileNumber && mobileNumber.length !== 10 && (
-                        <small className="text-warning">Mobile number should be 10 digits</small>
-                    )}
-                </div>
             </div>
 
-            {/* Use the actual AddNewParty component with FULL FORM */}
+            {/* Add New Entity Modal */}
             <AddNewParty
                 show={showAddCustomerModal}
                 onHide={handleCloseModal}
                 onSaveParty={handleSaveNewCustomer}
-                isQuickAdd={false}              // Changed to false for full form
-                quickAddType="customer"         // Still specify customer type
-                editingParty={null}             // Not editing, adding new
-                initialData={{                  // Pre-fill with search query
+                isQuickAdd={false}
+                quickAddType={entityType}
+                editingParty={null}
+                initialData={{
                     name: searchQuery || '',
-                    partyType: 'customer'
+                    partyType: entityType
                 }}
             />
         </>

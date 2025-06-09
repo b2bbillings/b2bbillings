@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Container, Row, Col, Button } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
+import { useParams } from 'react-router-dom';
 
 // Import components
 import SalesInvoicesHeader from './SalesInvoice/SalesInvoicesHeader';
@@ -10,7 +11,10 @@ import SalesInvoicesFilter from './SalesInvoice/SalesInvoicesFilter';
 import SalesInvoicesSummary from './SalesInvoice/SalesInvoicesSummary';
 import SalesInvoicesTable from './SalesInvoice/SalesInvoicesTable';
 import SalesForm from './SalesInvoice/SalesForm';
-import PurchaseForm from '../Purchases/PurchaseForm';
+
+// Import API services
+import salesService from '../../../services/salesService';
+import itemService from '../../../services/itemService';
 import './SalesInvoices.css';
 
 // Debounce hook for optimizing search
@@ -30,34 +34,28 @@ const useDebounce = (value, delay) => {
     return debouncedValue;
 };
 
-function SalesInvoices() {
+function SalesInvoices({ companyId: propCompanyId }) {
+    const { companyId: paramCompanyId } = useParams();
+    const companyId = propCompanyId || paramCompanyId;
+
     // State management
-    const [currentView, setCurrentView] = useState('list'); // 'list', 'sale', or 'purchase'
+    const [currentView, setCurrentView] = useState('list');
+    const [editingSale, setEditingSale] = useState(null);
     const [dateRange, setDateRange] = useState('This Month');
-    const [startDate, setStartDate] = useState(new Date(2025, 5, 1)); // June 1, 2025
-    const [endDate, setEndDate] = useState(new Date(2025, 5, 30)); // June 30, 2025
+    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
     const [selectedFirm, setSelectedFirm] = useState('All Firms');
     const [topSearchTerm, setTopSearchTerm] = useState('');
+    const [loading, setLoading] = useState(false);
 
     // Debounced search term for better performance
     const debouncedSearchTerm = useDebounce(topSearchTerm, 300);
 
-    // Transactions state
-    const [transactions, setTransactions] = useState([
-        {
-            id: 1,
-            date: '03/06/2025',
-            invoiceNo: '1',
-            partyName: 'IT Solution',
-            transaction: 'Sale',
-            paymentType: 'Cash',
-            amount: 90000,
-            balance: 90000,
-            status: 'Paid'
-        }
-    ]);
+    // Data state
+    const [transactions, setTransactions] = useState([]);
+    const [inventoryItems, setInventoryItems] = useState([]);
 
-    // Memoized categories to prevent recreation on every render
+    // Categories
     const categories = useMemo(() => [
         { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
         { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
@@ -69,141 +67,39 @@ function SalesInvoices() {
         { id: 8, name: 'Tools', description: 'Professional tools and equipment', isActive: true }
     ], []);
 
-    // Inventory items state with memoization
-    const [inventoryItems, setInventoryItems] = useState(() => [
-        {
-            id: 1,
-            name: 'HP Laptop i5 8GB',
-            itemCode: 'HP-LAP-001',
-            category: 'Electronics',
-            salePrice: 50000,
-            buyPrice: 45000,
-            currentStock: 10,
-            minStockLevel: 2,
-            unit: 'Piece',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'HP Pavilion Laptop with i5 processor and 8GB RAM',
-            isActive: true
-        },
-        {
-            id: 2,
-            name: 'Office Chair Executive',
-            itemCode: 'OFC-CHR-001',
-            category: 'Furniture',
-            salePrice: 12000,
-            buyPrice: 9000,
-            currentStock: 5,
-            minStockLevel: 1,
-            unit: 'Piece',
-            hsnNumber: '9401',
-            gstRate: 18,
-            description: 'Executive office chair with lumbar support',
-            isActive: true
-        },
-        {
-            id: 3,
-            name: 'A4 Paper 500 Sheets',
-            itemCode: 'PPR-A4-001',
-            category: 'Stationery',
-            salePrice: 400,
-            buyPrice: 320,
-            currentStock: 50,
-            minStockLevel: 10,
-            unit: 'Ream',
-            hsnNumber: '4802',
-            gstRate: 12,
-            description: 'Premium quality A4 printing paper',
-            isActive: true
-        },
-        {
-            id: 4,
-            name: 'Wireless Mouse Optical',
-            itemCode: 'MSE-WL-001',
-            category: 'Electronics',
-            salePrice: 1200,
-            buyPrice: 800,
-            currentStock: 25,
-            minStockLevel: 5,
-            unit: 'Piece',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'Optical wireless mouse with USB receiver',
-            isActive: true
-        },
-        {
-            id: 5,
-            name: 'Business Consultation',
-            itemCode: 'SVC-CONS-001',
-            category: 'Services',
-            salePrice: 3500,
-            buyPrice: 0,
-            currentStock: 0,
-            minStockLevel: 0,
-            unit: 'Hour',
-            hsnNumber: '9983',
-            gstRate: 18,
-            type: 'service',
-            description: 'Professional business consultation service',
-            isActive: true
-        },
-        {
-            id: 6,
-            name: 'Dell Monitor 24 inch',
-            itemCode: 'DEL-MON-001',
-            category: 'Electronics',
-            salePrice: 18000,
-            buyPrice: 15000,
-            currentStock: 8,
-            minStockLevel: 2,
-            unit: 'Piece',
-            hsnNumber: '8528',
-            gstRate: 18,
-            description: 'Dell 24-inch LED monitor with full HD resolution',
-            isActive: true
-        },
-        {
-            id: 7,
-            name: 'Office Desk Wooden',
-            itemCode: 'OFC-DSK-001',
-            category: 'Furniture',
-            salePrice: 25000,
-            buyPrice: 20000,
-            currentStock: 3,
-            minStockLevel: 1,
-            unit: 'Piece',
-            hsnNumber: '9403',
-            gstRate: 18,
-            description: 'Wooden office desk with drawers',
-            isActive: true
-        },
-        {
-            id: 8,
-            name: 'Printer Ink Cartridge',
-            itemCode: 'PRT-INK-001',
-            category: 'Accessories',
-            salePrice: 2500,
-            buyPrice: 2000,
-            currentStock: 15,
-            minStockLevel: 3,
-            unit: 'Piece',
-            hsnNumber: '8443',
-            gstRate: 18,
-            description: 'Original printer ink cartridge',
-            isActive: true
-        }
-    ]);
+    // Enhanced summary calculation with better metrics
+    const summary = useMemo(() => {
+        const salesTransactions = transactions.filter(t => t.transaction === 'Sale' || t.transaction === 'GST Invoice');
+        const totalSales = salesTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const totalReceived = salesTransactions.reduce((sum, t) => sum + ((t.amount || 0) - (t.balance || 0)), 0);
+        const totalBalance = salesTransactions.reduce((sum, t) => sum + (t.balance || 0), 0);
 
-    // Summary data
-    const [summary, setSummary] = useState({
-        totalSalesAmount: 90000,
-        totalPurchaseAmount: 0,
-        growthPercentage: 100,
-        received: 0,
-        balance: 90000
-    });
+        // Calculate today's sales
+        const today = new Date().toDateString();
+        const todaysSales = salesTransactions
+            .filter(t => new Date(t.date).toDateString() === today)
+            .reduce((sum, t) => sum + (t.amount || 0), 0);
 
-    // Memoized static options to prevent recreation
+        // Calculate average sale value
+        const avgSaleValue = salesTransactions.length > 0 ? totalSales / salesTransactions.length : 0;
+
+        // Mock growth percentage (you can implement actual calculation)
+        const growthPercentage = Math.random() * 20 - 10; // Random between -10 and +10
+
+        return {
+            totalSalesAmount: totalSales,
+            received: totalReceived,
+            balance: totalBalance,
+            todaysSales: todaysSales,
+            totalInvoices: salesTransactions.length,
+            avgSaleValue: avgSaleValue,
+            growthPercentage: growthPercentage,
+            paidInvoices: salesTransactions.filter(t => (t.balance || 0) === 0).length,
+            pendingInvoices: salesTransactions.filter(t => (t.balance || 0) > 0).length
+        };
+    }, [transactions]);
+
+    // Options
     const dateRangeOptions = useMemo(() => [
         'Today',
         'Yesterday',
@@ -216,27 +112,86 @@ function SalesInvoices() {
     ], []);
 
     const firmOptions = useMemo(() => [
-        'All Firms',
-        'Main Branch',
-        'Secondary Branch',
-        'IT Solution'
+        'All Firms'
     ], []);
 
-    // Memoized filtered transactions for better performance
+    // Filtered transactions
     const filteredTransactions = useMemo(() => {
         if (!debouncedSearchTerm) return transactions;
 
         const searchLower = debouncedSearchTerm.toLowerCase();
         return transactions.filter(transaction =>
-            transaction.partyName.toLowerCase().includes(searchLower) ||
-            (transaction.invoiceNo && transaction.invoiceNo.toLowerCase().includes(searchLower))
+            (transaction.partyName || '').toLowerCase().includes(searchLower) ||
+            (transaction.invoiceNo || '').toLowerCase().includes(searchLower) ||
+            (transaction.partyPhone || '').includes(searchLower)
         );
     }, [transactions, debouncedSearchTerm]);
 
-    // Optimized event handlers with useCallback
+    // Load data on mount
+    useEffect(() => {
+        if (companyId) {
+            loadSalesData();
+            loadInventoryItems();
+        }
+    }, [companyId, startDate, endDate]);
+
+    // API functions
+    const loadSalesData = async () => {
+        try {
+            setLoading(true);
+            console.log('📊 Loading sales data for company:', companyId);
+
+            const filters = {
+                dateFrom: startDate.toISOString().split('T')[0],
+                dateTo: endDate.toISOString().split('T')[0]
+            };
+
+            const response = await salesService.getInvoices(companyId, filters);
+
+            if (response.success && response.data && response.data.sales) {
+                const transformedTransactions = response.data.sales.map(sale =>
+                    salesService.transformToFrontendFormat(sale)
+                );
+                setTransactions(transformedTransactions);
+                console.log('✅ Loaded sales data:', transformedTransactions);
+            } else {
+                console.warn('⚠️ No sales data found');
+                setTransactions([]);
+            }
+
+        } catch (error) {
+            console.error('❌ Error loading sales data:', error);
+            setTransactions([]);
+            if (!error.message.includes('fetch') && !error.message.includes('Failed to fetch')) {
+                alert('Failed to load sales data: ' + error.message);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadInventoryItems = async () => {
+        try {
+            console.log('📦 Loading inventory items for company:', companyId);
+            const response = await itemService.getItems(companyId);
+
+            if (response.success && response.data && response.data.items) {
+                setInventoryItems(response.data.items);
+                console.log('✅ Loaded inventory items:', response.data.items);
+            } else {
+                console.warn('⚠️ No inventory items found');
+                setInventoryItems([]);
+            }
+        } catch (error) {
+            console.error('❌ Error loading inventory items:', error);
+            setInventoryItems([]);
+        }
+    };
+
+    // Event handlers
     const handleDateRangeChange = useCallback((range) => {
         setDateRange(range);
-        // Add your date calculation logic here
+        console.log('📅 Date range changed to:', range);
     }, []);
 
     const handleStartDateChange = useCallback((e) => {
@@ -251,170 +206,180 @@ function SalesInvoices() {
         setDateRange('Custom Range');
     }, []);
 
-    const handleAddSale = useCallback(() => {
+    const handleCreateSale = useCallback(() => {
+        setEditingSale(null);
         setCurrentView('sale');
-    }, []);
-
-    const handleAddPurchase = useCallback(() => {
-        setCurrentView('purchase');
     }, []);
 
     const handleBackToList = useCallback(() => {
         setCurrentView('list');
+        setEditingSale(null);
     }, []);
 
-    const handleSaleFormSave = useCallback((saleData) => {
+    const handleSaleFormSave = useCallback(async (saleData) => {
         console.log('💾 Saving sale data:', saleData);
 
-        // Generate new transaction from sale data
-        const newTransaction = {
-            id: Date.now(), // Use timestamp for better uniqueness
-            date: new Date().toLocaleDateString('en-GB'),
-            invoiceNo: saleData.invoiceNumber.replace('NTPL-', ''),
-            partyName: saleData.customer?.name || 'Unknown Customer',
-            transaction: 'Sale',
-            paymentType: saleData.paymentDetails?.method || 'Cash',
-            amount: saleData.totals.finalTotal,
-            balance: saleData.totals.finalTotal - (saleData.paymentIn || 0),
-            status: (saleData.paymentIn || 0) >= saleData.totals.finalTotal ? 'Paid' : 'Pending'
-        };
-
-        // Add new transaction
-        setTransactions(prev => [...prev, newTransaction]);
-
-        // Update summary
-        setSummary(prev => ({
-            ...prev,
-            totalSalesAmount: prev.totalSalesAmount + saleData.totals.finalTotal,
-            received: prev.received + (saleData.paymentIn || 0),
-            balance: prev.balance + (saleData.totals.finalTotal - (saleData.paymentIn || 0))
-        }));
-
-        // Go back to list view
-        setCurrentView('list');
-
-        // Show success message
-        alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
-    }, []);
-
-    const handlePurchaseFormSave = useCallback((purchaseData) => {
-        console.log('💾 Saving purchase data:', purchaseData);
-
-        // Generate new transaction from purchase data
-        const newTransaction = {
-            id: Date.now(), // Use timestamp for better uniqueness
-            date: new Date().toLocaleDateString('en-GB'),
-            invoiceNo: purchaseData.purchaseNumber.replace('PUR-', '').replace('GST-', ''),
-            partyName: purchaseData.supplier?.name || 'Unknown Supplier',
-            transaction: 'Purchase',
-            paymentType: purchaseData.paymentDetails?.method || 'Cash',
-            amount: purchaseData.totals.finalTotal,
-            balance: purchaseData.totals.finalTotal - (purchaseData.paymentOut || 0),
-            status: (purchaseData.paymentOut || 0) >= purchaseData.totals.finalTotal ? 'Paid' : 'Pending'
-        };
-
-        // Add new transaction
-        setTransactions(prev => [...prev, newTransaction]);
-
-        // Update summary
-        setSummary(prev => ({
-            ...prev,
-            totalPurchaseAmount: (prev.totalPurchaseAmount || 0) + purchaseData.totals.finalTotal,
-            balance: prev.balance + (purchaseData.totals.finalTotal - (purchaseData.paymentOut || 0))
-        }));
-
-        // Go back to list view
-        setCurrentView('list');
-
-        // Show success message
-        alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
-    }, []);
-
-    // Handler for adding new items to inventory with optimization
-    const handleAddItem = useCallback(async (productData) => {
         try {
-            console.log('Adding item to inventory:', productData);
-
-            // Create new item with unique ID
-            const newItem = {
-                ...productData,
-                id: Date.now(), // Use timestamp for better uniqueness
-                currentStock: productData.openingStock || 0,
-                isActive: true
+            setLoading(true);
+            const saleDataWithCompany = {
+                ...saleData,
+                companyId: companyId
             };
 
-            // Add to inventory items
-            setInventoryItems(prev => [...prev, newItem]);
+            let response;
+            if (editingSale) {
+                console.log('📝 Updating existing sale:', editingSale.id);
+                response = await salesService.updateInvoice(editingSale.id, saleDataWithCompany);
+            } else {
+                console.log('📄 Creating new sale');
+                response = await salesService.createInvoice(saleDataWithCompany);
+            }
 
-            // Show success message
-            alert(`Item "${productData.name}" added to inventory successfully!`);
+            if (response.success) {
+                console.log('✅ Sale saved successfully:', response);
+                const transformedSale = salesService.transformToFrontendFormat(response.data.sale);
 
-            // Return success
-            return true;
+                if (editingSale) {
+                    setTransactions(prev =>
+                        prev.map(t => t.id === editingSale.id ? transformedSale : t)
+                    );
+                    alert(`Invoice ${transformedSale.invoiceNo} updated successfully!`);
+                } else {
+                    setTransactions(prev => [transformedSale, ...prev]);
+                    alert(`Invoice ${transformedSale.invoiceNo} created successfully!`);
+                }
+
+                setCurrentView('list');
+                setEditingSale(null);
+            } else {
+                throw new Error(response.message || 'Failed to save sale');
+            }
+
         } catch (error) {
-            console.error('Error adding item:', error);
-            alert('Error adding item to inventory. Please try again.');
-            return false;
+            console.error('❌ Error saving sale:', error);
+            alert('Error saving invoice: ' + error.message);
+        } finally {
+            setLoading(false);
         }
-    }, []);
+    }, [editingSale, companyId]);
 
-    // Optimized search handler with immediate UI update
+    const handleAddItem = useCallback(async (productData) => {
+        try {
+            console.log('📦 Adding item to inventory:', productData);
+            const response = await itemService.createItem(companyId, productData);
+
+            if (response.success) {
+                setInventoryItems(prev => [...prev, response.data]);
+                console.log('✅ Item added successfully:', response.data);
+
+                return {
+                    success: true,
+                    data: response.data,
+                    message: `Item "${productData.name}" added successfully`
+                };
+            } else {
+                throw new Error(response.message || 'Failed to add item');
+            }
+
+        } catch (error) {
+            console.error('❌ Error adding item:', error);
+            return {
+                success: false,
+                error: error.message,
+                message: 'Error adding item to inventory'
+            };
+        }
+    }, [companyId]);
+
     const handleSearchChange = useCallback((e) => {
         setTopSearchTerm(e.target.value);
     }, []);
 
-    // Other optimized event handlers
-    const handleMoreOptions = useCallback(() => console.log('More options clicked'), []);
-    const handleSettings = useCallback(() => console.log('Settings clicked'), []);
-    const handleExcelExport = useCallback(() => console.log('Excel Export clicked'), []);
-    const handlePrint = useCallback(() => window.print(), []);
-
+    // Transaction handlers
     const handleViewTransaction = useCallback((transaction) => {
-        console.log('View transaction:', transaction);
-        // Implement view transaction logic
+        console.log('👁️ View transaction:', transaction);
+        alert(`Viewing Invoice: ${transaction.invoiceNo}\nCustomer: ${transaction.partyName}\nAmount: ₹${(transaction.amount || 0).toLocaleString()}`);
     }, []);
 
     const handleEditTransaction = useCallback((transaction) => {
-        console.log('Edit transaction:', transaction);
-        // Implement edit transaction logic
+        console.log('✏️ Edit transaction:', transaction);
+        setEditingSale(transaction.originalSale || transaction);
+        setCurrentView('sale');
     }, []);
 
-    const handleDeleteTransaction = useCallback((transaction) => {
-        if (window.confirm(`Are you sure you want to delete transaction ${transaction.invoiceNo}?`)) {
-            setTransactions(prev => prev.filter(t => t.id !== transaction.id));
+    const handleDeleteTransaction = useCallback(async (transaction) => {
+        if (window.confirm(`Are you sure you want to delete invoice ${transaction.invoiceNo}?\n\nThis action cannot be undone.`)) {
+            try {
+                setLoading(true);
+                console.log('🗑️ Deleting transaction:', transaction.id);
 
-            // Update summary when deleting
-            setSummary(prev => ({
-                ...prev,
-                totalSalesAmount: transaction.transaction === 'Sale'
-                    ? prev.totalSalesAmount - transaction.amount
-                    : prev.totalSalesAmount,
-                totalPurchaseAmount: transaction.transaction === 'Purchase'
-                    ? (prev.totalPurchaseAmount || 0) - transaction.amount
-                    : prev.totalPurchaseAmount,
-                balance: prev.balance - transaction.balance
-            }));
+                const response = await salesService.deleteInvoice(transaction.id);
 
-            alert('Transaction deleted successfully');
+                if (response.success) {
+                    setTransactions(prev => prev.filter(t => t.id !== transaction.id));
+                    alert(`Invoice ${transaction.invoiceNo} deleted successfully`);
+                } else {
+                    throw new Error(response.message || 'Failed to delete invoice');
+                }
+            } catch (error) {
+                console.error('❌ Error deleting transaction:', error);
+                alert('Error deleting invoice: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
         }
     }, []);
 
     const handlePrintTransaction = useCallback((transaction) => {
-        console.log('Print transaction:', transaction);
-        alert(`Printing invoice ${transaction.invoiceNo}`);
+        console.log('🖨️ Print transaction:', transaction);
+        alert(`Printing invoice ${transaction.invoiceNo}...`);
     }, []);
 
     const handleShareTransaction = useCallback((transaction) => {
-        console.log('Share transaction:', transaction);
-        alert(`Sharing invoice ${transaction.invoiceNo}`);
+        console.log('📤 Share transaction:', transaction);
+        const shareText = `Invoice ${transaction.invoiceNo}\nCustomer: ${transaction.partyName}\nAmount: ₹${(transaction.amount || 0).toLocaleString()}\nStatus: ${transaction.status}`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: `Invoice ${transaction.invoiceNo}`,
+                text: shareText,
+                url: window.location.href
+            }).catch(err => console.log('Error sharing:', err));
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(shareText).then(() => {
+                alert('Invoice details copied to clipboard!');
+            }).catch(() => {
+                alert(`Invoice Details:\n${shareText}`);
+            });
+        } else {
+            alert(`Invoice Details:\n${shareText}`);
+        }
+    }, []);
+
+    // Utility handlers
+    const handleMoreOptions = useCallback(() => {
+        console.log('⚙️ More options clicked');
+    }, []);
+
+    const handleSettings = useCallback(() => {
+        console.log('⚙️ Settings clicked');
+    }, []);
+
+    const handleExcelExport = useCallback(() => {
+        console.log('📊 Excel Export clicked');
+        alert('Excel export feature coming soon!');
+    }, []);
+
+    const handlePrint = useCallback(() => {
+        console.log('🖨️ Print clicked');
+        window.print();
     }, []);
 
     // Render Sales Form View
     if (currentView === 'sale') {
         return (
             <div className="sales-invoices-wrapper">
-                {/* Header with Back Button */}
-                <div className="sales-form-header bg-white border-bottom">
+                <div className="sales-form-header bg-white border-bottom sticky-top">
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
                             <Col>
@@ -422,70 +387,52 @@ function SalesInvoices() {
                                     variant="outline-secondary"
                                     onClick={handleBackToList}
                                     className="me-3"
+                                    disabled={loading}
                                 >
                                     <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
-                                    Back to Transactions
+                                    Back to Invoices
                                 </Button>
-                                <span className="page-title-text">Create New Sale</span>
+                                <span className="page-title-text fw-semibold">
+                                    {editingSale ? `Edit Invoice ${editingSale.invoiceNo}` : 'Create New Sale Invoice'}
+                                </span>
                             </Col>
                         </Row>
                     </Container>
                 </div>
 
-                {/* Sales Form */}
                 <SalesForm
+                    editingSale={editingSale}
                     onSave={handleSaleFormSave}
                     onCancel={handleBackToList}
+                    onExit={handleBackToList}
+                    companyId={companyId}
+                    inventoryItems={inventoryItems}
+                    categories={categories}
+                    onAddItem={handleAddItem}
+                    loading={loading}
                 />
             </div>
         );
     }
 
-    // Render Purchase Form View
-    if (currentView === 'purchase') {
-        return (
-            <div className="sales-invoices-wrapper">
-                {/* Header with Back Button */}
-                <div className="sales-form-header bg-white border-bottom">
-                    <Container fluid className="px-4">
-                        <Row className="align-items-center py-3">
-                            <Col>
-                                <Button
-                                    variant="outline-secondary"
-                                    onClick={handleBackToList}
-                                    className="me-3"
-                                >
-                                    <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
-                                    Back to Transactions
-                                </Button>
-                                <span className="page-title-text">Create New Purchase</span>
-                            </Col>
-                        </Row>
-                    </Container>
-                </div>
-
-                {/* Purchase Form */}
-                <PurchaseForm
-                    onSave={handlePurchaseFormSave}
-                    onCancel={handleBackToList}
-                />
-            </div>
-        );
-    }
-
-    // Render Transactions List View (Default)
+    // Render Main Sales Invoices View with Compact Sidebar Layout
     return (
         <div className="sales-invoices-wrapper">
+            {/* Header Section */}
             <SalesInvoicesHeader
                 searchTerm={topSearchTerm}
                 onSearchChange={handleSearchChange}
-                onAddSale={handleAddSale}
-                onAddPurchase={handleAddPurchase}
+                onAddSale={handleCreateSale}
                 onMoreOptions={handleMoreOptions}
                 onSettings={handleSettings}
+                companyId={companyId}
             />
 
-            <SalesInvoicesPageTitle onAddSale={handleAddSale} />
+            <SalesInvoicesPageTitle
+                onAddSale={handleCreateSale}
+                invoiceCount={transactions.length}
+                companyId={companyId}
+            />
 
             <SalesInvoicesFilter
                 dateRange={dateRange}
@@ -500,21 +447,139 @@ function SalesInvoices() {
                 onFirmChange={setSelectedFirm}
                 onExcelExport={handleExcelExport}
                 onPrint={handlePrint}
+                resultCount={filteredTransactions.length}
             />
 
-            <SalesInvoicesSummary summary={summary} />
+            {/* Main Content Area with Sidebar Layout */}
+            <Container fluid className="px-4 py-3">
+                <Row className="g-3">
+                    {/* Compact Left Sidebar - Summary */}
+                    <Col xl={2} lg={3} md={3} sm={12} className="sidebar-col">
+                        <SalesInvoicesSummary
+                            summary={summary}
+                            loading={loading}
+                            dateRange={dateRange}
+                        />
+                    </Col>
 
-            <SalesInvoicesTable
-                transactions={filteredTransactions}
-                onViewTransaction={handleViewTransaction}
-                onEditTransaction={handleEditTransaction}
-                onDeleteTransaction={handleDeleteTransaction}
-                onPrintTransaction={handlePrintTransaction}
-                onShareTransaction={handleShareTransaction}
-                categories={categories}
-                onAddItem={handleAddItem}
-                inventoryItems={inventoryItems}
-            />
+                    {/* Right Content - Table taking most space */}
+                    <Col xl={10} lg={9} md={9} sm={12} className="content-col">
+                        <SalesInvoicesTable
+                            transactions={filteredTransactions}
+                            onCreateInvoice={handleCreateSale}
+                            onViewTransaction={handleViewTransaction}
+                            onEditTransaction={handleEditTransaction}
+                            onDeleteTransaction={handleDeleteTransaction}
+                            onPrintTransaction={handlePrintTransaction}
+                            onShareTransaction={handleShareTransaction}
+                            categories={categories}
+                            onAddItem={handleAddItem}
+                            inventoryItems={inventoryItems}
+                            loading={loading}
+                            companyId={companyId}
+                            searchTerm={debouncedSearchTerm}
+                        />
+                    </Col>
+                </Row>
+            </Container>
+
+            {/* Enhanced Styles */}
+            <style jsx>{`
+                .sales-invoices-wrapper {
+                    background-color: #f8f9fa;
+                    min-height: 100vh;
+                }
+                
+                .sales-form-header {
+                    z-index: 1020;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .page-title-text {
+                    font-size: 1.1rem;
+                    color: #495057;
+                }
+
+                .sidebar-col {
+                    padding-right: 0.75rem;
+                }
+
+                .content-col {
+                    padding-left: 0.75rem;
+                }
+
+                /* Enhanced responsive design */
+                @media (max-width: 1200px) {
+                    .sidebar-col {
+                        padding-right: 0.5rem;
+                    }
+                    
+                    .content-col {
+                        padding-left: 0.5rem;
+                    }
+                }
+
+                @media (max-width: 992px) {
+                    .sidebar-col {
+                        padding-right: 0;
+                        margin-bottom: 1rem;
+                    }
+                    
+                    .content-col {
+                        padding-left: 0;
+                    }
+                }
+                
+                @media (max-width: 768px) {
+                    .page-title-text {
+                        font-size: 1rem;
+                    }
+
+                    .sidebar-col,
+                    .content-col {
+                        padding-left: 0;
+                        padding-right: 0;
+                    }
+                }
+
+                /* Smooth transitions */
+                .sidebar-col,
+                .content-col {
+                    transition: all 0.3s ease;
+                }
+
+                /* Loading states */
+                .sales-invoices-wrapper.loading {
+                    opacity: 0.7;
+                    pointer-events: none;
+                }
+
+                /* Enhanced Container */
+                .container-fluid {
+                    max-width: 100%;
+                    margin: 0 auto;
+                }
+
+                /* Better spacing for main content */
+                .g-3 {
+                    --bs-gutter-x: 1rem;
+                    --bs-gutter-y: 1rem;
+                }
+
+                @media (min-width: 1400px) {
+                    .g-3 {
+                        --bs-gutter-x: 1.5rem;
+                    }
+                    
+                    .sidebar-col {
+                        padding-right: 1rem;
+                    }
+                    
+                    .content-col {
+                        padding-left: 1rem;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

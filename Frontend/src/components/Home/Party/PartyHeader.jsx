@@ -1,14 +1,15 @@
 import React from 'react';
-import { Navbar, Container, Row, Col, InputGroup, Form, Button, Dropdown } from 'react-bootstrap';
+import { Container, Row, Col, InputGroup, Form, Button, Dropdown } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-    faSearch, 
-    faPlus, 
-    faEllipsisH, 
-    faCog, 
+import {
+    faSearch,
+    faPlus,
+    faEllipsisH,
+    faCog,
     faRefresh,
     faChevronDown,
-    faDownload
+    faDownload,
+    faUsers
 } from '@fortawesome/free-solid-svg-icons';
 
 function PartyHeader({
@@ -26,139 +27,174 @@ function PartyHeader({
     onSettings,
     onExportParties
 }) {
+    const getPartyTypeText = () => {
+        switch (activeType) {
+            case 'customer': return 'Customers';
+            case 'vendor': return 'Vendors';
+            case 'supplier': return 'Suppliers';
+            case 'both': return 'Both';
+            default: return 'All Parties';
+        }
+    };
+
     return (
         <>
-            <Navbar bg="white" className="border-bottom shadow-sm sticky-top">
-                <Container fluid className="px-4 py-3">
-                    <Row className="w-100 align-items-center">
-                        {/* Left side - Party Type Toggle */}
-                        <Col md={3} lg={3} xl={2}>
+            {/* Main Header Section */}
+            <div className="party-header-wrapper">
+                <Container fluid>
+                    {/* First Row - Search and Action Buttons */}
+                    <Row className="align-items-center mb-2">
+                        <Col md={8}>
+                            <InputGroup size="sm" className="search-group">
+                                <InputGroup.Text className="search-icon-wrapper">
+                                    <FontAwesomeIcon icon={faSearch} className="search-icon" />
+                                </InputGroup.Text>
+                                <Form.Control
+                                    type="text"
+                                    placeholder="Search parties, customers, vendors..."
+                                    value={transactionSearchQuery}
+                                    onChange={(e) => onTransactionSearchChange(e.target.value)}
+                                    className="search-input"
+                                />
+                            </InputGroup>
+                        </Col>
+                        <Col md={4}>
+                            <div className="d-flex gap-1 justify-content-end">
+                                <Button
+                                    size="sm"
+                                    className="btn-add-sale"
+                                    onClick={onAddSale}
+                                >
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="sm" />
+                                    Add Sale
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="btn-add-purchase"
+                                    onClick={onAddPurchase}
+                                >
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="sm" />
+                                    Add Purchase
+                                </Button>
+                                <Button
+                                    variant="outline-secondary"
+                                    size="sm"
+                                    className="btn-icon-only"
+                                    onClick={onRefreshParties}
+                                    disabled={isLoadingParties}
+                                    title="Refresh"
+                                >
+                                    <FontAwesomeIcon
+                                        icon={faRefresh}
+                                        size="sm"
+                                        className={isLoadingParties ? 'fa-spin' : ''}
+                                    />
+                                </Button>
+                                <Button
+                                    variant="outline-secondary"
+                                    size="sm"
+                                    className="btn-icon-only"
+                                    onClick={onMoreOptions}
+                                    title="More Options"
+                                >
+                                    <FontAwesomeIcon icon={faEllipsisH} size="sm" />
+                                </Button>
+                            </div>
+                        </Col>
+                    </Row>
+                </Container>
+            </div>
+
+            {/* Parties Section Header */}
+            <div className="parties-section-header">
+                <Container fluid>
+                    <Row className="align-items-center">
+                        <Col md={8}>
+                            <div className="d-flex align-items-center">
+                                <div className="section-icon-wrapper me-2">
+                                    <FontAwesomeIcon icon={faUsers} />
+                                </div>
+                                <div>
+                                    <h4 className="section-title mb-0">Parties</h4>
+                                    <p className="section-subtitle mb-0">Manage your customers & vendors</p>
+                                </div>
+                            </div>
+                        </Col>
+                        <Col md={4}>
+                            <div className="d-flex gap-1 justify-content-end">
+                                <Button
+                                    size="sm"
+                                    className="btn-add-party"
+                                    onClick={onAddParty}
+                                >
+                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="sm" />
+                                    Add Party
+                                </Button>
+                            </div>
+                        </Col>
+                    </Row>
+
+                    {/* Filter Options Row */}
+                    <Row className="mt-2 align-items-center">
+                        <Col md={3}>
                             <Dropdown>
                                 <Dropdown.Toggle
-                                    variant="link"
-                                    className="text-dark text-decoration-none p-0 border-0 shadow-none bg-transparent party-dropdown-toggle"
-                                    id="parties-dropdown"
+                                    variant="outline-secondary"
+                                    size="sm"
+                                    className="party-dropdown-toggle w-100"
+                                    id="party-type-dropdown"
                                 >
-                                    <h5 className="mb-0 fw-bold d-flex align-items-center party-title">
-                                        Parties ({totalParties})
-                                        <FontAwesomeIcon icon={faChevronDown} className="ms-2" size="sm" />
-                                    </h5>
+                                    <FontAwesomeIcon icon={faChevronDown} className="me-1" size="xs" />
+                                    {getPartyTypeText()} ({totalParties})
                                 </Dropdown.Toggle>
-                                <Dropdown.Menu className="shadow border-0 party-dropdown-menu">
-                                    <Dropdown.Item 
-                                        className="py-2 party-dropdown-item" 
+                                <Dropdown.Menu className="party-dropdown-menu">
+                                    <Dropdown.Item
                                         onClick={() => onTypeChange('all')}
                                         active={activeType === 'all'}
                                     >
                                         All Parties
                                     </Dropdown.Item>
-                                    <Dropdown.Item 
-                                        className="py-2 party-dropdown-item"
+                                    <Dropdown.Item
                                         onClick={() => onTypeChange('customer')}
                                         active={activeType === 'customer'}
                                     >
                                         Customers
                                     </Dropdown.Item>
-                                    <Dropdown.Item 
-                                        className="py-2 party-dropdown-item"
+                                    <Dropdown.Item
                                         onClick={() => onTypeChange('vendor')}
                                         active={activeType === 'vendor'}
                                     >
                                         Vendors
                                     </Dropdown.Item>
-                                    <Dropdown.Item 
-                                        className="py-2 party-dropdown-item"
+                                    <Dropdown.Item
+                                        onClick={() => onTypeChange('supplier')}
+                                        active={activeType === 'supplier'}
+                                    >
+                                        Suppliers
+                                    </Dropdown.Item>
+                                    <Dropdown.Item
                                         onClick={() => onTypeChange('both')}
                                         active={activeType === 'both'}
                                     >
                                         Both
                                     </Dropdown.Item>
                                     <Dropdown.Divider />
-                                    <Dropdown.Item 
-                                        className="py-2 party-dropdown-item" 
-                                        onClick={onExportParties}
-                                    >
-                                        <FontAwesomeIcon icon={faDownload} className="me-2" />
+                                    <Dropdown.Item onClick={onExportParties}>
+                                        <FontAwesomeIcon icon={faDownload} className="me-1" size="sm" />
                                         Export Parties
                                     </Dropdown.Item>
                                 </Dropdown.Menu>
                             </Dropdown>
                         </Col>
-
-                        {/* Center - Search */}
-                        <Col md={5} lg={5} xl={6}>
-                            <InputGroup size="sm" className="search-group mx-auto">
-                                <InputGroup.Text className="bg-light border-end-0">
-                                    <FontAwesomeIcon icon={faSearch} className="text-muted" size="sm" />
-                                </InputGroup.Text>
-                                <Form.Control
-                                    type="text"
-                                    placeholder="Search transactions, parties, payments..."
-                                    value={transactionSearchQuery}
-                                    onChange={(e) => onTransactionSearchChange(e.target.value)}
-                                    className="search-input border-start-0 bg-light text-dark"
-                                    style={{ fontSize: '0.875rem' }}
-                                />
-                            </InputGroup>
+                        <Col md={6}>
+                            {/* Optional: Additional filters can go here */}
                         </Col>
-
-                        {/* Right side - Action buttons */}
-                        <Col md={4} lg={4} xl={4}>
-                            <div className="d-flex gap-2 justify-content-end flex-wrap align-items-center">
-                                <Button
-                                    variant="success"
-                                    size="sm"
-                                    className="btn-add-sale fw-semibold"
-                                    onClick={onAddSale}
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="me-2" size="xs" />
-                                    <span className="btn-text small">Add Sale</span>
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    size="sm"
-                                    className="btn-add-purchase fw-semibold"
-                                    onClick={onAddPurchase}
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="me-2" size="xs" />
-                                    <span className="btn-text small">Add Purchase</span>
-                                </Button>
-                                <Button
-                                    variant="outline-info"
-                                    size="sm"
-                                    className="btn-icon"
-                                    onClick={onRefreshParties}
-                                    disabled={isLoadingParties}
-                                    title="Refresh parties"
-                                >
-                                    <FontAwesomeIcon 
-                                        icon={faRefresh} 
-                                        size="sm"
-                                        className={isLoadingParties ? 'fa-spin' : ''} 
-                                    />
-                                </Button>
-                                <Button
-                                    variant="outline-danger"
-                                    size="sm"
-                                    className="btn-add-party fw-semibold"
-                                    onClick={onAddParty}
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="me-2" size="xs" />
-                                    <span className="btn-text small">Add Party</span>
-                                </Button>
+                        <Col md={3}>
+                            <div className="d-flex gap-1 justify-content-end">
                                 <Button
                                     variant="outline-secondary"
                                     size="sm"
-                                    className="btn-icon"
-                                    onClick={onMoreOptions}
-                                    title="More Options"
-                                >
-                                    <FontAwesomeIcon icon={faEllipsisH} size="sm" />
-                                </Button>
-                                <Button
-                                    variant="outline-secondary"
-                                    size="sm"
-                                    className="btn-icon"
+                                    className="btn-icon-only"
                                     onClick={onSettings}
                                     title="Settings"
                                 >
@@ -168,242 +204,250 @@ function PartyHeader({
                         </Col>
                     </Row>
                 </Container>
-            </Navbar>
+            </div>
 
-            {/* Custom Styles matching InventoryHeader theme */}
             <style>
                 {`
-                .search-group {
-                    max-width: 450px;
-                    width: 100%;
+                /* Main Header Wrapper - reduced padding */
+                .party-header-wrapper {
+                    background: #f8f9ff;
+                    padding: 0.75rem 0;
+                    border-bottom: 1px solid #e5e7eb;
                 }
 
-                .search-input {
-                    color: #495057 !important;
+                /* Search Group - fixed styling */
+                .search-group {
+                    max-width: 400px;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
                 }
+
+                .search-icon-wrapper {
+                    background: white;
+                    border: 1px solid #d1d5db;
+                    border-right: none;
+                    padding: 0.4rem 0.6rem;
+                }
+
+                .search-icon {
+                
+                    font-size: 0.75rem;
+                }
+
+                 .search-input {
+                    border: 1px solid #d1d5db !important;
+                    border-left: none !important;
+                    background: white !important;
+                    color: #9ca3af !important;
+                    font-size: 0.75rem;
+                    padding: 0.4rem 0.6rem;
+                    transition: all 0.2s ease;
+                }
+                    
 
                 .search-input:focus {
-                    color: #495057 !important;
-                    background-color: white !important;
-                    border-color: #007bff;
-                    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+                    background: white !important;
+                    border-color: #8b5cf6 !important;
+                    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1) !important;
+                    color: #9ca3af !important;
+                    outline: none;
                 }
 
                 .search-input::placeholder {
-                    color: #6c757d !important;
-                    opacity: 0.8;
+                    color: #374151 !important;
+                    font-weight: 500;
+                    opacity: 1;
                 }
-
-                /* Party Title Styling */
-                .party-title {
-                    font-size: 16px;
-                    color: #212529;
-                    transition: all 0.2s ease;
-                }
-
-                .party-dropdown-toggle:hover .party-title {
-                    color: #007bff;
-                }
-
-                /* Party Dropdown Menu */
-                .party-dropdown-menu {
-                    border-radius: 8px;
-                    padding: 0.5rem 0;
-                    min-width: 180px;
-                }
-
-                .party-dropdown-item {
-                    font-size: 13px;
-                    padding: 0.5rem 1rem;
-                    transition: all 0.2s ease;
-                }
-
-                .party-dropdown-item:hover {
-                    background: #f8f9fa;
-                    color: #007bff;
-                }
-
-                .party-dropdown-item.active {
-                    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                    color: white;
-                }
-
-                /* Action Buttons */
+                /* Button Styles - smaller sizes */
                 .btn-add-sale {
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
-                    border: none !important;
-                    padding: 0.5rem 1rem;
-                    border-radius: 6px;
+                    background: #10b981;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 0.4rem 0.75rem;
+                    font-weight: 500;
+                    font-size: 0.7rem;
+                    color: white;
                     transition: all 0.2s ease;
                     white-space: nowrap;
                 }
 
                 .btn-add-sale:hover {
-                    background: linear-gradient(135deg, #218838 0%, #1ba085 100%) !important;
+                    background: #059669;
+                    color: white;
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
                 }
 
                 .btn-add-purchase {
-                    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
-                    border: none !important;
-                    padding: 0.5rem 1rem;
-                    border-radius: 6px;
+                    background: #8b5cf6;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 0.4rem 0.75rem;
+                    font-weight: 500;
+                    font-size: 0.7rem;
+                    color: white;
                     transition: all 0.2s ease;
                     white-space: nowrap;
                 }
 
                 .btn-add-purchase:hover {
-                    background: linear-gradient(135deg, #0056b3 0%, #004085 100%) !important;
+                    background: #7c3aed;
+                    color: white;
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
                 }
 
                 .btn-add-party {
-                    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
-                    border: none !important;
-                    color: white !important;
-                    padding: 0.5rem 1rem;
-                    border-radius: 6px;
+                    background: #8b5cf6;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 0.4rem 0.75rem;
+                    font-weight: 500;
+                    font-size: 0.7rem;
+                    color: white;
                     transition: all 0.2s ease;
                     white-space: nowrap;
                 }
 
                 .btn-add-party:hover {
-                    background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%) !important;
+                    background: #7c3aed;
+                    color: white;
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
-                    color: white !important;
                 }
 
-                .btn-icon {
-                    padding: 0.5rem 0.75rem;
-                    border-radius: 6px;
+                .btn-icon-only {
+                    background: white;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    padding: 0.4rem;
+                    color: #6b7280;
                     transition: all 0.2s ease;
-                    min-width: 40px;
+                    min-width: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .btn-icon-only:hover {
+                    background: #f9fafb;
+                    border-color: #8b5cf6;
+                    color: #8b5cf6;
+                }
+
+                .btn-icon-only:disabled {
+                    opacity: 0.6;
+                    transform: none !important;
+                }
+
+                /* Parties Section Header - reduced height */
+                .parties-section-header {
+                    background: white;
+                    padding: 1rem 0 0.75rem 0;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .section-icon-wrapper {
+                    background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+                    border-radius: 6px;
+                    padding: 0.5rem;
+                    color: white;
+                    font-size: 0.9rem;
+                    width: 36px;
                     height: 36px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                 }
 
-                .btn-icon:hover {
-                    background: #f8f9fa !important;
-                    border-color: #007bff !important;
-                    color: #007bff !important;
-                    transform: translateY(-1px);
+                .section-title {
+                    color: #1f2937;
+                    font-weight: 600;
+                    font-size: 1.2rem;
+                    margin: 0;
+                    line-height: 1.2;
                 }
 
-                .btn-icon:disabled {
-                    opacity: 0.6;
-                    transform: none !important;
+                .section-subtitle {
+                    color: #6b7280;
+                    font-size: 0.75rem;
+                    font-weight: 400;
+                    margin: 0;
+                    line-height: 1.2;
                 }
 
-                /* Responsive Design */
-                @media (max-width: 1200px) {
-                    .search-group {
-                        max-width: 350px;
-                    }
+                /* Party Dropdown - with icon in front */
+                .party-dropdown-toggle {
+                    background: white;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    padding: 0.4rem 0.6rem;
+                    color: #374151;
+                    transition: all 0.2s ease;
+                    font-size: 0.7rem;
+                    font-weight: 500;
+                    text-align: left;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
-                @media (max-width: 992px) {
-                    .search-group {
-                        max-width: 300px;
-                    }
-
-                    .btn-add-sale,
-                    .btn-add-purchase,
-                    .btn-add-party {
-                        padding: 0.4rem 0.8rem;
-                    }
-
-                    .btn-text {
-                        font-size: 0.75rem;
-                    }
-
-                    .party-title {
-                        font-size: 14px;
-                    }
+                .party-dropdown-toggle:hover {
+                    background: #f9fafb;
+                    border-color: #8b5cf6;
+                    color: #374151;
                 }
 
-                @media (max-width: 768px) {
-                    .container-fluid .row {
-                        flex-direction: column;
-                        gap: 1rem;
-                        align-items: stretch;
-                    }
-
-                    .search-group {
-                        max-width: 100%;
-                    }
-
-                    .d-flex {
-                        justify-content: center !important;
-                        flex-wrap: wrap;
-                    }
-
-                    .btn-add-sale,
-                    .btn-add-purchase,
-                    .btn-add-party {
-                        flex: 1 1 auto;
-                        min-width: 110px;
-                        margin-bottom: 0.5rem;
-                    }
-
-                    .btn-icon {
-                        flex: 0 0 auto;
-                        min-width: 36px;
-                        margin: 0 0.2rem;
-                    }
-
-                    .party-title {
-                        font-size: 14px;
-                        margin-bottom: 0.5rem;
-                        text-align: center;
-                    }
+                .party-dropdown-toggle:focus {
+                    background: white;
+                    border-color: #8b5cf6;
+                    color: #374151;
+                    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
                 }
 
-                @media (max-width: 576px) {
-                    .container-fluid {
-                        padding: 0.5rem !important;
-                    }
-
-                    .btn-add-sale,
-                    .btn-add-purchase,
-                    .btn-add-party {
-                        padding: 0.375rem 0.6rem;
-                        flex: 1 1 45%;
-                        min-width: 100px;
-                    }
-
-                    .btn-text {
-                        font-size: 0.7rem;
-                    }
-
-                    .btn-icon {
-                        padding: 0.375rem 0.5rem;
-                        min-width: 32px;
-                        height: 32px;
-                    }
-
-                    .party-title {
-                        font-size: 13px;
-                    }
-
-                    .search-group {
-                        margin-bottom: 0.5rem;
-                    }
+                .party-dropdown-toggle.show {
+                    background: #f9fafb;
+                    border-color: #8b5cf6;
+                    color: #374151;
                 }
 
-                /* Focus states for accessibility */
-                .btn-add-sale:focus,
-                .btn-add-purchase:focus,
-                .btn-add-party:focus,
-                .btn-icon:focus {
-                    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+                .party-dropdown-menu {
+                    border-radius: 4px;
+                    border: 1px solid #e5e7eb;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                    padding: 0.25rem 0;
+                    min-width: 180px;
+                    font-size: 0.7rem;
+                    background: white;
                 }
 
-                /* Spinner animation for refresh button */
+                .party-dropdown-menu .dropdown-item {
+                    padding: 0.4rem 0.6rem;
+                    transition: all 0.2s ease;
+                    color: #374151;
+                    font-weight: 500;
+                }
+
+                .party-dropdown-menu .dropdown-item:hover {
+                    background: #f3f4f6;
+                    color: #8b5cf6;
+                }
+
+                .party-dropdown-menu .dropdown-item.active {
+                    background: #8b5cf6;
+                    color: white;
+                }
+
+                /* Dropdown Arrow Animation - moved to front */
+                .party-dropdown-toggle .fa-chevron-down {
+                    opacity: 0.7;
+                    transition: transform 0.2s ease;
+                    margin-right: 0.25rem;
+                }
+
+                .party-dropdown-toggle.show .fa-chevron-down {
+                    transform: rotate(180deg);
+                }
+
+                /* Spinner Animation */
                 .fa-spin {
                     animation: fa-spin 2s infinite linear;
                 }
@@ -411,6 +455,132 @@ function PartyHeader({
                 @keyframes fa-spin {
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
+                }
+
+                /* Responsive Design */
+                @media (max-width: 992px) {
+                    .party-header-wrapper {
+                        padding: 0.6rem 0;
+                    }
+
+                    .parties-section-header {
+                        padding: 0.875rem 0 0.625rem 0;
+                    }
+
+                    .section-title {
+                        font-size: 1.1rem;
+                    }
+
+                    .section-icon-wrapper {
+                        width: 34px;
+                        height: 34px;
+                        font-size: 0.85rem;
+                    }
+
+                    .search-group {
+                        max-width: 100%;
+                        margin-bottom: 0.5rem;
+                    }
+
+                    .btn-add-sale,
+                    .btn-add-purchase,
+                    .btn-add-party {
+                        padding: 0.35rem 0.6rem;
+                        font-size: 0.65rem;
+                    }
+
+                    .btn-icon-only {
+                        padding: 0.35rem;
+                        min-width: 30px;
+                    }
+                }
+
+                @media (max-width: 768px) {
+                    .party-header-wrapper .row,
+                    .parties-section-header .row {
+                        flex-direction: column;
+                        gap: 0.5rem;
+                        text-align: center;
+                    }
+
+                    .d-flex {
+                        justify-content: center !important;
+                        flex-wrap: wrap;
+                        gap: 0.4rem;
+                    }
+
+                    .party-dropdown-toggle {
+                        width: 100% !important;
+                    }
+
+                    .section-title {
+                        font-size: 1rem;
+                    }
+
+                    .section-subtitle {
+                        font-size: 0.7rem;
+                    }
+                }
+
+                @media (max-width: 576px) {
+                    .party-header-wrapper,
+                    .parties-section-header {
+                        padding: 0.5rem 0;
+                    }
+
+                    .container-fluid {
+                        padding: 0 0.75rem;
+                    }
+
+                    .btn-add-sale,
+                    .btn-add-purchase,
+                    .btn-add-party {
+                        padding: 0.3rem 0.5rem;
+                        font-size: 0.6rem;
+                        flex: 1;
+                        min-width: 80px;
+                    }
+
+                    .btn-icon-only {
+                        padding: 0.3rem;
+                        min-width: 28px;
+                        flex: 0 0 auto;
+                    }
+
+                    .search-input {
+                        font-size: 0.7rem;
+                        padding: 0.35rem 0.5rem;
+                    }
+
+                    .search-icon-wrapper {
+                        padding: 0.35rem 0.5rem;
+                    }
+
+                    .section-icon-wrapper {
+                        width: 32px;
+                        height: 32px;
+                        font-size: 0.8rem;
+                        margin: 0 auto 0.5rem auto;
+                    }
+                }
+
+                /* Focus states for accessibility */
+                .btn-add-sale:focus,
+                .btn-add-purchase:focus,
+                .btn-add-party:focus,
+                .btn-icon-only:focus {
+                    outline: none;
+                    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
+                }
+
+                /* Smooth transitions */
+                .btn-add-sale,
+                .btn-add-purchase,
+                .btn-add-party,
+                .btn-icon-only,
+                .party-dropdown-toggle,
+                .search-input {
+                    transition: all 0.2s ease-in-out;
                 }
                 `}
             </style>

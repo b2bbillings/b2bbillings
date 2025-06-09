@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Accordion, Nav } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -27,29 +27,172 @@ import {
     faMoneyBillWave,
     faExchangeAlt as faTransfer,
     faBalanceScale,
-    faChartBar
+    faChartBar,
+    faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import './Sidebar.css';
 
-function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
+function Sidebar({
+    isOpen,
+    toggleSidebar,
+    onNavigate,
+    activePage,
+    currentCompany,
+    currentUser,
+    isOnline,
+    companyId
+}) {
     // Track active menu item
     const [activeKey, setActiveKey] = useState('dayBook');
+
+    // Debug info
+    useEffect(() => {
+        console.log('🧭 Sidebar: Props received:', {
+            activePage,
+            companyId,
+            currentCompany: currentCompany?.businessName || currentCompany?.name,
+            isOnline
+        });
+    }, [activePage, companyId, currentCompany, isOnline]);
+
+    // Auto-expand accordion based on active page
+    useEffect(() => {
+        const pageToAccordionMap = {
+            // Day Book pages
+            'dailySummary': 'dayBook',
+            'transactions': 'dayBook',
+            'cashAndBank': 'dayBook',
+
+            // Sales pages
+            'allSales': 'sales',
+            'invoices': 'sales',
+            'createInvoice': 'sales',
+
+            // Purchase & Expense pages
+            'purchaseBills': 'purchaseExpense',
+            // 'paymentOut': 'purchaseExpense',
+            'expenses': 'purchaseExpense',
+            'purchaseOrder': 'purchaseExpense',
+            'purchaseReturn': 'purchaseExpense',
+            'allPurchases': 'purchaseExpense',
+            'createPurchase': 'purchaseExpense',
+            'purchaseOrders': 'purchaseExpense',
+            'createPurchaseOrder': 'purchaseExpense',
+
+            // Bank & Cash pages
+            'bankAccounts': 'bankCash',
+            'cashAccounts': 'bankCash',
+            'bankTransactions': 'bankCash',
+            'bankReconciliation': 'bankCash',
+            'cashFlow': 'bankCash',
+
+            // Inventory pages
+            'inventory': 'inventory',
+            'allProducts': 'inventory',
+            'lowStock': 'inventory',
+            'stockMovement': 'inventory'
+        };
+
+        const accordionKey = pageToAccordionMap[activePage];
+        if (accordionKey && accordionKey !== activeKey) {
+            setActiveKey(accordionKey);
+        }
+    }, [activePage]);
 
     // Custom toggle handler for accordion items
     const handleToggle = (eventKey) => {
         setActiveKey(activeKey === eventKey ? null : eventKey);
     };
 
-    // Function to handle navigation
+    // Function to handle navigation with company validation
     const handleNavigation = (page) => {
+        console.log('🧭 Sidebar: Navigation request for:', page);
+
+        // Check if company is required for this page
+        const requiresCompany = [
+            'inventory', 'allProducts', 'lowStock', 'stockMovement',
+            'allSales', 'invoices', 'createInvoice',
+            'purchaseBills', 'expenses', 'purchaseOrder',
+            'purchaseReturn', 'allPurchases', 'createPurchase', 'purchaseOrders',
+            'createPurchaseOrder',
+            'bankAccounts', 'cashAccounts', 'bankTransactions',
+            'bankReconciliation', 'cashFlow',
+            'parties'
+        ].includes(page);
+
+        if (requiresCompany && !companyId && !currentCompany?.id && !currentCompany?._id) {
+            console.warn('⚠️ Navigation blocked: No company selected for page:', page);
+            return;
+        }
+
         if (onNavigate) {
             onNavigate(page);
         }
     };
 
+    // Check if a navigation item should be disabled
+    const isItemDisabled = (page) => {
+        const requiresCompany = [
+            'inventory', 'allProducts', 'lowStock', 'stockMovement',
+            'allSales', 'invoices', 'createInvoice',
+            'purchaseBills', 'expenses', 'purchaseOrder',
+            'purchaseReturn', 'allPurchases', 'createPurchase', 'purchaseOrders',
+            'createPurchaseOrder',
+            'bankAccounts', 'cashAccounts', 'bankTransactions',
+            'bankReconciliation', 'cashFlow',
+            'parties'
+        ].includes(page);
+
+        return requiresCompany && !companyId && !currentCompany?.id && !currentCompany?._id;
+    };
+
+    // Get item class with disabled state
+    const getItemClass = (page, baseClass = 'submenu-item') => {
+        let classes = [baseClass];
+
+        if (activePage === page) {
+            classes.push('active');
+        }
+
+        if (isItemDisabled(page)) {
+            classes.push('disabled');
+        }
+
+        return classes.join(' ');
+    };
+
+    // Get sidebar link class with disabled state
+    const getSidebarLinkClass = (page) => {
+        let classes = ['sidebar-link'];
+
+        if (activePage === page) {
+            classes.push('active');
+        }
+
+        if (isItemDisabled(page)) {
+            classes.push('disabled');
+        }
+
+        return classes.join(' ');
+    };
+
     return (
         <div className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
             <div className="sidebar-menu">
+                {/* Company Info (when sidebar is open) */}
+                {isOpen && currentCompany && (
+                    <div className="sidebar-company-info">
+                        <div className="company-name">
+                            {currentCompany.businessName || currentCompany.name}
+                        </div>
+                        <div className="company-id">
+                            <small className="text-muted">
+                                ID: {companyId || currentCompany.id || currentCompany._id}
+                            </small>
+                        </div>
+                    </div>
+                )}
+
                 <Accordion defaultActiveKey="dayBook" activeKey={activeKey} className="sidebar-accordion">
                     {/* Day Book */}
                     <div className="sidebar-item">
@@ -71,19 +214,19 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                 <Nav className="flex-column">
                                     <Nav.Link
                                         onClick={() => handleNavigation('dailySummary')}
-                                        className={`submenu-item ${activePage === 'dailySummary' ? 'active' : ''}`}
+                                        className={getItemClass('dailySummary')}
                                     >
                                         Daily Summary
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('transactions')}
-                                        className={`submenu-item ${activePage === 'transactions' ? 'active' : ''}`}
+                                        className={getItemClass('transactions')}
                                     >
                                         Transactions
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('cashAndBank')}
-                                        className={`submenu-item ${activePage === 'cashAndBank' ? 'active' : ''}`}
+                                        className={getItemClass('cashAndBank')}
                                     >
                                         Cash & Bank
                                     </Nav.Link>
@@ -96,7 +239,8 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('parties')}
-                            className={`sidebar-link ${activePage === 'parties' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('parties')}
+                            title={isItemDisabled('parties') ? 'Select a company to access Parties' : ''}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faUserFriends} className="sidebar-icon" />
@@ -105,7 +249,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                         </Nav.Link>
                     </div>
 
-                    {/* Sales */}
+                    {/* Sales - UPDATED: Removed sales orders, create sales order, and credit notes */}
                     <div className="sidebar-item">
                         <Accordion.Item eventKey="sales" className="sidebar-accordion-item">
                             <Accordion.Header
@@ -125,41 +269,26 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                 <Nav className="flex-column">
                                     <Nav.Link
                                         onClick={() => handleNavigation('allSales')}
-                                        className={`submenu-item ${activePage === 'allSales' ? 'active' : ''}`}
+                                        className={getItemClass('allSales')}
+                                        title={isItemDisabled('allSales') ? 'Select a company to access Sales' : ''}
                                     >
                                         All Sales
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('invoices')}
-                                        className={`submenu-item ${activePage === 'invoices' ? 'active' : ''}`}
+                                        className={getItemClass('invoices')}
+                                        title={isItemDisabled('invoices') ? 'Select a company to access Invoices' : ''}
                                     >
                                         <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                                         Invoices
                                     </Nav.Link>
                                     <Nav.Link
-                                        onClick={() => handleNavigation('salesOrders')}
-                                        className={`submenu-item ${activePage === 'salesOrders' ? 'active' : ''}`}
-                                    >
-                                        <FontAwesomeIcon icon={faFileContract} className="me-2" />
-                                        Sales Orders
-                                    </Nav.Link>
-                                    <Nav.Link
                                         onClick={() => handleNavigation('createInvoice')}
-                                        className={`submenu-item ${activePage === 'createInvoice' ? 'active' : ''}`}
+                                        className={getItemClass('createInvoice')}
+                                        title={isItemDisabled('createInvoice') ? 'Select a company to create invoices' : ''}
                                     >
+                                        <FontAwesomeIcon icon={faPlus} className="me-2" />
                                         Create Invoice
-                                    </Nav.Link>
-                                    <Nav.Link
-                                        onClick={() => handleNavigation('createSalesOrder')}
-                                        className={`submenu-item ${activePage === 'createSalesOrder' ? 'active' : ''}`}
-                                    >
-                                        Create Sales Order
-                                    </Nav.Link>
-                                    <Nav.Link
-                                        onClick={() => handleNavigation('creditNotes')}
-                                        className={`submenu-item ${activePage === 'creditNotes' ? 'active' : ''}`}
-                                    >
-                                        Credit Notes
                                     </Nav.Link>
                                 </Nav>
                             </Accordion.Body>
@@ -186,35 +315,40 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                 <Nav className="flex-column">
                                     <Nav.Link
                                         onClick={() => handleNavigation('purchaseBills')}
-                                        className={`submenu-item ${activePage === 'purchaseBills' ? 'active' : ''}`}
+                                        className={getItemClass('purchaseBills')}
+                                        title={isItemDisabled('purchaseBills') ? 'Select a company to access Purchase Bills' : ''}
                                     >
                                         <FontAwesomeIcon icon={faFileInvoiceDollar} className="me-2" />
                                         Purchase Bills
                                     </Nav.Link>
-                                    <Nav.Link
+                                    {/* <Nav.Link
                                         onClick={() => handleNavigation('paymentOut')}
-                                        className={`submenu-item ${activePage === 'paymentOut' ? 'active' : ''}`}
+                                        className={getItemClass('paymentOut')}
+                                        title={isItemDisabled('paymentOut') ? 'Select a company to access Payment Out' : ''}
                                     >
                                         <FontAwesomeIcon icon={faCreditCard} className="me-2" />
                                         Payment Out
-                                    </Nav.Link>
+                                    </Nav.Link> */}
                                     <Nav.Link
                                         onClick={() => handleNavigation('expenses')}
-                                        className={`submenu-item ${activePage === 'expenses' ? 'active' : ''}`}
+                                        className={getItemClass('expenses')}
+                                        title={isItemDisabled('expenses') ? 'Select a company to access Expenses' : ''}
                                     >
                                         <FontAwesomeIcon icon={faReceipt} className="me-2" />
                                         Expenses
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('purchaseOrder')}
-                                        className={`submenu-item ${activePage === 'purchaseOrder' ? 'active' : ''}`}
+                                        className={getItemClass('purchaseOrder')}
+                                        title={isItemDisabled('purchaseOrder') ? 'Select a company to access Purchase Orders' : ''}
                                     >
                                         <FontAwesomeIcon icon={faClipboardList} className="me-2" />
                                         Purchase Order
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('purchaseReturn')}
-                                        className={`submenu-item ${activePage === 'purchaseReturn' ? 'active' : ''}`}
+                                        className={getItemClass('purchaseReturn')}
+                                        title={isItemDisabled('purchaseReturn') ? 'Select a company to access Purchase Returns' : ''}
                                     >
                                         <FontAwesomeIcon icon={faUndoAlt} className="me-2" />
                                         Purchase Return/ Dr. Note
@@ -224,7 +358,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                         </Accordion.Item>
                     </div>
 
-                    {/* Bank & Cash - NEW SECTION */}
+                    {/* Bank & Cash */}
                     <div className="sidebar-item">
                         <Accordion.Item eventKey="bankCash" className="sidebar-accordion-item">
                             <Accordion.Header
@@ -244,35 +378,40 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                 <Nav className="flex-column">
                                     <Nav.Link
                                         onClick={() => handleNavigation('bankAccounts')}
-                                        className={`submenu-item ${activePage === 'bankAccounts' ? 'active' : ''}`}
+                                        className={getItemClass('bankAccounts')}
+                                        title={isItemDisabled('bankAccounts') ? 'Select a company to access Bank Accounts' : ''}
                                     >
                                         <FontAwesomeIcon icon={faUniversity} className="me-2" />
                                         Bank Accounts
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('cashAccounts')}
-                                        className={`submenu-item ${activePage === 'cashAccounts' ? 'active' : ''}`}
+                                        className={getItemClass('cashAccounts')}
+                                        title={isItemDisabled('cashAccounts') ? 'Select a company to access Cash Accounts' : ''}
                                     >
                                         <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
                                         Cash Accounts
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('bankTransactions')}
-                                        className={`submenu-item ${activePage === 'bankTransactions' ? 'active' : ''}`}
+                                        className={getItemClass('bankTransactions')}
+                                        title={isItemDisabled('bankTransactions') ? 'Select a company to access Bank Transactions' : ''}
                                     >
                                         <FontAwesomeIcon icon={faTransfer} className="me-2" />
                                         Transactions
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('bankReconciliation')}
-                                        className={`submenu-item ${activePage === 'bankReconciliation' ? 'active' : ''}`}
+                                        className={getItemClass('bankReconciliation')}
+                                        title={isItemDisabled('bankReconciliation') ? 'Select a company to access Bank Reconciliation' : ''}
                                     >
                                         <FontAwesomeIcon icon={faBalanceScale} className="me-2" />
                                         Reconciliation
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('cashFlow')}
-                                        className={`submenu-item ${activePage === 'cashFlow' ? 'active' : ''}`}
+                                        className={getItemClass('cashFlow')}
+                                        title={isItemDisabled('cashFlow') ? 'Select a company to access Cash Flow Report' : ''}
                                     >
                                         <FontAwesomeIcon icon={faChartBar} className="me-2" />
                                         Cash Flow Report
@@ -286,7 +425,8 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('products')}
-                            className={`sidebar-link ${activePage === 'products' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('products')}
+                            title={isItemDisabled('products') ? 'Select a company to access Products & Services' : ''}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faBoxes} className="sidebar-icon" />
@@ -315,21 +455,24 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                                 <Nav className="flex-column">
                                     <Nav.Link
                                         onClick={() => handleNavigation('allProducts')}
-                                        className={`submenu-item ${activePage === 'allProducts' ? 'active' : ''}`}
+                                        className={getItemClass('allProducts')}
+                                        title={isItemDisabled('allProducts') ? 'Select a company to access All Products' : ''}
                                     >
                                         <FontAwesomeIcon icon={faWarehouse} className="me-2" />
                                         All Products
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('lowStock')}
-                                        className={`submenu-item ${activePage === 'lowStock' ? 'active' : ''}`}
+                                        className={getItemClass('lowStock')}
+                                        title={isItemDisabled('lowStock') ? 'Select a company to access Low Stock Items' : ''}
                                     >
                                         <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
                                         Low Stock Items
                                     </Nav.Link>
                                     <Nav.Link
                                         onClick={() => handleNavigation('stockMovement')}
-                                        className={`submenu-item ${activePage === 'stockMovement' ? 'active' : ''}`}
+                                        className={getItemClass('stockMovement')}
+                                        title={isItemDisabled('stockMovement') ? 'Select a company to access Stock Movement' : ''}
                                     >
                                         <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
                                         Stock Movement
@@ -343,7 +486,8 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('staff')}
-                            className={`sidebar-link ${activePage === 'staff' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('staff')}
+                            title={isItemDisabled('staff') ? 'Select a company to access Staff Management' : ''}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faUserTie} className="sidebar-icon" />
@@ -356,7 +500,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('insights')}
-                            className={`sidebar-link ${activePage === 'insights' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('insights')}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faChartLine} className="sidebar-icon" />
@@ -369,7 +513,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('reports')}
-                            className={`sidebar-link ${activePage === 'reports' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('reports')}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faFileAlt} className="sidebar-icon" />
@@ -382,7 +526,7 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                     <div className="sidebar-item">
                         <Nav.Link
                             onClick={() => handleNavigation('settings')}
-                            className={`sidebar-link ${activePage === 'settings' ? 'active' : ''}`}
+                            className={getSidebarLinkClass('settings')}
                         >
                             <div className="sidebar-link-content">
                                 <FontAwesomeIcon icon={faCog} className="sidebar-icon" />
@@ -391,6 +535,26 @@ function Sidebar({ isOpen, toggleSidebar, onNavigate, activePage }) {
                         </Nav.Link>
                     </div>
                 </Accordion>
+
+                {/* No Company Warning (when sidebar is open) */}
+                {isOpen && !currentCompany && (
+                    <div className="sidebar-warning">
+                        <div className="alert alert-warning small">
+                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                            Select a company to access all features
+                        </div>
+                    </div>
+                )}
+
+                {/* Offline Warning (when sidebar is open) */}
+                {isOpen && !isOnline && (
+                    <div className="sidebar-warning">
+                        <div className="alert alert-info small">
+                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                            You're offline. Some features may be limited.
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

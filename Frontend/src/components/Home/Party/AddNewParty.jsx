@@ -11,7 +11,9 @@ import {
     faKeyboard,
     faHome,
     faTruck,
-    faCopy
+    faCopy,
+    faCreditCard,
+    faFileInvoice
 } from '@fortawesome/free-solid-svg-icons';
 import useKeyboardNavigation from '../../../hooks/useKeyboardNavigation';
 import KeyboardShortcutsHelp from '../../../hooks/KeyboardShortcutsHelp';
@@ -40,6 +42,8 @@ function AddNewParty({
     const phoneRef = useRef(null);
     const companyRef = useRef(null);
     const gstRef = useRef(null);
+    const gstTypeRef = useRef(null);
+    const creditLimitRef = useRef(null);
 
     // Home address refs
     const homeAddressRef = useRef(null);
@@ -61,7 +65,7 @@ function AddNewParty({
 
     // Navigation refs array
     const navigationRefs = [
-        nameRef, emailRef, phoneRef, companyRef, gstRef,
+        nameRef, emailRef, phoneRef, companyRef, gstRef, gstTypeRef, creditLimitRef,
         homeAddressRef, homePincodeRef, homeStateRef, homeDistrictRef, homeTalukaRef,
         deliveryAddressRef, deliveryPincodeRef, deliveryStateRef, deliveryDistrictRef, deliveryTalukaRef,
         balanceRef, saveButtonRef, cancelButtonRef
@@ -75,6 +79,13 @@ function AddNewParty({
 
     const quickNavigationRefs = [quickNameRef, quickPhoneRef, quickSaveRef, quickCancelRef];
 
+    // GST Type options
+    const gstTypes = [
+        { value: 'unregistered', label: 'Unregistered' },
+        { value: 'regular', label: 'Regular' },
+        { value: 'composition', label: 'Composition' }
+    ];
+
     // Form data for regular add/edit party
     const [formData, setFormData] = useState({
         partyType: 'customer',
@@ -83,6 +94,8 @@ function AddNewParty({
         phoneNumber: '',
         companyName: '',
         gstNumber: '',
+        gstType: 'unregistered', // New field
+        creditLimit: 0, // New field
         country: 'INDIA',
 
         // Home Address
@@ -100,8 +113,7 @@ function AddNewParty({
         deliveryTaluka: '',
         sameAsHomeAddress: false,
 
-        openingBalanceType: 'debit',
-        openingBalance: 0,
+        openingBalance: 0, // Removed openingBalanceType
         phoneNumbers: [{ number: '', label: '' }]
     });
 
@@ -143,8 +155,6 @@ function AddNewParty({
             return () => clearTimeout(timer);
         }
     }, [error, success]);
-
-
 
     // Keyboard navigation setup
     const { focusFirst } = useKeyboardNavigation({
@@ -198,6 +208,8 @@ function AddNewParty({
                         phoneNumber: '',
                         companyName: '',
                         gstNumber: '',
+                        gstType: 'unregistered',
+                        creditLimit: 0,
                         country: 'INDIA',
 
                         // Home Address
@@ -215,7 +227,6 @@ function AddNewParty({
                         deliveryTaluka: '',
                         sameAsHomeAddress: false,
 
-                        openingBalanceType: 'debit',
                         openingBalance: 0,
                         phoneNumbers: [{ number: '', label: '' }]
                     });
@@ -232,6 +243,8 @@ function AddNewParty({
                     phoneNumber: party.phoneNumber || party.phone || '',
                     companyName: party.companyName || '',
                     gstNumber: party.gstNumber || '',
+                    gstType: party.gstType || 'unregistered',
+                    creditLimit: party.creditLimit || 0,
                     country: party.country || 'INDIA',
 
                     // Home Address - handle both nested object and flat structure
@@ -249,7 +262,6 @@ function AddNewParty({
                     deliveryTaluka: party.deliveryAddress?.taluka || party.deliveryTaluka || '',
                     sameAsHomeAddress: party.sameAsHomeAddress || false,
 
-                    openingBalanceType: party.openingBalanceType || 'debit',
                     openingBalance: party.openingBalance || 0,
                     phoneNumbers: party.phoneNumbers?.length > 0 ? party.phoneNumbers : [{ number: party.phoneNumber || party.phone || '', label: 'Primary' }]
                 };
@@ -290,6 +302,11 @@ function AddNewParty({
                 newData.sameAsHomeAddress = false;
             }
 
+            // Auto-clear GST number if type is unregistered
+            if (name === 'gstType' && value === 'unregistered') {
+                newData.gstNumber = '';
+            }
+
             return newData;
         });
     };
@@ -326,7 +343,7 @@ function AddNewParty({
         }
     };
 
-     const checkDuplicatePhone = async (phoneNumber) => {
+    const checkDuplicatePhone = async (phoneNumber) => {
         try {
             // Call backend to check if phone number already exists
             const response = await partyService.checkPhoneExists(phoneNumber);
@@ -338,8 +355,7 @@ function AddNewParty({
         }
     };
 
-
-   const handleSubmit = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setSuccess('');
@@ -376,6 +392,8 @@ function AddNewParty({
                     email: '',
                     companyName: '',
                     gstNumber: '',
+                    gstType: 'unregistered',
+                    creditLimit: 0,
                     country: 'INDIA',
                     homeAddressLine: '',
                     homePincode: '',
@@ -389,7 +407,6 @@ function AddNewParty({
                     deliveryTaluka: '',
                     sameAsHomeAddress: false,
                     openingBalance: 0,
-                    openingBalanceType: 'debit',
                     phoneNumbers: [{ number: quickFormData.phone.trim(), label: 'Primary' }]
                 };
 
@@ -471,13 +488,25 @@ function AddNewParty({
                 }
             }
 
-            // Validate GST number format if provided
-            if (formData.gstNumber.trim()) {
+            // Validate GST number format if provided and type is not unregistered
+            if (formData.gstNumber.trim() && formData.gstType !== 'unregistered') {
                 const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
                 if (!gstRegex.test(formData.gstNumber.trim().toUpperCase())) {
                     setError('Please enter a valid GST number (e.g., 22AAAAA0000A1Z5)');
                     return;
                 }
+            }
+
+            // Validate credit limit
+            if (formData.creditLimit < 0) {
+                setError('Credit limit cannot be negative');
+                return;
+            }
+
+            // Validate opening balance
+            if (formData.openingBalance < 0) {
+                setError('Opening balance cannot be negative');
+                return;
             }
 
             try {
@@ -504,8 +533,8 @@ function AddNewParty({
                     state: formData.homeState,
                     district: formData.homeDistrict,
                     taluka: formData.homeTaluka,
-                    // Normalize GST number to uppercase
-                    gstNumber: formData.gstNumber.trim().toUpperCase()
+                    // Normalize GST number to uppercase (only if not unregistered)
+                    gstNumber: formData.gstType !== 'unregistered' ? formData.gstNumber.trim().toUpperCase() : ''
                 };
 
                 console.log('💾 Saving party data:', partyData);
@@ -611,8 +640,6 @@ function AddNewParty({
             }
         }
     };
-
-
 
     if (isQuickAdd) {
         return (
@@ -940,7 +967,7 @@ function AddNewParty({
                         <div className="mb-4 p-3 bg-light rounded">
                             <h6 className="text-muted mb-3 small">Company Details</h6>
                             <Row>
-                                <Col md={6}>
+                                <Col md={4}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="text-muted small">Company Name</Form.Label>
                                         <Form.Control
@@ -954,19 +981,99 @@ function AddNewParty({
                                         />
                                     </Form.Group>
                                 </Col>
-                                <Col md={6}>
+                                <Col md={4}>
                                     <Form.Group className="mb-3">
-                                        <Form.Label className="text-muted small">GST Number</Form.Label>
+                                        <Form.Label className="text-muted small">GST Type</Form.Label>
+                                        <Form.Select
+                                            ref={gstTypeRef}
+                                            name="gstType"
+                                            value={formData.gstType}
+                                            onChange={handleInputChange}
+                                            disabled={isLoading}
+                                        >
+                                            {gstTypes.map((type) => (
+                                                <option key={type.value} value={type.value}>
+                                                    {type.label}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
+                                    </Form.Group>
+                                </Col>
+                                <Col md={4}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="text-muted small">
+                                            GST Number
+                                            {formData.gstType === 'unregistered' && (
+                                                <small className="text-muted ms-1">(Not Required)</small>
+                                            )}
+                                        </Form.Label>
                                         <Form.Control
                                             ref={gstRef}
                                             type="text"
                                             name="gstNumber"
                                             value={formData.gstNumber}
                                             onChange={handleInputChange}
-                                            placeholder="GST number"
+                                            placeholder={formData.gstType === 'unregistered' ? 'Not applicable' : 'GST number'}
                                             style={{ textTransform: 'uppercase' }}
-                                            disabled={isLoading}
+                                            disabled={isLoading || formData.gstType === 'unregistered'}
                                         />
+                                    </Form.Group>
+                                </Col>
+                            </Row>
+                        </div>
+
+                        {/* Financial Information */}
+                        <div className="mb-4 p-3 bg-light rounded">
+                            <h6 className="text-muted mb-3 small">
+                                <FontAwesomeIcon icon={faCreditCard} className="me-2" />
+                                Financial Information
+                            </h6>
+                            <Row>
+                                <Col md={6}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="text-muted small">
+                                            Credit Limit 
+                                            <small className="text-muted ms-1">(₹0 = No Limit)</small>
+                                        </Form.Label>
+                                        <InputGroup>
+                                            <InputGroup.Text className="small">₹</InputGroup.Text>
+                                            <Form.Control
+                                                ref={creditLimitRef}
+                                                type="number"
+                                                name="creditLimit"
+                                                value={formData.creditLimit}
+                                                onChange={handleInputChange}
+                                                placeholder="0"
+                                                min="0"
+                                                step="0.01"
+                                                disabled={isLoading}
+                                            />
+                                        </InputGroup>
+                                        <Form.Text className="text-muted">
+                                            Maximum credit amount allowed for this {formData.partyType}
+                                        </Form.Text>
+                                    </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="text-muted small">Opening Balance</Form.Label>
+                                        <InputGroup>
+                                            <InputGroup.Text className="small">₹</InputGroup.Text>
+                                            <Form.Control
+                                                ref={balanceRef}
+                                                type="number"
+                                                name="openingBalance"
+                                                value={formData.openingBalance}
+                                                onChange={handleInputChange}
+                                                placeholder="0.00"
+                                                min="0"
+                                                step="0.01"
+                                                disabled={isLoading}
+                                            />
+                                        </InputGroup>
+                                        <Form.Text className="text-muted">
+                                            Initial balance amount
+                                        </Form.Text>
                                     </Form.Group>
                                 </Col>
                             </Row>
@@ -1180,53 +1287,6 @@ function AddNewParty({
                                     </Tab.Pane>
                                 </Tab.Content>
                             </Tab.Container>
-                        </div>
-
-                        {/* Opening Balance */}
-                        <div className="mb-4 p-3 bg-light rounded">
-                            <h6 className="text-muted mb-3 small">Opening Balance</h6>
-                            <Row>
-                                <Col md={6}>
-                                    <div className="d-flex gap-3 mb-2">
-                                        <Form.Check
-                                            type="radio"
-                                            name="openingBalanceType"
-                                            id="credit"
-                                            label="Credit"
-                                            value="credit"
-                                            checked={formData.openingBalanceType === 'credit'}
-                                            onChange={handleInputChange}
-                                            disabled={isLoading}
-                                        />
-                                        <Form.Check
-                                            type="radio"
-                                            name="openingBalanceType"
-                                            id="debit"
-                                            label="Debit"
-                                            value="debit"
-                                            checked={formData.openingBalanceType === 'debit'}
-                                            onChange={handleInputChange}
-                                            disabled={isLoading}
-                                        />
-                                    </div>
-                                </Col>
-                                <Col md={6}>
-                                    <InputGroup>
-                                        <InputGroup.Text className="small">₹</InputGroup.Text>
-                                        <Form.Control
-                                            ref={balanceRef}
-                                            type="number"
-                                            name="openingBalance"
-                                            value={formData.openingBalance}
-                                            onChange={handleInputChange}
-                                            placeholder="0.00"
-                                            min="0"
-                                            step="0.01"
-                                            disabled={isLoading}
-                                        />
-                                    </InputGroup>
-                                </Col>
-                            </Row>
                         </div>
 
                         {/* Action Buttons */}

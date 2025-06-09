@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Form, InputGroup, Card, Modal, Row, Col } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -12,7 +12,11 @@ import {
     faArrowUp,
     faArrowDown,
     faCalculator,
-    faPercent
+    faPercent,
+    faShoppingCart,
+    faTruck,
+    faSync,
+    faCheckCircle
 } from '@fortawesome/free-solid-svg-icons';
 
 function TotalSection({
@@ -24,9 +28,11 @@ function TotalSection({
     onSave,
     onShare,
     onCancel,
-    formType = 'sales' // 'sales' or 'purchase'
+    formType = 'sales', // 'sales' or 'purchase'
+    gstEnabled = false   // GST enabled flag
 }) {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(Date.now());
     const [paymentData, setPaymentData] = useState({
         partyName: '',
         paymentType: 'Cash',
@@ -35,14 +41,85 @@ function TotalSection({
         paymentAmount: 0
     });
 
-    // Safe totals handling with fallback values
+    // ✅ FIXED: Better handling of missing or incorrect totals
     const safeTotals = {
-        subtotal: parseFloat(totals?.subtotal) || 0,
-        totalCGST: parseFloat(totals?.totalCGST) || 0,
-        totalSGST: parseFloat(totals?.totalSGST) || 0,
-        totalTax: parseFloat(totals?.totalTax) || 0,
-        finalTotal: parseFloat(totals?.finalTotal) || 0
+        subtotal: Math.max(0, parseFloat(totals?.subtotal) || 0),
+        totalCGST: Math.max(0, parseFloat(totals?.totalCGST) || 0),
+        totalSGST: Math.max(0, parseFloat(totals?.totalSGST) || 0),
+        totalTax: Math.max(0, parseFloat(totals?.totalTax) || 0),
+        finalTotal: Math.max(0, parseFloat(totals?.finalTotal) || 0),
     };
+
+    // ✅ FIXED: Calculate correct total with proper fallback
+    const calculateCorrectTotal = () => {
+        console.log('🔢 TotalSection calculating total from:', safeTotals);
+
+        // Priority 1: Use finalTotal if it exists and is > 0
+        if (safeTotals.finalTotal > 0) {
+            console.log('✅ Using finalTotal from ItemsTable:', safeTotals.finalTotal);
+            return safeTotals.finalTotal;
+        }
+
+        // Priority 2: Calculate from subtotal + tax
+        if (safeTotals.subtotal > 0) {
+            const calculatedTotal = safeTotals.subtotal + safeTotals.totalTax;
+            console.log('✅ Calculated from subtotal + tax:', calculatedTotal);
+            return calculatedTotal;
+        }
+
+        // Priority 3: Calculate from subtotal + individual tax components
+        if (safeTotals.subtotal > 0 && (safeTotals.totalCGST > 0 || safeTotals.totalSGST > 0)) {
+            const calculatedTotal = safeTotals.subtotal + safeTotals.totalCGST + safeTotals.totalSGST;
+            console.log('✅ Calculated from subtotal + CGST + SGST:', calculatedTotal);
+            return calculatedTotal;
+        }
+
+        console.log('⚠️ Using fallback subtotal:', safeTotals.subtotal);
+        return safeTotals.subtotal;
+    };
+
+    const baseTotal = calculateCorrectTotal();
+    const finalTotalWithRoundOff = baseTotal + (roundOffEnabled ? (roundOff || 0) : 0);
+
+    // ✅ NEW: Track totals changes for real-time updates
+    useEffect(() => {
+        if (totals) {
+            setLastUpdated(Date.now());
+            console.log('📊 TotalSection received updated totals:', {
+                received: totals,
+                processed: safeTotals,
+                baseTotal: baseTotal,
+                roundOff: roundOff,
+                roundOffEnabled: roundOffEnabled,
+                finalDisplayTotal: finalTotalWithRoundOff,
+                timestamp: new Date().toLocaleTimeString()
+            });
+        }
+    }, [totals, roundOff, roundOffEnabled]);
+
+    // Enhanced logic for showing tax breakdown
+    const shouldShowTaxBreakdown = gstEnabled &&
+        safeTotals.totalTax > 0 &&
+        safeTotals.subtotal > 0 &&
+        (safeTotals.totalCGST > 0 || safeTotals.totalSGST > 0);
+
+    // Check if there are any items with cost - use the actual total amount
+    const hasValidItems = baseTotal > 0;
+
+    // ✅ ENHANCED: Debug logging with better formatting
+    console.log('🧮 TotalSection Debug:', {
+        formType,
+        gstEnabled,
+        roundOffEnabled,
+        roundOff,
+        receivedTotals: totals,
+        safeTotals,
+        baseTotal,
+        finalTotalWithRoundOff,
+        shouldShowTaxBreakdown,
+        hasValidItems,
+        lastUpdated: new Date(lastUpdated).toLocaleTimeString()
+    });
 
     // Format currency safely
     const formatCurrency = (amount) => {
@@ -51,6 +128,22 @@ function TotalSection({
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         });
+    };
+
+    // ✅ ENHANCED: Round off change handler with immediate total calculation
+    const handleRoundOffChange = (value) => {
+        const numValue = parseFloat(value) || 0;
+        console.log('🔄 Round off changing from', roundOff, 'to', numValue);
+        onRoundOffChange(numValue);
+    };
+
+    // ✅ ENHANCED: Round off toggle handler
+    const handleRoundOffToggle = (enabled) => {
+        console.log('🔄 Round off toggle:', enabled);
+        onRoundOffToggle(enabled);
+        if (!enabled) {
+            onRoundOffChange(0); // Reset to 0 when disabled
+        }
     };
 
     // Dynamic configuration based on form type
@@ -69,27 +162,31 @@ function TotalSection({
             totalBorderColor: 'border-success',
             totalBgColor: 'bg-success',
             totalTextColor: 'text-success',
-            saveButtonText: 'Save & Exit',
+            saveButtonText: 'Save Invoice',
             saveButtonVariant: 'success',
-            successMessage: (type, party) => `Payment received via ${type} from ${party}`
+            successMessage: (type, party) => `Payment received via ${type} from ${party}`,
+            formIcon: faShoppingCart,
+            emptyMessage: 'Add items to invoice'
         },
         purchase: {
             paymentAction: 'Payment Out',
             paymentIcon: faArrowUp,
             modalTitle: 'Payment Out',
-            modalHeader: 'bg-danger',
-            buttonVariant: 'danger',
+            modalHeader: 'bg-primary',
+            buttonVariant: 'primary',
             actionText: 'Make Payment',
             partyLabel: 'Supplier Name',
             invoicePrefix: 'PUR-',
-            actionButtonColor: 'outline-danger',
+            actionButtonColor: 'outline-primary',
             totalLabel: 'Total Cost',
-            totalBorderColor: 'border-danger',
-            totalBgColor: 'bg-danger',
-            totalTextColor: 'text-danger',
+            totalBorderColor: 'border-primary',
+            totalBgColor: 'bg-primary',
+            totalTextColor: 'text-primary',
             saveButtonText: 'Save Purchase',
-            saveButtonVariant: 'danger',
-            successMessage: (type, party) => `Payment made via ${type} to ${party}`
+            saveButtonVariant: 'primary',
+            successMessage: (type, party) => `Payment made via ${type} to ${party}`,
+            formIcon: faTruck,
+            emptyMessage: 'Add items to purchase'
         }
     };
 
@@ -97,15 +194,15 @@ function TotalSection({
 
     const handlePayment = () => {
         // Validate totals before opening modal
-        if (safeTotals.finalTotal <= 0) {
-            alert('Please add items to the invoice before processing payment.');
+        if (!hasValidItems || finalTotalWithRoundOff <= 0) {
+            alert(`Please add items with valid costs to the ${formType} before processing payment.`);
             return;
         }
 
-        // Set default payment amount to final total
+        // ✅ FIXED: Set default payment amount to final total
         setPaymentData(prev => ({
             ...prev,
-            paymentAmount: safeTotals.finalTotal
+            paymentAmount: finalTotalWithRoundOff
         }));
 
         setShowPaymentModal(true);
@@ -122,15 +219,15 @@ function TotalSection({
             return;
         }
 
-        if (paymentData.paymentAmount > safeTotals.finalTotal) {
-            alert(`Payment amount cannot exceed ₹${formatCurrency(safeTotals.finalTotal)}`);
+        if (paymentData.paymentAmount > finalTotalWithRoundOff) {
+            alert(`Payment amount cannot exceed ₹${formatCurrency(finalTotalWithRoundOff)}`);
             return;
         }
 
         console.log(`${currentConfig.paymentAction} Data:`, {
             ...paymentData,
-            totalAmount: safeTotals.finalTotal,
-            remainingBalance: safeTotals.finalTotal - paymentData.paymentAmount
+            totalAmount: finalTotalWithRoundOff,
+            remainingBalance: finalTotalWithRoundOff - paymentData.paymentAmount
         });
 
         const successMsg = `${currentConfig.successMessage(paymentData.paymentType, paymentData.partyName)}\nAmount: ₹${formatCurrency(paymentData.paymentAmount)}`;
@@ -156,7 +253,7 @@ function TotalSection({
     };
 
     const handleFullAmountClick = () => {
-        updatePaymentData('paymentAmount', safeTotals.finalTotal);
+        updatePaymentData('paymentAmount', finalTotalWithRoundOff);
     };
 
     // Dynamic party options based on form type
@@ -178,36 +275,95 @@ function TotalSection({
         }
     };
 
+    // Calculate grid layout based on sections that should be visible
+    const getGridLayout = () => {
+        const hasPaymentButton = hasValidItems; // Only show if there are valid items
+        const hasTaxBreakdown = shouldShowTaxBreakdown; // Only show if GST enabled and tax exists
+        const hasTotalSection = true; // Always show total section
+        const hasActionButtons = true; // Always show action buttons
+
+        // Count active sections
+        const sectionCount = [hasPaymentButton, hasTaxBreakdown, hasTotalSection, hasActionButtons].filter(Boolean).length;
+
+        // Return appropriate column sizes
+        if (sectionCount === 4) {
+            return { payment: 3, tax: 3, total: 3, actions: 3 };
+        } else if (sectionCount === 3) {
+            // No tax breakdown
+            return { payment: 3, tax: 0, total: 4, actions: 5 };
+        } else if (sectionCount === 2) {
+            // No payment button and no tax breakdown
+            return { payment: 0, tax: 0, total: 6, actions: 6 };
+        } else {
+            return { payment: 4, tax: 0, total: 4, actions: 4 };
+        }
+    };
+
+    const gridLayout = getGridLayout();
+
+    // ✅ ENHANCED: Get appropriate status message for the totals
+    const getStatusMessage = () => {
+        if (!hasValidItems) {
+            return currentConfig.emptyMessage;
+        }
+
+        if (gstEnabled) {
+            if (shouldShowTaxBreakdown) {
+                return `GST Applied - Base: ₹${formatCurrency(safeTotals.subtotal)} + Tax: ₹${formatCurrency(safeTotals.totalTax)}`;
+            } else {
+                return 'GST Enabled - No Tax Applied';
+            }
+        } else {
+            return 'Non-GST Transaction';
+        }
+    };
+
     return (
         <>
             <Card className="border-0 shadow-sm">
                 <Card.Body className="p-4">
+                    {/* ✅ NEW: Real-time sync indicator */}
+                    {process.env.NODE_ENV === 'development' && (
+                        <div className="d-flex justify-content-between align-items-center mb-3 p-2 bg-info bg-opacity-10 rounded">
+                            <small className="text-info">
+                                <FontAwesomeIcon icon={faSync} className="me-1" />
+                                Last Update: {new Date(lastUpdated).toLocaleTimeString()}
+                            </small>
+                            <small className="text-success">
+                                <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                Direct from ItemsTable: ₹{formatCurrency(baseTotal)} → Final: ₹{formatCurrency(finalTotalWithRoundOff)}
+                            </small>
+                        </div>
+                    )}
+
                     {/* Enhanced Layout with Better Spacing */}
                     <Row className="align-items-center g-4">
-                        {/* Payment Button */}
-                        <Col md={3}>
-                            <div className="text-center">
-                                <Button
-                                    variant={currentConfig.actionButtonColor}
-                                    size="lg"
-                                    className="w-100 h-100 d-flex align-items-center justify-content-center flex-column border-2 border-dashed fw-semibold"
-                                    style={{
-                                        minHeight: '80px',
-                                        borderRadius: '12px',
-                                        fontSize: '13px'
-                                    }}
-                                    onClick={handlePayment}
-                                    disabled={safeTotals.finalTotal <= 0}
-                                >
-                                    <FontAwesomeIcon icon={currentConfig.paymentIcon} className="mb-1" size="lg" />
-                                    <span className="small">{currentConfig.paymentAction}</span>
-                                </Button>
-                            </div>
-                        </Col>
+                        {/* Payment Button - Only show if there are valid items */}
+                        {hasValidItems && (
+                            <Col md={gridLayout.payment}>
+                                <div className="text-center">
+                                    <Button
+                                        variant={currentConfig.actionButtonColor}
+                                        size="lg"
+                                        className="w-100 h-100 d-flex align-items-center justify-content-center flex-column border-2 border-dashed fw-semibold"
+                                        style={{
+                                            minHeight: '80px',
+                                            borderRadius: '12px',
+                                            fontSize: '13px'
+                                        }}
+                                        onClick={handlePayment}
+                                        disabled={finalTotalWithRoundOff <= 0}
+                                    >
+                                        <FontAwesomeIcon icon={currentConfig.paymentIcon} className="mb-1" size="lg" />
+                                        <span className="small">{currentConfig.paymentAction}</span>
+                                    </Button>
+                                </div>
+                            </Col>
+                        )}
 
-                        {/* Tax Breakdown Section - Only show if tax exists */}
-                        {safeTotals.totalTax > 0 && (
-                            <Col md={3}>
+                        {/* ✅ ENHANCED: Tax Breakdown Section with better formatting */}
+                        {shouldShowTaxBreakdown && (
+                            <Col md={gridLayout.tax}>
                                 <Card className="bg-light border-0 h-100">
                                     <Card.Body className="p-3">
                                         <div className="text-center mb-2">
@@ -238,83 +394,103 @@ function TotalSection({
                             </Col>
                         )}
 
-                        {/* Final Total Section with Integrated Round Off */}
-                        <Col md={safeTotals.totalTax > 0 ? 3 : 3}>
-                            <Card className={`${currentConfig.totalBorderColor} border-3 h-100`}>
+                        {/* ✅ FIXED: Final Total Section - Use exact amount from ItemsTable */}
+                        <Col md={gridLayout.total}>
+                            <Card className={`${hasValidItems ? currentConfig.totalBorderColor : 'border-secondary'} border-3 h-100`}>
                                 <Card.Body className="p-3">
                                     <div className="text-center mb-3">
+                                        <FontAwesomeIcon icon={currentConfig.formIcon} className="me-2 text-muted" />
                                         <span className="fw-bold text-secondary small">{currentConfig.totalLabel}</span>
                                     </div>
 
-                                    {/* Main Total Display */}
-                                    <div className={`fw-bold ${currentConfig.totalTextColor} h4 mb-3 text-center`}>
-                                        ₹{formatCurrency(safeTotals.finalTotal)}
+                                    {/* ✅ FIXED: Main Total Display - Show the exact total from ItemsTable + round off */}
+                                    <div className={`fw-bold ${hasValidItems ? currentConfig.totalTextColor : 'text-secondary'} h4 mb-3 text-center`}>
+                                        ₹{formatCurrency(finalTotalWithRoundOff)}
                                     </div>
 
-                                    {/* Round Off Controls */}
-                                    <div className="border-top pt-3">
-                                        <div className="d-flex align-items-center justify-content-between mb-2">
-                                            <div className="d-flex align-items-center">
-                                                <FontAwesomeIcon icon={faCalculator} className="me-2 text-warning" size="sm" />
-                                                <span className="fw-semibold text-secondary small">Round Off</span>
-                                            </div>
-                                            <Form.Check
-                                                type="switch"
-                                                id="roundoff-switch"
-                                                checked={roundOffEnabled}
-                                                onChange={(e) => onRoundOffToggle(e.target.checked)}
-                                                className="form-check-sm"
-                                            />
-                                        </div>
-
-                                        {roundOffEnabled && (
-                                            <InputGroup size="sm">
-                                                <InputGroup.Text className="bg-light text-muted fw-bold">
-                                                    ₹
-                                                </InputGroup.Text>
-                                                <Form.Control
-                                                    type="number"
-                                                    value={roundOff || ''}
-                                                    onChange={(e) => onRoundOffChange(parseFloat(e.target.value) || 0)}
-                                                    className="text-center fw-bold"
-                                                    style={{ fontSize: '14px' }}
-                                                    step="0.01"
-                                                    min="-10"
-                                                    max="10"
-                                                    placeholder="0.00"
+                                    {/* ✅ ENHANCED: Round Off Controls with better UX */}
+                                    {hasValidItems && (
+                                        <div className="border-top pt-3">
+                                            <div className="d-flex align-items-center justify-content-between mb-2">
+                                                <div className="d-flex align-items-center">
+                                                    <FontAwesomeIcon icon={faCalculator} className="me-2 text-warning" size="sm" />
+                                                    <span className="fw-semibold text-secondary small">Round Off</span>
+                                                </div>
+                                                <Form.Check
+                                                    type="switch"
+                                                    id="roundoff-switch"
+                                                    checked={roundOffEnabled}
+                                                    onChange={(e) => handleRoundOffToggle(e.target.checked)}
+                                                    className="form-check-sm"
                                                 />
-                                            </InputGroup>
-                                        )}
-                                    </div>
+                                            </div>
 
-                                    {/* Summary Details */}
-                                    {safeTotals.finalTotal === 0 ? (
-                                        <div className="text-center mt-2">
-                                            <small className="text-muted">Add items to calculate</small>
-                                        </div>
-                                    ) : (
-                                        <div className="small text-muted text-center mt-2">
-                                            {safeTotals.totalTax > 0 ? (
-                                                <>
-                                                    <div>Base: ₹{formatCurrency(safeTotals.subtotal)}</div>
-                                                    <div>Tax: ₹{formatCurrency(safeTotals.totalTax)}</div>
-                                                </>
-                                            ) : (
-                                                <div>No Tax Applied</div>
+                                            {roundOffEnabled && (
+                                                <InputGroup size="sm">
+                                                    <InputGroup.Text className="bg-light text-muted fw-bold">
+                                                        ₹
+                                                    </InputGroup.Text>
+                                                    <Form.Control
+                                                        type="number"
+                                                        value={roundOff || ''}
+                                                        onChange={(e) => handleRoundOffChange(e.target.value)}
+                                                        className="text-center fw-bold"
+                                                        style={{ fontSize: '14px' }}
+                                                        step="0.01"
+                                                        min="-10"
+                                                        max="10"
+                                                        placeholder="0.00"
+                                                    />
+                                                </InputGroup>
                                             )}
+
+                                            {/* ✅ FIXED: Show breakdown when round off is applied */}
                                             {roundOffEnabled && roundOff !== 0 && (
-                                                <div className="text-warning fw-semibold">
-                                                    Round: {roundOff > 0 ? '+' : ''}₹{formatCurrency(roundOff)}
+                                                <div className="mt-2 p-2 bg-warning bg-opacity-10 rounded">
+                                                    <div className="d-flex justify-content-between small">
+                                                        <span className="text-muted">Items Total:</span>
+                                                        <span>₹{formatCurrency(baseTotal)}</span>
+                                                    </div>
+                                                    <div className="d-flex justify-content-between small">
+                                                        <span className="text-muted">Round Off:</span>
+                                                        <span className={roundOff > 0 ? 'text-success' : 'text-danger'}>
+                                                            {roundOff > 0 ? '+' : ''}₹{formatCurrency(Math.abs(roundOff))}
+                                                        </span>
+                                                    </div>
+                                                    <hr className="my-1" />
+                                                    <div className="d-flex justify-content-between small fw-bold">
+                                                        <span>Final Total:</span>
+                                                        <span>₹{formatCurrency(finalTotalWithRoundOff)}</span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
                                     )}
+
+                                    {/* Summary Details */}
+                                    <div className="small text-muted text-center mt-3">
+                                        {!hasValidItems ? (
+                                            <div className="text-center">
+                                                <small className="text-muted">{currentConfig.emptyMessage}</small>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="mb-1">{getStatusMessage()}</div>
+                                                <div className="text-info">
+                                                    <small>
+                                                        Direct sync from Items: ₹{formatCurrency(baseTotal)}
+                                                        {roundOffEnabled && roundOff !== 0 && ` + Round Off`}
+                                                    </small>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                 </Card.Body>
                             </Card>
                         </Col>
 
                         {/* Action Buttons */}
-                        <Col md={3}>
+                        <Col md={gridLayout.actions}>
                             <div className="d-grid gap-2">
                                 {/* Share Button */}
                                 <Button
@@ -322,7 +498,7 @@ function TotalSection({
                                     size="lg"
                                     className="d-flex align-items-center justify-content-center gap-2 fw-semibold border-2"
                                     onClick={onShare}
-                                    disabled={safeTotals.finalTotal <= 0}
+                                    disabled={!hasValidItems || finalTotalWithRoundOff <= 0}
                                     style={{
                                         borderRadius: '8px',
                                         fontSize: '14px'
@@ -365,43 +541,51 @@ function TotalSection({
                         </Col>
                     </Row>
 
-                    {/* Enhanced Debug Info */}
+                    {/* ✅ ENHANCED: Debug Info with real-time totals tracking */}
                     {process.env.NODE_ENV === 'development' && (
                         <div className="mt-4 p-3 bg-warning bg-opacity-10 border border-warning rounded">
                             <h6 className="text-warning mb-2">
                                 <FontAwesomeIcon icon={faCalculator} className="me-2" />
-                                Debug Information
+                                Debug Information - TotalSection (Direct Sync)
                             </h6>
                             <Row className="small text-muted">
                                 <Col md={3}>
-                                    <strong>Subtotal:</strong> ₹{safeTotals.subtotal}
+                                    <div><strong>Subtotal:</strong> ₹{formatCurrency(safeTotals.subtotal)}</div>
+                                    <div><strong>CGST:</strong> ₹{formatCurrency(safeTotals.totalCGST)}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <strong>CGST:</strong> ₹{safeTotals.totalCGST}
+                                    <div><strong>SGST:</strong> ₹{formatCurrency(safeTotals.totalSGST)}</div>
+                                    <div><strong>Total Tax:</strong> ₹{formatCurrency(safeTotals.totalTax)}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <strong>SGST:</strong> ₹{safeTotals.totalSGST}
+                                    <div><strong>Items Total:</strong> ₹{formatCurrency(baseTotal)}</div>
+                                    <div><strong>Round Off:</strong> ₹{formatCurrency(roundOff || 0)}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <strong>Final:</strong> ₹{safeTotals.finalTotal}
+                                    <div><strong>Final Display:</strong> ₹{formatCurrency(finalTotalWithRoundOff)}</div>
+                                    <div><strong>Match Check:</strong> {Math.abs(baseTotal - safeTotals.finalTotal) < 0.01 ? '✅ Match' : '❌ Mismatch'}</div>
                                 </Col>
                             </Row>
                             <div className="mt-2 small text-muted">
-                                <strong>Round Off:</strong> {roundOffEnabled ? `₹${roundOff || 0}` : 'Disabled'} |
-                                <strong> Form Type:</strong> {formType} |
-                                <strong> Total Tax:</strong> ₹{safeTotals.totalTax}
+                                <div className="d-flex flex-wrap gap-3">
+                                    <span><strong>GST Enabled:</strong> {gstEnabled ? '✅ Yes' : '❌ No'}</span>
+                                    <span><strong>Round Off:</strong> {roundOffEnabled ? '✅ Enabled' : '❌ Disabled'}</span>
+                                    <span><strong>Form Type:</strong> {formType}</span>
+                                    <span><strong>Tax Breakdown:</strong> {shouldShowTaxBreakdown ? '✅ Visible' : '❌ Hidden'}</span>
+                                    <span><strong>Valid Items:</strong> {hasValidItems ? '✅ Yes' : '❌ No'}</span>
+                                </div>
                             </div>
                         </div>
                     )}
                 </Card.Body>
             </Card>
 
-            {/* Enhanced Payment Modal */}
+            {/* ✅ ENHANCED: Payment Modal with correct totals */}
             <Modal show={showPaymentModal} onHide={() => setShowPaymentModal(false)} centered size="lg">
                 <Modal.Header closeButton className={`${currentConfig.modalHeader} text-white`}>
                     <Modal.Title className="d-flex align-items-center gap-2">
                         <FontAwesomeIcon icon={currentConfig.paymentIcon} />
-                        {currentConfig.modalTitle} - ₹{formatCurrency(safeTotals.finalTotal)}
+                        {currentConfig.modalTitle} - ₹{formatCurrency(finalTotalWithRoundOff)}
                     </Modal.Title>
                 </Modal.Header>
                 <Modal.Body className="p-4">
@@ -467,7 +651,7 @@ function TotalSection({
                                             placeholder="Enter amount"
                                             value={paymentData.paymentAmount || ''}
                                             onChange={(e) => updatePaymentData('paymentAmount', parseFloat(e.target.value) || 0)}
-                                            max={safeTotals.finalTotal}
+                                            max={finalTotalWithRoundOff}
                                             min="0"
                                             step="0.01"
                                             className="fw-bold border-2"
@@ -483,11 +667,11 @@ function TotalSection({
                                     </InputGroup>
                                     <div className="d-flex justify-content-between mt-2">
                                         <Form.Text className="text-muted fw-semibold">
-                                            Maximum: ₹{formatCurrency(safeTotals.finalTotal)}
+                                            Maximum: ₹{formatCurrency(finalTotalWithRoundOff)}
                                         </Form.Text>
-                                        {paymentData.paymentAmount > 0 && paymentData.paymentAmount < safeTotals.finalTotal && (
+                                        {paymentData.paymentAmount > 0 && paymentData.paymentAmount < finalTotalWithRoundOff && (
                                             <Form.Text className="text-warning fw-bold">
-                                                Balance: ₹{formatCurrency(safeTotals.finalTotal - paymentData.paymentAmount)}
+                                                Balance: ₹{formatCurrency(finalTotalWithRoundOff - paymentData.paymentAmount)}
                                             </Form.Text>
                                         )}
                                     </div>
@@ -496,7 +680,7 @@ function TotalSection({
                         </Col>
 
                         <Col md={6}>
-                            {/* Payment Summary */}
+                            {/* ✅ FIXED: Payment Summary with correct totals */}
                             <Card className="bg-light h-100">
                                 <Card.Header className={`${currentConfig.totalBgColor} text-white`}>
                                     <h6 className="mb-0">Payment Summary</h6>
@@ -504,25 +688,37 @@ function TotalSection({
                                 <Card.Body>
                                     <div className="mb-3">
                                         <div className="d-flex justify-content-between mb-2">
-                                            <span>Invoice Total:</span>
-                                            <span className="fw-bold">₹{formatCurrency(safeTotals.finalTotal)}</span>
+                                            <span>Items Total:</span>
+                                            <span className="fw-bold">₹{formatCurrency(baseTotal)}</span>
+                                        </div>
+                                        {roundOffEnabled && roundOff !== 0 && (
+                                            <div className="d-flex justify-content-between mb-2">
+                                                <span>Round Off:</span>
+                                                <span className={`fw-bold ${roundOff > 0 ? 'text-success' : 'text-danger'}`}>
+                                                    {roundOff > 0 ? '+' : ''}₹{formatCurrency(Math.abs(roundOff))}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="d-flex justify-content-between mb-2 border-top pt-2">
+                                            <span className="fw-bold">Final Total:</span>
+                                            <span className="fw-bold text-primary">₹{formatCurrency(finalTotalWithRoundOff)}</span>
                                         </div>
                                         <div className="d-flex justify-content-between mb-2">
                                             <span>Payment Amount:</span>
-                                            <span className="fw-bold text-primary">₹{formatCurrency(paymentData.paymentAmount)}</span>
+                                            <span className="fw-bold text-success">₹{formatCurrency(paymentData.paymentAmount)}</span>
                                         </div>
                                         <hr />
                                         <div className="d-flex justify-content-between">
                                             <span className="fw-bold">Remaining Balance:</span>
-                                            <span className={`fw-bold ${(safeTotals.finalTotal - paymentData.paymentAmount) === 0 ? 'text-success' : 'text-warning'}`}>
-                                                ₹{formatCurrency(safeTotals.finalTotal - paymentData.paymentAmount)}
+                                            <span className={`fw-bold ${(finalTotalWithRoundOff - paymentData.paymentAmount) === 0 ? 'text-success' : 'text-warning'}`}>
+                                                ₹{formatCurrency(finalTotalWithRoundOff - paymentData.paymentAmount)}
                                             </span>
                                         </div>
                                     </div>
 
                                     {/* Status Badge */}
                                     <div className="text-center">
-                                        {paymentData.paymentAmount === safeTotals.finalTotal ? (
+                                        {paymentData.paymentAmount === finalTotalWithRoundOff ? (
                                             <span className="badge bg-success fs-6 px-3 py-2">Fully Paid</span>
                                         ) : paymentData.paymentAmount > 0 ? (
                                             <span className="badge bg-warning fs-6 px-3 py-2">Partially Paid</span>

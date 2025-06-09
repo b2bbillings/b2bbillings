@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Form, Card, Dropdown, ListGroup, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash, faChevronDown, faSearch, faTimes, faLightbulb, faBox, faTag, faWarehouse } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTrash, faChevronDown, faSearch, faTimes, faLightbulb, faBox, faTag, faWarehouse, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import ProductModal from '../../../Inventory/ProductModal';
+import itemService from '../../../../../services/itemService';
 import './ItemsTable.css';
 
 function ItemsTable({
@@ -10,205 +11,21 @@ function ItemsTable({
     gstEnabled,
     invoiceType,
     onItemsChange,
+    onTotalsChange, // ✅ NEW: Add this prop to communicate totals
     createEmptyItem,
-    inventoryItems = [],
-    categories = [],
-    onAddItem
+    onAddItem,
+    companyId
 }) {
     const [globalTaxMode, setGlobalTaxMode] = useState('with-tax');
     const [itemSearches, setItemSearches] = useState({});
     const [itemSuggestions, setItemSuggestions] = useState({});
     const [showItemSuggestions, setShowItemSuggestions] = useState({});
     const [searchNotFound, setSearchNotFound] = useState({});
+    const [searchLoading, setSearchLoading] = useState({});
     const [showAddItemModal, setShowAddItemModal] = useState(false);
     const [selectedRowIndex, setSelectedRowIndex] = useState(null);
-
-    // Fake inventory data if none provided
-    const defaultInventoryItems = [
-        {
-            id: 1,
-            name: 'HP Pavilion Laptop i5 8GB RAM',
-            itemCode: 'HP-LAP-001',
-            category: 'Electronics',
-            salePrice: 52000,
-            buyPrice: 47000,
-            currentStock: 15,
-            minStockLevel: 3,
-            unit: 'PCS',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'HP Pavilion Laptop with Intel i5 processor, 8GB RAM, 512GB SSD',
-            isActive: true
-        },
-        {
-            id: 2,
-            name: 'Dell XPS 13 Ultrabook',
-            itemCode: 'DELL-XPS-001',
-            category: 'Electronics',
-            salePrice: 78000,
-            buyPrice: 72000,
-            currentStock: 8,
-            minStockLevel: 2,
-            unit: 'PCS',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'Dell XPS 13 with Intel Core i7, 16GB RAM, 1TB SSD',
-            isActive: true
-        },
-        {
-            id: 3,
-            name: 'Samsung Galaxy S23 128GB',
-            itemCode: 'SAM-S23-001',
-            category: 'Mobile Phones',
-            salePrice: 64999,
-            buyPrice: 60000,
-            currentStock: 25,
-            minStockLevel: 5,
-            unit: 'PCS',
-            hsnNumber: '8517',
-            gstRate: 18,
-            description: 'Samsung Galaxy S23 with 128GB storage, 8GB RAM',
-            isActive: true
-        },
-        {
-            id: 4,
-            name: 'iPhone 14 Pro 256GB',
-            itemCode: 'APL-IP14P-001',
-            category: 'Mobile Phones',
-            salePrice: 129999,
-            buyPrice: 125000,
-            currentStock: 12,
-            minStockLevel: 3,
-            unit: 'PCS',
-            hsnNumber: '8517',
-            gstRate: 18,
-            description: 'Apple iPhone 14 Pro with 256GB storage, Pro Camera System',
-            isActive: true
-        },
-        {
-            id: 5,
-            name: 'Office Chair Executive Leather',
-            itemCode: 'OFC-CHR-001',
-            category: 'Furniture',
-            salePrice: 15500,
-            buyPrice: 12000,
-            currentStock: 20,
-            minStockLevel: 5,
-            unit: 'PCS',
-            hsnNumber: '9401',
-            gstRate: 18,
-            description: 'Premium executive office chair with genuine leather upholstery',
-            isActive: true
-        },
-        {
-            id: 6,
-            name: 'Wooden Study Table with Drawer',
-            itemCode: 'WD-TBL-001',
-            category: 'Furniture',
-            salePrice: 8500,
-            buyPrice: 6500,
-            currentStock: 30,
-            minStockLevel: 8,
-            unit: 'PCS',
-            hsnNumber: '9403',
-            gstRate: 18,
-            description: 'Solid wood study table with storage drawer',
-            isActive: true
-        },
-        {
-            id: 7,
-            name: 'Canon DSLR Camera EOS 1500D',
-            itemCode: 'CAN-DSLR-001',
-            category: 'Cameras',
-            salePrice: 32000,
-            buyPrice: 29000,
-            currentStock: 10,
-            minStockLevel: 2,
-            unit: 'PCS',
-            hsnNumber: '8525',
-            gstRate: 18,
-            description: 'Canon EOS 1500D DSLR Camera with 18-55mm lens',
-            isActive: true
-        },
-        {
-            id: 8,
-            name: 'Sony Headphones WH-CH720N',
-            itemCode: 'SNY-HP-001',
-            category: 'Audio',
-            salePrice: 8999,
-            buyPrice: 7500,
-            currentStock: 45,
-            minStockLevel: 10,
-            unit: 'PCS',
-            hsnNumber: '8518',
-            gstRate: 18,
-            description: 'Sony Wireless Noise Canceling Headphones',
-            isActive: true
-        },
-        {
-            id: 9,
-            name: 'Gaming Mouse RGB Wireless',
-            itemCode: 'GM-MSE-001',
-            category: 'Gaming',
-            salePrice: 2499,
-            buyPrice: 1800,
-            currentStock: 60,
-            minStockLevel: 15,
-            unit: 'PCS',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'High-precision gaming mouse with RGB lighting',
-            isActive: true
-        },
-        {
-            id: 10,
-            name: 'Mechanical Keyboard Blue Switch',
-            itemCode: 'MEC-KB-001',
-            category: 'Gaming',
-            salePrice: 4999,
-            buyPrice: 3800,
-            currentStock: 35,
-            minStockLevel: 8,
-            unit: 'PCS',
-            hsnNumber: '8471',
-            gstRate: 18,
-            description: 'Mechanical gaming keyboard with blue switches and RGB backlight',
-            isActive: true
-        },
-        {
-            id: 11,
-            name: 'Printer Ink Cartridge HP 678',
-            itemCode: 'HP-INK-678',
-            category: 'Accessories',
-            salePrice: 1299,
-            buyPrice: 950,
-            currentStock: 80,
-            minStockLevel: 20,
-            unit: 'PCS',
-            hsnNumber: '8443',
-            gstRate: 18,
-            description: 'Original HP 678 ink cartridge for HP printers',
-            isActive: true
-        },
-        {
-            id: 12,
-            name: 'USB Flash Drive 64GB',
-            itemCode: 'USB-FD-64',
-            category: 'Storage',
-            salePrice: 899,
-            buyPrice: 650,
-            currentStock: 120,
-            minStockLevel: 30,
-            unit: 'PCS',
-            hsnNumber: '8523',
-            gstRate: 18,
-            description: 'High-speed USB 3.0 flash drive 64GB capacity',
-            isActive: true
-        }
-    ];
-
-    // Use provided inventory items or default fake data
-    const currentInventoryItems = inventoryItems.length > 0 ? inventoryItems : defaultInventoryItems;
+    const [categories, setCategories] = useState([]);
+    const searchTimeoutRefs = useRef({});
 
     // Product form data for the modal
     const [productFormData, setProductFormData] = useState({
@@ -216,19 +33,225 @@ function ItemsTable({
         name: '',
         itemCode: '',
         hsnNumber: '',
-        unit: 'NONE',
+        unit: 'PCS',
         category: '',
         description: '',
         gstRate: 18,
-        openingStock: '',
+        openingStock: 0,
         asOfDate: new Date().toISOString().split('T')[0],
-        minStockLevel: '',
-        buyPrice: '',
-        salePrice: '',
+        minStockLevel: 0,
+        buyPrice: 0,
+        salePrice: 0,
         isActive: true
     });
 
-    // Handle Alt+C keyboard shortcut for adding items
+    // Debug effect to log component state
+    useEffect(() => {
+        console.log('🔧 ItemsTable Debug Info:', {
+            companyId,
+            hasItemService: !!itemService,
+            itemsCount: items.length,
+            categoriesCount: categories.length,
+            categoriesType: typeof categories,
+            categoriesIsArray: Array.isArray(categories),
+            hasOnTotalsChange: !!onTotalsChange
+        });
+    }, [companyId, items.length, categories, onTotalsChange]);
+
+    // Load categories on component mount
+    useEffect(() => {
+        if (companyId) {
+            loadCategories();
+        }
+    }, [companyId]);
+
+    // ✅ FIXED: Enhanced totals calculation with proper field mapping for TotalSection
+    const calculateTotals = useCallback(() => {
+        let totalQuantity = 0;
+        let totalDiscountAmount = 0;
+        let totalCgstAmount = 0;
+        let totalSgstAmount = 0;
+        let subtotal = 0;
+        let totalAmount = 0;
+
+        items.forEach(item => {
+            const quantity = parseFloat(item.quantity) || 0;
+            const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
+            const amount = parseFloat(item.amount) || 0;
+            const discountAmount = parseFloat(item.discountAmount) || 0;
+            const cgstAmount = parseFloat(item.cgstAmount) || 0;
+            const sgstAmount = parseFloat(item.sgstAmount) || 0;
+
+            if (quantity > 0 && pricePerUnit > 0) {
+                const baseAmount = quantity * pricePerUnit;
+
+                totalQuantity += quantity;
+                totalDiscountAmount += discountAmount;
+                totalCgstAmount += cgstAmount;
+                totalSgstAmount += sgstAmount;
+                subtotal += (baseAmount - discountAmount); // Subtotal before tax
+                totalAmount += amount; // Final amount after tax
+            }
+        });
+
+        const totalTax = totalCgstAmount + totalSgstAmount;
+
+        // ✅ FIXED: Return totals in both formats - for ItemsTable display AND TotalSection
+        const calculatedTotals = {
+            // For ItemsTable display (existing format)
+            totalQuantity: parseFloat(totalQuantity.toFixed(2)),
+            totalDiscountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
+            totalCgstAmount: parseFloat(totalCgstAmount.toFixed(2)),
+            totalSgstAmount: parseFloat(totalSgstAmount.toFixed(2)),
+            totalAmount: parseFloat(totalAmount.toFixed(2)),
+
+            // ✅ NEW: For TotalSection compatibility (matching expected field names)
+            subtotal: parseFloat(subtotal.toFixed(2)),
+            totalCGST: parseFloat(totalCgstAmount.toFixed(2)), // Maps cgstAmount → totalCGST
+            totalSGST: parseFloat(totalSgstAmount.toFixed(2)), // Maps sgstAmount → totalSGST
+            totalTax: parseFloat(totalTax.toFixed(2)),
+            finalTotal: parseFloat(totalAmount.toFixed(2))
+        };
+
+        console.log('📊 ItemsTable calculated totals:', calculatedTotals);
+        return calculatedTotals;
+    }, [items]);
+
+    // ✅ NEW: Notify parent component about totals changes
+    const notifyTotalsChange = useCallback((newTotals) => {
+        if (onTotalsChange && typeof onTotalsChange === 'function') {
+            console.log('📤 Sending totals to parent:', newTotals);
+            onTotalsChange(newTotals);
+        }
+    }, [onTotalsChange]);
+
+    // ✅ FIXED: Update totals whenever items change
+    useEffect(() => {
+        const totals = calculateTotals();
+        notifyTotalsChange(totals);
+    }, [items, gstEnabled, calculateTotals, notifyTotalsChange]);
+
+    const loadCategories = async () => {
+        try {
+            console.log('📂 Loading categories for company:', companyId);
+            const response = await itemService.getCategories(companyId);
+
+            if (response && response.success && response.data) {
+                let categoriesArray = [];
+
+                if (response.data.categories && Array.isArray(response.data.categories)) {
+                    categoriesArray = response.data.categories.map((categoryName, index) => ({
+                        id: index + 1,
+                        name: categoryName,
+                        description: `${categoryName} category`,
+                        isActive: true
+                    }));
+                } else if (Array.isArray(response.data)) {
+                    categoriesArray = response.data.map((category, index) => {
+                        if (typeof category === 'string') {
+                            return {
+                                id: index + 1,
+                                name: category,
+                                description: `${category} category`,
+                                isActive: true
+                            };
+                        } else {
+                            return {
+                                id: category.id || index + 1,
+                                name: category.name || category,
+                                description: category.description || `${category.name || category} category`,
+                                isActive: category.isActive !== undefined ? category.isActive : true
+                            };
+                        }
+                    });
+                }
+
+                if (categoriesArray.length === 0) {
+                    categoriesArray = [
+                        { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+                        { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+                        { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
+                        { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
+                    ];
+                }
+
+                setCategories(categoriesArray);
+                console.log('✅ Categories loaded:', categoriesArray);
+            } else {
+                setCategories([
+                    { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+                    { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+                    { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
+                    { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
+                ]);
+            }
+        } catch (error) {
+            console.error('❌ Error loading categories:', error);
+            setCategories([
+                { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+                { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+                { id: 3, name: 'Stationery', description: 'Office stationery items', isActive: true },
+                { id: 4, name: 'Services', description: 'Service-based offerings', isActive: true },
+            ]);
+        }
+    };
+
+    // Enhanced search function
+    const searchItems = useCallback(async (query, rowIndex) => {
+        if (!query.trim() || query.length < 2) {
+            setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
+            setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
+            setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+            return;
+        }
+
+        if (!companyId) {
+            setSearchNotFound(prev => ({ ...prev, [rowIndex]: query }));
+            setSelectedRowIndex(rowIndex);
+            return;
+        }
+
+        setSearchLoading(prev => ({ ...prev, [rowIndex]: true }));
+
+        try {
+            const response = await itemService.searchItems(companyId, query, 'product', 8);
+            let items = [];
+
+            if (response?.success && response.data) {
+                if (response.data.items && Array.isArray(response.data.items)) {
+                    items = response.data.items;
+                } else if (Array.isArray(response.data)) {
+                    items = response.data;
+                }
+            }
+
+            if (items.length > 0) {
+                setItemSuggestions(prev => ({ ...prev, [rowIndex]: items }));
+                setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: true }));
+                setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+                setSelectedRowIndex(null);
+            } else {
+                setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
+                setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
+                if (query.length >= 2) {
+                    setSearchNotFound(prev => ({ ...prev, [rowIndex]: query }));
+                    setSelectedRowIndex(rowIndex);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error searching items:', error);
+            setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
+            setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
+            if (query.length >= 2) {
+                setSearchNotFound(prev => ({ ...prev, [rowIndex]: query }));
+                setSelectedRowIndex(rowIndex);
+            }
+        } finally {
+            setSearchLoading(prev => ({ ...prev, [rowIndex]: false }));
+        }
+    }, [companyId]);
+
+    // Handle Alt+C keyboard shortcut
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.altKey && e.key.toLowerCase() === 'c' && searchNotFound[selectedRowIndex]) {
@@ -242,6 +265,8 @@ function ItemsTable({
     }, [searchNotFound, selectedRowIndex]);
 
     const handleItemChange = (index, field, value) => {
+        console.log(`📝 handleItemChange: row ${index}, field ${field}, value:`, value);
+
         const newItems = [...items];
         newItems[index] = { ...newItems[index], [field]: value };
 
@@ -250,43 +275,39 @@ function ItemsTable({
             handleItemSearch(index, value);
         }
 
-        // Calculate totals for specific fields
-        if (['quantity', 'pricePerUnit', 'taxRate', 'discountPercent', 'discountAmount', 'taxAmount', 'taxMode'].includes(field)) {
+        // ✅ FIXED: Calculate totals for specific fields and notify parent
+        if (['quantity', 'pricePerUnit', 'discountPercent', 'discountAmount', 'cgstAmount', 'sgstAmount', 'taxMode'].includes(field)) {
             calculateItemTotals(newItems[index], index, newItems, field);
+
+            // ✅ NEW: Immediately notify parent of totals change
+            setTimeout(() => {
+                const updatedTotals = calculateTotals();
+                notifyTotalsChange(updatedTotals);
+            }, 0);
         }
 
         onItemsChange(newItems);
     };
 
-    // Handle item search and suggestions
     const handleItemSearch = (rowIndex, searchQuery) => {
         setItemSearches(prev => ({ ...prev, [rowIndex]: searchQuery }));
 
+        if (searchTimeoutRefs.current[rowIndex]) {
+            clearTimeout(searchTimeoutRefs.current[rowIndex]);
+        }
+
         if (searchQuery.length > 0) {
-            // Filter inventory items based on search query
-            const matchingItems = currentInventoryItems.filter(item =>
-                item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (item.itemCode && item.itemCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-
-            setItemSuggestions(prev => ({ ...prev, [rowIndex]: matchingItems }));
-
-            // Show suggestions if we have matches
-            if (matchingItems.length > 0) {
-                setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: true }));
-                setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+            if (searchQuery.length >= 2) {
+                searchTimeoutRefs.current[rowIndex] = setTimeout(() => {
+                    searchItems(searchQuery, rowIndex);
+                }, 300);
             } else {
-                // No items found - show add item option
                 setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
-                if (searchQuery.length > 2) {
-                    setSearchNotFound(prev => ({ ...prev, [rowIndex]: searchQuery }));
-                    setSelectedRowIndex(rowIndex);
-                }
+                setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+                setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
+                setSelectedRowIndex(null);
             }
         } else {
-            // Reset when search is empty
             setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
             setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
             setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
@@ -294,45 +315,62 @@ function ItemsTable({
         }
     };
 
-    // Handle item suggestion click
     const handleItemSuggestionClick = (rowIndex, item) => {
         const newItems = [...items];
+        const taxRate = item.gstRate || 0;
+
         newItems[rowIndex] = {
             ...newItems[rowIndex],
+            itemRef: item._id || item.id,
             itemName: item.name,
             hsnCode: item.hsnNumber || '',
-            unit: item.unit || 'NONE',
+            unit: item.unit || 'PCS',
             pricePerUnit: item.salePrice || 0,
-            taxRate: item.gstRate || 0
+            taxRate: taxRate,
+            itemCode: item.itemCode || '',
+            category: item.category || '',
+            currentStock: item.currentStock || 0,
+            minStockLevel: item.minStockLevel || item.minStockToMaintain || 0
         };
 
-        // Calculate totals for the selected item
         calculateItemTotals(newItems[rowIndex], rowIndex, newItems);
 
-        // Clear search state for this row
         setItemSearches(prev => ({ ...prev, [rowIndex]: item.name }));
         setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
         setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+        setSearchLoading(prev => ({ ...prev, [rowIndex]: false }));
         setSelectedRowIndex(null);
 
         onItemsChange(newItems);
     };
 
-    // Handle clear search for a specific row
     const clearItemSearch = (rowIndex) => {
         setItemSearches(prev => ({ ...prev, [rowIndex]: '' }));
         setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
         setSearchNotFound(prev => ({ ...prev, [rowIndex]: false }));
+        setSearchLoading(prev => ({ ...prev, [rowIndex]: false }));
         setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
         setSelectedRowIndex(null);
 
-        // Clear the item name in the table
         const newItems = [...items];
-        newItems[rowIndex] = { ...newItems[rowIndex], itemName: '' };
+        newItems[rowIndex] = {
+            ...newItems[rowIndex],
+            itemRef: null,
+            itemName: '',
+            hsnCode: '',
+            unit: 'PCS',
+            pricePerUnit: 0,
+            taxRate: 0,
+            cgstAmount: 0,
+            sgstAmount: 0,
+            itemCode: '',
+            category: '',
+            currentStock: 0,
+            minStockLevel: 0
+        };
         onItemsChange(newItems);
     };
 
-    // Handle adding item from search
     const handleAddItemFromSearch = (rowIndex, itemName) => {
         setSelectedRowIndex(rowIndex);
         setProductFormData(prev => ({
@@ -353,49 +391,64 @@ function ItemsTable({
 
     const handleSaveProduct = async (e, saveAndAdd = false) => {
         e.preventDefault();
+        console.log('💾 Saving product:', productFormData);
+
+        if (!companyId) {
+            alert('Company ID is required to create items');
+            return false;
+        }
 
         try {
+            let result;
             if (onAddItem) {
-                const result = await onAddItem(productFormData);
-
-                if (result !== false) {
-                    if (selectedRowIndex !== null) {
-                        const newItems = [...items];
-                        newItems[selectedRowIndex] = {
-                            ...newItems[selectedRowIndex],
-                            itemName: productFormData.name,
-                            hsnCode: productFormData.hsnNumber || '',
-                            unit: productFormData.unit || 'NONE',
-                            pricePerUnit: productFormData.salePrice || 0,
-                            taxRate: productFormData.gstRate || 0
-                        };
-
-                        calculateItemTotals(newItems[selectedRowIndex], selectedRowIndex, newItems);
-                        setItemSearches(prev => ({ ...prev, [selectedRowIndex]: productFormData.name }));
-                        setSearchNotFound(prev => ({ ...prev, [selectedRowIndex]: false }));
-                        onItemsChange(newItems);
-                    }
-
-                    if (!saveAndAdd) {
-                        setShowAddItemModal(false);
-                        setSelectedRowIndex(null);
-                        resetProductForm();
-                    }
-                    return result;
-                }
+                result = await onAddItem(productFormData);
             } else {
-                console.log('Product data:', productFormData);
-                alert(`Product "${productFormData.name}" added successfully!`);
+                result = await itemService.createItem(companyId, productFormData);
+            }
+
+            if (result && result.success) {
+                const newItem = result.data;
+                const taxRate = newItem.gstRate || 0;
+
+                if (selectedRowIndex !== null) {
+                    const newItems = [...items];
+                    newItems[selectedRowIndex] = {
+                        ...newItems[selectedRowIndex],
+                        itemRef: newItem._id || newItem.id,
+                        itemName: newItem.name,
+                        hsnCode: newItem.hsnNumber || '',
+                        unit: newItem.unit || 'PCS',
+                        pricePerUnit: newItem.salePrice || 0,
+                        taxRate: taxRate,
+                        itemCode: newItem.itemCode || '',
+                        category: newItem.category || '',
+                        currentStock: newItem.currentStock || newItem.openingStock || 0,
+                        minStockLevel: newItem.minStockLevel || newItem.minStockToMaintain || 0
+                    };
+
+                    calculateItemTotals(newItems[selectedRowIndex], selectedRowIndex, newItems);
+                    setItemSearches(prev => ({ ...prev, [selectedRowIndex]: newItem.name }));
+                    setSearchNotFound(prev => ({ ...prev, [selectedRowIndex]: false }));
+                    onItemsChange(newItems);
+                }
+
+                loadCategories();
 
                 if (!saveAndAdd) {
                     setShowAddItemModal(false);
                     setSelectedRowIndex(null);
                     resetProductForm();
+                } else {
+                    resetProductForm();
                 }
+
+                return result;
+            } else {
+                throw new Error(result?.message || 'Failed to save product');
             }
         } catch (error) {
-            console.error('Error saving product:', error);
-            alert('Error saving product. Please try again.');
+            console.error('❌ Error saving product:', error);
+            alert(`Error saving product: ${error.message}`);
             return false;
         }
     };
@@ -412,15 +465,15 @@ function ItemsTable({
             name: '',
             itemCode: '',
             hsnNumber: '',
-            unit: 'NONE',
+            unit: 'PCS',
             category: '',
             description: '',
             gstRate: 18,
-            openingStock: '',
+            openingStock: 0,
             asOfDate: new Date().toISOString().split('T')[0],
-            minStockLevel: '',
-            buyPrice: '',
-            salePrice: '',
+            minStockLevel: 0,
+            buyPrice: 0,
+            salePrice: 0,
             isActive: true
         });
     };
@@ -429,7 +482,6 @@ function ItemsTable({
         setGlobalTaxMode(mode);
         const newItems = items.map(item => ({ ...item, taxMode: mode }));
 
-        // Recalculate all items with new tax mode
         newItems.forEach((item, index) => {
             calculateItemTotals(item, index, newItems);
         });
@@ -437,21 +489,19 @@ function ItemsTable({
         onItemsChange(newItems);
     };
 
-    // Fixed calculation function
+    // ✅ FIXED: Enhanced calculation function for proper "with tax" handling
     const calculateItemTotals = (item, index, allItems, changedField = null) => {
         const quantity = parseFloat(item.quantity) || 0;
         const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
         const taxMode = item.taxMode || globalTaxMode;
-
-        console.log(`🧮 Calculating item ${index + 1}:`, { quantity, pricePerUnit, taxMode, changedField });
 
         // Base amount calculation
         const baseAmount = quantity * pricePerUnit;
 
         let discountPercent = parseFloat(item.discountPercent) || 0;
         let discountAmount = parseFloat(item.discountAmount) || 0;
-        let taxRate = parseFloat(item.taxRate) || 0;
-        let taxAmount = parseFloat(item.taxAmount) || 0;
+        let cgstAmount = parseFloat(item.cgstAmount) || 0;
+        let sgstAmount = parseFloat(item.sgstAmount) || 0;
 
         // Handle discount calculations
         if (changedField === 'discountPercent') {
@@ -464,63 +514,72 @@ function ItemsTable({
 
         const amountAfterDiscount = baseAmount - discountAmount;
 
-        // Handle tax calculations based on tax mode
-        if (gstEnabled && taxRate > 0) {
-            if (changedField === 'taxRate' || changedField === 'taxMode' || !changedField) {
-                if (taxMode === 'with-tax') {
-                    // Price includes tax - extract tax from the amount
-                    taxAmount = (amountAfterDiscount * taxRate) / (100 + taxRate);
-                } else {
-                    // Price excludes tax - add tax to the amount
-                    taxAmount = (amountAfterDiscount * taxRate) / 100;
-                }
-            } else if (changedField === 'taxAmount') {
-                if (taxMode === 'with-tax') {
-                    taxRate = amountAfterDiscount > taxAmount ? (taxAmount * 100) / (amountAfterDiscount - taxAmount) : 0;
-                } else {
-                    taxRate = amountAfterDiscount > 0 ? (taxAmount * 100) / amountAfterDiscount : 0;
+        // ✅ FIXED: Handle tax calculations based on mode
+        if (gstEnabled) {
+            if (changedField === 'cgstAmount') {
+                sgstAmount = cgstAmount; // Mirror CGST to SGST
+            } else if (changedField === 'sgstAmount') {
+                cgstAmount = sgstAmount; // Mirror SGST to CGST
+            } else if (!changedField || ['quantity', 'pricePerUnit', 'discountPercent', 'discountAmount', 'taxMode'].includes(changedField)) {
+                const taxRate = parseFloat(item.taxRate) || 0;
+                if (taxRate > 0) {
+                    let totalTaxAmount;
+
+                    if (taxMode === 'with-tax') {
+                        // ✅ FIXED: For "with tax" - the price includes tax, so extract tax from the amount
+                        totalTaxAmount = (amountAfterDiscount * taxRate) / (100 + taxRate);
+                    } else {
+                        // For "without tax" - add tax to the amount
+                        totalTaxAmount = (amountAfterDiscount * taxRate) / 100;
+                    }
+
+                    cgstAmount = totalTaxAmount / 2;
+                    sgstAmount = totalTaxAmount / 2;
                 }
             }
         } else {
-            taxRate = 0;
-            taxAmount = 0;
+            cgstAmount = 0;
+            sgstAmount = 0;
         }
 
-        // Calculate final amount based on tax mode
+        // ✅ FIXED: Calculate final amount based on tax mode
+        const totalTaxAmount = cgstAmount + sgstAmount;
         let finalAmount;
-        if (gstEnabled && taxAmount > 0) {
+
+        if (gstEnabled && totalTaxAmount > 0) {
             if (taxMode === 'with-tax') {
+                // ✅ FIXED: For "with tax" - the amount after discount IS the final amount (tax included)
                 finalAmount = amountAfterDiscount;
             } else {
-                finalAmount = amountAfterDiscount + taxAmount;
+                // For "without tax" - add tax to get final amount
+                finalAmount = amountAfterDiscount + totalTaxAmount;
             }
         } else {
             finalAmount = amountAfterDiscount;
         }
 
-        // Calculate CGST and SGST (assuming intra-state transaction)
-        const cgst = taxAmount / 2;
-        const sgst = taxAmount / 2;
+        const igst = totalTaxAmount;
 
         // Update the item with calculated values
         allItems[index] = {
             ...item,
             discountPercent: parseFloat(discountPercent.toFixed(2)),
             discountAmount: parseFloat(discountAmount.toFixed(2)),
-            taxRate: parseFloat(taxRate.toFixed(2)),
-            taxAmount: parseFloat(taxAmount.toFixed(2)),
-            cgst: parseFloat(cgst.toFixed(2)),
-            sgst: parseFloat(sgst.toFixed(2)),
-            igst: parseFloat(taxAmount.toFixed(2)),
+            cgstAmount: parseFloat(cgstAmount.toFixed(2)),
+            sgstAmount: parseFloat(sgstAmount.toFixed(2)),
+            igst: parseFloat(igst.toFixed(2)),
             amount: parseFloat(finalAmount.toFixed(2))
         };
 
-        console.log(`✅ Item ${index + 1} final:`, {
-            baseAmount: baseAmount.toFixed(2),
-            discountAmount: discountAmount.toFixed(2),
-            amountAfterDiscount: amountAfterDiscount.toFixed(2),
-            taxAmount: taxAmount.toFixed(2),
-            finalAmount: finalAmount.toFixed(2)
+        console.log('🧮 Item calculation:', {
+            index,
+            taxMode,
+            baseAmount,
+            amountAfterDiscount,
+            totalTaxAmount,
+            finalAmount,
+            cgstAmount,
+            sgstAmount
         });
     };
 
@@ -534,72 +593,49 @@ function ItemsTable({
         if (items.length > 1) {
             const newItems = items.filter((_, i) => i !== index);
 
-            // Clean up search states for removed row
             const newItemSearches = { ...itemSearches };
             const newItemSuggestions = { ...itemSuggestions };
             const newShowItemSuggestions = { ...showItemSuggestions };
             const newSearchNotFound = { ...searchNotFound };
+            const newSearchLoading = { ...searchLoading };
 
             delete newItemSearches[index];
             delete newItemSuggestions[index];
             delete newShowItemSuggestions[index];
             delete newSearchNotFound[index];
+            delete newSearchLoading[index];
 
             setItemSearches(newItemSearches);
             setItemSuggestions(newItemSuggestions);
             setShowItemSuggestions(newShowItemSuggestions);
             setSearchNotFound(newSearchNotFound);
+            setSearchLoading(newSearchLoading);
+
+            if (searchTimeoutRefs.current[index]) {
+                clearTimeout(searchTimeoutRefs.current[index]);
+                delete searchTimeoutRefs.current[index];
+            }
 
             onItemsChange(newItems);
         }
     };
 
-    // Fixed totals calculation
-    const calculateTotals = () => {
-        let totalQuantity = 0;
-        let totalDiscountAmount = 0;
-        let totalTaxAmount = 0;
-        let totalAmount = 0;
-
-        items.forEach(item => {
-            const quantity = parseFloat(item.quantity) || 0;
-            const amount = parseFloat(item.amount) || 0;
-            const discountAmount = parseFloat(item.discountAmount) || 0;
-            const taxAmount = parseFloat(item.taxAmount) || 0;
-
-            // Only include items with valid data
-            if (quantity > 0 && amount > 0) {
-                totalQuantity += quantity;
-                totalDiscountAmount += discountAmount;
-                totalTaxAmount += taxAmount;
-                totalAmount += amount;
-            }
-        });
-
-        return {
-            totalQuantity: parseFloat(totalQuantity.toFixed(2)),
-            totalDiscountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
-            totalTaxAmount: parseFloat(totalTaxAmount.toFixed(2)),
-            totalAmount: parseFloat(totalAmount.toFixed(2))
-        };
-    };
-
+    // ✅ FIXED: Get current totals for display
     const totals = calculateTotals();
     const unitOptions = ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM'];
 
-    // Updated column widths for better spacing
     const getColumnWidths = () => {
         if (gstEnabled) {
             return {
                 serial: '3%',
-                item: '18%',
+                item: '20%',
                 hsn: '8%',
-                qty: '6%',
-                unit: '6%',
+                qty: '7%',
+                unit: '7%',
                 price: '13%',
-                discount: '14%', // Increased
-                tax: '14%',      // Increased
-                amount: '10%',
+                discount: '15%',
+                tax: '15%',
+                amount: '12%',
                 action: '3%'
             };
         } else {
@@ -610,7 +646,7 @@ function ItemsTable({
                 qty: '8%',
                 unit: '8%',
                 price: '15%',
-                discount: '18%', // Increased
+                discount: '18%',
                 amount: '12%',
                 action: '4%'
             };
@@ -619,13 +655,34 @@ function ItemsTable({
 
     const colWidths = getColumnWidths();
 
+    useEffect(() => {
+        return () => {
+            Object.values(searchTimeoutRefs.current).forEach(timeout => {
+                clearTimeout(timeout);
+            });
+        };
+    }, []);
+
     return (
         <>
             <div className="mt-4">
                 <Card className="shadow-sm">
                     <Card.Header className="bg-white d-flex justify-content-between align-items-center">
                         <h6 className="mb-0">Items Details</h6>
-                        <small className="text-muted">Total Items: {currentInventoryItems.length}</small>
+                        <div className="d-flex align-items-center gap-2">
+                            <small className="text-muted">
+                                {companyId ? `Connected to Company: ${companyId}` : 'No Company ID'}
+                            </small>
+                            <small className="text-success">
+                                Categories: {categories.length}
+                            </small>
+                            {/* ✅ NEW: Debug totals sync indicator */}
+                            {process.env.NODE_ENV === 'development' && (
+                                <small className="text-info">
+                                    Totals: {onTotalsChange ? '✅ Synced' : '❌ No sync'}
+                                </small>
+                            )}
+                        </div>
                     </Card.Header>
                     <Card.Body className="p-0">
                         <Table bordered className="mb-0 items-table-new">
@@ -687,8 +744,17 @@ function ItemsTable({
                                     </th>
                                     {gstEnabled && (
                                         <th style={{ width: colWidths.tax }}>
-                                            TAX
-                                            <br /><small className="text-muted">% &nbsp;&nbsp;&nbsp; AMOUNT</small>
+                                            <div className="tax-header-container">
+                                                <div className="tax-main-header">TAX</div>
+                                                <div className="tax-sub-headers">
+                                                    <div className="tax-sub-header cgst-header">
+                                                        CGST ₹
+                                                    </div>
+                                                    <div className="tax-sub-header sgst-header">
+                                                        SGST ₹
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </th>
                                     )}
                                     <th style={{ width: colWidths.amount }}>AMOUNT</th>
@@ -698,6 +764,7 @@ function ItemsTable({
                             <tbody>
                                 {items.map((item, index) => (
                                     <React.Fragment key={item.id}>
+                                        {/* ...existing table rows code remains the same... */}
                                         <tr>
                                             <td className="text-center">{index + 1}</td>
                                             <td>
@@ -711,7 +778,12 @@ function ItemsTable({
                                                             size="sm"
                                                             className="flex-grow-1 item-search-input"
                                                         />
-                                                        {(itemSearches[index] || item.itemName) && (
+                                                        {searchLoading[index] && (
+                                                            <div className="position-absolute top-50 end-0 translate-middle-y me-5">
+                                                                <FontAwesomeIcon icon={faSpinner} spin className="text-muted" size="sm" />
+                                                            </div>
+                                                        )}
+                                                        {(itemSearches[index] || item.itemName) && !searchLoading[index] && (
                                                             <Button
                                                                 variant="outline-secondary"
                                                                 size="sm"
@@ -724,11 +796,21 @@ function ItemsTable({
                                                         )}
                                                     </div>
 
+                                                    {/* Stock warning for selected items */}
+                                                    {item.itemRef && item.currentStock !== undefined && (
+                                                        <div className="mt-1">
+                                                            <small className={`text-${item.currentStock <= item.minStockLevel ? 'danger' : item.currentStock < 10 ? 'warning' : 'muted'}`}>
+                                                                Stock: {item.currentStock} {item.unit}
+                                                                {item.currentStock <= item.minStockLevel && ' (Low Stock!)'}
+                                                            </small>
+                                                        </div>
+                                                    )}
+
                                                     {/* Item Suggestions Dropdown */}
                                                     {showItemSuggestions[index] && itemSuggestions[index]?.length > 0 && (
                                                         <div className="suggestions-dropdown position-absolute w-100" style={{ zIndex: 1050, top: '100%' }}>
                                                             <div className="suggestions-container shadow-lg border rounded">
-                                                                <div className="suggestions-header bg-gradient-primary text-white py-2 px-3">
+                                                                <div className="suggestions-header bg-primary text-white py-2 px-3">
                                                                     <div className="d-flex align-items-center">
                                                                         <FontAwesomeIcon icon={faLightbulb} className="me-2" />
                                                                         <span className="fw-semibold small">Found {itemSuggestions[index].length} items</span>
@@ -738,9 +820,10 @@ function ItemsTable({
                                                                 <div className="suggestions-list">
                                                                     {itemSuggestions[index].slice(0, 6).map((inventoryItem) => (
                                                                         <div
-                                                                            key={inventoryItem.id}
-                                                                            className="suggestion-item py-3 px-3 border-bottom cursor-pointer"
+                                                                            key={inventoryItem._id || inventoryItem.id}
+                                                                            className="suggestion-item py-3 px-3 border-bottom cursor-pointer hover:bg-light"
                                                                             onClick={() => handleItemSuggestionClick(index, inventoryItem)}
+                                                                            style={{ cursor: 'pointer' }}
                                                                         >
                                                                             <div className="d-flex justify-content-between align-items-start">
                                                                                 <div className="flex-grow-1 me-3">
@@ -750,33 +833,28 @@ function ItemsTable({
                                                                                     <div className="item-details d-flex flex-wrap gap-2 small text-muted">
                                                                                         <span className="d-flex align-items-center">
                                                                                             <FontAwesomeIcon icon={faTag} className="me-1" size="xs" />
-                                                                                            {inventoryItem.itemCode}
+                                                                                            {inventoryItem.itemCode || 'No Code'}
                                                                                         </span>
                                                                                         <span className="text-primary">
-                                                                                            {inventoryItem.category}
+                                                                                            {inventoryItem.category || 'No Category'}
                                                                                         </span>
                                                                                         <span className="d-flex align-items-center">
                                                                                             <FontAwesomeIcon icon={faWarehouse} className="me-1" size="xs" />
-                                                                                            HSN: {inventoryItem.hsnNumber}
+                                                                                            HSN: {inventoryItem.hsnNumber || 'N/A'}
                                                                                         </span>
                                                                                     </div>
-                                                                                    {inventoryItem.description && (
-                                                                                        <div className="item-description text-muted small mt-1" style={{ fontSize: '0.75rem' }}>
-                                                                                            {inventoryItem.description.substring(0, 80)}...
-                                                                                        </div>
-                                                                                    )}
                                                                                 </div>
                                                                                 <div className="item-price-info text-end">
                                                                                     <div className="price text-success fw-bold">
                                                                                         ₹{inventoryItem.salePrice?.toLocaleString('en-IN') || '0'}
                                                                                     </div>
                                                                                     <div className="stock-info small">
-                                                                                        <span className={`stock-badge ${inventoryItem.currentStock > inventoryItem.minStockLevel ? 'text-success' : 'text-warning'}`}>
-                                                                                            Stock: {inventoryItem.currentStock || 0}
+                                                                                        <span className={`stock-badge ${(inventoryItem.currentStock || 0) > (inventoryItem.minStockLevel || inventoryItem.minStockToMaintain || 0) ? 'text-success' : 'text-warning'}`}>
+                                                                                            Stock: {inventoryItem.currentStock || inventoryItem.openingStock || 0}
                                                                                         </span>
                                                                                     </div>
                                                                                     <div className="gst-rate text-muted" style={{ fontSize: '0.7rem' }}>
-                                                                                        GST: {inventoryItem.gstRate}%
+                                                                                        GST: {inventoryItem.gstRate || 0}%
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
@@ -795,7 +873,7 @@ function ItemsTable({
                                                     )}
 
                                                     {/* Item Not Found Alert */}
-                                                    {searchNotFound[index] && (
+                                                    {searchNotFound[index] && !searchLoading[index] && !showItemSuggestions[index] && (
                                                         <div className="position-absolute w-100" style={{ zIndex: 1040, top: '100%' }}>
                                                             <Alert variant="warning" className="mb-0 py-3 shadow-sm not-found-alert">
                                                                 <div className="d-flex align-items-center justify-content-between">
@@ -849,10 +927,15 @@ function ItemsTable({
                                                     className="text-center"
                                                     size="sm"
                                                 />
+                                                {item.itemRef && item.currentStock !== undefined && item.quantity > item.currentStock && (
+                                                    <small className="text-danger">
+                                                        Exceeds stock ({item.currentStock})
+                                                    </small>
+                                                )}
                                             </td>
                                             <td>
                                                 <Form.Select
-                                                    value={item.unit || 'NONE'}
+                                                    value={item.unit || 'PCS'}
                                                     onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                                                     size="sm"
                                                 >
@@ -904,7 +987,6 @@ function ItemsTable({
                                                 </div>
                                             </td>
                                             <td>
-                                                {/* Wider discount inputs */}
                                                 <div className="d-flex gap-1">
                                                     <Form.Control
                                                         type="number"
@@ -915,7 +997,7 @@ function ItemsTable({
                                                         step="0.01"
                                                         className="text-center"
                                                         size="sm"
-                                                        style={{ width: '65px' }} // Increased width
+                                                        style={{ width: '65px' }}
                                                         placeholder="%"
                                                     />
                                                     <Form.Control
@@ -926,37 +1008,33 @@ function ItemsTable({
                                                         step="0.01"
                                                         className="text-center"
                                                         size="sm"
-                                                        style={{ width: '75px' }} // Increased width
+                                                        style={{ width: '75px' }}
                                                         placeholder="₹"
                                                     />
                                                 </div>
                                             </td>
                                             {gstEnabled && (
                                                 <td>
-                                                    {/* Wider tax inputs */}
-                                                    <div className="d-flex gap-1">
+                                                    <div className="d-flex flex-column gap-1">
                                                         <Form.Control
                                                             type="number"
-                                                            value={item.taxRate || ''}
-                                                            onChange={(e) => handleItemChange(index, 'taxRate', e.target.value)}
+                                                            value={item.cgstAmount || ''}
+                                                            onChange={(e) => handleItemChange(index, 'cgstAmount', e.target.value)}
                                                             min="0"
-                                                            max="100"
                                                             step="0.01"
                                                             className="text-center"
                                                             size="sm"
-                                                            style={{ width: '65px' }} // Increased width
-                                                            placeholder="%"
+                                                            placeholder="CGST ₹"
                                                         />
                                                         <Form.Control
                                                             type="number"
-                                                            value={item.taxAmount || ''}
-                                                            onChange={(e) => handleItemChange(index, 'taxAmount', e.target.value)}
+                                                            value={item.sgstAmount || ''}
+                                                            onChange={(e) => handleItemChange(index, 'sgstAmount', e.target.value)}
                                                             min="0"
                                                             step="0.01"
                                                             className="text-center"
                                                             size="sm"
-                                                            style={{ width: '75px' }} // Increased width
-                                                            placeholder="₹"
+                                                            placeholder="SGST ₹"
                                                         />
                                                     </div>
                                                 </td>
@@ -992,7 +1070,7 @@ function ItemsTable({
                                     </td>
                                 </tr>
 
-                                {/* Fixed totals row */}
+                                {/* ✅ FIXED: Enhanced totals row with correct field names */}
                                 <tr className="table-secondary">
                                     <td></td>
                                     <td className="text-center"><strong>TOTAL</strong></td>
@@ -1007,7 +1085,14 @@ function ItemsTable({
                                     </td>
                                     {gstEnabled && (
                                         <td className="text-center">
-                                            <strong>₹{totals.totalTaxAmount.toLocaleString('en-IN')}</strong>
+                                            <div className="d-flex flex-column gap-1">
+                                                <span>
+                                                    <strong>₹{totals.totalCgstAmount.toLocaleString('en-IN')}</strong>
+                                                </span>
+                                                <span>
+                                                    <strong>₹{totals.totalSgstAmount.toLocaleString('en-IN')}</strong>
+                                                </span>
+                                            </div>
                                         </td>
                                     )}
                                     <td className="text-center">
@@ -1017,213 +1102,43 @@ function ItemsTable({
                                 </tr>
                             </tbody>
                         </Table>
+
+                        {/* ✅ NEW: Debug section for totals sync */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div className="p-3 bg-light border-top">
+                                <h6 className="text-muted mb-2">🔧 Debug - ItemsTable Totals</h6>
+                                <div className="small text-muted">
+                                    <div className="row">
+                                        <div className="col-md-6">
+                                            <div><strong>Subtotal:</strong> ₹{totals.subtotal}</div>
+                                            <div><strong>Total CGST:</strong> ₹{totals.totalCGST}</div>
+                                            <div><strong>Total SGST:</strong> ₹{totals.totalSGST}</div>
+                                        </div>
+                                        <div className="col-md-6">
+                                            <div><strong>Total Tax:</strong> ₹{totals.totalTax}</div>
+                                            <div><strong>Final Total:</strong> ₹{totals.finalTotal}</div>
+                                            <div><strong>Sync Status:</strong> {onTotalsChange ? '✅ Active' : '❌ Missing'}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </Card.Body>
                 </Card>
             </div>
 
-            {/* Product Modal */}
             <ProductModal
                 show={showAddItemModal}
                 onHide={handleCloseProductModal}
                 editingProduct={null}
                 formData={productFormData}
-                categories={categories}
+                categories={Array.isArray(categories) ? categories : []}
                 onInputChange={handleProductInputChange}
                 onSaveProduct={handleSaveProduct}
+                currentCompany={{ id: companyId, companyName: 'Current Company' }}
+                mode="add"
+                type={productFormData.type || 'product'}
             />
-
-            {/* Enhanced Styles */}
-            <style>
-                {`
-                /* Suggestions Container Styles */
-                .suggestions-container {
-                    max-height: 400px;
-                    overflow: hidden;
-                    background: white;
-                    border-radius: 8px !important;
-                }
-
-                .suggestions-header {
-                    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
-                    border-top-left-radius: 8px;
-                    border-top-right-radius: 8px;
-                }
-
-                .suggestions-list {
-                    max-height: 350px;
-                    overflow-y: auto;
-                }
-
-                .suggestion-item {
-                    transition: all 0.2s ease;
-                    border-left: 3px solid transparent;
-                }
-
-                .suggestion-item:hover {
-                    background-color: #f8f9fa !important;
-                    border-left-color: #007bff;
-                    transform: translateX(2px);
-                }
-
-                .suggestion-item:active {
-                    background-color: #e9ecef !important;
-                }
-
-                .suggestion-item .item-name {
-                    font-size: 0.9rem;
-                    color: #2c3e50;
-                }
-
-                .suggestion-item .item-details {
-                    font-size: 0.75rem;
-                }
-
-                .suggestion-item .item-description {
-                    color: #6c757d;
-                    line-height: 1.3;
-                }
-
-                .suggestion-item .price {
-                    font-size: 1rem;
-                    font-weight: 600;
-                }
-
-                .stock-badge {
-                    font-weight: 500;
-                    padding: 1px 4px;
-                    border-radius: 3px;
-                    background: rgba(40, 167, 69, 0.1);
-                }
-
-                /* Not Found Alert Styles */
-                .not-found-alert {
-                    border-left: 4px solid #ffc107;
-                    background: linear-gradient(90deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%);
-                    border-radius: 8px;
-                }
-
-                .add-item-btn {
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                    border: none;
-                    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
-                    transition: all 0.2s ease;
-                }
-
-                .add-item-btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.4);
-                }
-
-                /* Search Input Styles */
-                .item-search-input {
-                    border-color: #dee2e6;
-                    transition: all 0.2s ease;
-                }
-
-                .item-search-input:focus {
-                    border-color: #007bff;
-                    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-                }
-
-                .clear-search-btn {
-                    border-color: #dee2e6;
-                    color: #6c757d;
-                    transition: all 0.2s ease;
-                }
-
-                .clear-search-btn:hover {
-                    background-color: #e9ecef;
-                    border-color: #adb5bd;
-                    color: #495057;
-                }
-
-                /* Table Styles */
-                .items-table-new {
-                    border-radius: 8px;
-                    overflow: hidden;
-                }
-
-                .items-table-new .position-relative {
-                    z-index: auto;
-                }
-
-                .items-table-new .suggestions-dropdown,
-                .items-table-new .alert {
-                    border: 1px solid #dee2e6;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-                }
-
-                .items-table-new td {
-                    position: relative;
-                    overflow: visible;
-                    vertical-align: middle;
-                }
-
-                .items-table-new thead th {
-                    background-color: #f8f9fa;
-                    border-bottom: 2px solid #dee2e6;
-                    font-weight: 600;
-                    color: #495057;
-                }
-
-                /* Enhanced input styling for better UX */
-                .items-table-new input[type="number"] {
-                    transition: all 0.2s ease;
-                }
-
-                .items-table-new input[type="number"]:focus {
-                    border-color: #007bff;
-                    box-shadow: 0 0 0 0.1rem rgba(0, 123, 255, 0.25);
-                }
-
-                /* Scrollbar Styles */
-                .suggestions-list::-webkit-scrollbar {
-                    width: 6px;
-                }
-
-                .suggestions-list::-webkit-scrollbar-track {
-                    background: #f1f1f1;
-                }
-
-                .suggestions-list::-webkit-scrollbar-thumb {
-                    background: #c1c1c1;
-                    border-radius: 3px;
-                }
-
-                .suggestions-list::-webkit-scrollbar-thumb:hover {
-                    background: #a8a8a8;
-                }
-
-                /* Animation for dropdown */
-                .suggestions-dropdown {
-                    animation: slideDown 0.2s ease-out;
-                }
-
-                @keyframes slideDown {
-                    from {
-                        opacity: 0;
-                        transform: translateY(-10px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
-                }
-
-                /* Responsive Adjustments */
-                @media (max-width: 768px) {
-                    .suggestion-item .item-description {
-                        display: none;
-                    }
-                    
-                    .suggestion-item .item-details {
-                        flex-direction: column;
-                        gap: 0.25rem !important;
-                    }
-                }
-                `}
-            </style>
         </>
     );
 }

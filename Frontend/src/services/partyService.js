@@ -23,14 +23,14 @@ apiClient.interceptors.request.use(
         } else {
             console.warn('⚠️ No auth token found for party request');
         }
-        
+
         // Add current company context - IMPROVED
         const currentCompany = localStorage.getItem('currentCompany');
         if (currentCompany) {
             try {
                 const company = JSON.parse(currentCompany);
                 const companyId = company.id || company._id || company.companyId;
-                
+
                 if (companyId) {
                     config.headers['X-Company-ID'] = companyId;
                     console.log('🏢 Adding company context to party request:', {
@@ -63,7 +63,7 @@ apiClient.interceptors.request.use(
             hasCompany: !!config.headers['X-Company-ID'],
             companyId: config.headers['X-Company-ID']
         });
-        
+
         // Log request details for debugging
         console.log(`🌐 Party API Request: ${config.method?.toUpperCase()} ${config.url}`);
         if (config.data && Object.keys(config.data).length > 0) {
@@ -72,7 +72,7 @@ apiClient.interceptors.request.use(
         if (config.params && Object.keys(config.params).length > 0) {
             console.log('📤 Request Params:', config.params);
         }
-        
+
         return config;
     },
     (error) => {
@@ -86,7 +86,7 @@ apiClient.interceptors.response.use(
     (response) => {
         // Log successful responses
         console.log(`✅ Party API Response: ${response.status} ${response.config.url}`);
-        
+
         // Log response data structure for debugging
         if (response.data) {
             console.log('📥 Response structure:', {
@@ -96,7 +96,7 @@ apiClient.interceptors.response.use(
                 hasData: !!response.data.data
             });
         }
-        
+
         return response;
     },
     (error) => {
@@ -128,7 +128,7 @@ apiClient.interceptors.response.use(
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
                     localStorage.removeItem('currentCompany');
-                    
+
                     // Only redirect if not already on login page
                     if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/auth')) {
                         console.log('🔄 Redirecting to login due to 401 error');
@@ -182,12 +182,12 @@ class PartyService {
      */
     validateCompanyContext() {
         const currentCompany = localStorage.getItem('currentCompany');
-        
+
         console.log('🔍 Validating company context:', {
             hasCurrentCompany: !!currentCompany,
             currentCompanyValue: currentCompany
         });
-        
+
         if (!currentCompany) {
             return {
                 isValid: false,
@@ -199,13 +199,13 @@ class PartyService {
         try {
             const company = JSON.parse(currentCompany);
             const companyId = company.id || company._id || company.companyId;
-            
+
             console.log('🔍 Parsed company data:', {
                 company: company,
                 companyId: companyId,
                 hasId: !!companyId
             });
-            
+
             if (!companyId) {
                 return {
                     isValid: false,
@@ -254,19 +254,27 @@ class PartyService {
             const backendData = {
                 partyType: partyData.partyType || 'customer',
                 name: partyData.name.trim(),
-                email: partyData.email?.trim() || undefined,
-                phoneNumber: partyData.phoneNumber?.trim() || partyData.phone?.trim(),
-                companyName: partyData.companyName?.trim() || undefined,
-                gstNumber: partyData.gstNumber?.toUpperCase() || undefined,
+                email: partyData.email?.trim() || '',
+                phoneNumber: partyData.phoneNumber?.trim(),
+                companyName: partyData.companyName?.trim() || '',
+
+                // NEW FIELDS: GST Information
+                gstNumber: partyData.gstNumber?.trim()?.toUpperCase() || '',
+                gstType: partyData.gstType || 'unregistered',
+
+                // NEW FIELDS: Financial Information
+                creditLimit: parseFloat(partyData.creditLimit) || 0,
+                openingBalance: parseFloat(partyData.openingBalance) || 0,
+
                 country: partyData.country || 'INDIA',
-                
+
                 // Home address
-                homeAddressLine: partyData.homeAddressLine || partyData.addressLine || partyData.address || '',
-                homePincode: partyData.homePincode || partyData.pincode || '',
-                homeState: partyData.homeState || partyData.state || '',
-                homeDistrict: partyData.homeDistrict || partyData.district || '',
-                homeTaluka: partyData.homeTaluka || partyData.taluka || '',
-                
+                homeAddressLine: partyData.homeAddressLine || '',
+                homePincode: partyData.homePincode || '',
+                homeState: partyData.homeState || '',
+                homeDistrict: partyData.homeDistrict || '',
+                homeTaluka: partyData.homeTaluka || '',
+
                 // Delivery address
                 deliveryAddressLine: partyData.deliveryAddressLine || '',
                 deliveryPincode: partyData.deliveryPincode || '',
@@ -274,23 +282,32 @@ class PartyService {
                 deliveryDistrict: partyData.deliveryDistrict || '',
                 deliveryTaluka: partyData.deliveryTaluka || '',
                 sameAsHomeAddress: partyData.sameAsHomeAddress || false,
-                
-                // Financial
-                openingBalance: parseFloat(partyData.openingBalance) || 0,
-                openingBalanceType: partyData.openingBalanceType || 'debit',
-                
+
                 // Additional phone numbers
                 phoneNumbers: partyData.phoneNumbers?.filter(phone => phone.number && phone.number.trim()) || []
             };
 
-            // Remove undefined fields to avoid sending unnecessary data
+            // Remove empty fields to avoid sending unnecessary data
             Object.keys(backendData).forEach(key => {
-                if (backendData[key] === undefined) {
+                if (backendData[key] === '' || backendData[key] === undefined || backendData[key] === null) {
                     delete backendData[key];
                 }
             });
 
-            console.log('📤 Sending party data to backend:', Object.keys(backendData));
+            // Ensure phoneNumbers array has at least the primary phone
+            if (!backendData.phoneNumbers || backendData.phoneNumbers.length === 0) {
+                backendData.phoneNumbers = [{
+                    number: backendData.phoneNumber,
+                    label: 'Primary'
+                }];
+            }
+
+            console.log('📤 Sending party data to backend:', {
+                keys: Object.keys(backendData),
+                gstType: backendData.gstType,
+                creditLimit: backendData.creditLimit,
+                hasGSTNumber: !!backendData.gstNumber
+            });
             console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
 
             const response = await apiClient.post('/api/parties', backendData);
@@ -344,6 +361,42 @@ class PartyService {
     }
 
     /**
+     * Check if phone number exists in current company
+     * @param {string} phoneNumber - Phone number to check
+     * @returns {Promise<Object>} Check result
+     */
+    async checkPhoneExists(phoneNumber) {
+        try {
+            console.log('🔍 Checking phone existence:', phoneNumber);
+
+            if (!phoneNumber?.trim()) {
+                return { success: true, exists: false, party: null };
+            }
+
+            // Validate company context
+            const companyValidation = this.validateCompanyContext();
+            if (!companyValidation.isValid) {
+                throw new Error(companyValidation.error);
+            }
+
+            const response = await apiClient.get(`/api/parties/check-phone/${phoneNumber.trim()}`);
+
+            console.log('✅ Phone check result:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Error checking phone existence:', error.message);
+
+            // If service is not available, return false to not block creation
+            if (error.response?.status === 404) {
+                return { success: true, exists: false, party: null };
+            }
+
+            throw error;
+        }
+    }
+
+    /**
      * Get all parties with pagination and filtering
      * @param {Object} filters - Filter options
      * @returns {Promise<Object>} Parties data with pagination
@@ -354,12 +407,12 @@ class PartyService {
                 page = 1,
                 limit = 10,
                 search = '',
-                partyType = 'all',
+                type = 'all', // Changed from partyType to type for consistency
                 sortBy = 'createdAt',
                 sortOrder = 'desc'
             } = filters;
 
-            console.log('📋 Fetching parties with filters:', { page, limit, search, partyType, sortBy, sortOrder });
+            console.log('📋 Fetching parties with filters:', { page, limit, search, type, sortBy, sortOrder });
 
             // Validate company context first
             const companyValidation = this.validateCompanyContext();
@@ -373,7 +426,7 @@ class PartyService {
             const params = {
                 page,
                 limit,
-                partyType,
+                type,
                 sortBy,
                 sortOrder
             };
@@ -465,19 +518,27 @@ class PartyService {
             const backendData = {
                 partyType: partyData.partyType,
                 name: partyData.name?.trim(),
-                email: partyData.email?.trim() || undefined,
-                phoneNumber: partyData.phoneNumber?.trim() || partyData.phone?.trim(),
-                companyName: partyData.companyName?.trim() || undefined,
-                gstNumber: partyData.gstNumber?.toUpperCase() || undefined,
+                email: partyData.email?.trim() || '',
+                phoneNumber: partyData.phoneNumber?.trim(),
+                companyName: partyData.companyName?.trim() || '',
+
+                // NEW FIELDS: GST Information
+                gstNumber: partyData.gstNumber?.trim()?.toUpperCase() || '',
+                gstType: partyData.gstType || 'unregistered',
+
+                // NEW FIELDS: Financial Information
+                creditLimit: parseFloat(partyData.creditLimit) || 0,
+                openingBalance: parseFloat(partyData.openingBalance) || 0,
+
                 country: partyData.country || 'INDIA',
-                
+
                 // Home address
-                homeAddressLine: partyData.homeAddressLine || partyData.addressLine || partyData.address || '',
-                homePincode: partyData.homePincode || partyData.pincode || '',
-                homeState: partyData.homeState || partyData.state || '',
-                homeDistrict: partyData.homeDistrict || partyData.district || '',
-                homeTaluka: partyData.homeTaluka || partyData.taluka || '',
-                
+                homeAddressLine: partyData.homeAddressLine || '',
+                homePincode: partyData.homePincode || '',
+                homeState: partyData.homeState || '',
+                homeDistrict: partyData.homeDistrict || '',
+                homeTaluka: partyData.homeTaluka || '',
+
                 // Delivery address
                 deliveryAddressLine: partyData.deliveryAddressLine || '',
                 deliveryPincode: partyData.deliveryPincode || '',
@@ -485,11 +546,7 @@ class PartyService {
                 deliveryDistrict: partyData.deliveryDistrict || '',
                 deliveryTaluka: partyData.deliveryTaluka || '',
                 sameAsHomeAddress: partyData.sameAsHomeAddress || false,
-                
-                // Financial
-                openingBalance: parseFloat(partyData.openingBalance) || 0,
-                openingBalanceType: partyData.openingBalanceType || 'debit',
-                
+
                 // Additional phone numbers
                 phoneNumbers: partyData.phoneNumbers?.filter(phone => phone.number && phone.number.trim()) || []
             };
@@ -501,7 +558,12 @@ class PartyService {
                 }
             });
 
-            console.log('📤 Sending party update data:', Object.keys(backendData));
+            console.log('📤 Sending party update data:', {
+                keys: Object.keys(backendData),
+                gstType: backendData.gstType,
+                creditLimit: backendData.creditLimit,
+                hasGSTNumber: !!backendData.gstNumber
+            });
             console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
 
             const response = await apiClient.put(`/api/parties/${partyId}`, backendData);
@@ -577,11 +639,11 @@ class PartyService {
                 throw new Error(companyValidation.error);
             }
 
-            const params = { 
+            const params = {
                 limit,
                 companyId: companyValidation.companyId // Add as fallback
             };
-            
+
             if (type && type !== 'all') {
                 params.type = type;
             }
@@ -680,20 +742,50 @@ class PartyService {
     validatePartyData(partyData) {
         const errors = [];
 
+        // Name validation
         if (!partyData.name || partyData.name.trim().length < 2) {
             errors.push('Name must be at least 2 characters long');
         }
 
-        if (!partyData.phoneNumber || partyData.phoneNumber.trim().length < 10) {
-            errors.push('Phone number must be at least 10 digits');
+        if (partyData.name && partyData.name.trim().length > 100) {
+            errors.push('Name cannot exceed 100 characters');
         }
 
+        // Phone number validation
+        if (!partyData.phoneNumber || !/^[6-9]\d{9}$/.test(partyData.phoneNumber.trim())) {
+            errors.push('Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9');
+        }
+
+        // Email validation
         if (partyData.email && partyData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(partyData.email.trim())) {
             errors.push('Email format is invalid');
         }
 
-        if (partyData.gstNumber && partyData.gstNumber.trim() && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(partyData.gstNumber.trim().toUpperCase())) {
-            errors.push('GST number format is invalid');
+        // GST number validation (only if type is not unregistered)
+        if (partyData.gstType !== 'unregistered' && partyData.gstNumber && partyData.gstNumber.trim()) {
+            const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+            if (!gstRegex.test(partyData.gstNumber.trim().toUpperCase())) {
+                errors.push('Please provide a valid GST number format (e.g., 22AAAAA0000A1Z5)');
+            }
+        }
+
+        // Credit limit validation
+        if (partyData.creditLimit !== undefined && partyData.creditLimit < 0) {
+            errors.push('Credit limit cannot be negative');
+        }
+
+        // Opening balance validation
+        if (partyData.openingBalance !== undefined && partyData.openingBalance < 0) {
+            errors.push('Opening balance cannot be negative');
+        }
+
+        // Pincode validation
+        if (partyData.homePincode && partyData.homePincode.trim() && !/^[0-9]{6}$/.test(partyData.homePincode.trim())) {
+            errors.push('Home pincode must be exactly 6 digits');
+        }
+
+        if (partyData.deliveryPincode && partyData.deliveryPincode.trim() && !/^[0-9]{6}$/.test(partyData.deliveryPincode.trim())) {
+            errors.push('Delivery pincode must be exactly 6 digits');
         }
 
         return {
@@ -708,7 +800,7 @@ class PartyService {
     debugState() {
         const validation = this.validateCompanyContext();
         const token = localStorage.getItem('token');
-        
+
         console.log('🔍 Party Service Debug State:', {
             hasToken: !!token,
             tokenLength: token?.length || 0,
@@ -720,7 +812,7 @@ class PartyService {
                 currentCompanyRaw: localStorage.getItem('currentCompany')
             }
         });
-        
+
         return {
             hasToken: !!token,
             companyValid: validation.isValid,

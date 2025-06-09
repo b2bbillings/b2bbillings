@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router({ mergeParams: true }); // ⭐ IMPORTANT: mergeParams must be true
 const itemController = require('../controllers/itemController');
@@ -6,7 +7,7 @@ const itemController = require('../controllers/itemController');
 router.use((req, res, next) => {
     const { companyId } = req.params;
     console.log('🔍 CompanyId validation:', companyId);
-    
+
     if (!companyId) {
         return res.status(400).json({
             success: false,

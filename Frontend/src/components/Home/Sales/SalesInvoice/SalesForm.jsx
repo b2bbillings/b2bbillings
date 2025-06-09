@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Container, Row, Col, Card } from 'react-bootstrap';
+import { useParams } from 'react-router-dom';
 import GSTToggle from './SalesForm/GSTToggle';
 import CustomerSection from './SalesForm/CustomerSection';
 import InvoiceDetails from './SalesForm/InvoiceDetails';
@@ -8,6 +9,27 @@ import TotalSection from './SalesForm/TotalSection';
 import './SalesForm.css';
 
 function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories = [], onAddItem }) {
+    // Get companyId from URL params
+    const { companyId } = useParams();
+
+    // Alternative: Get companyId from localStorage if not in URL
+    const [localCompanyId, setLocalCompanyId] = useState(null);
+
+    useEffect(() => {
+        if (!companyId) {
+            // Try to get companyId from localStorage
+            const storedCompanyId = localStorage.getItem('selectedCompanyId') ||
+                localStorage.getItem('companyId') ||
+                sessionStorage.getItem('companyId');
+
+            console.log('🏢 SalesForm - CompanyId from storage:', storedCompanyId);
+            setLocalCompanyId(storedCompanyId);
+        }
+    }, [companyId]);
+
+    // Use companyId from params, fallback to localStorage
+    const effectiveCompanyId = companyId || localCompanyId;
+
     // Generate invoice number function
     const generateInvoiceNumber = (invoiceType = 'non-gst') => {
         const date = new Date();
@@ -38,6 +60,15 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         notes: ''
     });
 
+    // ✅ NEW: Separate state for totals from ItemsTable
+    const [itemsTableTotals, setItemsTableTotals] = useState({
+        subtotal: 0,
+        totalCGST: 0,
+        totalSGST: 0,
+        totalTax: 0,
+        finalTotal: 0
+    });
+
     // Create empty item function - now has access to formData
     const createEmptyItem = () => {
         return {
@@ -52,8 +83,8 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             taxRate: formData.gstEnabled ? 18 : 0,
             taxAmount: 0,
             taxMode: 'with-tax',
-            cgst: 0,
-            sgst: 0,
+            cgstAmount: 0, // ✅ FIXED: Use cgstAmount instead of cgst
+            sgstAmount: 0, // ✅ FIXED: Use sgstAmount instead of sgst
             igst: 0,
             amount: 0
         };
@@ -80,8 +111,8 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             const updatedItems = prev.items.map(item => ({
                 ...item,
                 taxRate: gstEnabled ? (item.taxRate || 18) : 0,
-                cgst: gstEnabled ? item.cgst : 0,
-                sgst: gstEnabled ? item.sgst : 0,
+                cgstAmount: gstEnabled ? item.cgstAmount : 0, // ✅ FIXED
+                sgstAmount: gstEnabled ? item.sgstAmount : 0, // ✅ FIXED
                 igst: gstEnabled ? item.igst : 0,
                 taxAmount: gstEnabled ? item.taxAmount : 0
             }));
@@ -107,8 +138,8 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             const updatedItems = prev.items.map(item => ({
                 ...item,
                 taxRate: enabled ? (item.taxRate || 18) : 0,
-                cgst: enabled ? item.cgst : 0,
-                sgst: enabled ? item.sgst : 0,
+                cgstAmount: enabled ? item.cgstAmount : 0, // ✅ FIXED
+                sgstAmount: enabled ? item.sgstAmount : 0, // ✅ FIXED
                 igst: enabled ? item.igst : 0,
                 taxAmount: enabled ? item.taxAmount : 0
             }));
@@ -123,50 +154,38 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         });
     };
 
-    // Enhanced totals calculation with useMemo for performance
+    // ✅ NEW: Handle totals from ItemsTable
+    const handleTotalsChange = useCallback((newTotals) => {
+        console.log('📊 SalesForm received totals from ItemsTable:', newTotals);
+        setItemsTableTotals(newTotals);
+    }, []);
+
+    // ✅ FIXED: Enhanced totals calculation that includes round off
     const totals = useMemo(() => {
-        let subtotal = 0;
-        let totalDiscountAmount = 0;
-        let totalTaxAmount = 0;
-        let totalCGST = 0;
-        let totalSGST = 0;
-        let totalIGST = 0;
+        // Use totals from ItemsTable as base - DON'T modify finalTotal here
+        const baseTotals = {
+            subtotal: itemsTableTotals.subtotal || 0,
+            totalCGST: itemsTableTotals.totalCGST || 0,
+            totalSGST: itemsTableTotals.totalSGST || 0,
+            totalTax: itemsTableTotals.totalTax || 0,
+            finalTotal: itemsTableTotals.finalTotal || 0 // ✅ Keep the exact amount from ItemsTable
+        };
 
-        formData.items.forEach(item => {
-            const quantity = parseFloat(item.quantity) || 0;
-            const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
+        // ✅ DON'T apply round off here - let TotalSection handle it
+        const calculatedTotals = {
+            ...baseTotals
+            // ✅ Remove the finalTotal override - let TotalSection add round off
+        };
 
-            if (quantity > 0 && pricePerUnit > 0) {
-                // Base amount calculation
-                const baseAmount = quantity * pricePerUnit;
-                subtotal += baseAmount;
-
-                // Add up the calculated amounts from items
-                totalDiscountAmount += parseFloat(item.discountAmount) || 0;
-                totalTaxAmount += parseFloat(item.taxAmount) || 0;
-                totalCGST += parseFloat(item.cgst) || 0;
-                totalSGST += parseFloat(item.sgst) || 0;
-                totalIGST += parseFloat(item.igst) || 0;
-            }
+        console.log('🧮 SalesForm calculated final totals:', {
+            fromItemsTable: itemsTableTotals,
+            roundOff: formData.roundOff,
+            roundOffEnabled: formData.roundOffEnabled,
+            finalCalculated: calculatedTotals
         });
 
-        // Calculate final amounts
-        const amountAfterDiscount = subtotal - totalDiscountAmount;
-        const baseTotal = amountAfterDiscount + (formData.gstEnabled ? totalTaxAmount : 0);
-        const finalTotal = baseTotal + (formData.roundOffEnabled ? (formData.roundOff || 0) : 0);
-
-        return {
-            subtotal: parseFloat(subtotal.toFixed(2)),
-            totalDiscountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
-            totalTaxAmount: parseFloat(totalTaxAmount.toFixed(2)),
-            totalCGST: parseFloat(totalCGST.toFixed(2)),
-            totalSGST: parseFloat(totalSGST.toFixed(2)),
-            totalIGST: parseFloat(totalIGST.toFixed(2)),
-            amountAfterDiscount: parseFloat(amountAfterDiscount.toFixed(2)),
-            baseTotal: parseFloat(baseTotal.toFixed(2)),
-            finalTotal: parseFloat(finalTotal.toFixed(2))
-        };
-    }, [formData.items, formData.gstEnabled, formData.roundOff, formData.roundOffEnabled]);
+        return calculatedTotals;
+    }, [itemsTableTotals, formData.roundOff, formData.roundOffEnabled]);
 
     // Update form data helper
     const updateFormData = (field, value) => {
@@ -182,22 +201,29 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         updateFormData('items', newItems);
     };
 
-    // Handle round off changes
-    const handleRoundOffChange = (value) => {
+    // ✅ FIXED: Handle round off changes with immediate totals update
+    const handleRoundOffChange = useCallback((value) => {
         const roundOffValue = parseFloat(value) || 0;
+        console.log('🔄 Round off changing to:', roundOffValue);
         updateFormData('roundOff', roundOffValue);
-    };
+    }, []);
 
-    const handleRoundOffToggle = (enabled) => {
+    const handleRoundOffToggle = useCallback((enabled) => {
+        console.log('🔄 Round off toggle:', enabled);
         updateFormData('roundOffEnabled', enabled);
         if (!enabled) {
             updateFormData('roundOff', 0);
         }
-    };
+    }, []);
 
     // Enhanced validation function
     const validateForm = () => {
         const errors = [];
+
+        // Company validation
+        if (!effectiveCompanyId) {
+            errors.push('Company selection is required');
+        }
 
         // Customer validation
         if (!formData.customer && !formData.mobileNumber) {
@@ -264,8 +290,10 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
 
         const saleData = {
             ...formData,
+            companyId: effectiveCompanyId,
             items: validItems,
             totals,
+            itemsTableTotals, // ✅ NEW: Include raw totals from ItemsTable
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString()
         };
@@ -287,10 +315,12 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         }
 
         const shareData = {
+            companyId: effectiveCompanyId,
             invoiceNumber: formData.invoiceNumber,
             invoiceType: formData.invoiceType,
             customer: formData.customer || { name: 'Cash Customer', phone: formData.mobileNumber },
             totals,
+            itemsTableTotals, // ✅ NEW: Include ItemsTable totals for reference
             itemCount: formData.items.filter(item => item.itemName).length
         };
 
@@ -322,11 +352,13 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
 
     // Auto-save draft functionality
     useEffect(() => {
-        if (formData.invoiceNumber) {
-            const draftKey = `invoice_draft_${formData.invoiceNumber}`;
+        if (formData.invoiceNumber && effectiveCompanyId) {
+            const draftKey = `invoice_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
             const draftData = {
                 ...formData,
+                companyId: effectiveCompanyId,
                 totals,
+                itemsTableTotals, // ✅ NEW: Include ItemsTable totals in draft
                 lastSaved: new Date().toISOString()
             };
 
@@ -349,7 +381,36 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 console.warn('Could not cleanup drafts:', error);
             }
         };
-    }, [formData, totals]);
+    }, [formData, totals, itemsTableTotals, effectiveCompanyId]);
+
+    // Show loading state if no companyId is available
+    if (!effectiveCompanyId) {
+        return (
+            <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+                <Container fluid className="py-3 px-4">
+                    <Card className="border-warning">
+                        <Card.Body className="text-center py-5">
+                            <div className="text-warning mb-3">
+                                <i className="fas fa-exclamation-triangle fa-3x"></i>
+                            </div>
+                            <h5 className="text-warning">Company Not Selected</h5>
+                            <p className="text-muted">
+                                Please select a company to create sales invoices.
+                            </p>
+                            <div className="mt-3">
+                                <small className="text-muted">
+                                    Debug Info:<br />
+                                    URL CompanyId: {companyId || 'Not found'}<br />
+                                    Storage CompanyId: {localCompanyId || 'Not found'}<br />
+                                    Current URL: {window.location.pathname}
+                                </small>
+                            </div>
+                        </Card.Body>
+                    </Card>
+                </Container>
+            </div>
+        );
+    }
 
     return (
         <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
@@ -373,6 +434,8 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                                     mobileNumber={formData.mobileNumber}
                                     onCustomerChange={(customer) => updateFormData('customer', customer)}
                                     onMobileChange={(mobile) => updateFormData('mobileNumber', mobile)}
+                                    isSupplierMode={false} // ✅ This keeps customer mode
+                                    companyId={effectiveCompanyId}
                                 />
                             </Card.Body>
                         </Card>
@@ -392,24 +455,24 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                     </Col>
                 </Row>
 
-                {/* Items Table - Full Width */}
+                {/* ✅ FIXED: Items Table with correct props */}
                 <div className="mb-3">
                     <ItemsTable
-                        items={formData.items}
-                        gstEnabled={formData.gstEnabled}
-                        invoiceType={formData.invoiceType}
+                        items={formData.items} // ✅ FIXED: Use formData.items
+                        gstEnabled={formData.gstEnabled} // ✅ FIXED: Use formData.gstEnabled
+                        invoiceType={formData.invoiceType} // ✅ FIXED: Use formData.invoiceType
                         onItemsChange={handleItemsChange}
+                        onTotalsChange={handleTotalsChange} // ✅ FIXED: This handles totals from ItemsTable
                         createEmptyItem={createEmptyItem}
-                        inventoryItems={inventoryItems}
-                        categories={categories}
-                        onAddItem={handleAddItem}
+                        onAddItem={handleAddItem} // ✅ FIXED: Use handleAddItem instead of onAddItem
+                        companyId={effectiveCompanyId} // ✅ FIXED: Use effectiveCompanyId
                     />
                 </div>
 
-                {/* Bottom Action Bar - Full Width */}
+                {/* ✅ FIXED: Total Section with proper props */}
                 <div className="mb-3">
                     <TotalSection
-                        totals={totals}
+                        totals={totals} // ✅ FIXED: Pass calculated totals with round off
                         roundOff={formData.roundOff}
                         roundOffEnabled={formData.roundOffEnabled}
                         onRoundOffChange={handleRoundOffChange}
@@ -418,73 +481,41 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                         onShare={handleShare}
                         onCancel={onCancel}
                         formType="sales"
+                        gstEnabled={formData.gstEnabled} // ✅ NEW: Pass GST enabled status
                     />
                 </div>
 
-                {/* Enhanced Debug Information - Development Only */}
+                {/* ✅ NEW: Debug section for development */}
                 {process.env.NODE_ENV === 'development' && (
-                    <Card className="mt-4 bg-warning bg-opacity-10 border border-warning">
-                        <Card.Body className="p-3">
-                            <h6 className="text-warning mb-3">🔧 Development Debug Information</h6>
-
-                            <Row className="small text-dark">
-                                <Col md={3}>
-                                    <div className="mb-2">
-                                        <strong>Form State:</strong><br />
-                                        GST Enabled: {formData.gstEnabled ? '✅' : '❌'}<br />
-                                        Invoice Type: {formData.invoiceType}<br />
-                                        Items Count: {formData.items.length}<br />
-                                        Valid Items: {formData.items.filter(item => item.itemName && parseFloat(item.quantity) > 0).length}
-                                    </div>
-                                </Col>
-
-                                <Col md={3}>
-                                    <div className="mb-2">
-                                        <strong>Amounts:</strong><br />
-                                        Subtotal: ₹{totals.subtotal.toLocaleString('en-IN')}<br />
-                                        Discount: ₹{totals.totalDiscountAmount.toLocaleString('en-IN')}<br />
-                                        After Discount: ₹{totals.amountAfterDiscount.toLocaleString('en-IN')}
-                                    </div>
-                                </Col>
-
-                                <Col md={3}>
-                                    <div className="mb-2">
-                                        <strong>Tax Details:</strong><br />
-                                        CGST: ₹{totals.totalCGST.toLocaleString('en-IN')}<br />
-                                        SGST: ₹{totals.totalSGST.toLocaleString('en-IN')}<br />
-                                        Total Tax: ₹{totals.totalTaxAmount.toLocaleString('en-IN')}
-                                    </div>
-                                </Col>
-
-                                <Col md={3}>
-                                    <div className="mb-2">
-                                        <strong>Final Calculation:</strong><br />
-                                        Base Total: ₹{totals.baseTotal.toLocaleString('en-IN')}<br />
-                                        Round Off: {formData.roundOffEnabled ? `₹${formData.roundOff}` : 'Disabled'}<br />
-                                        <span className="fw-bold text-success">Final Total: ₹{totals.finalTotal.toLocaleString('en-IN')}</span>
-                                    </div>
-                                </Col>
-                            </Row>
-
-                            <div className="mt-3 pt-3 border-top">
-                                <strong>Recent Item Changes:</strong>
-                                <div className="mt-2" style={{ maxHeight: '150px', overflow: 'auto' }}>
-                                    {formData.items.map((item, index) => (
-                                        item.itemName && (
-                                            <div key={item.id} className="small mb-1 p-2 bg-white rounded border">
-                                                <strong>Item {index + 1}:</strong> {item.itemName} |
-                                                Qty: {item.quantity} |
-                                                Price: ₹{item.pricePerUnit} |
-                                                Tax Mode: {item.taxMode} |
-                                                Tax Rate: {item.taxRate}% |
-                                                Amount: ₹{item.amount}
-                                            </div>
-                                        )
-                                    ))}
-                                </div>
-                            </div>
-                        </Card.Body>
-                    </Card>
+                    <div className="mb-3">
+                        <Card className="bg-info bg-opacity-10 border-info">
+                            <Card.Body className="p-3">
+                                <h6 className="text-info mb-2">🔧 Debug - SalesForm Totals Flow</h6>
+                                <Row className="small text-muted">
+                                    <Col md={4}>
+                                        <div><strong>ItemsTable Totals:</strong></div>
+                                        <div>Subtotal: ₹{itemsTableTotals.subtotal}</div>
+                                        <div>CGST: ₹{itemsTableTotals.totalCGST}</div>
+                                        <div>SGST: ₹{itemsTableTotals.totalSGST}</div>
+                                        <div>Base Total: ₹{itemsTableTotals.finalTotal}</div>
+                                    </Col>
+                                    <Col md={4}>
+                                        <div><strong>Round Off:</strong></div>
+                                        <div>Enabled: {formData.roundOffEnabled ? 'Yes' : 'No'}</div>
+                                        <div>Amount: ₹{formData.roundOff || 0}</div>
+                                        <div>GST Enabled: {formData.gstEnabled ? 'Yes' : 'No'}</div>
+                                    </Col>
+                                    <Col md={4}>
+                                        <div><strong>Final Totals:</strong></div>
+                                        <div>Subtotal: ₹{totals.subtotal}</div>
+                                        <div>Total Tax: ₹{totals.totalTax}</div>
+                                        <div>Final Total: ₹{totals.finalTotal}</div>
+                                        <div>Items Count: {formData.items.length}</div>
+                                    </Col>
+                                </Row>
+                            </Card.Body>
+                        </Card>
+                    </div>
                 )}
             </Container>
         </div>

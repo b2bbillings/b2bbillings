@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Alert, Spinner, Container, Toast, ToastContainer } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-    faExclamationTriangle, 
-    faBuilding, 
-    faCheckCircle, 
+import {
+    faExclamationTriangle,
+    faBuilding,
+    faCheckCircle,
     faInfoCircle,
     faWifi,
-    faTimesCircle,     // Use this for offline status
-    faExclamationCircle // Alternative for warnings
+    faTimesCircle,
+    faExclamationCircle
 } from '@fortawesome/free-solid-svg-icons';
 
 // Import the components
@@ -16,10 +17,10 @@ import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
 import SalesOrders from '../components/Home/SalesOrders';
-import Purchases from '../components/Home/Purchases';
+// ❌ REMOVED: import Purchases from '../components/Home/Purchases';
 import Inventory from '../components/Home/Inventory';
 import StaffManagement from '../components/Home/StaffManagement';
-import PurchaseOrders from '../components/Home/PurchaseOrders';
+import PurchaseOrders from '../components/Home/PurchaseOrders'; // ✅ This will handle all purchase-related views
 import Bank from '../components/Home/Bank';
 
 // Import services
@@ -32,22 +33,60 @@ import Loading from '../components/Loading';
 
 import './HomePage.css';
 
-/**
- * HomePage component that serves as the main container for the application
- * Manages which view is currently active and passes that to child components
- * Also manages the current company context for all child components
- */
 function HomePage({
-    onNavigate,
-    currentView: propCurrentView,
     currentCompany: propCurrentCompany,
-    onCompanyChange
+    onCompanyChange,
+    companies,
+    currentUser
 }) {
-    // Current view state - tracks which component is being displayed
-    const [currentView, setCurrentView] = useState(propCurrentView || 'dailySummary');
+    // Get URL parameters
+    const { companyId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
 
-    // Company state - tracks current selected company
-    const [currentCompany, setCurrentCompany] = useState(propCurrentCompany || null);
+    // Extract view from URL path
+    const getViewFromPath = () => {
+        const pathParts = location.pathname.split('/');
+        const lastPart = pathParts[pathParts.length - 1];
+
+        // Map URL paths to views - Updated to use PurchaseOrders for all purchase views
+        const pathViewMap = {
+            'dashboard': 'dailySummary',
+            'daybook': 'dailySummary',
+            'transactions': 'transactions',
+            'cash-bank': 'cashAndBank',
+            'parties': 'parties',
+            'sales': 'allSales',
+            'invoices': 'invoices',
+            'credit-notes': 'creditNotes',
+            'sales-orders': 'salesOrders',
+            // ✅ UPDATED: All purchase routes now map to purchase-related views
+            'purchases': 'allPurchases',
+            'purchase-bills': 'purchaseBills',
+            'purchase-orders': 'purchaseOrders',
+            'inventory': 'inventory',
+            'products': 'allProducts',
+            'low-stock': 'lowStock',
+            'stock-movement': 'stockMovement',
+            'bank-accounts': 'bankAccounts',
+            'cash-accounts': 'cashAccounts',
+            'bank-transactions': 'bankTransactions',
+            'bank-reconciliation': 'bankReconciliation',
+            'cash-flow': 'cashFlow',
+            'staff': 'staff',
+            'insights': 'insights',
+            'reports': 'reports',
+            'settings': 'settings'
+        };
+
+        return pathViewMap[lastPart] || 'dailySummary';
+    };
+
+    // Current view state - derived from URL
+    const [currentView, setCurrentView] = useState(getViewFromPath());
+
+    // Company state - use prop or find from companies list
+    const [currentCompany, setCurrentCompany] = useState(null);
 
     // Loading and error states
     const [isLoadingCompany, setIsLoadingCompany] = useState(false);
@@ -61,17 +100,52 @@ function HomePage({
     const [componentHealth, setComponentHealth] = useState({
         parties: 'unknown',
         sales: 'unknown',
-        purchases: 'unknown',
+        purchaseOrders: 'unknown', // ✅ UPDATED: Changed from 'purchases' to 'purchaseOrders'
         inventory: 'unknown'
     });
+
+    // Update view when URL changes
+    useEffect(() => {
+        const newView = getViewFromPath();
+        console.log('🧭 HomePage: URL changed, updating view to:', newView);
+        setCurrentView(newView);
+    }, [location.pathname]);
+
+    // Update company when companyId in URL changes or when prop changes
+    useEffect(() => {
+        if (companyId && companies.length > 0) {
+            console.log('🏢 HomePage: Looking for company with ID:', companyId);
+
+            const foundCompany = companies.find(c =>
+                (c.id || c._id) === companyId
+            );
+
+            if (foundCompany) {
+                console.log('✅ Company found in URL:', foundCompany.businessName || foundCompany.name);
+                setCurrentCompany(foundCompany);
+                setCompanyError(null);
+            } else if (propCurrentCompany && (propCurrentCompany.id || propCurrentCompany._id) === companyId) {
+                console.log('✅ Using company from props:', propCurrentCompany.businessName || propCurrentCompany.name);
+                setCurrentCompany(propCurrentCompany);
+                setCompanyError(null);
+            } else {
+                console.warn('⚠️ Company not found for ID:', companyId);
+                setCompanyError(`Company with ID ${companyId} not found`);
+            }
+        } else if (propCurrentCompany) {
+            console.log('🏢 HomePage: Using company from props:', propCurrentCompany.businessName || propCurrentCompany.name);
+            setCurrentCompany(propCurrentCompany);
+            setCompanyError(null);
+        }
+    }, [companyId, companies, propCurrentCompany]);
 
     // Add toast notification helper
     const addToast = useCallback((message, type = 'info', duration = 5000) => {
         const id = Date.now() + Math.random();
         const toast = { id, message, type, duration };
-        
+
         setToasts(prev => [...prev, toast]);
-        
+
         // Auto remove toast after duration
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
@@ -119,7 +193,6 @@ function HomePage({
             }
 
             // Add other service health checks here as they're implemented
-            // Test sales service, inventory service, etc.
 
         } catch (error) {
             console.error('Health check failed:', error);
@@ -133,59 +206,58 @@ function HomePage({
         }
     }, [currentCompany, isOnline, performHealthCheck]);
 
-    // Update internal view state when props change
-    useEffect(() => {
-        if (propCurrentView && propCurrentView !== currentView) {
-            console.log('📍 HomePage: Updating view from props:', propCurrentView);
-            setCurrentView(propCurrentView);
-        }
-    }, [propCurrentView, currentView]);
-
-    // Update internal company state when props change
-    useEffect(() => {
-        if (propCurrentCompany !== currentCompany) {
-            console.log('🏢 HomePage: Updating company from props:', propCurrentCompany);
-            setCurrentCompany(propCurrentCompany);
-            setCompanyError(null);
-            
-            if (propCurrentCompany) {
-                addToast(`Switched to ${propCurrentCompany.companyName || propCurrentCompany.name}`, 'info', 3000);
-            }
-        }
-    }, [propCurrentCompany, currentCompany, addToast]);
-
-    // Handle navigation changes, potentially propagating up to parent
+    // Handle navigation changes - Updated to work with new routing system
     const handleNavigation = useCallback((page) => {
         console.log('🧭 HomePage: Navigating to:', page);
-        
-        // Check if component requires company and we don't have one
-        const companyRequiredViews = [
-            'inventory', 'allProducts', 'lowStock', 'stockMovement',
-            'allSales', 'invoices', 'createInvoice', 'creditNotes',
-            'salesOrders', 'createSalesOrder',
-            'purchaseBills', 'paymentOut', 'expenses', 'purchaseOrder',
-            'purchaseReturn', 'allPurchases', 'createPurchase', 'purchaseOrders',
-            'createPurchaseOrder',
-            'bankAccounts', 'cashAccounts', 'bankTransactions',
-            'bankReconciliation', 'cashFlow',
-            'parties'
-        ];
 
-        if (companyRequiredViews.includes(page) && !currentCompany?.id) {
+        if (!currentCompany?.id && !currentCompany?._id) {
             addToast('Please select a company first to access this feature', 'warning', 5000);
             return;
         }
 
-        setCurrentView(page);
-        if (onNavigate) {
-            onNavigate(page);
-        }
-    }, [currentCompany, onNavigate, addToast]);
+        const companyId = currentCompany.id || currentCompany._id;
+
+        // Map views to URL paths - Updated to match new routing
+        const viewPathMap = {
+            'dailySummary': 'dashboard',
+            'transactions': 'transactions',
+            'cashAndBank': 'cash-bank',
+            'parties': 'parties',
+            'allSales': 'sales',
+            'invoices': 'invoices',
+            'creditNotes': 'credit-notes',
+            'salesOrders': 'sales-orders',
+            'allPurchases': 'purchases',
+            'purchaseBills': 'purchase-bills',
+            'purchaseOrders': 'purchase-orders',
+            'inventory': 'inventory',
+            'allProducts': 'products',
+            'lowStock': 'low-stock',
+            'stockMovement': 'stock-movement',
+            'bankAccounts': 'bank-accounts',
+            'cashAccounts': 'cash-accounts',
+            'bankTransactions': 'bank-transactions',
+            'bankReconciliation': 'bank-reconciliation',
+            'cashFlow': 'cash-flow',
+            'staff': 'staff',
+            'insights': 'insights',
+            'reports': 'reports',
+            'settings': 'settings',
+            // Form routes - Navigate to dedicated form pages
+            'createInvoice': 'sales/add',
+            'createPurchase': 'purchases/add',
+            'createSalesOrder': 'sales-orders/add',
+            'createPurchaseOrder': 'purchase-orders/add'
+        };
+
+        const urlPath = viewPathMap[page] || 'dashboard';
+        navigate(`/companies/${companyId}/${urlPath}`);
+    }, [currentCompany, navigate, addToast]);
 
     // Handle company change from child components
     const handleCompanyChange = useCallback(async (company) => {
         console.log('🏢 HomePage: Company changed from child component:', company);
-        
+
         setIsLoadingCompany(true);
         setCompanyError(null);
 
@@ -196,9 +268,13 @@ function HomePage({
             }
 
             setCurrentCompany(company);
-            
+
             if (company) {
-                addToast(`Company changed to ${company.companyName || company.name}`, 'success', 3000);
+                addToast(`Company changed to ${company.businessName || company.name}`, 'success', 3000);
+
+                // Navigate to new company's dashboard
+                const companyId = company.id || company._id;
+                navigate(`/companies/${companyId}/dashboard`);
             }
 
             // Propagate to parent
@@ -213,7 +289,7 @@ function HomePage({
         } finally {
             setIsLoadingCompany(false);
         }
-    }, [onCompanyChange, addToast]);
+    }, [onCompanyChange, addToast, navigate]);
 
     // Common props to pass to all components
     const commonProps = {
@@ -221,7 +297,8 @@ function HomePage({
         onNavigate: handleNavigation,
         onCompanyChange: handleCompanyChange,
         isOnline,
-        addToast
+        addToast,
+        companyId: currentCompany?.id || currentCompany?._id
     };
 
     // Render loading state
@@ -265,31 +342,14 @@ function HomePage({
         </div>
     );
 
-    // Render offline state
-    const renderOfflineState = () => (
-        <div className="homepage-container">
-            <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
-                <FontAwesomeIcon icon={faTimesCircle} size="3x" className="text-warning mb-3" />
-                <h4 className="text-warning">You're Offline</h4>
-                <p className="text-muted text-center">
-                    Please check your internet connection and try again.
-                </p>
-                <small className="text-muted">
-                    Some features may be limited in offline mode.
-                </small>
-            </Container>
-        </div>
-    );
-
-    // Check if component requires company
+    // Check if component requires company - Updated list
     const requiresCompany = (viewName) => {
         const companyRequiredViews = [
             'inventory', 'allProducts', 'lowStock', 'stockMovement',
-            'allSales', 'invoices', 'createInvoice', 'creditNotes',
-            'salesOrders', 'createSalesOrder',
+            'allSales', 'invoices', 'creditNotes',
+            'salesOrders',
             'purchaseBills', 'paymentOut', 'expenses', 'purchaseOrder',
-            'purchaseReturn', 'allPurchases', 'createPurchase', 'purchaseOrders',
-            'createPurchaseOrder',
+            'purchaseReturn', 'allPurchases', 'purchaseOrders',
             'bankAccounts', 'cashAccounts', 'bankTransactions',
             'bankReconciliation', 'cashFlow',
             'parties'
@@ -323,19 +383,15 @@ function HomePage({
                 'stockMovement': 'Stock Movement',
                 'allSales': 'Sales Management',
                 'invoices': 'Sales Invoices',
-                'createInvoice': 'Create Invoice',
                 'creditNotes': 'Credit Notes',
                 'salesOrders': 'Sales Orders',
-                'createSalesOrder': 'Create Sales Order',
                 'purchaseBills': 'Purchase Bills',
                 'paymentOut': 'Payment Out',
                 'expenses': 'Expenses',
                 'purchaseOrder': 'Purchase Orders',
                 'purchaseReturn': 'Purchase Returns',
                 'allPurchases': 'Purchase Management',
-                'createPurchase': 'Create Purchase',
                 'purchaseOrders': 'Purchase Orders',
-                'createPurchaseOrder': 'Create Purchase Order',
                 'bankAccounts': 'Bank Accounts',
                 'cashAccounts': 'Cash Accounts',
                 'bankTransactions': 'Bank Transactions',
@@ -355,7 +411,7 @@ function HomePage({
         );
 
         switch (currentView) {
-            // Day Book cases - These can work without a company (show general info)
+            // Day Book cases
             case 'dailySummary':
             case 'transactions':
             case 'cashAndBank':
@@ -363,48 +419,39 @@ function HomePage({
                     <DayBook view={currentView} {...commonProps} />
                 );
 
-            // Parties case - Requires company
+            // Parties case
             case 'parties':
                 return wrapWithErrorBoundary(
                     <Parties {...commonProps} />
                 );
 
-            // Sales cases - Requires company
+            // Sales cases - Only list views, forms handled by dedicated routes
             case 'allSales':
             case 'invoices':
-            case 'createInvoice':
             case 'creditNotes':
                 return wrapWithErrorBoundary(
                     <Sales view={currentView} {...commonProps} />
                 );
 
-            // Sales Orders cases - Requires company
+            // Sales Orders cases
             case 'salesOrders':
-            case 'createSalesOrder':
                 return wrapWithErrorBoundary(
                     <SalesOrders view={currentView} {...commonProps} />
                 );
 
-            // Purchase & Expense cases - Requires company
+            // ✅ UPDATED: Purchase cases - All handled by PurchaseOrders component
             case 'purchaseBills':
             case 'paymentOut':
             case 'expenses':
             case 'purchaseOrder':
             case 'purchaseReturn':
             case 'allPurchases':
-            case 'createPurchase':
             case 'purchaseOrders':
-                return wrapWithErrorBoundary(
-                    <Purchases view={currentView} {...commonProps} />
-                );
-
-            // Legacy Purchase Order case (keep for backward compatibility) - Requires company
-            case 'createPurchaseOrder':
                 return wrapWithErrorBoundary(
                     <PurchaseOrders view={currentView} {...commonProps} />
                 );
 
-            // Bank & Cash cases - Requires company
+            // Bank & Cash cases
             case 'bankAccounts':
                 return wrapWithErrorBoundary(
                     <Bank view="bankAccounts" activeType="bank" {...commonProps} />
@@ -426,23 +473,7 @@ function HomePage({
                     <Bank view="cashFlow" {...commonProps} />
                 );
 
-            // Products & Services case - Basic placeholder
-            case 'products':
-                return wrapWithErrorBoundary(
-                    <div className="placeholder-content">
-                        <Container className="py-5 text-center">
-                            <h3>Products & Services</h3>
-                            <p className="text-muted">Product catalog management coming soon...</p>
-                            {currentCompany && (
-                                <small className="text-muted">
-                                    Current Company: {currentCompany.companyName || currentCompany.name}
-                                </small>
-                            )}
-                        </Container>
-                    </div>
-                );
-
-            // Inventory cases - Requires company
+            // Inventory cases
             case 'inventory':
             case 'allProducts':
             case 'lowStock':
@@ -451,13 +482,13 @@ function HomePage({
                     <Inventory view={currentView} {...commonProps} />
                 );
 
-            // Staff Management case - May require company in future
+            // Staff Management case
             case 'staff':
                 return wrapWithErrorBoundary(
                     <StaffManagement view={currentView} {...commonProps} />
                 );
 
-            // Other cases - General features that don't require company
+            // Other cases
             case 'insights':
                 return wrapWithErrorBoundary(
                     <div className="placeholder-content">
@@ -466,7 +497,7 @@ function HomePage({
                             <p className="text-muted">Business insights and analytics coming soon...</p>
                             {currentCompany && (
                                 <small className="text-muted">
-                                    Current Company: {currentCompany.companyName || currentCompany.name}
+                                    Current Company: {currentCompany.businessName || currentCompany.name}
                                 </small>
                             )}
                         </Container>
@@ -481,7 +512,7 @@ function HomePage({
                             <p className="text-muted">Comprehensive reporting tools coming soon...</p>
                             {currentCompany && (
                                 <small className="text-muted">
-                                    Current Company: {currentCompany.companyName || currentCompany.name}
+                                    Current Company: {currentCompany.businessName || currentCompany.name}
                                 </small>
                             )}
                         </Container>
@@ -496,7 +527,7 @@ function HomePage({
                             <p className="text-muted">Application settings and configuration...</p>
                             {currentCompany && (
                                 <small className="text-muted">
-                                    Current Company: {currentCompany.companyName || currentCompany.name}
+                                    Current Company: {currentCompany.businessName || currentCompany.name}
                                 </small>
                             )}
                         </Container>
@@ -521,30 +552,6 @@ function HomePage({
                 </div>
             </div>
 
-            {/* Component Health Indicators (Development Only) */}
-            {process.env.NODE_ENV === 'development' && currentCompany && (
-                <div className="position-fixed bottom-0 end-0 m-3" style={{ zIndex: 1000 }}>
-                    <div className="bg-dark text-white p-2 rounded small" style={{ fontSize: '0.75rem' }}>
-                        <div><strong>Company:</strong> {currentCompany.companyName || currentCompany.name}</div>
-                        <div><strong>ID:</strong> {currentCompany.id || currentCompany._id}</div>
-                        <div><strong>View:</strong> {currentView}</div>
-                        <hr className="my-1" />
-                        <div><strong>Health:</strong></div>
-                        {Object.entries(componentHealth).map(([service, status]) => (
-                            <div key={service} className="d-flex justify-content-between">
-                                <span>{service}:</span>
-                                <span className={
-                                    status === 'healthy' ? 'text-success' :
-                                    status === 'error' ? 'text-danger' : 'text-warning'
-                                }>
-                                    {status}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {/* Toast Notifications */}
             <ToastContainer position="top-end" className="p-3" style={{ zIndex: 1055 }}>
                 {toasts.map((toast) => (
@@ -554,29 +561,27 @@ function HomePage({
                         onClose={() => removeToast(toast.id)}
                         delay={toast.duration}
                         autohide
-                        className={`border-${
-                            toast.type === 'success' ? 'success' :
+                        className={`border-${toast.type === 'success' ? 'success' :
                             toast.type === 'error' ? 'danger' :
-                            toast.type === 'warning' ? 'warning' : 'info'
-                        }`}
+                                toast.type === 'warning' ? 'warning' : 'info'
+                            }`}
                     >
-                        <Toast.Header className={`bg-${
-                            toast.type === 'success' ? 'success' :
+                        <Toast.Header className={`bg-${toast.type === 'success' ? 'success' :
                             toast.type === 'error' ? 'danger' :
-                            toast.type === 'warning' ? 'warning' : 'info'
-                        } text-white`}>
-                            <FontAwesomeIcon 
+                                toast.type === 'warning' ? 'warning' : 'info'
+                            } text-white`}>
+                            <FontAwesomeIcon
                                 icon={
                                     toast.type === 'success' ? faCheckCircle :
-                                    toast.type === 'error' ? faExclamationTriangle :
-                                    toast.type === 'warning' ? faExclamationTriangle : faInfoCircle
-                                } 
-                                className="me-2" 
+                                        toast.type === 'error' ? faExclamationTriangle :
+                                            toast.type === 'warning' ? faExclamationTriangle : faInfoCircle
+                                }
+                                className="me-2"
                             />
                             <strong className="me-auto">
                                 {toast.type === 'success' ? 'Success' :
-                                 toast.type === 'error' ? 'Error' :
-                                 toast.type === 'warning' ? 'Warning' : 'Info'}
+                                    toast.type === 'error' ? 'Error' :
+                                        toast.type === 'warning' ? 'Warning' : 'Info'}
                             </strong>
                         </Toast.Header>
                         <Toast.Body>{toast.message}</Toast.Body>

@@ -5,7 +5,8 @@ import {
     faCalendarAlt,
     faChevronDown,
     faFilter,
-    faBuilding
+    faBuilding,
+    faShoppingCart
 } from '@fortawesome/free-solid-svg-icons';
 
 function PurchaseBillsFilter({
@@ -13,12 +14,15 @@ function PurchaseBillsFilter({
     startDate,
     endDate,
     selectedFirm,
+    purchaseStatus,
     dateRangeOptions,
     firmOptions,
+    purchaseStatusOptions,
     onDateRangeChange,
     onStartDateChange,
     onEndDateChange,
-    onFirmChange
+    onFirmChange,
+    onPurchaseStatusChange
 }) {
     const formatDateForInput = (date) => {
         return date.toISOString().split('T')[0];
@@ -41,7 +45,7 @@ function PurchaseBillsFilter({
                                 <div className="filter-icon">
                                     <FontAwesomeIcon icon={faFilter} />
                                 </div>
-                                <h6 className="mb-0 fw-semibold text-dark">Filter Options</h6>
+                                <h6 className="mb-0 fw-semibold text-dark">Purchase Filter Options</h6>
                             </div>
                         </div>
 
@@ -51,7 +55,7 @@ function PurchaseBillsFilter({
                                 <div className="filter-group">
                                     <label className="filter-label">Date Range</label>
                                     <Dropdown className="custom-dropdown">
-                                        <Dropdown.Toggle className="custom-dropdown-toggle w-100">
+                                        <Dropdown.Toggle variant="outline-secondary" className="custom-dropdown-toggle w-100" size="sm">
                                             <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-purple" />
                                             {dateRange}
                                             <FontAwesomeIcon icon={faChevronDown} className="ms-auto" />
@@ -76,7 +80,7 @@ function PurchaseBillsFilter({
                             <Col md={2} sm={6}>
                                 <div className="filter-group">
                                     <label className="filter-label">From Date</label>
-                                    <InputGroup className="custom-date-input-group">
+                                    <InputGroup size="sm" className="custom-date-input-group">
                                         <InputGroup.Text className="date-icon-wrapper">
                                             <FontAwesomeIcon icon={faCalendarAlt} className="text-purple" />
                                         </InputGroup.Text>
@@ -85,6 +89,7 @@ function PurchaseBillsFilter({
                                             value={formatDateForInput(startDate)}
                                             onChange={onStartDateChange}
                                             className="custom-date-input"
+                                            size="sm"
                                         />
                                     </InputGroup>
                                 </div>
@@ -99,16 +104,51 @@ function PurchaseBillsFilter({
                                         value={formatDateForInput(endDate)}
                                         onChange={onEndDateChange}
                                         className="custom-date-input-standalone"
+                                        size="sm"
                                     />
                                 </div>
                             </Col>
 
+                            {/* Purchase Status */}
+                            <Col md={2} sm={6}>
+                                <div className="filter-group">
+                                    <label className="filter-label">Status</label>
+                                    <Dropdown className="custom-dropdown">
+                                        <Dropdown.Toggle variant="outline-secondary" className="custom-dropdown-toggle w-100" size="sm">
+                                            <FontAwesomeIcon icon={faShoppingCart} className="me-2 text-purple" />
+                                            {purchaseStatus || 'All Status'}
+                                            <FontAwesomeIcon icon={faChevronDown} className="ms-auto" />
+                                        </Dropdown.Toggle>
+                                        <Dropdown.Menu className="custom-dropdown-menu">
+                                            <Dropdown.Item
+                                                onClick={() => onPurchaseStatusChange('')}
+                                                active={!purchaseStatus}
+                                                className="custom-dropdown-item"
+                                            >
+                                                All Status
+                                            </Dropdown.Item>
+                                            {purchaseStatusOptions?.map((option) => (
+                                                <Dropdown.Item
+                                                    key={option.value}
+                                                    onClick={() => onPurchaseStatusChange(option.value)}
+                                                    active={purchaseStatus === option.value}
+                                                    className="custom-dropdown-item"
+                                                >
+                                                    <span className={`status-dot status-${option.color} me-2`}></span>
+                                                    {option.label}
+                                                </Dropdown.Item>
+                                            ))}
+                                        </Dropdown.Menu>
+                                    </Dropdown>
+                                </div>
+                            </Col>
+
                             {/* Firm Dropdown */}
-                            <Col md={3} sm={6}>
+                            <Col md={2} sm={6}>
                                 <div className="filter-group">
                                     <label className="filter-label">Firm/Branch</label>
                                     <Dropdown className="custom-dropdown">
-                                        <Dropdown.Toggle className="custom-dropdown-toggle w-100">
+                                        <Dropdown.Toggle variant="outline-secondary" className="custom-dropdown-toggle w-100" size="sm">
                                             <FontAwesomeIcon icon={faBuilding} className="me-2 text-purple" />
                                             {selectedFirm}
                                             <FontAwesomeIcon icon={faChevronDown} className="ms-auto" />
@@ -130,13 +170,14 @@ function PurchaseBillsFilter({
                             </Col>
 
                             {/* Quick Stats */}
-                            <Col md={2} sm={12}>
+                            <Col md={1} sm={12}>
                                 <div className="filter-group">
-                                    <div className="quick-stats">
-                                        <small className="text-muted">Active Filters</small>
-                                        <div className="d-flex gap-1 mt-1">
-                                            <span className="filter-chip">{dateRange}</span>
-                                            <span className="filter-chip">{selectedFirm}</span>
+                                    <div className="quick-stats text-center">
+                                        <small className="text-muted d-block">Active Filters</small>
+                                        <div className="d-flex flex-wrap gap-1 mt-1 justify-content-center">
+                                            <span className="badge bg-primary filter-chip">{dateRange}</span>
+                                            {purchaseStatus && <span className="badge bg-success filter-chip">{purchaseStatus}</span>}
+                                            <span className="badge bg-secondary filter-chip">{selectedFirm}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -146,7 +187,7 @@ function PurchaseBillsFilter({
                 </Container>
             </div>
 
-            {/* Enhanced Purple Theme Styles */}
+            {/* Enhanced Purple Theme Styles with Bootstrap */}
             <style>
                 {`
                 .purchase-filter-section {
@@ -157,6 +198,7 @@ function PurchaseBillsFilter({
                     backdrop-filter: blur(10px);
                     position: relative;
                     z-index: 10;
+                    box-shadow: 0 2px 15px rgba(108, 99, 255, 0.05);
                 }
 
                 .filter-container {
@@ -181,6 +223,7 @@ function PurchaseBillsFilter({
                     color: white;
                     font-size: 0.8rem;
                     margin-right: 0.75rem;
+                    box-shadow: 0 2px 8px rgba(108, 99, 255, 0.2);
                 }
 
                 .filter-group {
@@ -199,6 +242,7 @@ function PurchaseBillsFilter({
                     margin-bottom: 0.5rem;
                 }
 
+                /* Bootstrap Dropdown Enhancements */
                 .custom-dropdown {
                     width: 100%;
                     position: relative;
@@ -206,27 +250,29 @@ function PurchaseBillsFilter({
                 }
 
                 .custom-dropdown-toggle {
-                    background: white;
-                    border: 1px solid rgba(108, 99, 255, 0.2);
-                    border-radius: 8px;
-                    padding: 0.6rem 0.75rem;
-                    font-size: 0.85rem;
-                    color: #495057;
+                    background: white !important;
+                    border: 1px solid rgba(108, 99, 255, 0.2) !important;
+                    border-radius: 6px !important;
+                    padding: 0.375rem 0.75rem !important;
+                    font-size: 0.8rem !important;
+                    color: #495057 !important;
                     transition: all 0.2s ease;
                     display: flex;
                     align-items: center;
                     text-align: left;
-                    min-height: 38px;
+                    min-height: 32px;
                     position: relative;
                     z-index: 1001;
+                    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.08);
                 }
 
                 .custom-dropdown-toggle:hover,
                 .custom-dropdown-toggle:focus {
-                    background: rgba(108, 99, 255, 0.05);
-                    border-color: rgba(108, 99, 255, 0.3);
-                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
-                    color: #495057;
+                    background: rgba(108, 99, 255, 0.05) !important;
+                    border-color: rgba(108, 99, 255, 0.3) !important;
+                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1) !important;
+                    color: #495057 !important;
+                    transform: translateY(-1px);
                 }
 
                 .custom-dropdown-toggle::after {
@@ -234,9 +280,9 @@ function PurchaseBillsFilter({
                 }
 
                 .custom-dropdown-menu {
-                    border: 1px solid rgba(108, 99, 255, 0.15);
-                    border-radius: 8px;
-                    box-shadow: 0 4px 20px rgba(108, 99, 255, 0.15);
+                    border: 1px solid rgba(108, 99, 255, 0.15) !important;
+                    border-radius: 8px !important;
+                    box-shadow: 0 4px 25px rgba(108, 99, 255, 0.15) !important;
                     padding: 0.5rem 0;
                     margin-top: 0.25rem;
                     position: absolute;
@@ -248,109 +294,120 @@ function PurchaseBillsFilter({
                 }
 
                 .custom-dropdown-item {
-                    padding: 0.5rem 1rem;
-                    font-size: 0.85rem;
-                    color: #495057;
+                    padding: 0.375rem 0.75rem !important;
+                    font-size: 0.8rem !important;
+                    color: #495057 !important;
                     transition: all 0.2s ease;
                     border-radius: 4px;
                     margin: 0 0.25rem;
+                    display: flex;
+                    align-items: center;
                 }
 
                 .custom-dropdown-item:hover {
-                    background: rgba(108, 99, 255, 0.1);
-                    color: #6c63ff;
+                    background: rgba(108, 99, 255, 0.1) !important;
+                    color: #6c63ff !important;
                     transform: translateX(2px);
                 }
 
                 .custom-dropdown-item.active {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
-                    color: white;
+                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%) !important;
+                    color: white !important;
                 }
 
+                /* Bootstrap Form Control Enhancements */
                 .custom-date-input-group {
-                    border-radius: 8px;
+                    border-radius: 6px;
                     overflow: hidden;
-                    border: 1px solid rgba(108, 99, 255, 0.2);
                     transition: all 0.2s ease;
                     position: relative;
                     z-index: 10;
+                    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.08);
                 }
 
                 .custom-date-input-group:focus-within {
-                    border-color: rgba(108, 99, 255, 0.3);
                     box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
+                    transform: translateY(-1px);
                 }
 
                 .date-icon-wrapper {
-                    background: rgba(108, 99, 255, 0.1);
-                    border: none;
-                    border-right: 1px solid rgba(108, 99, 255, 0.2);
+                    background: rgba(108, 99, 255, 0.1) !important;
+                    border: 1px solid rgba(108, 99, 255, 0.2) !important;
+                    border-right: none !important;
+                    font-size: 0.7rem;
                 }
 
                 .custom-date-input,
                 .custom-date-input-standalone {
-                    border: none;
-                    font-size: 0.85rem;
-                    padding: 0.6rem 0.75rem;
-                    background: white;
+                    font-size: 0.8rem !important;
+                    background: white !important;
                     transition: all 0.2s ease;
                     position: relative;
                     z-index: 10;
+                    border: 1px solid rgba(108, 99, 255, 0.2) !important;
                 }
 
                 .custom-date-input-standalone {
-                    border: 1px solid rgba(108, 99, 255, 0.2);
-                    border-radius: 8px;
+                    border-radius: 6px !important;
+                    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.08);
                 }
 
                 .custom-date-input-standalone:focus,
                 .custom-date-input:focus {
-                    background: rgba(108, 99, 255, 0.02);
-                    border-color: rgba(108, 99, 255, 0.3);
-                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
+                    background: rgba(108, 99, 255, 0.02) !important;
+                    border-color: rgba(108, 99, 255, 0.3) !important;
+                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1) !important;
+                    transform: translateY(-1px);
                 }
 
                 .text-purple {
                     color: #6c63ff !important;
                 }
 
+                /* Bootstrap Badge Enhancements */
                 .quick-stats {
-                    text-align: center;
                     padding: 0.5rem;
                     background: rgba(108, 99, 255, 0.05);
                     border-radius: 8px;
                     border: 1px solid rgba(108, 99, 255, 0.1);
+                    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.08);
                 }
 
                 .filter-chip {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
-                    color: white;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    font-size: 0.7rem;
-                    font-weight: 500;
+                    font-size: 0.65rem !important;
+                    padding: 0.25rem 0.375rem !important;
+                    font-weight: 500 !important;
+                    border-radius: 4px !important;
+                    letter-spacing: 0.2px;
                 }
 
-                /* Override Bootstrap dropdown z-index */
-                .dropdown-menu.show {
-                    z-index: 1050 !important;
-                    position: absolute !important;
+                .badge.bg-primary {
+                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%) !important;
                 }
 
-                .dropdown.show {
-                    z-index: 1050 !important;
+                .badge.bg-success {
+                    background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
                 }
 
-                /* Ensure dropdown appears above other components */
-                .purchase-filter-section .dropdown {
-                    z-index: 1050 !important;
+                .badge.bg-secondary {
+                    background: linear-gradient(135deg, #64748b 0%, #94a3b8 100%) !important;
                 }
 
-                .purchase-filter-section .dropdown-menu {
-                    z-index: 1051 !important;
+                /* Status Dots */
+                .status-dot {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    display: inline-block;
                 }
 
-                /* Responsive Design */
+                .status-dot.status-gray { background-color: #6c757d; }
+                .status-dot.status-blue { background-color: #0d6efd; }
+                .status-dot.status-orange { background-color: #fd7e14; }
+                .status-dot.status-green { background-color: #198754; }
+                .status-dot.status-red { background-color: #dc3545; }
+
+                /* Bootstrap Responsive */
                 @media (max-width: 768px) {
                     .filter-container {
                         padding: 1rem;
@@ -369,9 +426,8 @@ function PurchaseBillsFilter({
                     .custom-dropdown-toggle,
                     .custom-date-input,
                     .custom-date-input-standalone {
-                        font-size: 0.8rem;
-                        padding: 0.5rem 0.6rem;
-                        min-height: 36px;
+                        font-size: 0.75rem !important;
+                        min-height: 30px;
                     }
 
                     .filter-label {
@@ -399,12 +455,43 @@ function PurchaseBillsFilter({
                     }
 
                     .filter-chip {
-                        font-size: 0.65rem;
-                        padding: 1px 4px;
+                        font-size: 0.6rem !important;
+                        padding: 0.2rem 0.3rem !important;
                     }
                 }
 
-                /* Animations */
+                /* Bootstrap Dropdown z-index override */
+                .dropdown-menu.show {
+                    z-index: 1050 !important;
+                    position: absolute !important;
+                }
+
+                .dropdown.show {
+                    z-index: 1050 !important;
+                }
+
+                .purchase-filter-section .dropdown {
+                    z-index: 1050 !important;
+                }
+
+                .purchase-filter-section .dropdown-menu {
+                    z-index: 1051 !important;
+                }
+
+                /* Enhanced Purple Theme */
+                .purchase-filter-section::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 2px;
+                    background: linear-gradient(90deg, transparent 0%, #6c63ff 50%, transparent 100%);
+                    border-radius: 12px 12px 0 0;
+                    opacity: 0.6;
+                }
+
+                /* Bootstrap Animation */
                 @keyframes slideInDown {
                     from {
                         opacity: 0;
@@ -430,7 +517,16 @@ function PurchaseBillsFilter({
                 .filter-group:nth-child(4) { animation-delay: 0.25s; }
                 .filter-group:nth-child(5) { animation-delay: 0.3s; }
 
-                /* Custom Scrollbar for Dropdown */
+                /* Bootstrap Utility Enhancements */
+                .gap-1 {
+                    gap: 0.25rem !important;
+                }
+
+                .gap-3 {
+                    gap: 1rem !important;
+                }
+
+                /* Custom Scrollbar */
                 .custom-dropdown-menu::-webkit-scrollbar {
                     width: 4px;
                 }
@@ -447,6 +543,21 @@ function PurchaseBillsFilter({
 
                 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
                     background: linear-gradient(135deg, #5a52d5 0%, #8a7ae8 100%);
+                }
+
+                /* Bootstrap Focus States */
+                .custom-dropdown-toggle:focus-visible,
+                .custom-date-input:focus-visible,
+                .custom-date-input-standalone:focus-visible {
+                    outline: none;
+                    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25) !important;
+                }
+
+                /* Enhanced Hover Effects */
+                .custom-dropdown-toggle:hover,
+                .custom-date-input-group:hover,
+                .custom-date-input-standalone:hover {
+                    box-shadow: 0 2px 8px rgba(108, 99, 255, 0.15);
                 }
                 `}
             </style>

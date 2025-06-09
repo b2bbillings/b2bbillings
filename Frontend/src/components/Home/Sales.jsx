@@ -1,757 +1,265 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button, Badge, Tabs, Tab } from 'react-bootstrap';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus } from '@fortawesome/free-solid-svg-icons';
-import './Sales.css';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Alert } from 'react-bootstrap';
+import SalesInvoices from './Sales/SalesInvoices';
 
-// Import components
-import SalesSummaryCards from './Sales/SalesSummaryCards';
-import SalesTable from './Sales/SalesTable';
-import SalesEmptyState from './Sales/SalesEmptyState';
-import SalesModal from './Sales/SalesModal';
-import QuickPartyModal from './Sales/QuickPartyModal';
-import PaymentModal from './Sales/PaymentModal';
-import PrintInvoiceModal from './Sales/PrintInvoiceModal';
-import SalesInvoices from './Sales/SalesInvoices'; // Add this import
+function Sales({ 
+    view = 'allSales', 
+    onNavigate, 
+    currentCompany, 
+    isOnline = true, 
+    addToast,
+    companyId: propCompanyId 
+}) {
+    const { companyId: urlCompanyId } = useParams();
+    const navigate = useNavigate();
+    const [isRedirecting, setIsRedirecting] = useState(false);
 
-function Sales({ view = 'allSales', onNavigate }) {
-    // State management
-    const [sales, setSales] = useState([]);
-    const [parties, setParties] = useState([]);
-    const [showCreateModal, setShowCreateModal] = useState(false);
-    const [showAddPartyModal, setShowAddPartyModal] = useState(false);
+    // Use companyId from props or URL
+    const companyId = propCompanyId || urlCompanyId;
 
-    // Payment and Print modal states - SIMPLIFIED
-    const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [showPrintModal, setShowPrintModal] = useState(false);
-    const [selectedSaleForPayment, setSelectedSaleForPayment] = useState(null);
-    const [selectedSaleForPrint, setSelectedSaleForPrint] = useState(null);
+    // Handle view mapping for the new system
+    const mapViewToSubView = (viewName) => {
+        const viewMap = {
+            'allSales': 'invoices',
+            'invoices': 'invoices',
+            'creditNotes': 'credit-notes',
+            'salesReturns': 'returns',
+            'estimates': 'estimates'
+        };
+        return viewMap[viewName] || 'invoices';
+    };
 
-    const [editingSale, setEditingSale] = useState(null);
-    const [activeTab, setActiveTab] = useState(view || 'allSales');
-    const [searchQuery, setSearchQuery] = useState('');
-
-    // Simplified payment modal state - use same modal for both scenarios
-    const [showPaymentAfterInvoice, setShowPaymentAfterInvoice] = useState(false);
-    const [newlyCreatedInvoice, setNewlyCreatedInvoice] = useState(null);
-
-    const [dateFilter, setDateFilter] = useState({
-        from: '',
-        to: ''
-    });
-
-    // Update activeTab when view prop changes
-    useEffect(() => {
-        if (view) {
-            setActiveTab(view);
+    // Handle navigation to forms
+    const handleAddSale = () => {
+        if (!companyId) {
+            addToast?.('Please select a company first', 'warning');
+            return;
         }
-    }, [view]);
+        
+        console.log('🧾 Navigating to Add Sale form');
+        navigate(`/companies/${companyId}/sales/add`);
+    };
 
-    // Updated form data structure to match the new SalesModal
-    const [formData, setFormData] = useState({
-        invoiceNumber: '',
-        invoiceDate: new Date().toISOString().split('T')[0],
-        selectedParty: '',
-        invoiceType: '', // GST or Non-GST
-        items: [{
-            productService: '',
-            quantity: 1,
-            price: 0,
-            total: 0
-        }],
-        subtotal: 0,
-        tax: 0,
-        discount: 0,
-        total: 0,
-        notes: ''
-    });
-
-    // Quick party form data
-    const [quickPartyData, setQuickPartyData] = useState({
-        partyType: 'customer',
-        name: '',
-        phone: '',
-        email: '',
-        address: ''
-    });
-
-    const hasSales = sales.length > 0;
-
-    // Load parties on component mount
-    useEffect(() => {
-        const sampleParties = [
-            {
-                id: 1,
-                name: 'John Doe',
-                phone: '9876543210',
-                whatsappNumber: '9876543210',
-                email: 'john@example.com',
-                partyType: 'customer',
-                city: 'Mumbai',
-                address: '123 Main St',
-                gstNumber: ''
-            },
-            {
-                id: 2,
-                name: 'ABC Suppliers',
-                phone: '9876543211',
-                whatsappNumber: '9876543211',
-                email: 'abc@example.com',
-                partyType: 'supplier',
-                city: 'Delhi',
-                address: '456 Business Ave',
-                gstNumber: '27AAACR5055K1ZX'
-            },
-            {
-                id: 3,
-                name: 'XYZ Company',
-                phone: '9876543212',
-                whatsappNumber: '9876543212',
-                email: 'xyz@example.com',
-                partyType: 'customer',
-                city: 'Pune',
-                address: '789 Corporate Blvd',
-                gstNumber: '',
-            }
-        ];
-        setParties(sampleParties);
-    }, []);
-
-    // Generate invoice number
-    const generateInvoiceNumber = (invoiceType = 'non-gst') => {
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const random = Math.floor(1000 + Math.random() * 9000);
-
-        if (invoiceType === 'gst') {
-            return `GST-${year}${month}${day}-${random}`;
-        } else {
-            return `INV-${year}${month}${day}-${random}`;
+    const handleEditSale = (saleId) => {
+        if (!companyId) {
+            addToast?.('Please select a company first', 'warning');
+            return;
         }
+        
+        console.log('✏️ Navigating to Edit Sale form:', saleId);
+        navigate(`/companies/${companyId}/sales/${saleId}/edit`);
     };
 
-    // Modal operations
-    const handleOpenCreateModal = () => {
-        setEditingSale(null);
-
-        const defaultInvoiceType = 'non-gst';
-        const invoiceNumber = generateInvoiceNumber(defaultInvoiceType);
-
-        setFormData({
-            invoiceNumber: invoiceNumber,
-            invoiceDate: new Date().toISOString().split('T')[0],
-            selectedParty: '',
-            invoiceType: defaultInvoiceType,
-            items: [{
-                productService: '',
-                quantity: 1,
-                price: 0,
-                total: 0,
-                gstRate: 0,
-                taxInclusive: false
-            }],
-            subtotal: 0,
-            tax: 0,
-            discount: 0,
-            total: 0,
-            notes: ''
-        });
-        setShowCreateModal(true);
-    };
-
-    const handleCloseModal = () => {
-        setShowCreateModal(false);
-        setFormData({
-            invoiceNumber: '',
-            invoiceDate: new Date().toISOString().split('T')[0],
-            selectedParty: '',
-            invoiceType: '',
-            items: [{
-                productService: '',
-                quantity: 1,
-                price: 0,
-                total: 0
-            }],
-            subtotal: 0,
-            tax: 0,
-            discount: 0,
-            total: 0,
-            notes: ''
-        });
-        setEditingSale(null);
-    };
-
-    // SIMPLIFIED Payment handler - now just opens PaymentModal for existing invoices
-    const handleManagePayment = (sale) => {
-        console.log('🎯 Opening payment modal for existing sale:', sale);
-        setSelectedSaleForPayment(sale);
-        setShowPaymentModal(true);
-    };
-
-    const handlePrintInvoice = (sale) => {
-        setSelectedSaleForPrint(sale);
-        setShowPrintModal(true);
-    };
-
-    // UNIFIED Payment handler - handles both new and existing invoice payments
-    const handleSavePaymentPlan = (paymentData) => {
-        console.log('💰 Saving payment plan:', paymentData);
-
-        try {
-            const invoiceId = paymentData.invoiceId;
-
-            setSales(prevSales => {
-                return prevSales.map(sale => {
-                    if (sale.id === invoiceId) {
-                        const updatedSale = {
-                            ...sale,
-                            payments: paymentData.payments || [],
-                            nextDueDate: paymentData.nextDueDate,
-                            paymentHistory: [...(sale.paymentHistory || []), {
-                                id: Date.now(),
-                                type: 'payment_plan_updated',
-                                data: paymentData.summary,
-                                createdAt: new Date().toISOString()
-                            }]
-                        };
-
-                        // Update payment status based on summary
-                        if (paymentData.summary) {
-                            updatedSale.paymentStatus = paymentData.summary.paymentStatus;
-                            updatedSale.remainingAmount = paymentData.summary.remainingAmount;
-                        }
-
-                        return updatedSale;
-                    }
-                    return sale;
-                });
-            });
-
-            alert('Payment plan saved successfully!');
-
-            // Close the appropriate modal
-            if (showPaymentAfterInvoice) {
-                setShowPaymentAfterInvoice(false);
-                setNewlyCreatedInvoice(null);
-            } else {
-                setShowPaymentModal(false);
-                setSelectedSaleForPayment(null);
-            }
-
-        } catch (error) {
-            console.error('❌ Error saving payment plan:', error);
-            alert('Error saving payment plan. Please try again.');
-        }
-    };
-
-    // Party selection
-    const handlePartySelection = (e) => {
-        console.log('Party selection:', e.target);
-
-        const { value, selectedPartyData } = e.target;
-
-        setFormData(prev => ({
-            ...prev,
-            selectedParty: value,
-            customerName: selectedPartyData?.name || '',
-            customerPhone: selectedPartyData?.phone || selectedPartyData?.whatsappNumber || '',
-            customerEmail: selectedPartyData?.email || '',
-            customerAddress: selectedPartyData?.address || '',
-        }));
-
-        console.log('Form data updated with party:', selectedPartyData);
-    };
-
-    // Form input changes
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => {
-            const newData = {
-                ...prev,
-                [name]: value
-            };
-
-            if (name === 'tax' || name === 'discount') {
-                const subtotal = prev.subtotal || 0;
-                const tax = name === 'tax' ? parseFloat(value) || 0 : prev.tax || 0;
-                const discount = name === 'discount' ? parseFloat(value) || 0 : prev.discount || 0;
-
-                const taxAmount = prev.invoiceType === 'gst' ? (subtotal * tax) / 100 : 0;
-                const discountAmount = (subtotal * discount) / 100;
-                const total = subtotal + taxAmount - discountAmount;
-
-                newData.total = Math.max(0, total);
-            }
-
-            return newData;
-        });
-    };
-
-    // Quick party changes
-    const handleQuickPartyChange = (e) => {
-        const { name, value } = e.target;
-        setQuickPartyData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    // Add quick party
-    const handleAddQuickParty = (e) => {
-        e.preventDefault();
-
-        if (!quickPartyData.name.trim()) {
-            alert('Please enter party name');
+    // Handle navigation to different views within sales
+    const handleViewChange = (newView) => {
+        if (!companyId) {
+            addToast?.('Please select a company first', 'warning');
             return;
         }
 
-        const newParty = {
-            id: Date.now(),
-            ...quickPartyData,
-            whatsappNumber: quickPartyData.phone,
-            city: '',
-            gstNumber: ''
+        const viewPaths = {
+            'invoices': 'sales',
+            'credit-notes': 'credit-notes',
+            'returns': 'sales-returns',
+            'estimates': 'estimates'
         };
 
-        setParties(prev => [...prev, newParty]);
-
-        setFormData(prev => ({
-            ...prev,
-            selectedParty: newParty.id.toString()
-        }));
-
-        setQuickPartyData({
-            partyType: 'customer',
-            name: '',
-            phone: '',
-            email: '',
-            address: ''
-        });
-
-        setShowAddPartyModal(false);
-        alert('Party added successfully!');
-    };
-
-    // Show Add Party Modal Handler
-    const handleShowAddPartyModal = (prefilledName = '', defaultPartyType = 'customer') => {
-        console.log('🎯 handleShowAddPartyModal called with prefilledName:', prefilledName);
-
-        setQuickPartyData(prev => ({
-            ...prev,
-            name: prefilledName || '',
-            partyType: defaultPartyType,
-            phone: '',
-            email: '',
-            address: ''
-        }));
-
-        setShowAddPartyModal(true);
-    };
-
-    // Item operations
-    const handleItemChange = (index, field, value) => {
-        const newItems = [...formData.items];
-        newItems[index][field] = value;
-
-        if (field === 'quantity' || field === 'price') {
-            const quantity = parseFloat(newItems[index].quantity) || 0;
-            const price = parseFloat(newItems[index].price) || 0;
-            newItems[index].total = quantity * price;
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            items: newItems
-        }));
-
-        setTimeout(() => calculateTotals(newItems), 0);
-    };
-
-    const addItem = () => {
-        setFormData(prev => ({
-            ...prev,
-            items: [...prev.items, {
-                productService: '',
-                quantity: 1,
-                price: 0,
-                total: 0,
-                gstRate: 0,
-                sku: '',
-                unit: 'piece',
-                selectedProduct: null
-            }]
-        }));
-    };
-
-    const removeItem = (index) => {
-        if (formData.items.length > 1) {
-            const newItems = formData.items.filter((_, i) => i !== index);
-            setFormData(prev => ({
-                ...prev,
-                items: newItems
-            }));
-            calculateTotals(newItems);
+        const path = viewPaths[newView] || 'sales';
+        
+        if (onNavigate) {
+            onNavigate(newView);
+        } else {
+            navigate(`/companies/${companyId}/${path}`);
         }
     };
 
-    // Calculate totals
-    const calculateTotals = (items = formData.items) => {
-        let subtotal = 0;
-        let totalGST = 0;
+    // Update redirecting logic for better UX
+    useEffect(() => {
+        // Handle legacy view redirects
+        const legacyViews = ['oldSales', 'salesTable', 'legacySales'];
+        
+        if (legacyViews.includes(view)) {
+            console.log('🔄 Redirecting from legacy sales view to new invoice system');
+            setIsRedirecting(true);
 
-        items.forEach(item => {
-            const itemTotal = parseFloat(item.total) || 0;
-            subtotal += itemTotal;
+            // Add toast notification for better UX
+            addToast?.('Redirecting to the new Invoice System...', 'info', 3000);
 
-            if (formData.invoiceType === 'gst' && item.gstRate) {
-                const itemGST = (itemTotal * parseFloat(item.gstRate)) / 100;
-                totalGST += itemGST;
-            }
-        });
-
-        const discountAmount = (subtotal * (parseFloat(formData.discount) || 0)) / 100;
-        const finalSubtotal = subtotal - discountAmount;
-
-        let finalGST = totalGST;
-        if (discountAmount > 0 && formData.invoiceType === 'gst') {
-            finalGST = totalGST * (finalSubtotal / subtotal);
-        }
-
-        const total = finalSubtotal + finalGST;
-
-        setFormData(prev => ({
-            ...prev,
-            subtotal: subtotal,
-            gstAmount: finalGST,
-            total: Math.max(0, total)
-        }));
-    };
-
-    // Validation
-    const validateForm = () => {
-        console.log('Validating form data:', formData);
-
-        if (!formData.invoiceDate || formData.invoiceDate.trim() === '') {
-            alert('Please select an invoice date');
-            return false;
-        }
-
-        if (!formData.invoiceType || formData.invoiceType === '') {
-            alert('Please select invoice type (GST or Non-GST)');
-            return false;
-        }
-
-        if (!formData.selectedParty || formData.selectedParty === '') {
-            alert('Please select a customer');
-            return false;
-        }
-
-        if (!formData.items || formData.items.length === 0) {
-            alert('Please add at least one item');
-            return false;
-        }
-
-        const validItems = formData.items.filter(item =>
-            item.productService && item.productService.trim() !== ''
-        );
-
-        if (validItems.length === 0) {
-            alert('Please enter product/service name for at least one item');
-            return false;
-        }
-
-        const invalidItems = formData.items.filter(item =>
-            item.productService && item.productService.trim() !== '' &&
-            (parseFloat(item.quantity) <= 0 || parseFloat(item.price) <= 0)
-        );
-
-        if (invalidItems.length > 0) {
-            alert('Please enter valid quantity and price for all items');
-            return false;
-        }
-
-        return true;
-    };
-
-    // Save invoice - shows PaymentModal after creation
-    const handleSaveInvoice = (e) => {
-        e.preventDefault();
-
-        console.log('Saving invoice with data:', formData);
-        try {
-            if (!validateForm()) {
-                return;
-            }
-
-            let customerData = {};
-            let selectedParty = null;
-
-            if (formData.selectedParty === 'walk-in') {
-                customerData = formData.selectedPartyData || {};
-            } else if (formData.selectedParty.startsWith('db_')) {
-                customerData = formData.selectedPartyData || {};
+            if (onNavigate) {
+                onNavigate('allSales');
             } else {
-                selectedParty = parties.find(p => p.id.toString() === formData.selectedParty);
-                customerData = selectedParty || {};
+                navigate(`/companies/${companyId}/sales`);
             }
 
-            const invoiceData = {
-                id: editingSale ? editingSale.id : Date.now(),
-                invoiceNumber: formData.invoiceNumber || generateInvoiceNumber(),
-                invoiceDate: formData.invoiceDate,
-                invoiceType: formData.invoiceType || 'non-gst',
-                customerName: formData.customerName || selectedParty?.name || 'Walk-in Customer',
-                customerPhone: formData.customerPhone || selectedParty?.phone || '',
-                customerEmail: formData.customerEmail || selectedParty?.email || '',
-                customerAddress: formData.customerAddress || selectedParty?.address || '',
-                items: formData.items,
-                subtotal: formData.subtotal || 0,
-                discount: formData.discount || 0,
-                gstAmount: formData.gstAmount || 0,
-                total: formData.total || 0,
-                finalTotal: formData.total || 0, // For PaymentModal compatibility
-                notes: formData.notes || '',
-                createdAt: editingSale ? editingSale.createdAt : new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                status: 'completed',
-                payments: editingSale ? editingSale.payments || [] : [],
-                paymentHistory: editingSale ? editingSale.paymentHistory || [] : [],
-                paymentStatus: 'pending',
-                remainingAmount: formData.total || 0,
-                // For PaymentModal compatibility
-                partyName: formData.customerName || selectedParty?.name || 'Walk-in Customer'
-            };
-
-            if (editingSale) {
-                setSales(prev => prev.map(sale =>
-                    sale.id === editingSale.id ? invoiceData : sale
-                ));
-                alert('Invoice updated successfully!');
-                handleCloseModal();
-            } else {
-                setSales(prev => [...prev, invoiceData]);
-                setNewlyCreatedInvoice(invoiceData);
-
-                alert('Invoice created successfully!');
-                console.log('✅ New invoice created:', invoiceData);
-
-                handleCloseModal();
-
-                // Show PaymentModal after invoice creation
-                setTimeout(() => {
-                    setShowPaymentAfterInvoice(true);
-                }, 500);
-            }
-
-        } catch (error) {
-            console.error('❌ Error saving invoice:', error);
-            alert('Error saving invoice. Please try again.');
+            // Reset redirecting state
+            setTimeout(() => setIsRedirecting(false), 1500);
         }
-    };
+    }, [view, onNavigate, navigate, companyId, addToast]);
 
-    const handleClosePaymentAfterInvoice = () => {
-        setShowPaymentAfterInvoice(false);
-        setNewlyCreatedInvoice(null);
-    };
-
-    const handleClosePaymentModal = () => {
-        setShowPaymentModal(false);
-        setSelectedSaleForPayment(null);
-    };
-
-    // Edit and delete operations
-    const handleEditSale = (sale) => {
-        setEditingSale(sale);
-        setFormData({
-            ...sale,
-            items: sale.items?.map(item => ({
-                productService: item.productService || item.product || '',
-                quantity: item.quantity || 1,
-                price: item.price || 0,
-                total: item.total || 0
-            })) || [{ productService: '', quantity: 1, price: 0, total: 0 }]
-        });
-        setShowCreateModal(true);
-    };
-
-    const handleDeleteSale = (saleId) => {
-        if (window.confirm('Are you sure you want to delete this invoice?')) {
-            setSales(sales.filter(sale => sale.id !== saleId));
-        }
-    };
-
-    // Filter sales
-    const filteredSales = sales.filter(sale => {
-        const matchesSearch = (sale.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (sale.invoiceNumber || '').toLowerCase().includes(searchQuery.toLowerCase());
-
-        let matchesDate = true;
-        if (dateFilter.from && dateFilter.to) {
-            const saleDate = new Date(sale.createdAt).toISOString().split('T')[0];
-            matchesDate = saleDate >= dateFilter.from && saleDate <= dateFilter.to;
-        }
-
-        return matchesSearch && matchesDate;
-    });
-
-    // Render content based on active tab
-    const renderTabContent = () => {
-        switch (activeTab) {
-            case 'invoices':
-                return <SalesInvoices />;
-            case 'allSales':
-                return hasSales ? (
-                    <>
-                        <SalesSummaryCards sales={sales} />
-                        <SalesTable
-                            filteredSales={filteredSales}
-                            searchQuery={searchQuery}
-                            setSearchQuery={setSearchQuery}
-                            dateFilter={dateFilter}
-                            setDateFilter={setDateFilter}
-                            statusFilter="all"
-                            setStatusFilter={() => { }}
-                            paymentStatusFilter="all"
-                            setPaymentStatusFilter={() => { }}
-                            sortConfig={{ field: 'createdAt', direction: 'desc' }}
-                            setSortConfig={() => { }}
-                            onCreateInvoice={handleOpenCreateModal}
-                            onEditSale={handleEditSale}
-                            onDeleteSale={handleDeleteSale}
-                            onManagePayment={handleManagePayment}
-                            onPrintInvoice={handlePrintInvoice}
-                        />
-                    </>
-                ) : (
-                    <SalesEmptyState onCreateInvoice={handleOpenCreateModal} />
-                );
-            case 'quotations':
-                return (
-                    <div className="text-center py-5">
-                        <p>Quotation management features will be available here.</p>
+    // Show loading state while redirecting
+    if (isRedirecting) {
+        return (
+            <div className="sales-container d-flex justify-content-center align-items-center">
+                <Alert variant="info" className="text-center">
+                    <div className="spinner-border spinner-border-sm me-2" role="status">
+                        <span className="visually-hidden">Loading...</span>
                     </div>
-                );
-            case 'reports':
-                return (
-                    <div className="text-center py-5">
-                        <p>Sales reports and analytics will be available here.</p>
-                    </div>
-                );
-            default:
-                return (
-                    <div className="text-center py-5">
-                        <p>Content not found.</p>
-                    </div>
-                );
-        }
-    };
+                    🔄 Redirecting to Invoice System...
+                </Alert>
+            </div>
+        );
+    }
 
+    // Show warning if no company selected
+    if (!companyId) {
+        return (
+            <div className="sales-container">
+                <div className="container-fluid py-4">
+                    <Alert variant="warning" className="text-center">
+                        <h5>⚠️ No Company Selected</h5>
+                        <p className="mb-0">
+                            Please select a company to view and manage sales invoices.
+                        </p>
+                        <small className="text-muted d-block mt-2">
+                            You can select a company from the header dropdown.
+                        </small>
+                    </Alert>
+                </div>
+            </div>
+        );
+    }
+
+    // Show offline warning if needed
+    if (!isOnline) {
+        return (
+            <div className="sales-container">
+                <div className="container-fluid py-4">
+                    <Alert variant="warning" className="text-center">
+                        <h5>📡 No Internet Connection</h5>
+                        <p className="mb-0">
+                            Sales data requires an internet connection. Please check your network and try again.
+                        </p>
+                    </Alert>
+                </div>
+            </div>
+        );
+    }
+
+    // Map current view to sub-view for SalesInvoices
+    const subView = mapViewToSubView(view);
+
+    // Render the SalesInvoices component with enhanced props
     return (
-        <Container fluid className="py-4">
-            {/* Page Header - Only show for non-SalesInvoices tabs */}
-            {activeTab !== 'invoices' && (
-                <Row className="mb-4 align-items-center">
-                    <Col>
-                        <h1 className="page-title mb-0">
-                            Sales Management
-                            {hasSales && (
-                                <Badge bg="secondary" className="ms-2">{sales.length}</Badge>
-                            )}
-                        </h1>
-                    </Col>
-                    <Col xs="auto">
-                        <Button
-                            variant="primary"
-                            className="d-flex align-items-center"
-                            onClick={handleOpenCreateModal}
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="me-2" />
-                            Create Invoice
-                        </Button>
-                    </Col>
-                </Row>
-            )}
+        <div className="sales-container">
+            <SalesInvoices 
+                companyId={companyId}
+                currentCompany={currentCompany}
+                view={subView}
+                onAddSale={handleAddSale}
+                onEditSale={handleEditSale}
+                onViewChange={handleViewChange}
+                onNavigate={onNavigate}
+                isOnline={isOnline}
+                addToast={addToast}
+            />
 
-            {/* Tabs - Only show for non-SalesInvoices tabs */}
-            {activeTab !== 'invoices' && (
-                <Tabs
-                    activeKey={activeTab}
-                    onSelect={(k) => setActiveTab(k)}
-                    className="mb-4 custom-tabs"
-                >
-                    <Tab eventKey="allSales" title="All Sales">
-                        {/* Content handled by renderTabContent */}
-                    </Tab>
-                    <Tab eventKey="quotations" title="Quotations">
-                        {/* Content handled by renderTabContent */}
-                    </Tab>
-                    <Tab eventKey="reports" title="Reports">
-                        {/* Content handled by renderTabContent */}
-                    </Tab>
-                </Tabs>
-            )}
+            {/* Enhanced Styles for seamless integration */}
+            <style jsx>{`
+                .sales-container {
+                    width: 100%;
+                    height: 100%;
+                    min-height: 100vh;
+                    background-color: #f8f9fa;
+                }
+                
+                /* Remove any legacy styles */
+                .page-title,
+                .custom-tabs,
+                .sales-summary-grid {
+                    display: none !important;
+                }
+                
+                /* Ensure full width for invoice system */
+                .sales-container > div {
+                    width: 100%;
+                    min-height: 100vh;
+                }
 
-            {/* Render Tab Content */}
-            {renderTabContent()}
+                /* Enhanced loading and warning states */
+                .sales-container .alert {
+                    margin: 2rem;
+                    padding: 2rem;
+                    border-radius: 0.75rem;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                    border: none;
+                }
 
-            {/* Modals - Only show for non-SalesInvoices tabs */}
-            {activeTab !== 'invoices' && (
-                <>
-                    <SalesModal
-                        show={showCreateModal}
-                        onHide={handleCloseModal}
-                        editingSale={editingSale}
-                        formData={formData}
-                        parties={parties}
-                        onInputChange={handleInputChange}
-                        onPartySelection={handlePartySelection}
-                        onItemChange={handleItemChange}
-                        onAddItem={addItem}
-                        onRemoveItem={removeItem}
-                        onSaveInvoice={handleSaveInvoice}
-                        onShowAddPartyModal={handleShowAddPartyModal}
-                    />
+                .sales-container .alert-info {
+                    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                    border-left: 4px solid #2196f3;
+                    color: #1565c0;
+                }
 
-                    <QuickPartyModal
-                        show={showAddPartyModal}
-                        onHide={() => setShowAddPartyModal(false)}
-                        quickPartyData={quickPartyData}
-                        onQuickPartyChange={handleQuickPartyChange}
-                        onAddQuickParty={handleAddQuickParty}
-                    />
+                .sales-container .alert-warning {
+                    background: linear-gradient(135deg, #fff3e0 0%, #ffcc80 100%);
+                    border-left: 4px solid #ff9800;
+                    color: #ef6c00;
+                }
 
-                    {/* Payment Modal for Existing Invoices */}
-                    <PaymentModal
-                        show={showPaymentModal}
-                        onHide={handleClosePaymentModal}
-                        invoiceData={selectedSaleForPayment}
-                        onSavePayment={handleSavePaymentPlan}
-                        onSetReminder={(data) => {
-                            console.log('Setting payment reminder for existing invoice:', data);
-                        }}
-                    />
+                .sales-container .alert h5 {
+                    margin-bottom: 0.75rem;
+                    font-weight: 600;
+                }
 
-                    {/* Payment Modal After Invoice Creation */}
-                    <PaymentModal
-                        show={showPaymentAfterInvoice}
-                        onHide={handleClosePaymentAfterInvoice}
-                        invoiceData={newlyCreatedInvoice}
-                        onSavePayment={handleSavePaymentPlan}
-                        onSetReminder={(data) => {
-                            console.log('Setting payment reminder for new invoice:', data);
-                        }}
-                    />
+                .sales-container .spinner-border-sm {
+                    width: 1rem;
+                    height: 1rem;
+                }
 
-                    <PrintInvoiceModal
-                        show={showPrintModal}
-                        onHide={() => setShowPrintModal(false)}
-                        sale={selectedSaleForPrint}
-                    />
-                </>
-            )}
-        </Container>
+                /* Responsive adjustments */
+                @media (max-width: 768px) {
+                    .sales-container .alert {
+                        margin: 1rem;
+                        padding: 1.5rem;
+                    }
+                    
+                    .sales-container .alert h5 {
+                        font-size: 1.1rem;
+                    }
+                }
+
+                /* Dark mode support */
+                @media (prefers-color-scheme: dark) {
+                    .sales-container {
+                        background-color: #121212;
+                    }
+                }
+
+                /* Animation for smooth transitions */
+                .sales-container {
+                    animation: fadeIn 0.3s ease-in-out;
+                }
+
+                @keyframes fadeIn {
+                    from {
+                        opacity: 0;
+                        transform: translateY(10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+
+                /* Print styles */
+                @media print {
+                    .sales-container .alert {
+                        display: none;
+                    }
+                }
+            `}</style>
+        </div>
     );
 }
 

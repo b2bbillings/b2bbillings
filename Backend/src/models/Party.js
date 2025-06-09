@@ -3,10 +3,40 @@ const mongoose = require('mongoose');
 const phoneNumberSchema = new mongoose.Schema({
     number: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     label: {
         type: String,
+        default: 'Primary',
+        trim: true
+    }
+}, { _id: false });
+
+const addressSchema = new mongoose.Schema({
+    addressLine: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    pincode: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    state: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    district: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    taluka: {
+        type: String,
+        trim: true,
         default: ''
     }
 }, { _id: false });
@@ -14,15 +44,15 @@ const phoneNumberSchema = new mongoose.Schema({
 const partySchema = new mongoose.Schema({
     partyType: {
         type: String,
-        enum: ['customer', 'vendor', 'supplier', 'both'], // Added vendor and supplier
+        enum: ['customer', 'vendor', 'supplier', 'both'],
         required: true,
         default: 'customer'
     },
     name: {
         type: String,
-        required: true,
+        required: [true, 'Party name is required'],
         trim: true,
-        maxlength: 100
+        maxlength: [100, 'Name cannot exceed 100 characters']
     },
     email: {
         type: String,
@@ -31,78 +61,89 @@ const partySchema = new mongoose.Schema({
         sparse: true,
         validate: {
             validator: function(v) {
-                return !v || /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+                return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
             },
-            message: 'Please provide a valid email'
+            message: 'Please provide a valid email address'
         }
     },
     phoneNumber: {
         type: String,
-        required: true,
-        trim: true
+        required: [true, 'Phone number is required'],
+        trim: true,
+        validate: {
+            validator: function(v) {
+                return /^[6-9]\d{9}$/.test(v);
+            },
+            message: 'Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9'
+        }
     },
     phoneNumbers: [phoneNumberSchema],
+    
+    // Company Details
     companyName: {
         type: String,
         trim: true,
-        maxlength: 100
+        maxlength: [100, 'Company name cannot exceed 100 characters'],
+        default: ''
     },
+    
+    // GST Information
     gstNumber: {
         type: String,
         trim: true,
         uppercase: true,
         validate: {
             validator: function(v) {
+                // Only validate if GST number is provided and GST type is not unregistered
                 return !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v);
             },
-            message: 'Please provide a valid GST number'
+            message: 'Please provide a valid GST number format'
         }
     },
-    country: {
+    gstType: {
         type: String,
-        default: 'INDIA',
-        uppercase: true
+        enum: ['unregistered', 'regular', 'composition'],
+        default: 'unregistered'
     },
-    homeAddress: {
-        addressLine: String,
-        pincode: String,
-        state: String,
-        district: String,
-        taluka: String
-    },
-    deliveryAddress: {
-        addressLine: String,
-        pincode: String,
-        state: String,
-        district: String,
-        taluka: String
-    },
-    sameAsHomeAddress: {
-        type: Boolean,
-        default: false
+    
+    // Financial Information
+    creditLimit: {
+        type: Number,
+        default: 0,
+        min: [0, 'Credit limit cannot be negative']
     },
     openingBalance: {
         type: Number,
-        default: 0
-    },
-    openingBalanceType: {
-        type: String,
-        enum: ['debit', 'credit'],
-        default: 'debit'
+        default: 0,
+        min: [0, 'Opening balance cannot be negative']
     },
     currentBalance: {
         type: Number,
         default: 0
     },
     
-    // Association Fields (NEW)
+    // Address Information
+    homeAddress: addressSchema,
+    deliveryAddress: addressSchema,
+    sameAsHomeAddress: {
+        type: Boolean,
+        default: false
+    },
+    
+    // Country
+    country: {
+        type: String,
+        default: 'INDIA',
+        uppercase: true
+    },
+    
+    // Association Fields
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: [true, 'User ID is required'],
         index: true
     },
-    
     companyId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Company',
@@ -110,27 +151,23 @@ const partySchema = new mongoose.Schema({
         index: true
     },
     
-    // Audit Fields (NEW)
+    // Audit Fields
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
-    
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
-    
     deletedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
-    
     deletedAt: {
         type: Date
     },
-    
     isActive: {
         type: Boolean,
         default: true
@@ -141,30 +178,28 @@ const partySchema = new mongoose.Schema({
     toObject: { virtuals: true }
 });
 
-// ✅ IMPROVED: Better compound indexes for performance
+// Indexes for better performance
 partySchema.index({ name: 1 });
 partySchema.index({ phoneNumber: 1 });
 partySchema.index({ email: 1 });
 partySchema.index({ partyType: 1 });
 partySchema.index({ gstNumber: 1 });
 
-// Company-scoped indexes for better performance
-partySchema.index({ companyId: 1, phoneNumber: 1 }, { 
+// Company-scoped unique index for phone numbers
+partySchema.index({ 
+    companyId: 1, 
+    phoneNumber: 1 
+}, { 
     unique: true, 
     partialFilterExpression: { isActive: true },
     name: 'unique_phone_per_company'
 });
+
 partySchema.index({ companyId: 1, name: 1 });
 partySchema.index({ companyId: 1, partyType: 1 });
 partySchema.index({ companyId: 1, isActive: 1, createdAt: -1 });
-partySchema.index({ userId: 1, companyId: 1 });
 
-// ✅ NEW: Additional performance indexes
-partySchema.index({ companyId: 1, isActive: 1, partyType: 1 }); // For filtered queries
-partySchema.index({ companyId: 1, currentBalance: 1 }); // For balance queries
-partySchema.index({ createdBy: 1, companyId: 1 }); // For audit queries
-
-// Text index for search functionality within company scope
+// Text index for search
 partySchema.index({
     name: 'text',
     phoneNumber: 'text',
@@ -172,18 +207,7 @@ partySchema.index({
     companyName: 'text'
 });
 
-// Virtual for full address
-partySchema.virtual('homeFullAddress').get(function() {
-    if (!this.homeAddress || !this.homeAddress.addressLine) return '';
-    return `${this.homeAddress.addressLine}, ${this.homeAddress.taluka}, ${this.homeAddress.district}, ${this.homeAddress.state} - ${this.homeAddress.pincode}`;
-});
-
-partySchema.virtual('deliveryFullAddress').get(function() {
-    if (!this.deliveryAddress || !this.deliveryAddress.addressLine) return '';
-    return `${this.deliveryAddress.addressLine}, ${this.deliveryAddress.taluka}, ${this.deliveryAddress.district}, ${this.deliveryAddress.state} - ${this.deliveryAddress.pincode}`;
-});
-
-// NEW: Virtual for formatted balance
+// Virtual for formatted balance
 partySchema.virtual('formattedBalance').get(function() {
     const balance = this.currentBalance || 0;
     const type = balance >= 0 ? 'To Receive' : 'To Pay';
@@ -194,110 +218,48 @@ partySchema.virtual('formattedBalance').get(function() {
     };
 });
 
-// Middleware to handle same address logic
+// Pre-save middleware to handle address copying and balance calculation
 partySchema.pre('save', function(next) {
-    if (this.sameAsHomeAddress) {
-        this.deliveryAddress = { ...this.homeAddress };
+    // Copy home address to delivery if sameAsHomeAddress is true
+    if (this.sameAsHomeAddress && this.homeAddress) {
+        this.deliveryAddress = {
+            addressLine: this.homeAddress.addressLine,
+            pincode: this.homeAddress.pincode,
+            state: this.homeAddress.state,
+            district: this.homeAddress.district,
+            taluka: this.homeAddress.taluka
+        };
     }
     
     // Set current balance from opening balance on creation
     if (this.isNew) {
-        this.currentBalance = this.openingBalanceType === 'credit' 
-            ? -this.openingBalance 
-            : this.openingBalance;
+        this.currentBalance = this.openingBalance || 0;
     }
     
-    next();
-});
-
-// NEW: Pre-save middleware for audit trail
-partySchema.pre('save', function(next) {
     // Set createdBy if it's a new document and not already set
     if (this.isNew && !this.createdBy && this.userId) {
         this.createdBy = this.userId;
     }
     
+    // Ensure phoneNumbers array has at least the primary phone
+    if (!this.phoneNumbers || this.phoneNumbers.length === 0) {
+        this.phoneNumbers = [{ 
+            number: this.phoneNumber, 
+            label: 'Primary' 
+        }];
+    }
+    
     next();
 });
 
-// NEW: Static method to find parties by company
-partySchema.statics.findByCompany = function(companyId, options = {}) {
-    const query = { 
-        companyId: companyId, 
-        isActive: true,
-        ...options.filter 
-    };
-    
-    let mongoQuery = this.find(query);
-    
-    if (options.populate) {
-        mongoQuery = mongoQuery.populate(options.populate);
-    }
-    
-    if (options.sort) {
-        mongoQuery = mongoQuery.sort(options.sort);
-    }
-    
-    if (options.limit) {
-        mongoQuery = mongoQuery.limit(options.limit);
-    }
-    
-    if (options.skip) {
-        mongoQuery = mongoQuery.skip(options.skip);
-    }
-    
-    return mongoQuery;
-};
-
-// NEW: Static method to get party statistics for a company
-partySchema.statics.getCompanyStats = function(companyId) {
-    return this.aggregate([
-        {
-            $match: {
-                companyId: new mongoose.Types.ObjectId(companyId),
-                isActive: true
-            }
-        },
-        {
-            $group: {
-                _id: '$partyType',
-                count: { $sum: 1 },
-                totalBalance: { $sum: '$currentBalance' },
-                totalReceivable: {
-                    $sum: {
-                        $cond: [
-                            { $gt: ['$currentBalance', 0] },
-                            '$currentBalance',
-                            0
-                        ]
-                    }
-                },
-                totalPayable: {
-                    $sum: {
-                        $cond: [
-                            { $lt: ['$currentBalance', 0] },
-                            { $abs: '$currentBalance' },
-                            0
-                        ]
-                    }
-                }
-            }
-        }
-    ]);
-};
-
-// NEW: Instance method to check if user has access to this party
-partySchema.methods.hasUserAccess = function(userId, companyId) {
-    return this.companyId.toString() === companyId.toString() && 
-           this.userId.toString() === userId.toString();
-};
-
-// NEW: Instance method to soft delete
-partySchema.methods.softDelete = function(deletedBy) {
-    this.isActive = false;
-    this.deletedAt = new Date();
-    this.deletedBy = deletedBy;
-    return this.save();
+// Instance method to check phone exists in company
+partySchema.methods.checkPhoneExistsInCompany = function(phoneNumber) {
+    return this.constructor.findOne({
+        phoneNumber: phoneNumber,
+        companyId: this.companyId,
+        _id: { $ne: this._id },
+        isActive: true
+    });
 };
 
 module.exports = mongoose.model('Party', partySchema);

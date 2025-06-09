@@ -12,7 +12,9 @@ const companyRoutes = require('./src/routes/companies');
 const itemRoutes = require('./src/routes/items');
 const authRoutes = require('./src/routes/authRoutes');
 const partyRoutes = require('./src/routes/partyRoutes');
-const paymentRoutes = require('./src/routes/paymentRoutes'); // Add payment routes
+const paymentRoutes = require('./src/routes/paymentRoutes');
+const salesRoutes = require('./src/routes/salesRoutes');
+const purchaseRoutes = require('./src/routes/purchaseRoutes');
 
 const app = express();
 
@@ -28,14 +30,13 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Request logging middleware
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
-    console.log('📋 Request params:', req.params);
-    console.log('📋 Request query:', req.query);
-    console.log('📋 Request body keys:', Object.keys(req.body || {}));
-    next();
-});
+// Request logging middleware (only in development)
+if (process.env.NODE_ENV === 'development') {
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+        next();
+    });
+}
 
 // Routes
 // Auth routes (public)
@@ -50,8 +51,14 @@ app.use('/api/parties', partyRoutes);
 // Payment routes
 app.use('/api/payments', paymentRoutes);
 
+// Sales routes
+app.use('/api/sales', salesRoutes);
+
+// ✅ FIX: Mount purchase routes at /api instead of /api/purchases
+// This allows routes like /companies/:companyId/purchases to work
+app.use('/api', purchaseRoutes);
+
 // Items routes - nested under companies
-// ⭐ Make sure this line is exactly like this:
 app.use('/api/companies/:companyId/items', itemRoutes);
 
 // Health check route
@@ -60,45 +67,7 @@ app.get('/api/health', (req, res) => {
         status: 'success',
         message: 'Shop Management API is running! 🚀',
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        endpoints: [
-            'GET /api/health',
-            // Auth endpoints
-            'POST /api/auth/signup',
-            'POST /api/auth/login',
-            'POST /api/auth/logout',
-            // Company endpoints
-            'GET /api/companies',
-            'POST /api/companies',
-            'GET /api/companies/:id',
-            'PUT /api/companies/:id',
-            'DELETE /api/companies/:id',
-            // Party endpoints
-            'GET /api/parties',
-            'POST /api/parties',
-            'POST /api/parties/quick',
-            'GET /api/parties/search/:query',
-            'GET /api/parties/:id',
-            'PUT /api/parties/:id',
-            'DELETE /api/parties/:id',
-            // Payment endpoints
-            'POST /api/payments/pay-in',
-            'POST /api/payments/pay-out',
-            'GET /api/payments',
-            'GET /api/payments/:paymentId',
-            'GET /api/payments/party/:partyId/summary',
-            'PUT /api/payments/:paymentId',
-            'PATCH /api/payments/:paymentId/cancel',
-            'GET /api/payments/test',
-            // Item endpoints
-            'GET /api/companies/:companyId/items',
-            'POST /api/companies/:companyId/items',
-            'GET /api/companies/:companyId/items/:itemId',
-            'PUT /api/companies/:companyId/items/:itemId',
-            'DELETE /api/companies/:companyId/items/:itemId',
-            'GET /api/companies/:companyId/items/search',
-            'GET /api/companies/:companyId/items/categories'
-        ]
+        version: '1.0.0'
     });
 });
 
@@ -106,11 +75,8 @@ app.get('/api/health', (req, res) => {
 app.use((err, req, res, next) => {
     console.error('❌ Global Error Handler:', {
         error: err.message,
-        stack: err.stack,
         url: req.url,
         method: req.method,
-        params: req.params,
-        body: req.body,
         timestamp: new Date().toISOString()
     });
 
@@ -128,11 +94,17 @@ app.use((err, req, res, next) => {
 
 // 404 handler
 app.use('*', (req, res) => {
-    console.log(`🔍 404 - Route not found: ${req.method} ${req.originalUrl}`);
+    console.log(`❌ Route not found: ${req.method} ${req.originalUrl}`);
     res.status(404).json({
         status: 'error',
         message: `Route not found: ${req.method} ${req.originalUrl}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        availableRoutes: [
+            'GET /api/health',
+            'POST /api/companies/:companyId/purchases',
+            'GET /api/companies/:companyId/purchases',
+            'GET /api/companies/:companyId/purchases/dashboard'
+        ]
     });
 });
 
@@ -160,30 +132,15 @@ app.listen(PORT, () => {
     console.log(`🌐 Server running on: http://localhost:${PORT}`);
     console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
-    console.log('🔐 Auth Endpoints:');
-    console.log(`   POST ${PORT}/api/auth/signup`);
-    console.log(`   POST ${PORT}/api/auth/login`);
-    console.log(`   POST ${PORT}/api/auth/logout`);
-    console.log('👥 Party Endpoints:');
-    console.log(`   GET ${PORT}/api/parties`);
-    console.log(`   POST ${PORT}/api/parties`);
-    console.log(`   POST ${PORT}/api/parties/quick`);
-    console.log(`   GET ${PORT}/api/parties/search/:query`);
-    console.log(`   GET ${PORT}/api/parties/:id`);
-    console.log(`   PUT ${PORT}/api/parties/:id`);
-    console.log(`   DELETE ${PORT}/api/parties/:id`);
-    console.log('💰 Payment Endpoints:');
-    console.log(`   POST http://localhost:${PORT}/api/payments/pay-in`);
-    console.log(`   POST http://localhost:${PORT}/api/payments/pay-out`);
-    console.log(`   GET  http://localhost:${PORT}/api/payments`);
-    console.log(`   GET  http://localhost:${PORT}/api/payments/:id`);
-    console.log(`   GET  http://localhost:${PORT}/api/payments/party/:partyId/summary`);
-    console.log(`   PUT  http://localhost:${PORT}/api/payments/:id`);
-    console.log(`   PATCH http://localhost:${PORT}/api/payments/:id/cancel`);
-    console.log(`   GET  http://localhost:${PORT}/api/payments/test (for testing)`);
-    console.log('📦 Item Endpoints:');
-    console.log(`   GET ${PORT}/api/companies/:companyId/items`);
-    console.log(`   POST ${PORT}/api/companies/:companyId/items`);
+    console.log('');
+    console.log('🔗 Main Endpoints:');
+    console.log(`   🔐 Auth: http://localhost:${PORT}/api/auth/*`);
+    console.log(`   🏢 Companies: http://localhost:${PORT}/api/companies/*`);
+    console.log(`   👥 Parties: http://localhost:${PORT}/api/parties/*`);
+    console.log(`   💰 Payments: http://localhost:${PORT}/api/payments/*`);
+    console.log(`   📊 Sales: http://localhost:${PORT}/api/sales/*`);
+    console.log(`   🛒 Purchases: http://localhost:${PORT}/api/companies/:companyId/purchases/*`); // ✅ Updated
+    console.log(`   📦 Items: http://localhost:${PORT}/api/companies/:companyId/items/*`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 });
 

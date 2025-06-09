@@ -38,7 +38,7 @@ function ItemInfoSection({
     // Get current stock - check multiple possible field names with better safety
     const getCurrentStock = () => {
         if (!selectedItem) return 0;
-        
+
         return Number(selectedItem.currentStock) ||
             Number(selectedItem.openingStock) ||
             Number(selectedItem.stock) ||
@@ -71,7 +71,7 @@ function ItemInfoSection({
         }
 
         console.log('🔧 ItemInfoSection: Initiating stock adjustment for:', selectedItem);
-        
+
         // Call the parent's stock adjustment handler
         if (onAdjustStock) {
             onAdjustStock(selectedItem);
@@ -86,7 +86,7 @@ function ItemInfoSection({
         }
 
         console.log('✏️ ItemInfoSection: Initiating edit for:', selectedItem);
-        
+
         // Call the parent's edit handler
         if (onEditItem) {
             onEditItem(selectedItem);
@@ -148,7 +148,7 @@ function ItemInfoSection({
                         <span className={`badge ${selectedItem.type === 'product' ? 'bg-primary' : 'bg-info'}`} style={{ fontSize: '0.7rem' }}>
                             {selectedItem.type === 'product' ? '📦 Product' : '🔧 Service'}
                         </span>
-                        
+
                         {selectedItem.isActive !== undefined && (
                             <span className={`badge ${selectedItem.isActive ? 'bg-success' : 'bg-secondary'}`} style={{ fontSize: '0.7rem' }}>
                                 {selectedItem.isActive ? '✓ Active' : '⏸ Inactive'}
@@ -233,7 +233,7 @@ function ItemInfoSection({
                                         Stock Value:
                                     </span>
                                     <span className="fw-bold text-primary" style={{ fontSize: '1rem' }}>
-                                        {formatPrice(currentStock * salePrice)}
+                                        {formatPrice(currentStock * buyPrice)}
                                     </span>
                                 </div>
 

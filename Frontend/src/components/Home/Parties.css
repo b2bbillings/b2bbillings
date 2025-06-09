@@ -23,12 +23,15 @@
 .parties-list-container {
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
 }
 
 .parties-list-container::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, and Opera */
+  display: none;
+  /* Chrome, Safari, and Opera */
 }
 
 /* Circular search input styling with enhanced border */
@@ -66,7 +69,8 @@
   border-color: #e0e6ed;
   border-left: none;
   background-color: white;
-  color: #212529 !important; /* Force black text */
+  color: #212529 !important;
+  /* Force black text */
   transition: all 0.2s ease;
 }
 
@@ -89,10 +93,11 @@
   border-color: #86b7fe;
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
   background-color: white !important;
-  color: #212529 !important; /* Force black text on focus */
+  color: #212529 !important;
+  /* Force black text on focus */
 }
 
-.parties-layout .input-group .form-control:focus + .input-group-text,
+.parties-layout .input-group .form-control:focus+.input-group-text,
 .parties-layout .input-group .input-group-text:has(+ .form-control:focus) {
   border-color: #86b7fe;
   background-color: #f8f9fa;
@@ -111,7 +116,8 @@
 .parties-layout .bg-white .input-group .form-control {
   border-color: #dadce0;
   background-color: white !important;
-  color: #212529 !important; /* Force black text */
+  color: #212529 !important;
+  /* Force black text */
 }
 
 /* ===== BUTTON STYLES ===== */
@@ -224,7 +230,8 @@
 
 /* ===== FORM CONTROL STYLES ===== */
 .parties-layout .form-control {
-  color: #212529 !important; /* Force black text for all form controls */
+  color: #212529 !important;
+  /* Force black text for all form controls */
   background-color: white !important;
 }
 
@@ -236,7 +243,8 @@
 .parties-layout .form-control:focus {
   border-color: #86b7fe;
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
-  color: #212529 !important; /* Force black text on focus */
+  color: #212529 !important;
+  /* Force black text on focus */
   background-color: white !important;
 }
 
@@ -276,12 +284,15 @@
 
 /* Hide all scrollbars globally within parties layout */
 .parties-layout .overflow-auto {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
 }
 
 .parties-layout .overflow-auto::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, and Opera */
+  display: none;
+  /* Chrome, Safari, and Opera */
 }
 
 /* ===== SPACING UTILITIES ===== */
@@ -330,7 +341,7 @@
     font-size: 11px;
   }
 
-  .parties-layout .row.g-2 > .col-lg-2 {
+  .parties-layout .row.g-2>.col-lg-2 {
     flex: 0 0 100%;
     max-width: 100%;
   }
@@ -355,6 +366,7 @@
 
 /* ===== PRINT STYLES ===== */
 @media print {
+
   .parties-layout .btn,
   .parties-layout .dropdown,
   .parties-layout .border-end {
@@ -398,6 +410,7 @@
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
+
   .parties-layout .btn-outline-danger,
   .parties-layout .btn-outline-primary,
   .parties-layout .btn-outline-success {
@@ -441,6 +454,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -484,15 +498,10 @@
     border-color: #495057;
   }
 
-  .parties-layout .input-group .form-control {
-    background-color: #495057 !important;
-    border-color: #495057;
-    color: #f8f9fa !important; /* White text for dark theme */
-  }
-
   .parties-layout .form-control {
     background-color: #495057 !important;
-    color: #f8f9fa !important; /* White text for dark theme */
+    color: #f8f9fa !important;
+    /* White text for dark theme */
   }
 
   .parties-layout .form-control::placeholder {
