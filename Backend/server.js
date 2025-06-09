@@ -15,6 +15,7 @@ const partyRoutes = require('./src/routes/partyRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const salesRoutes = require('./src/routes/salesRoutes');
 const purchaseRoutes = require('./src/routes/purchaseRoutes');
+const bankAccountRoutes = require('./src/routes/bankAccountRoutes'); // ✅ Add bank account routes
 
 const app = express();
 
@@ -39,27 +40,35 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Routes
+// ✅ REORGANIZED: Better route organization with consistent patterns
+
 // Auth routes (public)
 app.use('/api/auth', authRoutes);
 
-// Company routes
+// ✅ IMPROVED: Company-level routes (nested structure)
 app.use('/api/companies', companyRoutes);
 
-// Party routes
-app.use('/api/parties', partyRoutes);
-
-// Payment routes
-app.use('/api/payments', paymentRoutes);
-
-// Sales routes
-app.use('/api/sales', salesRoutes);
-
-// ✅ FIX: Mount purchase routes at /api instead of /api/purchases
-// This allows routes like /companies/:companyId/purchases to work
-app.use('/api', purchaseRoutes);
-
+// ✅ ENHANCED: Company-specific nested routes
 // Items routes - nested under companies
 app.use('/api/companies/:companyId/items', itemRoutes);
+
+// Party routes - nested under companies  
+app.use('/api/companies/:companyId/parties', partyRoutes);
+
+// Sales routes - nested under companies
+app.use('/api/companies/:companyId/sales', salesRoutes);
+
+// Purchase routes - nested under companies
+app.use('/api/companies/:companyId/purchases', purchaseRoutes);
+
+// ✅ NEW: Bank Account routes - nested under companies
+app.use('/api/companies/:companyId/bank-accounts', bankAccountRoutes);
+
+// ✅ LEGACY: Keep these for backward compatibility (if needed)
+app.use('/api/parties', partyRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api', purchaseRoutes); // Keep for existing endpoints
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -67,7 +76,68 @@ app.get('/api/health', (req, res) => {
         status: 'success',
         message: 'Shop Management API is running! 🚀',
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.0.0',
+        features: {
+            companies: true,
+            items: true,
+            parties: true,
+            sales: true,
+            purchases: true,
+            bankAccounts: true, // ✅ NEW
+            payments: true,
+            auth: true
+        }
+    });
+});
+
+// ✅ NEW: API documentation endpoint
+app.get('/api/docs', (req, res) => {
+    res.json({
+        title: 'Shop Management System API',
+        version: '1.0.0',
+        endpoints: {
+            auth: {
+                base: '/api/auth',
+                endpoints: ['POST /login', 'POST /register', 'POST /refresh', 'POST /logout']
+            },
+            companies: {
+                base: '/api/companies',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id']
+            },
+            items: {
+                base: '/api/companies/:companyId/items',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id', 'GET /categories']
+            },
+            parties: {
+                base: '/api/companies/:companyId/parties',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id', 'GET /summary']
+            },
+            sales: {
+                base: '/api/companies/:companyId/sales',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id', 'GET /dashboard']
+            },
+            purchases: {
+                base: '/api/companies/:companyId/purchases',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id', 'GET /dashboard']
+            },
+            bankAccounts: {
+                base: '/api/companies/:companyId/bank-accounts',
+                endpoints: [
+                    'GET /',
+                    'POST /',
+                    'GET /:id',
+                    'PUT /:id',
+                    'DELETE /:id',
+                    'GET /summary',
+                    'GET /validate',
+                    'PATCH /:id/balance'
+                ]
+            },
+            payments: {
+                base: '/api/payments',
+                endpoints: ['GET /', 'POST /', 'GET /:id', 'PUT /:id', 'DELETE /:id']
+            }
+        }
     });
 });
 
@@ -100,11 +170,18 @@ app.use('*', (req, res) => {
         message: `Route not found: ${req.method} ${req.originalUrl}`,
         timestamp: new Date().toISOString(),
         availableRoutes: [
-            'GET /api/health',
-            'POST /api/companies/:companyId/purchases',
-            'GET /api/companies/:companyId/purchases',
-            'GET /api/companies/:companyId/purchases/dashboard'
-        ]
+            'GET /api/health - Health check',
+            'GET /api/docs - API documentation',
+            'POST /api/auth/* - Authentication',
+            'GET /api/companies - Companies',
+            'GET /api/companies/:companyId/items - Items',
+            'GET /api/companies/:companyId/parties - Parties',
+            'GET /api/companies/:companyId/sales - Sales',
+            'GET /api/companies/:companyId/purchases - Purchases',
+            'GET /api/companies/:companyId/bank-accounts - Bank Accounts', // ✅ NEW
+            'GET /api/payments - Payments'
+        ],
+        hint: 'Visit /api/docs for complete API documentation'
     });
 });
 
@@ -132,15 +209,23 @@ app.listen(PORT, () => {
     console.log(`🌐 Server running on: http://localhost:${PORT}`);
     console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`📚 API Docs: http://localhost:${PORT}/api/docs`); // ✅ NEW
     console.log('');
     console.log('🔗 Main Endpoints:');
     console.log(`   🔐 Auth: http://localhost:${PORT}/api/auth/*`);
     console.log(`   🏢 Companies: http://localhost:${PORT}/api/companies/*`);
-    console.log(`   👥 Parties: http://localhost:${PORT}/api/parties/*`);
-    console.log(`   💰 Payments: http://localhost:${PORT}/api/payments/*`);
-    console.log(`   📊 Sales: http://localhost:${PORT}/api/sales/*`);
-    console.log(`   🛒 Purchases: http://localhost:${PORT}/api/companies/:companyId/purchases/*`); // ✅ Updated
+    console.log('');
+    console.log('📊 Company-Specific Endpoints:');
     console.log(`   📦 Items: http://localhost:${PORT}/api/companies/:companyId/items/*`);
+    console.log(`   👥 Parties: http://localhost:${PORT}/api/companies/:companyId/parties/*`);
+    console.log(`   💰 Sales: http://localhost:${PORT}/api/companies/:companyId/sales/*`);
+    console.log(`   🛒 Purchases: http://localhost:${PORT}/api/companies/:companyId/purchases/*`);
+    console.log(`   🏦 Bank Accounts: http://localhost:${PORT}/api/companies/:companyId/bank-accounts/*`); // ✅ NEW
+    console.log('');
+    console.log('🔄 Legacy Endpoints (for backward compatibility):');
+    console.log(`   👥 Parties: http://localhost:${PORT}/api/parties/*`);
+    console.log(`   💳 Payments: http://localhost:${PORT}/api/payments/*`);
+    console.log(`   📊 Sales: http://localhost:${PORT}/api/sales/*`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 });
 

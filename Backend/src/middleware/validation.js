@@ -16,6 +16,164 @@ const handleValidationErrors = (req, res, next) => {
     next();
 };
 
+// Bank Account Validation
+const validateBankAccount = [
+    body('accountName')
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Account name is required and must be less than 100 characters'),
+
+    body('accountNumber')
+        .optional()
+        .trim()
+        .isLength({ max: 20 })
+        .withMessage('Account number must be less than 20 characters'),
+
+    body('bankName')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Bank name must be less than 100 characters'),
+
+    body('branchName')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Branch name must be less than 100 characters'),
+
+    body('ifscCode')
+        .optional()
+        .trim()
+        .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/)
+        .withMessage('Invalid IFSC code format'),
+
+    body('accountType')
+        .optional()
+        .isIn(['savings', 'current', 'cash', 'fd', 'loan'])
+        .withMessage('Invalid account type'),
+
+    body('type')
+        .optional()
+        .isIn(['bank', 'cash'])
+        .withMessage('Invalid account type'),
+
+    body('openingBalance')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Opening balance must be a positive number'),
+
+    body('upiId')
+        .optional()
+        .trim()
+        .matches(/^[\w.-]+@[\w.-]+$/)
+        .withMessage('Invalid UPI ID format'),
+
+    body('printUpiQrCodes')
+        .optional()
+        .isBoolean()
+        .withMessage('Print UPI QR codes must be a boolean'),
+
+    body('printBankDetails')
+        .optional()
+        .isBoolean()
+        .withMessage('Print bank details must be a boolean'),
+
+    // Custom validation for conditional required fields
+    body().custom((value, { req }) => {
+        if ((req.body.printUpiQrCodes || req.body.printBankDetails) && !req.body.accountNumber) {
+            throw new Error('Account number is required when print settings are enabled');
+        }
+        return true;
+    }),
+
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation error',
+                errors: errors.array()
+            });
+        }
+        next();
+    }
+];
+
+const validateAccountUpdate = [
+    body('accountName')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Account name must be less than 100 characters'),
+
+    body('accountNumber')
+        .optional()
+        .trim()
+        .isLength({ max: 20 })
+        .withMessage('Account number must be less than 20 characters'),
+
+    body('bankName')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Bank name must be less than 100 characters'),
+
+    body('branchName')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Branch name must be less than 100 characters'),
+
+    body('ifscCode')
+        .optional()
+        .trim()
+        .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/)
+        .withMessage('Invalid IFSC code format'),
+
+    body('accountType')
+        .optional()
+        .isIn(['savings', 'current', 'cash', 'fd', 'loan'])
+        .withMessage('Invalid account type'),
+
+    body('type')
+        .optional()
+        .isIn(['bank', 'cash'])
+        .withMessage('Invalid account type'),
+
+    body('upiId')
+        .optional()
+        .trim()
+        .matches(/^[\w.-]+@[\w.-]+$/)
+        .withMessage('Invalid UPI ID format'),
+
+    body('printUpiQrCodes')
+        .optional()
+        .isBoolean()
+        .withMessage('Print UPI QR codes must be a boolean'),
+
+    body('printBankDetails')
+        .optional()
+        .isBoolean()
+        .withMessage('Print bank details must be a boolean'),
+
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation error',
+                errors: errors.array()
+            });
+        }
+        next();
+    }
+];
+
+module.exports = {
+    validateBankAccount,
+    validateAccountUpdate
+};
+
 // Validation rules for user signup
 const validateSignup = [
     body('name')

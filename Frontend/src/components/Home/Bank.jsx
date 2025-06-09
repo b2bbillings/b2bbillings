@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button } from 'react-bootstrap';
+import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
+import { useParams } from 'react-router-dom'; // ✅ Added for URL params
 import './Bank.css';
+
+// Import services
+import bankAccountService from '../../services/bankAccountService';
 
 // Import components
 import SalesInvoicesHeader from './Sales/SalesInvoice/SalesInvoicesHeader';
@@ -16,9 +20,15 @@ import SalesForm from './Sales/SalesInvoice/SalesForm';
 import PurchaseForm from './Purchases/PurchaseForm';
 
 function Bank({ view = 'allAccounts', onNavigate }) {
+    // ✅ Get company ID from URL params
+    const { companyId } = useParams();
+
+    // ✅ State for resolved company ID with fallbacks
+    const [effectiveCompanyId, setEffectiveCompanyId] = useState(null);
+
     // Add current view state for form navigation
     const [currentView, setCurrentView] = useState('bank'); // 'bank', 'sale', 'purchase'
-    
+
     // State management
     const [bankAccounts, setBankAccounts] = useState([]);
     const [selectedAccount, setSelectedAccount] = useState(null);
@@ -26,6 +36,11 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     const [activeType, setActiveType] = useState('bank'); // 'bank' or 'cash'
     const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
     const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
+
+    // Loading and error states
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [accountsLoading, setAccountsLoading] = useState(false);
 
     // Modal states
     const [showAccountModal, setShowAccountModal] = useState(false);
@@ -35,23 +50,9 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     const [selectedAccountForTransaction, setSelectedAccountForTransaction] = useState(null);
 
     // Form data states
-    const [accountFormData, setAccountFormData] = useState({
-        accountName: '',
-        accountNumber: '',
-        bankName: '',
-        branchName: '',
-        ifscCode: '',
-        accountType: 'savings',
-        openingBalance: 0,
-        currentBalance: 0,
-        isActive: true,
-        type: 'bank', // 'bank' or 'cash'
-        printUpiQrCodes: false,
-        printBankDetails: false,
-        upiId: '',
-        accountHolderName: '',
-        asOfDate: new Date().toISOString().split('T')[0]
-    });
+    const [accountFormData, setAccountFormData] = useState(
+        bankAccountService.createAccountTemplate()
+    );
 
     const [transactionFormData, setTransactionFormData] = useState({
         accountId: '',
@@ -64,151 +65,130 @@ function Bank({ view = 'allAccounts', onNavigate }) {
         paymentMethod: 'bank_transfer'
     });
 
-    // Load sample data
+    // ✅ ENHANCED: Company ID resolution with fallbacks
     useEffect(() => {
-        const sampleAccounts = [
-            {
-                id: 1,
-                accountName: 'Main Business Account',
-                accountNumber: '1234567890',
-                bankName: 'State Bank of India',
-                branchName: 'Main Branch',
-                ifscCode: 'SBIN0001234',
-                accountType: 'current',
-                openingBalance: 100000,
-                currentBalance: 250000,
-                type: 'bank',
-                isActive: true,
-                printUpiQrCodes: true,
-                printBankDetails: true,
-                upiId: 'business@sbi',
-                accountHolderName: 'Business Account',
-                asOfDate: '2025-01-01',
-                createdAt: '2025-01-01T00:00:00.000Z'
-            },
-            {
-                id: 2,
-                accountName: 'Savings Account',
-                accountNumber: '9876543210',
-                bankName: 'HDFC Bank',
-                branchName: 'Commercial Street',
-                ifscCode: 'HDFC0001234',
-                accountType: 'savings',
-                openingBalance: 50000,
-                currentBalance: 75000,
-                type: 'bank',
-                isActive: true,
-                printUpiQrCodes: false,
-                printBankDetails: true,
-                upiId: '',
-                accountHolderName: 'John Doe',
-                asOfDate: '2025-01-01',
-                createdAt: '2025-01-01T00:00:00.000Z'
-            },
-            {
-                id: 3,
-                accountName: 'Cash in Hand',
-                accountNumber: 'CASH001',
-                bankName: '',
-                branchName: '',
-                ifscCode: '',
-                accountType: 'cash',
-                openingBalance: 10000,
-                currentBalance: 15000,
-                type: 'cash',
-                isActive: true,
-                printUpiQrCodes: false,
-                printBankDetails: false,
-                upiId: '',
-                accountHolderName: '',
-                asOfDate: '2025-01-01',
-                createdAt: '2025-01-01T00:00:00.000Z'
-            },
-            {
-                id: 4,
-                accountName: 'Petty Cash',
-                accountNumber: 'CASH002',
-                bankName: '',
-                branchName: '',
-                ifscCode: '',
-                accountType: 'cash',
-                openingBalance: 5000,
-                currentBalance: 3500,
-                type: 'cash',
-                isActive: true,
-                printUpiQrCodes: false,
-                printBankDetails: false,
-                upiId: '',
-                accountHolderName: '',
-                asOfDate: '2025-01-01',
-                createdAt: '2025-01-01T00:00:00.000Z'
+        const resolveCompanyId = () => {
+            // Try multiple sources for company ID (matching other components)
+            const sources = [
+                companyId, // From URL params (highest priority)
+                localStorage.getItem('selectedCompanyId'),
+                sessionStorage.getItem('companyId')
+            ];
+
+            // Try parsing currentCompany from localStorage
+            try {
+                const currentCompanyStr = localStorage.getItem('currentCompany');
+                if (currentCompanyStr) {
+                    const currentCompany = JSON.parse(currentCompanyStr);
+                    const companyIdFromStorage = currentCompany.id || currentCompany._id;
+                    if (companyIdFromStorage) {
+                        sources.unshift(companyIdFromStorage); // Add to beginning
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Failed to parse currentCompany from localStorage:', error);
             }
-        ];
 
-        const sampleTransactions = [
-            {
-                id: 1,
-                accountId: 1,
-                transactionType: 'deposit',
-                amount: 50000,
-                description: 'Customer Payment - INV-2025-001',
-                reference: 'TXN123456',
-                transactionDate: '2025-06-01',
-                category: 'Sales Receipt',
-                paymentMethod: 'bank_transfer',
-                balance: 250000,
-                status: 'completed'
-            },
-            {
-                id: 2,
-                accountId: 1,
-                transactionType: 'withdrawal',
-                amount: 25000,
-                description: 'Office Rent Payment',
-                reference: 'CHQ001',
-                transactionDate: '2025-05-31',
-                category: 'Office Expenses',
-                paymentMethod: 'cheque',
-                balance: 200000,
-                status: 'completed'
-            },
-            {
-                id: 3,
-                accountId: 2,
-                transactionType: 'deposit',
-                amount: 15000,
-                description: 'Interest Credit',
-                reference: 'INT2025',
-                transactionDate: '2025-05-30',
-                category: 'Interest Income',
-                paymentMethod: 'bank_transfer',
-                balance: 75000,
-                status: 'completed'
-            },
-            {
-                id: 4,
-                accountId: 3,
-                transactionType: 'withdrawal',
-                amount: 2000,
-                description: 'Office Supplies',
-                reference: 'CASH001',
-                transactionDate: '2025-06-02',
-                category: 'Office Expenses',
-                paymentMethod: 'cash',
-                balance: 15000,
-                status: 'completed'
+            // Return the first valid company ID
+            for (const source of sources) {
+                if (source && source.trim() !== '') {
+                    console.log('✅ Bank component using company ID:', source);
+                    return source;
+                }
             }
-        ];
 
-        setBankAccounts(sampleAccounts);
-        setTransactions(sampleTransactions);
+            console.warn('⚠️ No valid company ID found in any source');
+            return null;
+        };
 
-        // Set first account as selected by default
-        const bankTypeAccounts = sampleAccounts.filter(acc => acc.type === activeType);
-        if (bankTypeAccounts.length > 0) {
-            setSelectedAccount(bankTypeAccounts[0]);
+        const resolvedCompanyId = resolveCompanyId();
+        setEffectiveCompanyId(resolvedCompanyId);
+
+        console.log('🏢 Bank component company ID resolution:', {
+            fromURL: companyId,
+            resolved: resolvedCompanyId,
+            hasValidId: !!resolvedCompanyId
+        });
+    }, [companyId]);
+
+    // ✅ UPDATED: Load bank accounts from backend using effectiveCompanyId
+    const loadBankAccounts = async () => {
+        if (!effectiveCompanyId) {
+            setError('Please select a company first');
+            setLoading(false);
+            return;
         }
-    }, []);
+
+        try {
+            setAccountsLoading(true);
+            setError('');
+
+            console.log('📊 Loading bank accounts for company:', effectiveCompanyId);
+
+            const response = await bankAccountService.getBankAccounts(effectiveCompanyId, {
+                type: 'all',
+                active: 'true',
+                page: 1,
+                limit: 100
+            });
+
+            const accounts = response.data.accounts || [];
+            setBankAccounts(accounts);
+
+            // Set first account as selected by default
+            const typeAccounts = accounts.filter(acc => acc.type === activeType);
+            if (typeAccounts.length > 0 && !selectedAccount) {
+                setSelectedAccount(typeAccounts[0]);
+            }
+
+            console.log('✅ Bank accounts loaded:', accounts.length);
+
+        } catch (error) {
+            console.error('❌ Error loading bank accounts:', error);
+            setError(error.response?.data?.message || 'Failed to load bank accounts');
+        } finally {
+            setLoading(false);
+            setAccountsLoading(false);
+        }
+    };
+
+    // ✅ UPDATED: Load account summary using effectiveCompanyId
+    const loadAccountSummary = async () => {
+        if (!effectiveCompanyId) return;
+
+        try {
+            const response = await bankAccountService.getAccountSummary(effectiveCompanyId);
+            console.log('📊 Account summary:', response.data);
+            // You can use this data for dashboard widgets
+        } catch (error) {
+            console.error('❌ Error loading account summary:', error);
+        }
+    };
+
+    // ✅ UPDATED: Initial data loading using effectiveCompanyId
+    useEffect(() => {
+        if (effectiveCompanyId) {
+            console.log('🔄 Loading bank data for company:', effectiveCompanyId);
+            loadBankAccounts();
+            loadAccountSummary();
+        } else {
+            setError('Company selection required. Please navigate to a valid company URL.');
+            setLoading(false);
+        }
+    }, [effectiveCompanyId]); // Watch effectiveCompanyId instead of companyId
+
+    // Update selected account when type changes
+    useEffect(() => {
+        const typeAccounts = bankAccounts.filter(account => account.type === activeType);
+        if (typeAccounts.length > 0) {
+            const currentSelected = typeAccounts.find(acc => acc._id === selectedAccount?._id);
+            if (!currentSelected) {
+                setSelectedAccount(typeAccounts[0]);
+            }
+        } else {
+            setSelectedAccount(null);
+        }
+    }, [activeType, bankAccounts]);
 
     // Filter accounts based on active type
     const filteredAccounts = bankAccounts.filter(account => account.type === activeType);
@@ -217,13 +197,6 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     const handleTypeChange = (type) => {
         setActiveType(type);
         setSidebarSearchQuery('');
-        // Reset selection when switching types
-        const typeAccounts = bankAccounts.filter(account => account.type === type);
-        if (typeAccounts.length > 0) {
-            setSelectedAccount(typeAccounts[0]);
-        } else {
-            setSelectedAccount(null);
-        }
     };
 
     // Handle account selection
@@ -234,22 +207,11 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     // Handle Add Account
     const handleAddAccount = (accountType) => {
         setEditingAccount(null);
+        const template = bankAccountService.createAccountTemplate();
         setAccountFormData({
-            accountName: '',
-            accountNumber: '',
-            bankName: '',
-            branchName: '',
-            ifscCode: '',
-            accountType: accountType === 'cash' ? 'cash' : 'savings',
-            openingBalance: 0,
-            currentBalance: 0,
-            isActive: true,
+            ...template,
             type: accountType,
-            printUpiQrCodes: false,
-            printBankDetails: false,
-            upiId: '',
-            accountHolderName: '',
-            asOfDate: new Date().toISOString().split('T')[0]
+            accountType: accountType === 'cash' ? 'cash' : 'savings'
         });
         setShowAccountModal(true);
     };
@@ -259,47 +221,25 @@ function Bank({ view = 'allAccounts', onNavigate }) {
         setEditingAccount(account);
         setAccountFormData({
             ...account,
-            // Ensure all fields have default values
-            printUpiQrCodes: account.printUpiQrCodes || false,
-            printBankDetails: account.printBankDetails || false,
-            upiId: account.upiId || '',
-            accountHolderName: account.accountHolderName || '',
-            asOfDate: account.asOfDate || new Date().toISOString().split('T')[0]
+            asOfDate: account.asOfDate ? account.asOfDate.split('T')[0] : new Date().toISOString().split('T')[0]
         });
         setShowAccountModal(true);
     };
 
     // Handle Add Transaction
     const handleAddTransaction = (account, type = null) => {
-        if (type === 'bank-to-cash' || type === 'cash-to-bank' || type === 'bank-to-bank' || type === 'adjust-balance') {
-            // Handle bank transaction types
-            setSelectedAccountForTransaction(account);
-            setTransactionFormData({
-                accountId: account.id,
-                transactionType: 'deposit',
-                amount: 0,
-                description: '',
-                reference: '',
-                transactionDate: new Date().toISOString().split('T')[0],
-                category: '',
-                paymentMethod: account.type === 'cash' ? 'cash' : 'bank_transfer'
-            });
-            setShowTransactionModal(true);
-        } else {
-            // Regular transaction
-            setSelectedAccountForTransaction(account);
-            setTransactionFormData({
-                accountId: account.id,
-                transactionType: 'deposit',
-                amount: 0,
-                description: '',
-                reference: '',
-                transactionDate: new Date().toISOString().split('T')[0],
-                category: '',
-                paymentMethod: account.type === 'cash' ? 'cash' : 'bank_transfer'
-            });
-            setShowTransactionModal(true);
-        }
+        setSelectedAccountForTransaction(account);
+        setTransactionFormData({
+            accountId: account._id || account.id,
+            transactionType: 'deposit',
+            amount: 0,
+            description: '',
+            reference: '',
+            transactionDate: new Date().toISOString().split('T')[0],
+            category: '',
+            paymentMethod: account.type === 'cash' ? 'cash' : 'bank_transfer'
+        });
+        setShowTransactionModal(true);
     };
 
     // Handle Reconciliation
@@ -312,6 +252,7 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     const handleCloseAccountModal = () => {
         setShowAccountModal(false);
         setEditingAccount(null);
+        setAccountFormData(bankAccountService.createAccountTemplate());
     };
 
     const handleAccountInputChange = (e) => {
@@ -330,95 +271,64 @@ function Bank({ view = 'allAccounts', onNavigate }) {
         }));
     };
 
-    const handleSaveAccount = async (e, isSaveAndAdd = false) => {
-        e.preventDefault();
-
+    // Save account (connected to backend)
+    const handleSaveAccount = async (savedAccount) => {
         try {
-            const accountData = {
-                ...accountFormData,
-                id: editingAccount ? editingAccount.id : Date.now(),
-                currentBalance: editingAccount ? editingAccount.currentBalance : accountFormData.openingBalance,
-                createdAt: editingAccount ? editingAccount.createdAt : new Date().toISOString()
-            };
+            console.log('💾 Account saved successfully:', savedAccount);
 
-            if (editingAccount) {
-                setBankAccounts(bankAccounts.map(account =>
-                    account.id === editingAccount.id ? accountData : account
-                ));
-                // Update selected account if it's the one being edited
-                if (selectedAccount?.id === editingAccount.id) {
-                    setSelectedAccount(accountData);
-                }
-            } else {
-                setBankAccounts(prev => [...prev, accountData]);
+            // Reload accounts to get fresh data
+            await loadBankAccounts();
+
+            // Update selected account if it was being edited
+            if (editingAccount && savedAccount._id === editingAccount._id) {
+                setSelectedAccount(savedAccount);
             }
 
-            if (!isSaveAndAdd) {
-                handleCloseAccountModal();
-            } else {
-                // Reset form for new account
-                setAccountFormData({
-                    ...accountFormData,
-                    accountName: '',
-                    accountNumber: '',
-                    bankName: '',
-                    branchName: '',
-                    ifscCode: '',
-                    openingBalance: 0,
-                    currentBalance: 0,
-                    printUpiQrCodes: false,
-                    printBankDetails: false,
-                    upiId: '',
-                    accountHolderName: '',
-                    asOfDate: new Date().toISOString().split('T')[0]
-                });
-            }
             return true;
         } catch (error) {
-            console.error('Error saving account:', error);
+            console.error('❌ Error after saving account:', error);
             return false;
         }
     };
 
-    const handleSaveTransaction = (e) => {
+    // ✅ UPDATED: Save transaction using effectiveCompanyId
+    const handleSaveTransaction = async (e) => {
         e.preventDefault();
 
+        if (!selectedAccountForTransaction || !effectiveCompanyId) {
+            alert('Missing account or company information');
+            return false;
+        }
+
         try {
-            const transactionData = {
-                ...transactionFormData,
-                id: Date.now(),
-                status: 'completed',
-                createdAt: new Date().toISOString()
-            };
+            console.log('💰 Saving transaction:', transactionFormData);
 
-            // Calculate new balance
-            const account = bankAccounts.find(acc => acc.id === transactionData.accountId);
-            const newBalance = transactionData.transactionType === 'deposit'
-                ? account.currentBalance + parseFloat(transactionData.amount)
-                : account.currentBalance - parseFloat(transactionData.amount);
+            // Update account balance using backend service
+            const response = await bankAccountService.updateAccountBalance(
+                effectiveCompanyId, // ✅ Use effectiveCompanyId
+                selectedAccountForTransaction._id || selectedAccountForTransaction.id,
+                {
+                    amount: parseFloat(transactionFormData.amount),
+                    type: transactionFormData.transactionType === 'deposit' ? 'credit' : 'debit',
+                    reason: transactionFormData.description || `${transactionFormData.transactionType} transaction`
+                }
+            );
 
-            transactionData.balance = newBalance;
+            console.log('✅ Balance updated:', response.data);
 
-            // Update account balance
-            setBankAccounts(bankAccounts.map(acc =>
-                acc.id === transactionData.accountId
-                    ? { ...acc, currentBalance: newBalance }
-                    : acc
-            ));
+            // Reload accounts to get updated balances
+            await loadBankAccounts();
 
-            // Update selected account if it's the one being updated
-            if (selectedAccount?.id === transactionData.accountId) {
-                setSelectedAccount(prev => ({ ...prev, currentBalance: newBalance }));
-            }
-
-            // Add transaction
-            setTransactions(prev => [...prev, transactionData]);
-
+            // Close modal
             setShowTransactionModal(false);
             setSelectedAccountForTransaction(null);
+
+            alert(`Transaction completed successfully! New balance: ${bankAccountService.formatCurrency(response.data.newBalance)}`);
             return true;
+
         } catch (error) {
-            console.error('Error saving transaction:', error);
+            console.error('❌ Error saving transaction:', error);
+            alert(error.response?.data?.message || 'Failed to save transaction');
             return false;
         }
     };
@@ -436,97 +346,91 @@ function Bank({ view = 'allAccounts', onNavigate }) {
         setCurrentView('bank');
     };
 
-    // Form save handlers
-    const handleSaleFormSave = (saleData) => {
+    // ✅ UPDATED: Form save handlers using effectiveCompanyId
+    const handleSaleFormSave = async (saleData) => {
         console.log('💾 Saving sale data from Bank component:', saleData);
-        
-        // Add transaction to bank records
-        const newTransaction = {
-            id: Date.now(),
-            accountId: selectedAccount?.id || 1, // Use selected account or default
-            transactionType: 'deposit',
-            amount: saleData.totals.finalTotal,
-            description: `Sale - ${saleData.customer?.name || 'Customer'} - ${saleData.invoiceNumber}`,
-            reference: saleData.invoiceNumber,
-            transactionDate: new Date().toISOString().split('T')[0],
-            category: 'Sales Receipt',
-            paymentMethod: saleData.paymentDetails?.method || 'cash',
-            balance: (selectedAccount?.currentBalance || 0) + saleData.totals.finalTotal,
-            status: 'completed'
-        };
 
-        // Update transactions
-        setTransactions(prev => [...prev, newTransaction]);
+        if (selectedAccount && effectiveCompanyId) {
+            try {
+                // Update account balance with sale amount
+                await bankAccountService.updateAccountBalance(
+                    effectiveCompanyId, // ✅ Use effectiveCompanyId
+                    selectedAccount._id,
+                    {
+                        amount: saleData.totals.finalTotal,
+                        type: 'credit',
+                        reason: `Sale - ${saleData.customer?.name || 'Customer'} - ${saleData.invoiceNumber}`
+                    }
+                );
 
-        // Update account balance if account is selected
-        if (selectedAccount) {
-            const newBalance = selectedAccount.currentBalance + saleData.totals.finalTotal;
-            setBankAccounts(prev => prev.map(acc => 
-                acc.id === selectedAccount.id 
-                    ? { ...acc, currentBalance: newBalance }
-                    : acc
-            ));
-            setSelectedAccount(prev => ({ ...prev, currentBalance: newBalance }));
+                // Reload accounts
+                await loadBankAccounts();
+
+                setCurrentView('bank');
+                alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
+            } catch (error) {
+                console.error('❌ Error updating balance for sale:', error);
+                alert('Sale saved but failed to update account balance');
+            }
         }
-
-        // Go back to bank view
-        setCurrentView('bank');
-        alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
     };
 
-    const handlePurchaseFormSave = (purchaseData) => {
+    const handlePurchaseFormSave = async (purchaseData) => {
         console.log('💾 Saving purchase data from Bank component:', purchaseData);
-        
-        // Add transaction to bank records
-        const newTransaction = {
-            id: Date.now(),
-            accountId: selectedAccount?.id || 1, // Use selected account or default
-            transactionType: 'withdrawal',
-            amount: purchaseData.totals.finalTotal,
-            description: `Purchase - ${purchaseData.supplier?.name || 'Supplier'} - ${purchaseData.purchaseNumber}`,
-            reference: purchaseData.purchaseNumber,
-            transactionDate: new Date().toISOString().split('T')[0],
-            category: 'Purchase Payment',
-            paymentMethod: purchaseData.paymentDetails?.method || 'cash',
-            balance: (selectedAccount?.currentBalance || 0) - purchaseData.totals.finalTotal,
-            status: 'completed'
-        };
 
-        // Update transactions
-        setTransactions(prev => [...prev, newTransaction]);
+        if (selectedAccount && effectiveCompanyId) {
+            try {
+                // Update account balance with purchase amount
+                await bankAccountService.updateAccountBalance(
+                    effectiveCompanyId, // ✅ Use effectiveCompanyId
+                    selectedAccount._id,
+                    {
+                        amount: purchaseData.totals.finalTotal,
+                        type: 'debit',
+                        reason: `Purchase - ${purchaseData.supplier?.name || 'Supplier'} - ${purchaseData.purchaseNumber}`
+                    }
+                );
 
-        // Update account balance if account is selected
-        if (selectedAccount) {
-            const newBalance = selectedAccount.currentBalance - purchaseData.totals.finalTotal;
-            setBankAccounts(prev => prev.map(acc => 
-                acc.id === selectedAccount.id 
-                    ? { ...acc, currentBalance: newBalance }
-                    : acc
-            ));
-            setSelectedAccount(prev => ({ ...prev, currentBalance: newBalance }));
+                // Reload accounts
+                await loadBankAccounts();
+
+                setCurrentView('bank');
+                alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
+            } catch (error) {
+                console.error('❌ Error updating balance for purchase:', error);
+                alert('Purchase saved but failed to update account balance');
+            }
         }
-
-        // Go back to bank view
-        setCurrentView('bank');
-        alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
     };
 
     // Header action handlers
     const handleMoreOptions = () => {
         console.log('More options clicked');
-        // Add your logic here
     };
 
     const handleSettings = () => {
         console.log('Settings clicked');
-        // Add your logic here
     };
+
+    // ✅ ENHANCED: Show loading state while resolving company ID
+    if (!effectiveCompanyId && !error) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="text-center">
+                    <Spinner animation="border" variant="primary" />
+                    <p className="mt-3">Loading company data...</p>
+                    <small className="text-muted">
+                        Company ID from URL: {companyId || 'Not found'}
+                    </small>
+                </div>
+            </div>
+        );
+    }
 
     // Render Sales Form View
     if (currentView === 'sale') {
         return (
             <div className="d-flex flex-column vh-100">
-                {/* Header with Back Button */}
                 <div className="sales-form-header bg-white border-bottom">
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
@@ -545,7 +449,6 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                     </Container>
                 </div>
 
-                {/* Sales Form */}
                 <SalesForm
                     onSave={handleSaleFormSave}
                     onCancel={handleBackToBank}
@@ -558,7 +461,6 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     if (currentView === 'purchase') {
         return (
             <div className="d-flex flex-column vh-100">
-                {/* Header with Back Button */}
                 <div className="sales-form-header bg-white border-bottom">
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
@@ -577,11 +479,49 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                     </Container>
                 </div>
 
-                {/* Purchase Form */}
                 <PurchaseForm
                     onSave={handlePurchaseFormSave}
                     onCancel={handleBackToBank}
                 />
+            </div>
+        );
+    }
+
+    // Loading state
+    if (loading) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="text-center">
+                    <Spinner animation="border" variant="primary" />
+                    <p className="mt-3">Loading bank accounts...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // ✅ ENHANCED: Better error state for missing company
+    if (error && !effectiveCompanyId) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <Alert variant="warning" className="text-center">
+                    <Alert.Heading>Company Selection Required</Alert.Heading>
+                    <p>{error}</p>
+                    <div className="mt-3">
+                        <small className="text-muted d-block">
+                            Expected URL format: <code>/companies/[companyId]/bank-accounts</code>
+                        </small>
+                        <small className="text-muted d-block">
+                            Current company ID: {companyId || 'Missing from URL'}
+                        </small>
+                    </div>
+                    <Button
+                        variant="primary"
+                        className="mt-3"
+                        onClick={() => window.location.href = '/companies'}
+                    >
+                        Go to Companies
+                    </Button>
+                </Alert>
             </div>
         );
     }
@@ -599,6 +539,13 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 onSettings={handleSettings}
             />
 
+            {/* Error Alert */}
+            {error && (
+                <Alert variant="danger" className="m-3" dismissible onClose={() => setError('')}>
+                    {error}
+                </Alert>
+            )}
+
             {/* Main Content */}
             <div className="flex-grow-1 overflow-hidden">
                 <Container fluid className="h-100 p-0">
@@ -613,6 +560,8 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                                 searchQuery={sidebarSearchQuery}
                                 onSearchChange={setSidebarSearchQuery}
                                 activeType={activeType}
+                                onTypeChange={handleTypeChange}
+                                loading={accountsLoading}
                             />
                         </Col>
 
@@ -626,6 +575,7 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                                         onEditAccount={handleEditAccount}
                                         onAddTransaction={handleAddTransaction}
                                         onReconciliation={handleReconciliation}
+                                        formatCurrency={bankAccountService.formatCurrency}
                                     />
                                 </div>
 
@@ -636,6 +586,7 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                                         selectedAccount={selectedAccount}
                                         searchQuery={transactionSearchQuery}
                                         onSearchChange={setTransactionSearchQuery}
+                                        formatCurrency={bankAccountService.formatCurrency}
                                     />
                                 </div>
                             </div>
@@ -669,7 +620,6 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 account={selectedAccountForTransaction}
                 transactions={transactions.filter(t => t.accountId === selectedAccountForTransaction?.id)}
                 onReconcile={(reconciliationData) => {
-                    // Handle reconciliation logic here
                     console.log('Reconciliation data:', reconciliationData);
                     setShowReconciliationModal(false);
                 }}
