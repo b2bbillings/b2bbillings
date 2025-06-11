@@ -4,8 +4,8 @@ import { useParams } from 'react-router-dom';
 import GSTToggle from './SalesForm/GSTToggle';
 import CustomerSection from './SalesForm/CustomerSection';
 import InvoiceDetails from './SalesForm/InvoiceDetails';
-import ItemsTable from './SalesForm/ItemsTable';
-import TotalSection from './SalesForm/TotalSection';
+// ✅ UPDATED: Import the new combined component
+import ItemsTableWithTotals from './SalesForm/itemsTableWithTotals';
 import './SalesForm.css';
 
 function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories = [], onAddItem }) {
@@ -55,38 +55,33 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         invoiceDate: new Date().toISOString().split('T')[0],
         items: [],
         paymentMethod: 'cash',
-        roundOff: 0,
-        roundOffEnabled: false,
         notes: ''
     });
 
-    // ✅ NEW: Separate state for totals from ItemsTable
-    const [itemsTableTotals, setItemsTableTotals] = useState({
-        subtotal: 0,
-        totalCGST: 0,
-        totalSGST: 0,
-        totalTax: 0,
-        finalTotal: 0
-    });
+    // ✅ REMOVED: No longer need separate itemsTableTotals state - handled by ItemsTableWithTotals
 
     // Create empty item function - now has access to formData
     const createEmptyItem = () => {
         return {
             id: Date.now() + Math.random(),
+            itemRef: null,
             itemName: '',
+            itemCode: '',
             hsnCode: '',
             quantity: '',
-            unit: 'NONE',
+            unit: 'PCS',
             pricePerUnit: '',
             discountPercent: 0,
             discountAmount: 0,
-            taxRate: formData.gstEnabled ? 18 : 0,
-            taxAmount: 0,
-            taxMode: 'with-tax',
             cgstAmount: 0, // ✅ FIXED: Use cgstAmount instead of cgst
             sgstAmount: 0, // ✅ FIXED: Use sgstAmount instead of sgst
             igst: 0,
-            amount: 0
+            taxRate: formData.gstEnabled ? 18 : 0,
+            amount: 0,
+            category: '',
+            currentStock: 0,
+            minStockLevel: 0,
+            taxMode: 'with-tax'
         };
     };
 
@@ -154,38 +149,9 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         });
     };
 
-    // ✅ NEW: Handle totals from ItemsTable
-    const handleTotalsChange = useCallback((newTotals) => {
-        console.log('📊 SalesForm received totals from ItemsTable:', newTotals);
-        setItemsTableTotals(newTotals);
-    }, []);
+    // ✅ REMOVED: handleTotalsChange - no longer needed as ItemsTableWithTotals handles everything
 
-    // ✅ FIXED: Enhanced totals calculation that includes round off
-    const totals = useMemo(() => {
-        // Use totals from ItemsTable as base - DON'T modify finalTotal here
-        const baseTotals = {
-            subtotal: itemsTableTotals.subtotal || 0,
-            totalCGST: itemsTableTotals.totalCGST || 0,
-            totalSGST: itemsTableTotals.totalSGST || 0,
-            totalTax: itemsTableTotals.totalTax || 0,
-            finalTotal: itemsTableTotals.finalTotal || 0 // ✅ Keep the exact amount from ItemsTable
-        };
-
-        // ✅ DON'T apply round off here - let TotalSection handle it
-        const calculatedTotals = {
-            ...baseTotals
-            // ✅ Remove the finalTotal override - let TotalSection add round off
-        };
-
-        console.log('🧮 SalesForm calculated final totals:', {
-            fromItemsTable: itemsTableTotals,
-            roundOff: formData.roundOff,
-            roundOffEnabled: formData.roundOffEnabled,
-            finalCalculated: calculatedTotals
-        });
-
-        return calculatedTotals;
-    }, [itemsTableTotals, formData.roundOff, formData.roundOffEnabled]);
+    // ✅ REMOVED: totals calculation - handled internally by ItemsTableWithTotals
 
     // Update form data helper
     const updateFormData = (field, value) => {
@@ -201,22 +167,9 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         updateFormData('items', newItems);
     };
 
-    // ✅ FIXED: Handle round off changes with immediate totals update
-    const handleRoundOffChange = useCallback((value) => {
-        const roundOffValue = parseFloat(value) || 0;
-        console.log('🔄 Round off changing to:', roundOffValue);
-        updateFormData('roundOff', roundOffValue);
-    }, []);
+    // ✅ REMOVED: Round off handlers - handled by ItemsTableWithTotals
 
-    const handleRoundOffToggle = useCallback((enabled) => {
-        console.log('🔄 Round off toggle:', enabled);
-        updateFormData('roundOffEnabled', enabled);
-        if (!enabled) {
-            updateFormData('roundOff', 0);
-        }
-    }, []);
-
-    // Enhanced validation function
+    // ✅ UPDATED: Enhanced validation function with better error handling
     const validateForm = () => {
         const errors = [];
 
@@ -225,7 +178,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             errors.push('Company selection is required');
         }
 
-        // Customer validation
+        // Customer validation - more flexible for different scenarios
         if (!formData.customer && !formData.mobileNumber) {
             errors.push('Please select a customer or enter mobile number');
         }
@@ -246,7 +199,25 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             }
         }
 
-        // Items validation
+        // Invoice date validation
+        if (!formData.invoiceDate) {
+            errors.push('Invoice date is required');
+        } else {
+            const invoiceDate = new Date(formData.invoiceDate);
+            const today = new Date();
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+            if (invoiceDate > today) {
+                errors.push('Invoice date cannot be in the future');
+            }
+
+            if (invoiceDate < oneYearAgo) {
+                errors.push('Invoice date cannot be more than one year old');
+            }
+        }
+
+        // Items validation - enhanced
         const validItems = formData.items.filter(item =>
             item.itemName &&
             parseFloat(item.quantity) > 0 &&
@@ -254,54 +225,238 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         );
 
         if (validItems.length === 0) {
-            errors.push('Please add at least one valid item');
+            errors.push('Please add at least one valid item with name, quantity, and price');
+        }
+
+        // Check for items with invalid data
+        const invalidItems = formData.items.filter((item, index) => {
+            if (!item.itemName && !item.quantity && !item.pricePerUnit) {
+                return false; // Empty row, skip
+            }
+
+            return (
+                (item.itemName && (!item.quantity || parseFloat(item.quantity) <= 0)) ||
+                (item.itemName && (!item.pricePerUnit || parseFloat(item.pricePerUnit) <= 0)) ||
+                (item.quantity && !item.itemName) ||
+                (item.pricePerUnit && !item.itemName)
+            );
+        });
+
+        if (invalidItems.length > 0) {
+            errors.push(`${invalidItems.length} item(s) have incomplete information. Please fill all required fields or remove empty items.`);
         }
 
         // GST specific validations
         if (formData.invoiceType === 'gst' && formData.gstEnabled) {
-            const itemsWithoutHSN = validItems.filter(item => !item.hsnCode);
+            const itemsWithoutHSN = validItems.filter(item => !item.hsnCode || item.hsnCode.trim() === '');
             if (itemsWithoutHSN.length > 0) {
-                errors.push('HSN codes are required for GST invoices');
+                errors.push(`${itemsWithoutHSN.length} item(s) are missing HSN codes. HSN codes are required for GST invoices.`);
+            }
+
+            // Validate tax rates for GST items
+            const itemsWithInvalidTax = validItems.filter(item => {
+                const taxRate = parseFloat(item.taxRate) || 0;
+                return taxRate < 0 || taxRate > 28; // GST rates typically range from 0% to 28%
+            });
+
+            if (itemsWithInvalidTax.length > 0) {
+                errors.push(`${itemsWithInvalidTax.length} item(s) have invalid tax rates. GST rates should be between 0% and 28%.`);
             }
         }
 
-        // Amount validation
-        if (totals.finalTotal <= 0) {
+        // Additional business logic validations
+        const totalAmount = validItems.reduce((sum, item) => {
+            const quantity = parseFloat(item.quantity) || 0;
+            const price = parseFloat(item.pricePerUnit) || 0;
+            const discount = parseFloat(item.discountAmount) || 0;
+            return sum + (quantity * price - discount);
+        }, 0);
+
+        if (totalAmount <= 0) {
             errors.push('Invoice total must be greater than zero');
+        }
+
+        // Large amount validation (optional business rule)
+        if (totalAmount > 1000000) { // 10 lakh
+            console.warn('⚠️ Large invoice amount detected:', totalAmount);
+            // Could add to errors if business rules require approval for large amounts
         }
 
         return errors;
     };
 
-    // Handle save
-    const handleSave = () => {
+    // ✅ FIXED: Enhanced save handler with proper return values
+    const handleSave = (invoiceDataFromTable) => {
+        console.log('📥 SalesForm received invoice data:', invoiceDataFromTable);
+
         const errors = validateForm();
 
         if (errors.length > 0) {
             alert('Please fix the following errors:\n\n' + errors.join('\n'));
-            return;
+            return Promise.resolve({
+                success: false,
+                error: 'Validation failed',
+                message: errors.join('; ')
+            });
         }
 
-        const validItems = formData.items.filter(item =>
+        // ✅ FIXED: Use data from ItemsTableWithTotals if provided, otherwise use form data
+        const itemsToSave = invoiceDataFromTable?.items || formData.items.filter(item =>
             item.itemName &&
             parseFloat(item.quantity) > 0 &&
             parseFloat(item.pricePerUnit) > 0
         );
 
+        // ✅ FIXED: Include totals from ItemsTableWithTotals
         const saleData = {
             ...formData,
             companyId: effectiveCompanyId,
-            items: validItems,
-            totals,
-            itemsTableTotals, // ✅ NEW: Include raw totals from ItemsTable
+            items: itemsToSave,
+
+            // ✅ CRITICAL: Include totals from ItemsTableWithTotals
+            totals: invoiceDataFromTable?.totals || {
+                finalTotal: 0,
+                subtotal: 0,
+                totalTax: 0,
+                totalCGST: 0,
+                totalSGST: 0,
+                totalAmount: 0,
+                totalQuantity: 0,
+                totalDiscountAmount: 0,
+                withTaxTotal: 0,
+                withoutTaxTotal: 0,
+                roundOffValue: 0,
+                roundOffEnabled: false
+            },
+
+            // ✅ Include payment information if any
+            paymentInfo: invoiceDataFromTable?.paymentInfo || null,
+
+            // ✅ Include round-off information
+            roundOff: invoiceDataFromTable?.roundOff || {
+                enabled: false,
+                value: 0
+            },
+
+            // ✅ Additional metadata
+            gstCalculationMode: invoiceDataFromTable?.gstEnabled !== undefined
+                ? (invoiceDataFromTable.gstEnabled ? 'enabled' : 'disabled')
+                : (formData.gstEnabled ? 'enabled' : 'disabled'),
+
+            invoiceMetadata: {
+                formType: invoiceDataFromTable?.formType || 'sales',
+                createdFrom: 'ItemsTableWithTotals',
+                hasPayment: !!(invoiceDataFromTable?.paymentInfo?.amount),
+                paymentAmount: invoiceDataFromTable?.paymentInfo?.amount || 0,
+                enhancedDataProvided: !!invoiceDataFromTable,
+                calculationMethod: 'ItemsTableWithTotals'
+            },
+
+            // Timestamps
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString()
         };
 
-        console.log('💾 Saving invoice data:', saleData);
+        console.log('💾 Saving invoice data with totals:', {
+            invoiceNumber: saleData.invoiceNumber,
+            itemCount: saleData.items.length,
+            totalsFinalTotal: saleData.totals.finalTotal,
+            hasPayment: !!saleData.paymentInfo,
+            gstEnabled: saleData.gstEnabled,
+            companyId: saleData.companyId
+        });
 
+        // ✅ FIXED: Proper async handling with explicit return
         if (onSave) {
-            onSave(saleData);
+            try {
+                const result = onSave(saleData);
+                console.log('📨 onSave returned:', result);
+
+                // ✅ FIXED: Handle both sync and async onSave functions properly
+                if (result && typeof result.then === 'function') {
+                    // onSave returns a promise
+                    return result.then(successResult => {
+                        console.log('✅ Async save completed:', successResult);
+
+                        // ✅ CRITICAL FIX: Return the actual result instead of undefined
+                        if (successResult && successResult.success) {
+                            // Return the successful result properly
+                            return {
+                                success: true,
+                                data: successResult.data || successResult,
+                                message: successResult.message || 'Invoice saved successfully',
+                                totals: saleData.totals,
+                                paymentInfo: saleData.paymentInfo,
+                                invoiceNumber: saleData.invoiceNumber,
+                                originalResult: successResult
+                            };
+                        } else {
+                            // Handle case where success result doesn't have success flag
+                            return {
+                                success: true,
+                                data: successResult || saleData,
+                                message: 'Invoice saved successfully',
+                                totals: saleData.totals,
+                                paymentInfo: saleData.paymentInfo,
+                                invoiceNumber: saleData.invoiceNumber,
+                                originalResult: successResult
+                            };
+                        }
+
+                    }).catch(error => {
+                        console.error('❌ Error in async onSave:', error);
+                        return {
+                            success: false,
+                            error: error.message || 'Save operation failed',
+                            data: null,
+                            totals: saleData.totals
+                        };
+                    });
+                } else {
+                    // onSave returns synchronously
+                    console.log('✅ Sync save completed:', result);
+
+                    // ✅ FIXED: Return proper success result for sync operations
+                    if (result && result.success) {
+                        return Promise.resolve({
+                            success: true,
+                            data: result.data || result,
+                            message: result.message || 'Invoice saved successfully',
+                            totals: saleData.totals,
+                            paymentInfo: saleData.paymentInfo,
+                            invoiceNumber: saleData.invoiceNumber,
+                            originalResult: result
+                        });
+                    } else {
+                        // Handle case where sync result doesn't have success flag
+                        return Promise.resolve({
+                            success: true,
+                            data: result || saleData,
+                            message: 'Invoice saved successfully',
+                            totals: saleData.totals,
+                            paymentInfo: saleData.paymentInfo,
+                            invoiceNumber: saleData.invoiceNumber,
+                            originalResult: result
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error in onSave:', error);
+                return Promise.resolve({
+                    success: false,
+                    error: error.message || 'Save operation failed',
+                    data: null,
+                    totals: saleData.totals
+                });
+            }
+        } else {
+            console.warn('⚠️ No onSave handler provided');
+            return Promise.resolve({
+                success: false,
+                error: 'No save handler provided',
+                data: null,
+                totals: saleData.totals
+            });
         }
     };
 
@@ -319,13 +474,11 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             invoiceNumber: formData.invoiceNumber,
             invoiceType: formData.invoiceType,
             customer: formData.customer || { name: 'Cash Customer', phone: formData.mobileNumber },
-            totals,
-            itemsTableTotals, // ✅ NEW: Include ItemsTable totals for reference
             itemCount: formData.items.filter(item => item.itemName).length
         };
 
         console.log('📤 Sharing invoice:', shareData);
-        alert(`Invoice ${formData.invoiceNumber} ready to share!\nTotal: ₹${totals.finalTotal.toLocaleString('en-IN')}`);
+        alert(`Invoice ${formData.invoiceNumber} ready to share!`);
     };
 
     // Handle adding new item from ItemsTable
@@ -350,15 +503,13 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         }
     };
 
-    // Auto-save draft functionality
+    // ✅ SIMPLIFIED: Auto-save draft functionality
     useEffect(() => {
         if (formData.invoiceNumber && effectiveCompanyId) {
             const draftKey = `invoice_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
             const draftData = {
                 ...formData,
                 companyId: effectiveCompanyId,
-                totals,
-                itemsTableTotals, // ✅ NEW: Include ItemsTable totals in draft
                 lastSaved: new Date().toISOString()
             };
 
@@ -381,7 +532,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 console.warn('Could not cleanup drafts:', error);
             }
         };
-    }, [formData, totals, itemsTableTotals, effectiveCompanyId]);
+    }, [formData, effectiveCompanyId]);
 
     // Show loading state if no companyId is available
     if (!effectiveCompanyId) {
@@ -455,62 +606,51 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                     </Col>
                 </Row>
 
-                {/* ✅ FIXED: Items Table with correct props */}
                 <div className="mb-3">
-                    <ItemsTable
-                        items={formData.items} // ✅ FIXED: Use formData.items
-                        gstEnabled={formData.gstEnabled} // ✅ FIXED: Use formData.gstEnabled
-                        invoiceType={formData.invoiceType} // ✅ FIXED: Use formData.invoiceType
+                    <ItemsTableWithTotals
+                        items={formData.items}
                         onItemsChange={handleItemsChange}
-                        onTotalsChange={handleTotalsChange} // ✅ FIXED: This handles totals from ItemsTable
-                        createEmptyItem={createEmptyItem}
-                        onAddItem={handleAddItem} // ✅ FIXED: Use handleAddItem instead of onAddItem
-                        companyId={effectiveCompanyId} // ✅ FIXED: Use effectiveCompanyId
-                    />
-                </div>
-
-                {/* ✅ FIXED: Total Section with proper props */}
-                <div className="mb-3">
-                    <TotalSection
-                        totals={totals} // ✅ FIXED: Pass calculated totals with round off
-                        roundOff={formData.roundOff}
-                        roundOffEnabled={formData.roundOffEnabled}
-                        onRoundOffChange={handleRoundOffChange}
-                        onRoundOffToggle={handleRoundOffToggle}
+                        categories={categories}
+                        inventoryItems={inventoryItems}
+                        companyId={effectiveCompanyId}
+                        gstEnabled={formData.gstEnabled}
+                        formType="sales"
                         onSave={handleSave}
                         onShare={handleShare}
                         onCancel={onCancel}
-                        formType="sales"
-                        gstEnabled={formData.gstEnabled} // ✅ NEW: Pass GST enabled status
+                        selectedCustomer={formData.customer}
+                        selectedSupplier={null}
+                        invoiceNumber={formData.invoiceNumber}
+                        invoiceDate={formData.invoiceDate}
+                        userId={null}
                     />
                 </div>
 
-                {/* ✅ NEW: Debug section for development */}
+                {/* ✅ SIMPLIFIED: Debug section for development */}
                 {process.env.NODE_ENV === 'development' && (
                     <div className="mb-3">
                         <Card className="bg-info bg-opacity-10 border-info">
                             <Card.Body className="p-3">
-                                <h6 className="text-info mb-2">🔧 Debug - SalesForm Totals Flow</h6>
+                                <h6 className="text-info mb-2">🔧 Debug - SalesForm State</h6>
                                 <Row className="small text-muted">
                                     <Col md={4}>
-                                        <div><strong>ItemsTable Totals:</strong></div>
-                                        <div>Subtotal: ₹{itemsTableTotals.subtotal}</div>
-                                        <div>CGST: ₹{itemsTableTotals.totalCGST}</div>
-                                        <div>SGST: ₹{itemsTableTotals.totalSGST}</div>
-                                        <div>Base Total: ₹{itemsTableTotals.finalTotal}</div>
-                                    </Col>
-                                    <Col md={4}>
-                                        <div><strong>Round Off:</strong></div>
-                                        <div>Enabled: {formData.roundOffEnabled ? 'Yes' : 'No'}</div>
-                                        <div>Amount: ₹{formData.roundOff || 0}</div>
+                                        <div><strong>Form Data:</strong></div>
                                         <div>GST Enabled: {formData.gstEnabled ? 'Yes' : 'No'}</div>
+                                        <div>Invoice Type: {formData.invoiceType}</div>
+                                        <div>Invoice Number: {formData.invoiceNumber}</div>
+                                        <div>Company ID: {effectiveCompanyId}</div>
                                     </Col>
                                     <Col md={4}>
-                                        <div><strong>Final Totals:</strong></div>
-                                        <div>Subtotal: ₹{totals.subtotal}</div>
-                                        <div>Total Tax: ₹{totals.totalTax}</div>
-                                        <div>Final Total: ₹{totals.finalTotal}</div>
-                                        <div>Items Count: {formData.items.length}</div>
+                                        <div><strong>Customer Info:</strong></div>
+                                        <div>Customer: {formData.customer?.name || 'None'}</div>
+                                        <div>Mobile: {formData.mobileNumber || 'None'}</div>
+                                        <div>Date: {formData.invoiceDate}</div>
+                                    </Col>
+                                    <Col md={4}>
+                                        <div><strong>Items:</strong></div>
+                                        <div>Total Items: {formData.items.length}</div>
+                                        <div>Valid Items: {formData.items.filter(item => item.itemName).length}</div>
+                                        <div>Component: ItemsTableWithTotals</div>
                                     </Col>
                                 </Row>
                             </Card.Body>

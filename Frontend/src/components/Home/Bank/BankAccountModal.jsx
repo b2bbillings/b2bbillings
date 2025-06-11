@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col, Alert, Spinner } from 'react-bootstrap';
-import { useParams } from 'react-router-dom'; // ✅ Added for URL params
+import { useParams } from 'react-router-dom';
 import bankAccountService from '../../../services/bankAccountService';
 
 function BankAccountModal({ show, onHide, editingAccount, formData, onInputChange, onSaveAccount }) {
@@ -12,38 +12,108 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
     const [validationErrors, setValidationErrors] = useState([]);
     const [validatingAccount, setValidatingAccount] = useState(false);
 
+    // ✅ Local form state to ensure inputs are controlled
+    const [localFormData, setLocalFormData] = useState({
+        accountName: '',
+        type: 'bank',
+        bankName: '',
+        accountNumber: '',
+        ifscCode: '',
+        branchName: '',
+        upiId: '',
+        mobileNumber: '',
+        openingBalance: 0,
+        asOfDate: new Date().toISOString().split('T')[0],
+        isActive: true,
+        accountType: 'savings',
+        accountHolderName: '',
+        printUpiQrCodes: false,
+        printBankDetails: true
+    });
+
     // Real-time validation state
     const [fieldValidation, setFieldValidation] = useState({
         accountName: { isValid: true, message: '' },
         accountNumber: { isValid: true, message: '' },
         ifscCode: { isValid: true, message: '' },
-        upiId: { isValid: true, message: '' }
+        upiId: { isValid: true, message: '' },
+        mobileNumber: { isValid: true, message: '' }
     });
 
-    // ✅ ENHANCED: Better company ID resolution with fallbacks
+    // ✅ Account type options
+    const accountTypeOptions = [
+        { value: 'bank', label: '🏦 Bank Account' },
+        { value: 'upi', label: '📱 UPI Account' }
+    ];
+
+    // ✅ Sync with parent form data when modal opens or editingAccount changes
+    useEffect(() => {
+        if (show) {
+            if (editingAccount) {
+                // Editing mode - populate with existing data
+                setLocalFormData({
+                    accountName: editingAccount.accountName || '',
+                    type: editingAccount.type || 'bank',
+                    bankName: editingAccount.bankName || '',
+                    accountNumber: editingAccount.accountNumber || '',
+                    ifscCode: editingAccount.ifscCode || '',
+                    branchName: editingAccount.branchName || '',
+                    upiId: editingAccount.upiId || '',
+                    mobileNumber: editingAccount.mobileNumber || '',
+                    openingBalance: editingAccount.openingBalance || 0,
+                    asOfDate: editingAccount.asOfDate
+                        ? new Date(editingAccount.asOfDate).toISOString().split('T')[0]
+                        : new Date().toISOString().split('T')[0],
+                    isActive: editingAccount.isActive !== undefined ? editingAccount.isActive : true,
+                    accountType: editingAccount.accountType || 'savings',
+                    accountHolderName: editingAccount.accountHolderName || '',
+                    printUpiQrCodes: editingAccount.printUpiQrCodes || false,
+                    printBankDetails: editingAccount.printBankDetails !== undefined ? editingAccount.printBankDetails : true
+                });
+            } else {
+                // New account mode - use defaults or parent form data
+                setLocalFormData({
+                    accountName: formData?.accountName || '',
+                    type: formData?.type || 'bank',
+                    bankName: formData?.bankName || '',
+                    accountNumber: formData?.accountNumber || '',
+                    ifscCode: formData?.ifscCode || '',
+                    branchName: formData?.branchName || '',
+                    upiId: formData?.upiId || '',
+                    mobileNumber: formData?.mobileNumber || '',
+                    openingBalance: formData?.openingBalance || 0,
+                    asOfDate: formData?.asOfDate || new Date().toISOString().split('T')[0],
+                    isActive: formData?.isActive !== undefined ? formData.isActive : true,
+                    accountType: formData?.accountType || 'savings',
+                    accountHolderName: formData?.accountHolderName || '',
+                    printUpiQrCodes: formData?.printUpiQrCodes || false,
+                    printBankDetails: formData?.printBankDetails !== undefined ? formData.printBankDetails : true
+                });
+            }
+        }
+    }, [show, editingAccount, formData]);
+
+    // ✅ Enhanced company ID resolution with fallbacks
     const getEffectiveCompanyId = () => {
-        // Try multiple sources for company ID
         const sources = [
-            companyId, // From URL params (highest priority)
+            companyId,
             localStorage.getItem('selectedCompanyId'),
             sessionStorage.getItem('companyId')
         ];
 
-        // Try parsing currentCompany from localStorage
         try {
             const currentCompanyStr = localStorage.getItem('currentCompany');
             if (currentCompanyStr) {
                 const currentCompany = JSON.parse(currentCompanyStr);
                 const companyIdFromStorage = currentCompany.id || currentCompany._id;
                 if (companyIdFromStorage) {
-                    sources.unshift(companyIdFromStorage); // Add to beginning
+                    sources.unshift(companyIdFromStorage);
                 }
             }
         } catch (error) {
             console.warn('⚠️ Failed to parse currentCompany from localStorage:', error);
         }
 
-        // Return the first valid company ID
         for (const source of sources) {
             if (source && source.trim() !== '') {
                 return source;
@@ -54,33 +124,54 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
         return null;
     };
 
-    // Validate IFSC code in real-time
+    // ✅ Validate IFSC code in real-time
     const validateIFSC = (value) => {
         if (!value) return { isValid: true, message: '' };
-        const isValid = bankAccountService.validateIFSC(value);
+        const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+        const isValid = ifscRegex.test(value.toUpperCase());
         return {
             isValid,
             message: isValid ? '' : 'Invalid IFSC code format (e.g., SBIN0001234)'
         };
     };
 
-    // Validate UPI ID in real-time
+    // ✅ Validate UPI ID in real-time
     const validateUPI = (value) => {
         if (!value) return { isValid: true, message: '' };
-        const isValid = bankAccountService.validateUPI(value);
+        const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+        const isValid = upiRegex.test(value);
         return {
             isValid,
             message: isValid ? '' : 'Invalid UPI ID format (e.g., user@paytm)'
         };
     };
 
-    // Handle input change with validation
+    // ✅ Validate mobile number in real-time
+    const validateMobile = (value) => {
+        if (!value) return { isValid: true, message: '' };
+        const mobileRegex = /^[6-9]\d{9}$/;
+        const isValid = mobileRegex.test(value);
+        return {
+            isValid,
+            message: isValid ? '' : 'Invalid mobile number (10 digits starting with 6-9)'
+        };
+    };
+
+    // ✅ Handle input change with validation
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
         const inputValue = type === 'checkbox' ? checked : value;
 
-        // Call parent onChange
-        onInputChange(e);
+        // Update local form data
+        setLocalFormData(prev => ({
+            ...prev,
+            [name]: inputValue
+        }));
+
+        // Also call parent onChange if provided
+        if (onInputChange) {
+            onInputChange(e);
+        }
 
         // Real-time validation
         if (name === 'ifscCode') {
@@ -95,6 +186,12 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
                 ...prev,
                 upiId: validation
             }));
+        } else if (name === 'mobileNumber') {
+            const validation = validateMobile(inputValue);
+            setFieldValidation(prev => ({
+                ...prev,
+                mobileNumber: validation
+            }));
         }
 
         // Clear general errors
@@ -102,18 +199,20 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
         if (validationErrors.length > 0) setValidationErrors([]);
     };
 
-    // ✅ UPDATED: Validate account details with backend using effective company ID
+    // ✅ Validate account details with backend
     const validateAccountDetails = async () => {
         const effectiveCompanyId = getEffectiveCompanyId();
 
-        if (!effectiveCompanyId || !formData.accountName) return;
+        if (!effectiveCompanyId || !localFormData.accountName) return;
 
         setValidatingAccount(true);
         try {
             const response = await bankAccountService.validateAccountDetails(effectiveCompanyId, {
-                accountName: formData.accountName,
-                accountNumber: formData.accountNumber,
-                ifscCode: formData.ifscCode
+                accountName: localFormData.accountName,
+                accountNumber: localFormData.accountNumber,
+                ifscCode: localFormData.ifscCode,
+                upiId: localFormData.upiId,
+                type: localFormData.type
             });
 
             if (!response.isValid) {
@@ -131,15 +230,15 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
     // Debounced validation
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (formData.accountName && show) {
+            if (localFormData.accountName && show) {
                 validateAccountDetails();
             }
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [formData.accountName, formData.accountNumber, formData.ifscCode, show, companyId]);
+    }, [localFormData.accountName, localFormData.accountNumber, localFormData.ifscCode, localFormData.upiId, localFormData.type, show]);
 
-    // ✅ UPDATED: Handle form submission with better company ID resolution
+    // ✅ Handle form submission
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -147,32 +246,63 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
         setValidationErrors([]);
 
         try {
-            // ✅ Use effective company ID with fallbacks
             const effectiveCompanyId = getEffectiveCompanyId();
 
             if (!effectiveCompanyId) {
                 throw new Error('Company selection required. Please navigate to a valid company URL or select a company.');
             }
 
-            console.log('💾 Saving account with company ID:', effectiveCompanyId);
+
 
             // Client-side validation
             const errors = [];
 
-            if (!formData.accountName?.trim()) {
-                errors.push('Account name is required');
+            if (!localFormData.accountName?.trim()) {
+                errors.push('Account display name is required');
             }
 
-            if ((formData.printUpiQrCodes || formData.printBankDetails) && !formData.accountNumber?.trim()) {
-                errors.push('Account number is required when print settings are enabled');
+            if (!localFormData.type) {
+                errors.push('Account type is required');
             }
 
-            if (formData.ifscCode && !fieldValidation.ifscCode.isValid) {
-                errors.push('Please enter a valid IFSC code');
-            }
-
-            if (formData.upiId && !fieldValidation.upiId.isValid) {
-                errors.push('Please enter a valid UPI ID');
+            if (localFormData.type === 'bank') {
+                if (!localFormData.bankName?.trim()) {
+                    errors.push('Bank name is required for bank accounts');
+                }
+                if (!localFormData.accountNumber?.trim()) {
+                    errors.push('Account number is required for bank accounts');
+                }
+                if (!localFormData.ifscCode?.trim()) {
+                    errors.push('IFSC code is required for bank accounts');
+                }
+                if (localFormData.ifscCode && !fieldValidation.ifscCode.isValid) {
+                    errors.push('Please enter a valid IFSC code');
+                }
+            } else if (localFormData.type === 'upi') {
+                if (!localFormData.bankName?.trim()) {
+                    errors.push('Bank name is required for UPI accounts');
+                }
+                if (!localFormData.accountNumber?.trim()) {
+                    errors.push('Account number is required for UPI accounts');
+                }
+                if (!localFormData.ifscCode?.trim()) {
+                    errors.push('IFSC code is required for UPI accounts');
+                }
+                if (localFormData.ifscCode && !fieldValidation.ifscCode.isValid) {
+                    errors.push('Please enter a valid IFSC code');
+                }
+                if (!localFormData.upiId?.trim()) {
+                    errors.push('UPI ID is required for UPI accounts');
+                }
+                if (!localFormData.mobileNumber?.trim()) {
+                    errors.push('Mobile number is required for UPI accounts');
+                }
+                if (localFormData.upiId && !fieldValidation.upiId.isValid) {
+                    errors.push('Please enter a valid UPI ID');
+                }
+                if (localFormData.mobileNumber && !fieldValidation.mobileNumber.isValid) {
+                    errors.push('Please enter a valid mobile number');
+                }
             }
 
             if (errors.length > 0) {
@@ -181,44 +311,41 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
                 return;
             }
 
-            // Prepare data for API
+            // Prepare account data
             const accountData = {
-                accountName: formData.accountName.trim(),
-                accountNumber: formData.accountNumber?.trim() || '',
-                bankName: formData.bankName?.trim() || '',
-                branchName: formData.branchName?.trim() || '',
-                ifscCode: formData.ifscCode?.toUpperCase().trim() || '',
-                accountType: formData.accountType || 'savings',
-                accountHolderName: formData.accountHolderName?.trim() || '',
-                type: formData.type || 'bank',
-                openingBalance: parseFloat(formData.openingBalance) || 0,
-                asOfDate: formData.asOfDate || new Date().toISOString().split('T')[0],
-                printUpiQrCodes: Boolean(formData.printUpiQrCodes),
-                printBankDetails: Boolean(formData.printBankDetails),
-                upiId: formData.upiId?.toLowerCase().trim() || ''
+                accountName: localFormData.accountName?.trim() || '',
+                type: localFormData.type || 'bank',
+                bankName: localFormData.bankName?.trim() || '',
+                accountNumber: localFormData.accountNumber?.trim() || '',
+                ifscCode: localFormData.ifscCode?.toUpperCase().trim() || '',
+                branchName: localFormData.branchName?.trim() || '',
+                openingBalance: parseFloat(localFormData.openingBalance) || 0,
+                asOfDate: localFormData.asOfDate || new Date().toISOString().split('T')[0],
+                isActive: localFormData.isActive !== undefined ? Boolean(localFormData.isActive) : true,
+                accountType: localFormData.accountType || 'savings',
+                accountHolderName: localFormData.accountHolderName?.trim() || '',
+                printUpiQrCodes: Boolean(localFormData.printUpiQrCodes),
+                printBankDetails: Boolean(localFormData.printBankDetails)
             };
 
-            console.log('📤 Sending account data:', {
-                companyId: effectiveCompanyId,
-                accountName: accountData.accountName,
-                type: accountData.type,
-                isUpdate: !!editingAccount
-            });
+            // Add UPI fields for UPI accounts
+            if (localFormData.type === 'upi') {
+                accountData.upiId = localFormData.upiId?.toLowerCase().trim() || '';
+                accountData.mobileNumber = localFormData.mobileNumber?.trim() || '';
+            }
+
+
 
             let response;
             if (editingAccount) {
-                // Update existing account
                 response = await bankAccountService.updateBankAccount(
                     effectiveCompanyId,
                     editingAccount._id || editingAccount.id,
                     accountData
                 );
             } else {
-                // Create new account
                 response = await bankAccountService.createBankAccount(effectiveCompanyId, accountData);
             }
-
-            console.log('✅ Account saved successfully:', response);
 
             // Call parent success handler
             await onSaveAccount(response.data);
@@ -230,15 +357,12 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
             console.error('❌ Error saving account:', error);
 
             if (error.response?.data?.errors) {
-                // Backend validation errors
                 setValidationErrors(error.response.data.errors.map(err =>
                     typeof err === 'string' ? err : err.message || err.msg
                 ));
             } else if (error.response?.data?.message) {
-                // Backend error message
                 setError(error.response.data.message);
             } else {
-                // Generic error
                 setError(error.message || 'Failed to save account. Please try again.');
             }
         } finally {
@@ -255,208 +379,138 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
                 accountName: { isValid: true, message: '' },
                 accountNumber: { isValid: true, message: '' },
                 ifscCode: { isValid: true, message: '' },
-                upiId: { isValid: true, message: '' }
+                upiId: { isValid: true, message: '' },
+                mobileNumber: { isValid: true, message: '' }
             });
         }
     }, [show]);
 
-    // ✅ DEBUG: Log company ID state when modal opens
-    useEffect(() => {
-        if (show) {
-            const effectiveCompanyId = getEffectiveCompanyId();
-            console.log('🔍 BankAccountModal Debug:', {
-                modalOpen: show,
-                companyIdFromURL: companyId,
-                effectiveCompanyId: effectiveCompanyId,
-                hasValidCompanyId: !!effectiveCompanyId,
-                editingAccount: !!editingAccount,
-                formData: {
-                    accountName: formData?.accountName,
-                    type: formData?.type
-                }
-            });
-        }
-    }, [show, companyId, editingAccount]);
-
     return (
-        <Modal show={show} onHide={onHide} centered size="lg" className="bank-modal">
-            <Modal.Header closeButton>
-                <Modal.Title>
-                    {editingAccount ? 'Edit Bank Account' : 'Add Bank Account'}
-                </Modal.Title>
-            </Modal.Header>
-            <Form onSubmit={handleFormSubmit}>
-                <Modal.Body>
-                    {/* ✅ ENHANCED: Better error alerts with company ID info */}
-                    {error && (
-                        <Alert variant="danger" className="mb-3">
-                            <strong>Error:</strong> {error}
-                            {error.includes('Company selection') && (
-                                <div className="mt-2">
-                                    <small className="text-muted d-block">
-                                        Current URL company ID: {companyId || 'Not found'}
-                                    </small>
-                                    <small className="text-muted d-block">
-                                        Effective company ID: {getEffectiveCompanyId() || 'Not resolved'}
-                                    </small>
+        <>
+            <Modal show={show} onHide={onHide} centered size="lg" className="bank-account-modal">
+                <Modal.Header closeButton className="bg-gradient-primary">
+                    <Modal.Title className="text-white fw-bold">
+                        {editingAccount ? '✏️ Edit Account' : '➕ Add New Account'}
+                    </Modal.Title>
+                </Modal.Header>
+                <Form onSubmit={handleFormSubmit}>
+                    <Modal.Body className="p-4">
+                        {/* Error Alerts */}
+                        {error && (
+                            <Alert variant="danger" className="mb-3 alert-custom">
+                                <div className="d-flex align-items-center">
+                                    <span className="me-2">⚠️</span>
+                                    <div>
+                                        <strong>Error:</strong> {error}
+                                        {error.includes('Company selection') && (
+                                            <div className="mt-2">
+                                                <small className="text-muted d-block">
+                                                    Current URL company ID: {companyId || 'Not found'}
+                                                </small>
+                                                <small className="text-muted d-block">
+                                                    Effective company ID: {getEffectiveCompanyId() || 'Not resolved'}
+                                                </small>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
-                        </Alert>
-                    )}
+                            </Alert>
+                        )}
 
-                    {validationErrors.length > 0 && (
-                        <Alert variant="warning" className="mb-3">
-                            <strong>Please fix the following issues:</strong>
-                            <ul className="mb-0 mt-2">
-                                {validationErrors.map((error, index) => (
-                                    <li key={index}>{error}</li>
-                                ))}
-                            </ul>
-                        </Alert>
-                    )}
+                        {validationErrors.length > 0 && (
+                            <Alert variant="warning" className="mb-3 alert-custom">
+                                <div className="d-flex align-items-start">
+                                    <span className="me-2 mt-1">📋</span>
+                                    <div>
+                                        <strong>Please fix the following issues:</strong>
+                                        <ul className="mb-0 mt-2">
+                                            {validationErrors.map((error, index) => (
+                                                <li key={index}>{error}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </Alert>
+                        )}
 
-                    {validatingAccount && (
-                        <Alert variant="info" className="mb-3">
-                            <Spinner animation="border" size="sm" className="me-2" />
-                            Validating account details...
-                        </Alert>
-                    )}
+                        {validatingAccount && (
+                            <Alert variant="info" className="mb-3 alert-custom">
+                                <div className="d-flex align-items-center">
+                                    <Spinner animation="border" size="sm" className="me-2" />
+                                    <span>Validating account details...</span>
+                                </div>
+                            </Alert>
+                        )}
 
-                    {/* ✅ DEBUG: Show company ID info in development */}
-                    {process.env.NODE_ENV === 'development' && (
-                        <Alert variant="light" className="mb-3 small">
-                            <strong>Debug Info:</strong> Company ID: {getEffectiveCompanyId() || 'None'}
-                            (Source: {companyId ? 'URL' : 'localStorage'})
-                        </Alert>
-                    )}
-
-                    {/* Top Row - Basic Info */}
-                    <Row className="g-3 mb-4">
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>Account Display Name *</Form.Label>
-                                <Form.Control
-                                    name="accountName"
-                                    value={formData.accountName || ''}
-                                    onChange={handleInputChange}
-                                    placeholder="Enter display name"
-                                    required
-                                    isInvalid={!fieldValidation.accountName.isValid}
-                                />
-                                <Form.Control.Feedback type="invalid">
-                                    {fieldValidation.accountName.message}
-                                </Form.Control.Feedback>
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>Account Type</Form.Label>
-                                <Form.Select
-                                    name="accountType"
-                                    value={formData.accountType || 'savings'}
-                                    onChange={handleInputChange}
-                                >
-                                    {bankAccountService.getAccountTypes().map(option => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </Form.Select>
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>Category</Form.Label>
-                                <Form.Select
-                                    name="type"
-                                    value={formData.type || 'bank'}
-                                    onChange={handleInputChange}
-                                >
-                                    {bankAccountService.getAccountCategories().map(option => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </Form.Select>
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Row className="g-3 mb-4">
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>Opening Balance</Form.Label>
-                                <Form.Control
-                                    name="openingBalance"
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={formData.openingBalance || 0}
-                                    onChange={handleInputChange}
-                                    placeholder="0.00"
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>As of Date</Form.Label>
-                                <Form.Control
-                                    name="asOfDate"
-                                    type="date"
-                                    value={formData.asOfDate || new Date().toISOString().split('T')[0]}
-                                    onChange={handleInputChange}
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group>
-                                <Form.Label>Account Holder Name</Form.Label>
-                                <Form.Control
-                                    name="accountHolderName"
-                                    value={formData.accountHolderName || ''}
-                                    onChange={handleInputChange}
-                                    placeholder="Enter account holder name"
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    {/* Checkboxes */}
-                    <Row className="g-3 mb-4">
-                        <Col md={6}>
-                            <Form.Check
-                                type="checkbox"
-                                name="printUpiQrCodes"
-                                label="Print UPI QR Code on Invoices"
-                                checked={formData.printUpiQrCodes || false}
-                                onChange={handleInputChange}
-                            />
-                        </Col>
-                        <Col md={6}>
-                            <Form.Check
-                                type="checkbox"
-                                name="printBankDetails"
-                                label="Print bank details on invoices"
-                                checked={formData.printBankDetails || false}
-                                onChange={handleInputChange}
-                            />
-                        </Col>
-                    </Row>
-
-                    {/* Dynamic Fields - Shows ONLY when checkboxes are selected */}
-                    {(formData.printUpiQrCodes || formData.printBankDetails) && (
-                        <>
-                            {/* Bank Details Row */}
-                            <Row className="g-3 mb-3">
-                                <Col md={3}>
+                        {/* Account Type Selection */}
+                        <div className="form-section mb-4">
+                            <h6 className="section-title">Account Information</h6>
+                            <Row className="g-3">
+                                <Col md={6}>
                                     <Form.Group>
-                                        <Form.Label>Account Number *</Form.Label>
+                                        <Form.Label className="form-label-custom">Account Type *</Form.Label>
+                                        <Form.Select
+                                            name="type"
+                                            value={localFormData.type || 'bank'}
+                                            onChange={handleInputChange}
+                                            required
+                                            className="form-control-custom"
+                                        >
+                                            {accountTypeOptions.map(option => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
+                                    </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                    <Form.Group>
+                                        <Form.Label className="form-label-custom">Account Display Name *</Form.Label>
+                                        <Form.Control
+                                            name="accountName"
+                                            value={localFormData.accountName || ''}
+                                            onChange={handleInputChange}
+                                            placeholder="Enter display name for this account"
+                                            required
+                                            className="form-control-custom"
+                                            isInvalid={!fieldValidation.accountName.isValid}
+                                        />
+                                        <Form.Control.Feedback type="invalid">
+                                            {fieldValidation.accountName.message}
+                                        </Form.Control.Feedback>
+                                    </Form.Group>
+                                </Col>
+                            </Row>
+                        </div>
+
+                        {/* Bank Account Fields */}
+                        <div className="form-section mb-4">
+                            <h6 className="section-title">Bank Details</h6>
+                            <Row className="g-3 mb-3">
+                                <Col md={6}>
+                                    <Form.Group>
+                                        <Form.Label className="form-label-custom">Bank Name *</Form.Label>
+                                        <Form.Control
+                                            name="bankName"
+                                            value={localFormData.bankName || ''}
+                                            onChange={handleInputChange}
+                                            placeholder="Enter bank name"
+                                            required
+                                            className="form-control-custom"
+                                        />
+                                    </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                    <Form.Group>
+                                        <Form.Label className="form-label-custom">Account Number *</Form.Label>
                                         <Form.Control
                                             name="accountNumber"
-                                            value={formData.accountNumber || ''}
+                                            value={localFormData.accountNumber || ''}
                                             onChange={handleInputChange}
                                             placeholder="Enter account number"
-                                            required={formData.printUpiQrCodes || formData.printBankDetails}
+                                            required
+                                            className="form-control-custom"
                                             isInvalid={!fieldValidation.accountNumber.isValid}
                                         />
                                         <Form.Control.Feedback type="invalid">
@@ -464,15 +518,20 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
                                         </Form.Control.Feedback>
                                     </Form.Group>
                                 </Col>
-                                <Col md={3}>
+                            </Row>
+
+                            <Row className="g-3">
+                                <Col md={6}>
                                     <Form.Group>
-                                        <Form.Label>IFSC Code</Form.Label>
+                                        <Form.Label className="form-label-custom">IFSC Code *</Form.Label>
                                         <Form.Control
                                             name="ifscCode"
-                                            value={formData.ifscCode || ''}
+                                            value={localFormData.ifscCode || ''}
                                             onChange={handleInputChange}
-                                            placeholder="Enter IFSC code"
+                                            placeholder="Enter IFSC code (e.g., SBIN0001234)"
                                             style={{ textTransform: 'uppercase' }}
+                                            required
+                                            className="form-control-custom"
                                             isInvalid={!fieldValidation.ifscCode.isValid}
                                         />
                                         <Form.Control.Feedback type="invalid">
@@ -480,155 +539,359 @@ function BankAccountModal({ show, onHide, editingAccount, formData, onInputChang
                                         </Form.Control.Feedback>
                                     </Form.Group>
                                 </Col>
-                                <Col md={3}>
+                                <Col md={6}>
                                     <Form.Group>
-                                        <Form.Label>Bank Name</Form.Label>
-                                        <Form.Control
-                                            name="bankName"
-                                            value={formData.bankName || ''}
-                                            onChange={handleInputChange}
-                                            placeholder="Enter bank name"
-                                        />
-                                    </Form.Group>
-                                </Col>
-                                <Col md={3}>
-                                    <Form.Group>
-                                        <Form.Label>Branch Name</Form.Label>
+                                        <Form.Label className="form-label-custom">Branch Name</Form.Label>
                                         <Form.Control
                                             name="branchName"
-                                            value={formData.branchName || ''}
+                                            value={localFormData.branchName || ''}
                                             onChange={handleInputChange}
                                             placeholder="Enter branch name"
+                                            className="form-control-custom"
                                         />
                                     </Form.Group>
                                 </Col>
                             </Row>
+                        </div>
 
-                            {/* UPI Row - Only show if UPI QR is enabled */}
-                            {formData.printUpiQrCodes && (
-                                <Row className="g-3 mb-4">
+                        {/* UPI Fields */}
+                        {localFormData.type === 'upi' && (
+                            <div className="form-section mb-4">
+                                <h6 className="section-title">UPI Details</h6>
+                                <Row className="g-3">
                                     <Col md={6}>
                                         <Form.Group>
-                                            <Form.Label>UPI ID for QR Codes</Form.Label>
+                                            <Form.Label className="form-label-custom">UPI ID *</Form.Label>
                                             <Form.Control
                                                 name="upiId"
-                                                value={formData.upiId || ''}
+                                                value={localFormData.upiId || ''}
                                                 onChange={handleInputChange}
                                                 placeholder="Enter UPI ID (e.g., business@paytm)"
+                                                required
+                                                className="form-control-custom"
                                                 isInvalid={!fieldValidation.upiId.isValid}
                                             />
                                             <Form.Control.Feedback type="invalid">
                                                 {fieldValidation.upiId.message}
                                             </Form.Control.Feedback>
                                             <Form.Text className="text-muted">
-                                                This will be used to generate QR codes for payments
+                                                Used for receiving payments via UPI
+                                            </Form.Text>
+                                        </Form.Group>
+                                    </Col>
+                                    <Col md={6}>
+                                        <Form.Group>
+                                            <Form.Label className="form-label-custom">Mobile Number *</Form.Label>
+                                            <Form.Control
+                                                name="mobileNumber"
+                                                value={localFormData.mobileNumber || ''}
+                                                onChange={handleInputChange}
+                                                placeholder="Enter mobile number (10 digits)"
+                                                maxLength="10"
+                                                required
+                                                className="form-control-custom"
+                                                isInvalid={!fieldValidation.mobileNumber.isValid}
+                                            />
+                                            <Form.Control.Feedback type="invalid">
+                                                {fieldValidation.mobileNumber.message}
+                                            </Form.Control.Feedback>
+                                            <Form.Text className="text-muted">
+                                                Mobile number linked to UPI ID
                                             </Form.Text>
                                         </Form.Group>
                                     </Col>
                                 </Row>
-                            )}
-                        </>
-                    )}
-                </Modal.Body>
-                <Modal.Footer className="d-flex justify-content-between">
-                    <div>
-                        <small className="text-muted">* Required fields</small>
-                    </div>
-                    <div>
-                        <Button
-                            variant="outline-secondary"
-                            onClick={onHide}
-                            className="me-2"
-                            disabled={loading}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="primary"
-                            type="submit"
-                            disabled={loading || validatingAccount || !getEffectiveCompanyId()}
-                        >
-                            {loading ? (
-                                <>
-                                    <Spinner animation="border" size="sm" className="me-2" />
-                                    {editingAccount ? 'Updating...' : 'Creating...'}
-                                </>
-                            ) : (
-                                editingAccount ? 'Update Account' : 'Create Account'
-                            )}
-                        </Button>
-                    </div>
-                </Modal.Footer>
-            </Form>
+                            </div>
+                        )}
 
-            {/* Custom Styles */}
-            <style jsx>{`
-                .bank-modal .modal-header {
-                    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                    color: white;
+                        {/* Opening Balance */}
+                        <div className="form-section">
+                            <h6 className="section-title">Opening Balance</h6>
+                            <Row className="g-3">
+                                <Col md={6}>
+                                    <Form.Group>
+                                        <Form.Label className="form-label-custom">Opening Balance</Form.Label>
+                                        <Form.Control
+                                            name="openingBalance"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={localFormData.openingBalance || 0}
+                                            onChange={handleInputChange}
+                                            placeholder="0.00"
+                                            className="form-control-custom"
+                                        />
+                                        <Form.Text className="text-muted">
+                                            Current balance in this account
+                                        </Form.Text>
+                                    </Form.Group>
+                                </Col>
+                                <Col md={6}>
+                                    <Form.Group>
+                                        <Form.Label className="form-label-custom">As of Date</Form.Label>
+                                        <Form.Control
+                                            name="asOfDate"
+                                            type="date"
+                                            value={localFormData.asOfDate || new Date().toISOString().split('T')[0]}
+                                            onChange={handleInputChange}
+                                            max={new Date().toISOString().split('T')[0]}
+                                            className="form-control-custom"
+                                        />
+                                        <Form.Text className="text-muted">
+                                            Date of the opening balance
+                                        </Form.Text>
+                                    </Form.Group>
+                                </Col>
+                            </Row>
+                        </div>
+                    </Modal.Body>
+
+                    <Modal.Footer className="modal-footer-custom">
+                        <div className="d-flex justify-content-between align-items-center w-100">
+                            <small className="text-muted">* Required fields</small>
+                            <div>
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={onHide}
+                                    className="me-3 btn-custom-outline"
+                                    disabled={loading}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    type="submit"
+                                    disabled={loading || validatingAccount || !getEffectiveCompanyId()}
+                                    className="btn-custom-primary"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Spinner animation="border" size="sm" className="me-2" />
+                                            {editingAccount ? 'Updating...' : 'Creating...'}
+                                        </>
+                                    ) : (
+                                        <>
+                                            {editingAccount ? '💾 Update Account' : '➕ Create Account'}
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
+
+            {/* Enhanced Styling */}
+            <style>{`
+                .bank-account-modal .modal-content {
+                    border: none;
+                    border-radius: 1rem;
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+                    overflow: hidden;
+                }
+                
+                .bank-account-modal .bg-gradient-primary {
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
                     border-bottom: none;
                 }
                 
-                .bank-modal .modal-header .btn-close {
-                    filter: invert(1);
+                .bank-account-modal .modal-header .btn-close {
+                    filter: brightness(0) invert(1);
+                    opacity: 0.8;
                 }
                 
-                .bank-modal .form-label {
+                .bank-account-modal .modal-header .btn-close:hover {
+                    opacity: 1;
+                }
+                
+                .bank-account-modal .form-section {
+                    background: #f8f9fa;
+                    border-radius: 0.75rem;
+                    padding: 1.5rem;
+                    border: 1px solid #e9ecef;
+                }
+                
+                .bank-account-modal .section-title {
+                    color: #495057;
                     font-weight: 600;
-                    color: #333;
-                    margin-bottom: 6px;
-                    font-size: 0.9rem;
+                    margin-bottom: 1rem;
+                    padding-bottom: 0.5rem;
+                    border-bottom: 2px solid #6366f1;
+                    display: inline-block;
                 }
                 
-                .bank-modal .form-control,
-                .bank-modal .form-select {
-                    border: 1px solid #ddd;
-                    border-radius: 6px;
-                    padding: 10px 12px;
-                    transition: border-color 0.2s ease;
-                    font-size: 0.9rem;
+                .bank-account-modal .form-label-custom {
+                    font-weight: 600;
+                    color: #374151;
+                    margin-bottom: 0.5rem;
+                    font-size: 0.875rem;
+                    display: block;
                 }
                 
-                .bank-modal .form-control:focus,
-                .bank-modal .form-select:focus {
-                    border-color: #007bff;
-                    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+                .bank-account-modal .form-control-custom,
+                .bank-account-modal .form-select {
+                    border: 2px solid #e5e7eb;
+                    border-radius: 0.5rem;
+                    padding: 0.75rem 1rem;
+                    font-size: 0.875rem;
+                    background-color: #ffffff;
+                    transition: all 0.2s ease;
+                    color: #1f2937;
                 }
                 
-                .bank-modal .form-control.is-invalid {
-                    border-color: #dc3545;
+                .bank-account-modal .form-control-custom:focus,
+                .bank-account-modal .form-select:focus {
+                    border-color: #6366f1;
+                    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+                    background-color: #ffffff;
+                    color: #1f2937;
+                    outline: none;
                 }
                 
-                .bank-modal .form-check-label {
-                    font-weight: 500;
-                    color: #555;
+                .bank-account-modal .form-control-custom::placeholder {
+                    color: #9ca3af;
+                    opacity: 1;
                 }
                 
-                .bank-modal .btn-primary {
-                    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+                .bank-account-modal .form-control.is-invalid,
+                .bank-account-modal .form-control-custom.is-invalid {
+                    border-color: #ef4444;
+                    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+                }
+                
+                .bank-account-modal .alert-custom {
                     border: none;
-                    padding: 10px 24px;
+                    border-radius: 0.75rem;
+                    border-left: 4px solid;
+                }
+                
+                .bank-account-modal .alert-danger {
+                    background-color: #fef2f2;
+                    color: #991b1b;
+                    border-left-color: #ef4444;
+                }
+                
+                .bank-account-modal .alert-warning {
+                    background-color: #fffbeb;
+                    color: #92400e;
+                    border-left-color: #f59e0b;
+                }
+                
+                .bank-account-modal .alert-info {
+                    background-color: #eff6ff;
+                    color: #1e40af;
+                    border-left-color: #3b82f6;
+                }
+                
+                .bank-account-modal .modal-footer-custom {
+                    background-color: #f8f9fa;
+                    border-top: 1px solid #e9ecef;
+                    padding: 1.25rem 1.5rem;
+                }
+                
+                .bank-account-modal .btn-custom-primary {
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    border: none;
+                    border-radius: 0.5rem;
+                    padding: 0.75rem 1.5rem;
                     font-weight: 600;
+                    color: white;
+                    transition: all 0.2s ease;
                 }
                 
-                .bank-modal .btn-primary:hover:not(:disabled) {
+                .bank-account-modal .btn-custom-primary:hover:not(:disabled) {
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+                    background: linear-gradient(135deg, #5b5bf6 0%, #7c3aed 100%);
                 }
                 
-                .bank-modal .btn-primary:disabled {
-                    opacity: 0.7;
+                .bank-account-modal .btn-custom-primary:disabled {
+                    opacity: 0.6;
                     transform: none;
+                    box-shadow: none;
                 }
                 
+                .bank-account-modal .btn-custom-outline {
+                    border: 2px solid #d1d5db;
+                    border-radius: 0.5rem;
+                    padding: 0.75rem 1.5rem;
+                    font-weight: 600;
+                    color: #6b7280;
+                    background: white;
+                    transition: all 0.2s ease;
+                }
+                
+                .bank-account-modal .btn-custom-outline:hover:not(:disabled) {
+                    border-color: #9ca3af;
+                    color: #374151;
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                }
+                
+                .bank-account-modal .form-text {
+                    font-size: 0.75rem;
+                    color: #6b7280;
+                    margin-top: 0.25rem;
+                }
+                
+                /* Input autofill styling */
+                .bank-account-modal .form-control-custom:-webkit-autofill,
+                .bank-account-modal .form-control-custom:-webkit-autofill:hover,
+                .bank-account-modal .form-control-custom:-webkit-autofill:focus {
+                    -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+                    -webkit-text-fill-color: #1f2937;
+                    transition: background-color 5000s ease-in-out 0s;
+                }
+                
+                /* Responsive Design */
                 @media (max-width: 768px) {
-                    .bank-modal .modal-dialog {
-                        margin: 1rem;
-                        max-width: calc(100% - 2rem);
+                    .bank-account-modal .modal-dialog {
+                        margin: 0.5rem;
+                        max-width: calc(100% - 1rem);
+                    }
+
+                    .bank-account-modal .modal-body {
+                        padding: 1rem;
+                    }
+
+                    .bank-account-modal .form-section {
+                        padding: 1rem;
+                    }
+
+                    .bank-account-modal .form-control-custom,
+                    .bank-account-modal .form-select {
+                        font-size: 16px; /* Prevents zoom on iOS */
+                        padding: 0.875rem 1rem;
+                    }
+                    
+                    .bank-account-modal .modal-footer-custom {
+                        padding: 1rem;
+                    }
+                    
+                    .bank-account-modal .btn-custom-primary,
+                    .bank-account-modal .btn-custom-outline {
+                        padding: 0.625rem 1.25rem;
+                        font-size: 0.875rem;
+                    }
+                }
+
+                /* Animation for UPI section */
+                .bank-account-modal .form-section {
+                    animation: fadeInUp 0.3s ease-out;
+                }
+
+                @keyframes fadeInUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
                     }
                 }
             `}</style>
-        </Modal>
+        </>
     );
 }
 

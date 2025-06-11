@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { Container, Row, Col, Button, Table, Badge, Dropdown, InputGroup, Form } from 'react-bootstrap';
+import { Button, Table, Badge, Dropdown, InputGroup, Form } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faSearch,
-    faChartLine,
     faFileExcel,
     faPrint,
-    faFilter,
+    faSort,
     faEllipsisV,
     faEye,
     faEdit,
     faTrash,
-    faCopy,
-    faShare
+    faShare,
+    faArrowUp,
+    faArrowDown
 } from '@fortawesome/free-solid-svg-icons';
 
 function SalesInvoicesTable({
@@ -24,8 +24,9 @@ function SalesInvoicesTable({
     onShareTransaction
 }) {
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortField, setSortField] = useState('');
+    const [sortDirection, setSortDirection] = useState('asc');
 
-    // Filter transactions based on search query
     const filteredTransactions = transactions.filter(transaction =>
         transaction.partyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transaction.invoiceNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -36,12 +37,11 @@ function SalesInvoicesTable({
     const formatCurrency = (amount) => {
         if (!amount && amount !== 0) return '₹0';
 
-        // Ultra compact currency formatting
-        if (amount >= 10000000) { // 1 crore
+        if (amount >= 10000000) {
             return `₹${(amount / 10000000).toFixed(1)}Cr`;
-        } else if (amount >= 100000) { // 1 lakh
+        } else if (amount >= 100000) {
             return `₹${(amount / 100000).toFixed(1)}L`;
-        } else if (amount >= 1000) { // 1 thousand
+        } else if (amount >= 1000) {
             return `₹${(amount / 1000).toFixed(1)}K`;
         }
         return `₹${Math.round(amount)}`;
@@ -51,8 +51,9 @@ function SalesInvoicesTable({
         const date = new Date(dateString);
         return date.toLocaleDateString('en-IN', {
             day: '2-digit',
-            month: '2-digit'
-        }); // Only DD/MM format for compactness
+            month: '2-digit',
+            year: '2-digit'
+        });
     };
 
     const getTransactionIcon = (type) => {
@@ -85,288 +86,358 @@ function SalesInvoicesTable({
         }
     };
 
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
+
+    const getSortIcon = (field) => {
+        if (sortField !== field) {
+            return <FontAwesomeIcon icon={faSort} className="ms-1 text-muted" style={{ fontSize: '0.6rem' }} />;
+        }
+        return (
+            <FontAwesomeIcon
+                icon={sortDirection === 'asc' ? faArrowUp : faArrowDown}
+                className="ms-1 text-primary"
+                style={{ fontSize: '0.6rem' }}
+            />
+        );
+    };
+
     return (
-        <>
-            <div className="sales-invoices-table-container">
-                <div className="sales-table-card border-0">
-                    {/* Ultra Compact Header */}
-                    <div className="sales-table-header bg-gradient-purple border-0 pb-0">
-                        <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap">
-                            <div className="header-info">
-                                <h6 className="fw-bold mb-1 text-white">Sales Invoices</h6>
-                                <small className="text-white-50" style={{ fontSize: '0.65rem' }}>
-                                    {filteredTransactions.length} records
-                                </small>
-                            </div>
-                            <div className="d-flex gap-1 align-items-center flex-wrap">
-                                <InputGroup className="search-group">
-                                    <InputGroup.Text className="bg-white bg-opacity-25 border-white border-opacity-25 text-white px-2">
-                                        <FontAwesomeIcon icon={faSearch} className="text-white" style={{ fontSize: '0.65rem' }} />
-                                    </InputGroup.Text>
-                                    <Form.Control
-                                        type="text"
-                                        placeholder="Search..."
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                        className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50 search-input"
-                                        size="sm"
-                                        style={{ fontSize: '0.75rem' }}
-                                    />
-                                </InputGroup>
-                                <div className="d-flex gap-1">
-                                    <Button variant="outline-light" size="sm" className="table-action-btn" title="Export">
-                                        <FontAwesomeIcon icon={faFileExcel} style={{ fontSize: '0.6rem' }} />
-                                    </Button>
-                                    <Button variant="outline-light" size="sm" className="table-action-btn" title="Print">
-                                        <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.6rem' }} />
-                                    </Button>
+        <div className="sales-invoices-container">
+            <div className="card border-0 shadow-sm">
+                {/* Header */}
+                <div className="card-header bg-primary text-white border-0">
+                    <div className="row align-items-center">
+                        <div className="col-md-6">
+                            <h5 className="mb-1 fw-bold">Sales Invoices</h5>
+                            <small className="text-white-50">
+                                {filteredTransactions.length} records
+                            </small>
+                        </div>
+                        <div className="col-md-6">
+                            <div className="row g-2">
+                                <div className="col-md-8">
+                                    <InputGroup size="sm">
+                                        <InputGroup.Text className="bg-white bg-opacity-25 border-white border-opacity-25 text-white">
+                                            <FontAwesomeIcon icon={faSearch} />
+                                        </InputGroup.Text>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Search invoices..."
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50"
+                                        />
+                                    </InputGroup>
+                                </div>
+                                <div className="col-md-4">
+                                    <div className="d-flex gap-1">
+                                        <Button variant="outline-light" size="sm" title="Export">
+                                            <FontAwesomeIcon icon={faFileExcel} />
+                                        </Button>
+                                        <Button variant="outline-light" size="sm" title="Print">
+                                            <FontAwesomeIcon icon={faPrint} />
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div className="sales-table-body p-0">
-                        <div className="table-responsive">
-                            <Table className="mb-0 sales-transactions-table">
-                                <thead>
+                {/* Table */}
+                <div className="card-body p-0">
+                    <div className="table-responsive" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                        <Table className="mb-0 table-hover table-sm sticky-header">
+                            <thead className="table-light sticky-top">
+                                <tr>
+                                    <th
+                                        className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                        onClick={() => handleSort('date')}
+                                        style={{ minWidth: '65px', width: '65px' }}
+                                    >
+                                        <div className="d-flex align-items-center">
+                                            <span style={{ fontSize: '0.7rem' }}>Date</span>
+                                            {getSortIcon('date')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                        onClick={() => handleSort('invoiceNo')}
+                                        style={{ minWidth: '80px', width: '80px' }}
+                                    >
+                                        <div className="d-flex align-items-center">
+                                            <span style={{ fontSize: '0.7rem' }}>Invoice</span>
+                                            {getSortIcon('invoiceNo')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                        onClick={() => handleSort('partyName')}
+                                        style={{ minWidth: '100px', width: '100px' }}
+                                    >
+                                        <div className="d-flex align-items-center">
+                                            <span style={{ fontSize: '0.7rem' }}>Party</span>
+                                            {getSortIcon('partyName')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                        onClick={() => handleSort('transaction')}
+                                        style={{ minWidth: '70px', width: '70px' }}
+                                    >
+                                        <div className="d-flex align-items-center">
+                                            <span style={{ fontSize: '0.7rem' }}>Type</span>
+                                            {getSortIcon('transaction')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                        onClick={() => handleSort('paymentType')}
+                                        style={{ minWidth: '70px', width: '70px' }}
+                                    >
+                                        <div className="d-flex align-items-center">
+                                            <span style={{ fontSize: '0.7rem' }}>Payment</span>
+                                            {getSortIcon('paymentType')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold text-center cursor-pointer px-2"
+                                        onClick={() => handleSort('cgst')}
+                                        style={{ minWidth: '60px', width: '60px' }}
+                                    >
+                                        <div className="d-flex align-items-center justify-content-center">
+                                            <span style={{ fontSize: '0.7rem' }}>CGST</span>
+                                            {getSortIcon('cgst')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold text-center cursor-pointer px-2"
+                                        onClick={() => handleSort('sgst')}
+                                        style={{ minWidth: '60px', width: '60px' }}
+                                    >
+                                        <div className="d-flex align-items-center justify-content-center">
+                                            <span style={{ fontSize: '0.7rem' }}>SGST</span>
+                                            {getSortIcon('sgst')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold text-end cursor-pointer px-2"
+                                        onClick={() => handleSort('amount')}
+                                        style={{ minWidth: '80px', width: '80px' }}
+                                    >
+                                        <div className="d-flex align-items-center justify-content-end">
+                                            <span style={{ fontSize: '0.7rem' }}>Amount</span>
+                                            {getSortIcon('amount')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold text-end cursor-pointer px-2"
+                                        onClick={() => handleSort('balance')}
+                                        style={{ minWidth: '80px', width: '80px' }}
+                                    >
+                                        <div className="d-flex align-items-center justify-content-end">
+                                            <span style={{ fontSize: '0.7rem' }}>Balance</span>
+                                            {getSortIcon('balance')}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="border-0 text-primary fw-semibold text-center px-2 actions-column-header"
+                                        style={{
+                                            minWidth: '110px',
+                                            width: '110px',
+                                            position: 'sticky',
+                                            right: 0,
+                                            background: '#f8f9fa',
+                                            zIndex: 30
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '0.7rem' }}>Actions</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTransactions.length === 0 ? (
                                     <tr>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Date</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
+                                        <td colSpan={10} className="text-center text-muted py-5 border-0">
+                                            <div className="d-flex flex-column align-items-center">
+                                                <div className="mb-3" style={{ fontSize: '3rem', opacity: '0.5' }}>📊</div>
+                                                <h6 className="fw-semibold mb-2 text-secondary">No invoices found</h6>
+                                                <p className="text-muted mb-0">
+                                                    {searchQuery
+                                                        ? 'Try adjusting your search terms'
+                                                        : 'Create your first sales invoice'
+                                                    }
+                                                </p>
                                             </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Invoice</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Party</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Type</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Payment</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            <div className="d-flex align-items-center justify-content-center">
-                                                <span>CGST</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            <div className="d-flex align-items-center justify-content-center">
-                                                <span>SGST</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end">
-                                            <div className="d-flex align-items-center justify-content-end">
-                                                <span>Amount</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end">
-                                            <div className="d-flex align-items-center justify-content-end">
-                                                <span>Balance</span>
-                                                <FontAwesomeIcon icon={faFilter} className="ms-1 filter-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            Actions
-                                        </th>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredTransactions.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={10} className="text-center text-muted py-4 border-0">
-                                                <div className="empty-state">
-                                                    <div className="empty-icon mb-2">📊</div>
-                                                    <h6 className="fw-semibold mb-1 text-purple" style={{ fontSize: '0.9rem' }}>No invoices found</h6>
-                                                    <p className="text-muted mb-0" style={{ fontSize: '0.75rem' }}>
-                                                        {searchQuery
-                                                            ? 'Try adjusting your search terms'
-                                                            : 'Create your first sales invoice'
-                                                        }
-                                                    </p>
+                                ) : (
+                                    filteredTransactions.map((transaction, index) => (
+                                        <tr key={transaction.id || index} className="align-middle">
+                                            {/* Date */}
+                                            <td className="border-0 px-2" style={{ width: '65px' }}>
+                                                <span className="text-dark fw-medium" style={{ fontSize: '0.7rem' }}>
+                                                    {formatDate(transaction.date)}
+                                                </span>
+                                            </td>
+
+                                            {/* Invoice Number */}
+                                            <td className="border-0 px-2" style={{ width: '80px' }}>
+                                                <Badge bg="primary" bg-opacity="10" text="primary" className="fw-bold" style={{ fontSize: '0.6rem' }}>
+                                                    {transaction.invoiceNo}
+                                                </Badge>
+                                            </td>
+
+                                            {/* Party Name */}
+                                            <td className="border-0 px-2" style={{ width: '100px' }}>
+                                                <div>
+                                                    <div className="fw-medium text-dark" title={transaction.partyName} style={{ fontSize: '0.7rem' }}>
+                                                        {transaction.partyName?.length > 8
+                                                            ? `${transaction.partyName.substring(0, 8)}...`
+                                                            : transaction.partyName}
+                                                    </div>
+                                                    {transaction.partyPhone && (
+                                                        <small className="text-muted d-block" style={{ fontSize: '0.6rem' }}>
+                                                            {transaction.partyPhone.substring(0, 6)}
+                                                        </small>
+                                                    )}
                                                 </div>
                                             </td>
-                                        </tr>
-                                    ) : (
-                                        filteredTransactions.map((transaction, index) => (
-                                            <tr key={transaction.id} className="sales-transaction-row">
-                                                {/* Date - Ultra Compact */}
-                                                <td className="border-0 py-2">
-                                                    <div className="date-info">
-                                                        <span className="text-dark fw-medium" style={{ fontSize: '0.75rem' }}>
-                                                            {formatDate(transaction.date)}
-                                                        </span>
-                                                    </div>
-                                                </td>
 
-                                                {/* Invoice Number - Compact */}
-                                                <td className="border-0 py-2">
-                                                    <div className="invoice-number">
-                                                        <span className="fw-bold text-primary" style={{ fontSize: '0.75rem' }}>
-                                                            {transaction.invoiceNo}
-                                                        </span>
-                                                    </div>
-                                                </td>
-
-                                                {/* Party Name - Truncated */}
-                                                <td className="border-0 py-2">
-                                                    <div className="party-info">
-                                                        <div className="fw-medium text-dark mb-0"
-                                                            style={{ fontSize: '0.75rem' }}
-                                                            title={transaction.partyName}>
-                                                            {transaction.partyName?.length > 12
-                                                                ? `${transaction.partyName.substring(0, 12)}...`
-                                                                : transaction.partyName}
-                                                        </div>
-                                                        {transaction.partyPhone && (
-                                                            <small className="text-purple-muted d-block" style={{ fontSize: '0.6rem' }}>
-                                                                {transaction.partyPhone.substring(0, 10)}
-                                                            </small>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* Transaction Type - Icon + Badge */}
-                                                <td className="border-0 py-2">
-                                                    <div className="d-flex align-items-center">
-                                                        <span className="me-1" style={{ fontSize: '0.7rem' }}>
-                                                            {getTransactionIcon(transaction.transaction)}
-                                                        </span>
-                                                        <Badge
-                                                            bg={getTransactionVariant(transaction.transaction)}
-                                                            className="px-1 py-1 text-capitalize transaction-badge"
-                                                            style={{ fontSize: '0.6rem' }}
-                                                        >
-                                                            {transaction.transaction?.substring(0, 4)}
-                                                        </Badge>
-                                                    </div>
-                                                </td>
-
-                                                {/* Payment Type - Small Badge */}
-                                                <td className="border-0 py-2">
+                                            {/* Transaction Type */}
+                                            <td className="border-0 px-2" style={{ width: '70px' }}>
+                                                <div className="d-flex align-items-center">
+                                                    <span className="me-1" style={{ fontSize: '0.6rem' }}>
+                                                        {getTransactionIcon(transaction.transaction)}
+                                                    </span>
                                                     <Badge
-                                                        bg={getPaymentTypeVariant(transaction.paymentType)}
-                                                        className="px-1 py-1 payment-badge"
-                                                        style={{ fontSize: '0.6rem' }}
-                                                        text={getPaymentTypeVariant(transaction.paymentType) === 'light' ? 'dark' : 'white'}
+                                                        bg={getTransactionVariant(transaction.transaction)}
+                                                        text="dark"
+                                                        className="text-capitalize"
+                                                        style={{ fontSize: '0.55rem' }}
                                                     >
-                                                        {transaction.paymentType?.substring(0, 4)}
+                                                        {transaction.transaction}
                                                     </Badge>
-                                                </td>
+                                                </div>
+                                            </td>
 
-                                                {/* CGST - Compact */}
-                                                <td className="border-0 py-2 text-center">
-                                                    <div className="tax-info">
-                                                        <span className="fw-semibold text-info" style={{ fontSize: '0.7rem' }}>
-                                                            {formatCurrency(transaction.cgst || 0)}
-                                                        </span>
-                                                        {transaction.cgstPercent && (
-                                                            <div className="tax-percent">
-                                                                <small className="text-muted" style={{ fontSize: '0.55rem' }}>
-                                                                    ({transaction.cgstPercent}%)
-                                                                </small>
-                                                            </div>
-                                                        )}
+                                            {/* Payment Type */}
+                                            <td className="border-0 px-2" style={{ width: '70px' }}>
+                                                <Badge
+                                                    bg={getPaymentTypeVariant(transaction.paymentType)}
+                                                    text="dark"
+                                                    style={{ fontSize: '0.55rem' }}
+                                                >
+                                                    {transaction.paymentType}
+                                                </Badge>
+                                            </td>
+
+                                            {/* CGST */}
+                                            <td className="border-0 text-center px-2" style={{ width: '60px' }}>
+                                                <div>
+                                                    <div className="fw-semibold text-info" style={{ fontSize: '0.65rem' }}>
+                                                        {formatCurrency(transaction.cgst || 0)}
                                                     </div>
-                                                </td>
+                                                    {transaction.cgstPercent && (
+                                                        <small className="text-muted" style={{ fontSize: '0.55rem' }}>
+                                                            ({transaction.cgstPercent}%)
+                                                        </small>
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                                {/* SGST - Compact */}
-                                                <td className="border-0 py-2 text-center">
-                                                    <div className="tax-info">
-                                                        <span className="fw-semibold text-warning" style={{ fontSize: '0.7rem' }}>
-                                                            {formatCurrency(transaction.sgst || 0)}
-                                                        </span>
-                                                        {transaction.sgstPercent && (
-                                                            <div className="tax-percent">
-                                                                <small className="text-muted" style={{ fontSize: '0.55rem' }}>
-                                                                    ({transaction.sgstPercent}%)
-                                                                </small>
-                                                            </div>
-                                                        )}
+                                            {/* SGST */}
+                                            <td className="border-0 text-center px-2" style={{ width: '60px' }}>
+                                                <div>
+                                                    <div className="fw-semibold text-warning" style={{ fontSize: '0.65rem' }}>
+                                                        {formatCurrency(transaction.sgst || 0)}
                                                     </div>
-                                                </td>
+                                                    {transaction.sgstPercent && (
+                                                        <small className="text-muted" style={{ fontSize: '0.55rem' }}>
+                                                            ({transaction.sgstPercent}%)
+                                                        </small>
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                                {/* Total Amount - Prominent but Compact */}
-                                                <td className="border-0 py-2 text-end">
-                                                    <div className="amount-info">
-                                                        <span className="fw-bold text-success" style={{ fontSize: '0.8rem' }}>
-                                                            {formatCurrency(transaction.amount)}
-                                                        </span>
+                                            {/* Total Amount */}
+                                            <td className="border-0 text-end px-2" style={{ width: '80px' }}>
+                                                <div className="fw-bold text-success" style={{ fontSize: '0.7rem' }}>
+                                                    {formatCurrency(transaction.amount)}
+                                                </div>
+                                            </td>
+
+                                            {/* Balance */}
+                                            <td className="border-0 text-end px-2" style={{ width: '80px' }}>
+                                                <div>
+                                                    <div className={`fw-bold ${transaction.balance > 0 ? 'text-danger' : 'text-success'}`} style={{ fontSize: '0.7rem' }}>
+                                                        {formatCurrency(transaction.balance)}
                                                     </div>
-                                                </td>
+                                                    {transaction.balance > 0 && (
+                                                        <small className="text-danger" style={{ fontSize: '0.55rem' }}>
+                                                            Due
+                                                        </small>
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                                {/* Balance - Compact */}
-                                                <td className="border-0 py-2 text-end">
-                                                    <div className="balance-info">
-                                                        <span className={`fw-bold ${transaction.balance > 0 ? 'text-danger' : 'text-success'}`}
-                                                            style={{ fontSize: '0.75rem' }}>
-                                                            {formatCurrency(transaction.balance)}
-                                                        </span>
-                                                        {transaction.balance > 0 && (
-                                                            <small className="text-danger d-block" style={{ fontSize: '0.55rem' }}>
-                                                                Due
-                                                            </small>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* Actions - Ultra Compact */}
-                                                <td className="border-0 py-2 text-center">
-                                                    <div className="d-flex gap-1 align-items-center justify-content-center">
-                                                        <Button
-                                                            variant="outline-primary"
-                                                            size="sm"
-                                                            className="action-btn"
-                                                            title="Print"
-                                                            onClick={() => onPrintTransaction(transaction)}
-                                                        >
-                                                            <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.6rem' }} />
-                                                        </Button>
+                                            {/* Actions - Sticky Right */}
+                                            <td
+                                                className="border-0 text-center px-2 actions-column"
+                                                style={{
+                                                    width: '110px',
+                                                    position: 'sticky',
+                                                    right: 0,
+                                                    background: 'white',
+                                                    zIndex: 20,
+                                                    boxShadow: '-2px 0 4px rgba(0,0,0,0.05)'
+                                                }}
+                                            >
+                                                <div className="d-flex gap-1 justify-content-center actions-wrapper">
+                                                    <Button
+                                                        variant="outline-primary"
+                                                        size="sm"
+                                                        title="Print"
+                                                        onClick={() => onPrintTransaction(transaction)}
+                                                        className="action-btn-print"
+                                                    >
+                                                        <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.7rem' }} />
+                                                    </Button>
+                                                    <div className="dropdown-container">
                                                         <Dropdown>
                                                             <Dropdown.Toggle
                                                                 variant="outline-secondary"
                                                                 size="sm"
-                                                                className="action-btn dropdown-toggle-no-caret"
-                                                                title="More"
+                                                                className="dropdown-toggle-no-caret action-btn-menu"
+                                                                title="More Actions"
                                                             >
-                                                                <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.6rem' }} />
+                                                                <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.7rem' }} />
                                                             </Dropdown.Toggle>
-                                                            <Dropdown.Menu align="end" className="shadow-lg border-0 dropdown-menu-enhanced">
+                                                            <Dropdown.Menu align="end" className="dropdown-menu-custom">
                                                                 <Dropdown.Item
                                                                     onClick={() => onViewTransaction(transaction)}
-                                                                    className="dropdown-item-enhanced"
+                                                                    className="d-flex align-items-center dropdown-item-custom"
                                                                 >
                                                                     <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
                                                                     View
                                                                 </Dropdown.Item>
                                                                 <Dropdown.Item
                                                                     onClick={() => onEditTransaction(transaction)}
-                                                                    className="dropdown-item-enhanced"
+                                                                    className="d-flex align-items-center dropdown-item-custom"
                                                                 >
                                                                     <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
                                                                     Edit
                                                                 </Dropdown.Item>
                                                                 <Dropdown.Item
                                                                     onClick={() => onShareTransaction(transaction)}
-                                                                    className="dropdown-item-enhanced"
+                                                                    className="d-flex align-items-center dropdown-item-custom"
                                                                 >
                                                                     <FontAwesomeIcon icon={faShare} className="me-2 text-info" />
                                                                     Share
@@ -374,7 +445,7 @@ function SalesInvoicesTable({
                                                                 <Dropdown.Divider />
                                                                 <Dropdown.Item
                                                                     onClick={() => onDeleteTransaction(transaction)}
-                                                                    className="dropdown-item-enhanced text-danger"
+                                                                    className="d-flex align-items-center dropdown-item-custom text-danger"
                                                                 >
                                                                     <FontAwesomeIcon icon={faTrash} className="me-2" />
                                                                     Delete
@@ -382,481 +453,254 @@ function SalesInvoicesTable({
                                                             </Dropdown.Menu>
                                                         </Dropdown>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </Table>
-                        </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </Table>
+                    </div>
 
-                        {/* Compact Footer */}
-                        {filteredTransactions.length > 0 && (
-                            <div className="table-footer p-2 bg-light border-top">
-                                <div className="d-flex justify-content-between align-items-center">
-                                    <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                                        {filteredTransactions.length} of {transactions.length} records
+                    {/* Footer */}
+                    {filteredTransactions.length > 0 && (
+                        <div className="card-footer bg-light border-0">
+                            <div className="row align-items-center">
+                                <div className="col-md-6">
+                                    <small className="text-muted">
+                                        Showing {filteredTransactions.length} of {transactions.length} records
                                     </small>
-                                    <div className="d-flex gap-1">
-                                        <Button variant="outline-primary" size="sm" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
-                                            Prev
+                                </div>
+                                <div className="col-md-6">
+                                    <div className="d-flex justify-content-end gap-2">
+                                        <Button variant="outline-primary" size="sm">
+                                            Previous
                                         </Button>
-                                        <Button variant="outline-primary" size="sm" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                                        <Button variant="outline-primary" size="sm">
                                             Next
                                         </Button>
                                     </div>
                                 </div>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Ultra Compact Table Styles - ALL COLUMNS VISIBLE */}
-            <style>
-                {`
-                .sales-invoices-table-container {
-                    background: white;
-                    border-radius: 12px;
-                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+            <style jsx>{`
+                .sales-invoices-container {
+                    padding: 0.5rem;
+                    width: 100%;
                     overflow: hidden;
-                    margin: 0;
-                    height: fit-content;
+                }
+
+                .card {
+                    border-radius: 0.75rem;
+                    overflow: hidden;
                     width: 100%;
                 }
 
-                .sales-table-card {
-                    border-radius: 12px;
-                    overflow: hidden;
-                }
-
-                .bg-gradient-purple {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 50%, #b794f6 100%);
-                    padding: 0.75rem 1rem 0.5rem;
-                }
-
-                .bg-gradient-light-purple {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.06) 0%, rgba(156, 136, 255, 0.06) 50%, rgba(183, 148, 246, 0.06) 100%);
-                }
-
-                .text-purple {
-                    color: #6c63ff !important;
-                }
-
-                .text-purple-muted {
-                    color: #9c88ff !important;
-                }
-
-                .header-info h6 {
-                    font-size: 0.9rem;
-                    margin-bottom: 0.1rem;
-                }
-
-                .search-group {
-                    width: 180px;
-                    min-width: 150px;
+                .card-header {
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    border-bottom: none;
+                    padding: 1rem;
                 }
 
                 .placeholder-white-50::placeholder {
-                    color: rgba(255, 255, 255, 0.7) !important;
+                    color: rgba(255, 255, 255, 0.7);
                 }
 
-                .search-input:focus {
-                    background: rgba(255, 255, 255, 0.35) !important;
-                    border-color: rgba(255, 255, 255, 0.5) !important;
-                    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25) !important;
-                    color: white !important;
-                }
-
-                .table-action-btn {
-                    border: 1px solid rgba(255, 255, 255, 0.3);
-                    color: white;
-                    width: 28px;
-                    height: 28px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 6px;
-                    transition: all 0.2s ease;
-                    padding: 0;
-                }
-
-                .table-action-btn:hover {
-                    background: rgba(255, 255, 255, 0.2);
+                .form-control:focus {
+                    background: rgba(255, 255, 255, 0.35);
                     border-color: rgba(255, 255, 255, 0.5);
+                    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
                     color: white;
-                    transform: translateY(-1px);
                 }
 
-                /* ULTRA COMPACT TABLE - ALL COLUMNS VISIBLE */
-                .sales-transactions-table {
-                    font-size: 0.7rem;
-                    table-layout: fixed;
-                    width: 100%;
-                }
-
-                .sales-transactions-table th {
-                    font-size: 0.6rem;
-                    text-transform: uppercase;
-                    letter-spacing: 0.2px;
-                    padding: 0.5rem 0.3rem;
-                    font-weight: 600;
-                    border-bottom: 2px solid rgba(108, 99, 255, 0.1);
-                    white-space: nowrap;
-                    vertical-align: middle;
-                }
-
-                .sales-transactions-table td {
-                    padding: 0.4rem 0.3rem;
-                    vertical-align: middle;
-                    font-size: 0.7rem;
-                    border-bottom: 1px solid rgba(108, 99, 255, 0.05);
-                }
-
-                /* OPTIMIZED COLUMN WIDTHS FOR ALL COLUMNS VISIBILITY */
-                .sales-transactions-table th:nth-child(1), /* Date */
-                .sales-transactions-table td:nth-child(1) {
-                    width: 8%;
-                    min-width: 60px;
-                }
-
-                .sales-transactions-table th:nth-child(2), /* Invoice */
-                .sales-transactions-table td:nth-child(2) {
-                    width: 10%;
-                    min-width: 80px;
-                }
-
-                .sales-transactions-table th:nth-child(3), /* Party */
-                .sales-transactions-table td:nth-child(3) {
-                    width: 15%;
-                    min-width: 100px;
-                }
-
-                .sales-transactions-table th:nth-child(4), /* Type */
-                .sales-transactions-table td:nth-child(4) {
-                    width: 8%;
-                    min-width: 70px;
-                }
-
-                .sales-transactions-table th:nth-child(5), /* Payment */
-                .sales-transactions-table td:nth-child(5) {
-                    width: 8%;
-                    min-width: 70px;
-                }
-
-                .sales-transactions-table th:nth-child(6), /* CGST */
-                .sales-transactions-table td:nth-child(6) {
-                    width: 10%;
-                    min-width: 70px;
-                }
-
-                .sales-transactions-table th:nth-child(7), /* SGST */
-                .sales-transactions-table td:nth-child(7) {
-                    width: 10%;
-                    min-width: 70px;
-                }
-
-                .sales-transactions-table th:nth-child(8), /* Amount */
-                .sales-transactions-table td:nth-child(8) {
-                    width: 12%;
-                    min-width: 80px;
-                }
-
-                .sales-transactions-table th:nth-child(9), /* Balance */
-                .sales-transactions-table td:nth-child(9) {
-                    width: 10%;
-                    min-width: 70px;
-                }
-
-                .sales-transactions-table th:nth-child(10), /* Actions */
-                .sales-transactions-table td:nth-child(10) {
-                    width: 9%;
-                    min-width: 70px;
-                }
-
-                .sales-transaction-row {
-                    transition: all 0.2s ease;
-                }
-
-                .sales-transaction-row:hover {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.02) 0%, rgba(156, 136, 255, 0.02) 100%);
-                    transform: translateY(-1px);
-                    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.08);
-                }
-
-                .filter-icon {
-                    opacity: 0.4;
-                    font-size: 0.35rem !important;
+                .cursor-pointer {
                     cursor: pointer;
                     transition: all 0.2s ease;
-                    color: #9c88ff;
                 }
 
-                .filter-icon:hover {
-                    opacity: 0.7;
-                    transform: scale(1.1);
-                    color: #6c63ff;
+                .cursor-pointer:hover {
+                    background-color: rgba(99, 102, 241, 0.05);
                 }
 
-                .date-info {
-                    min-width: 50px;
-                }
-
-                .invoice-number {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.08) 0%, rgba(156, 136, 255, 0.08) 100%);
-                    padding: 2px 4px;
-                    border-radius: 4px;
-                    display: inline-block;
-                }
-
-                .party-info {
-                    min-width: 80px;
-                    max-width: 100px;
-                    overflow: hidden;
-                }
-
-                .tax-info {
-                    text-align: center;
-                    min-width: 60px;
-                }
-
-                .tax-percent {
-                    line-height: 1;
-                    margin-top: 1px;
-                }
-
-                .amount-info {
-                    min-width: 70px;
-                }
-
-                .balance-info {
-                    min-width: 60px;
-                }
-
-                .transaction-badge,
-                .payment-badge {
-                    font-size: 0.55rem;
-                    font-weight: 600;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 2px 4px !important;
-                    white-space: nowrap;
-                }
-
-                .action-btn {
-                    width: 24px;
-                    height: 24px;
-                    padding: 0;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 4px;
+                .table-hover tbody tr:hover {
+                    background-color: rgba(99, 102, 241, 0.02);
                     transition: all 0.2s ease;
                 }
 
-                .action-btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+                .table-hover tbody tr:hover .actions-column {
+                    background-color: rgba(99, 102, 241, 0.02);
                 }
 
                 .dropdown-toggle-no-caret::after {
                     display: none;
                 }
 
-                .dropdown-menu-enhanced {
-                    border-radius: 6px;
-                    padding: 0.3rem;
-                    min-width: 120px;
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+                .badge {
+                    font-weight: 600;
                 }
 
-                .dropdown-item-enhanced {
-                    padding: 0.4rem 0.6rem;
-                    font-size: 0.7rem;
-                    transition: all 0.2s ease;
-                    border-radius: 4px;
-                    margin: 1px 0;
+                .table th {
+                    border-bottom: 2px solid rgba(99, 102, 241, 0.1);
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    padding: 0.4rem 0.3rem;
+                    white-space: nowrap;
+                    background-color: #f8f9fa;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
                 }
 
-                .dropdown-item-enhanced:hover {
-                    background: rgba(108, 99, 255, 0.08);
-                    transform: translateX(2px);
+                .table td {
+                    padding: 0.4rem 0.3rem;
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+                    vertical-align: middle;
+                    white-space: nowrap;
                 }
 
-                .empty-state {
-                    padding: 2rem 1rem;
+                .table-responsive {
+                    overflow-x: auto;
+                    overflow-y: auto;
+                    max-width: 100%;
+                    scrollbar-width: thin;
+                    scrollbar-color: #6366f1 #f1f1f1;
                 }
 
-                .empty-icon {
-                    font-size: 2rem;
-                    opacity: 0.6;
-                }
-
-                .table-footer {
-                    background: rgba(108, 99, 255, 0.02) !important;
-                    border-top: 1px solid rgba(108, 99, 255, 0.08) !important;
-                }
-
-                /* RESPONSIVE DESIGN - MAINTAIN ALL COLUMNS */
-                @media (max-width: 1400px) {
-                    .search-group {
-                        width: 160px;
-                    }
-
-                    .sales-transactions-table th,
-                    .sales-transactions-table td {
-                        padding: 0.35rem 0.25rem;
-                        font-size: 0.65rem;
-                    }
-
-                    .sales-transactions-table th {
-                        font-size: 0.55rem;
-                    }
-                }
-
-                @media (max-width: 1200px) {
-                    .search-group {
-                        width: 140px;
-                    }
-
-                    .sales-transactions-table th,
-                    .sales-transactions-table td {
-                        padding: 0.3rem 0.2rem;
-                        font-size: 0.6rem;
-                    }
-
-                    .sales-transactions-table th {
-                        font-size: 0.5rem;
-                    }
-
-                    .party-info {
-                        max-width: 80px;
-                    }
-
-                    .action-btn {
-                        width: 22px;
-                        height: 22px;
-                    }
-                }
-
-                @media (max-width: 992px) {
-                    .bg-gradient-purple {
-                        padding: 0.5rem 0.75rem 0.25rem;
-                    }
-
-                    .sales-table-header .d-flex {
-                        flex-direction: column;
-                        gap: 0.5rem;
-                        align-items: stretch !important;
-                    }
-
-                    .search-group {
-                        width: 100%;
-                        max-width: 200px;
-                    }
-
-                    /* Still show all columns but with smaller content */
-                    .sales-transactions-table th,
-                    .sales-transactions-table td {
-                        padding: 0.25rem 0.15rem;
-                        font-size: 0.55rem;
-                    }
-
-                    .sales-transactions-table th {
-                        font-size: 0.45rem;
-                    }
-
-                    .party-info {
-                        max-width: 70px;
-                    }
-                }
-
-                @media (max-width: 768px) {
-                    .bg-gradient-purple {
-                        padding: 0.4rem 0.5rem 0.2rem;
-                    }
-
-                    .sales-transactions-table th,
-                    .sales-transactions-table td {
-                        padding: 0.2rem 0.1rem;
-                        font-size: 0.5rem;
-                    }
-
-                    .sales-transactions-table th {
-                        font-size: 0.4rem;
-                    }
-
-                    .action-btn {
-                        width: 20px;
-                        height: 20px;
-                    }
-
-                    .party-info {
-                        max-width: 60px;
-                    }
-
-                    .filter-icon {
-                        font-size: 0.3rem !important;
-                    }
-
-                    /* Horizontal scroll for mobile to maintain all columns */
-                    .table-responsive {
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                    }
-
-                    .sales-transactions-table {
-                        min-width: 800px; /* Force horizontal scroll instead of hiding columns */
-                    }
-                }
-
-                /* Enhanced Colors */
-                .text-primary { color: #6c63ff !important; }
-                .text-success { color: #10b981 !important; }
-                .text-warning { color: #f59e0b !important; }
-                .text-info { color: #06b6d4 !important; }
-                .text-danger { color: #ef4444 !important; }
-
-                /* Badge Gradients */
-                .badge.bg-success { background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important; }
-                .badge.bg-primary { background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%) !important; }
-                .badge.bg-danger { background: linear-gradient(135deg, #ef4444 0%, #f87171 100%) !important; }
-                .badge.bg-info { background: linear-gradient(135deg, #06b6d4 0%, #38bdf8 100%) !important; }
-                .badge.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%) !important; }
-                .badge.bg-secondary { background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%) !important; }
-                .badge.bg-light { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important; color: #374151 !important; }
-
-                /* Smooth Animations */
-                @keyframes slideInUp {
-                    from { opacity: 0; transform: translateY(10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-
-                .sales-transaction-row {
-                    animation: slideInUp 0.3s ease-out;
-                }
-
-                /* Table Scroll Enhancement */
                 .table-responsive::-webkit-scrollbar {
-                    height: 4px;
+                    height: 8px;
+                    width: 8px;
                 }
 
                 .table-responsive::-webkit-scrollbar-track {
-                    background: rgba(108, 99, 255, 0.05);
-                    border-radius: 2px;
+                    background: #f1f1f1;
+                    border-radius: 4px;
                 }
 
                 .table-responsive::-webkit-scrollbar-thumb {
-                    background: rgba(108, 99, 255, 0.2);
-                    border-radius: 2px;
+                    background: #6366f1;
+                    border-radius: 4px;
                 }
 
                 .table-responsive::-webkit-scrollbar-thumb:hover {
-                    background: rgba(108, 99, 255, 0.3);
+                    background: #4f46e5;
                 }
-                `}
-            </style>
-        </>
+
+                .sticky-header {
+                    position: relative;
+                }
+
+                .sticky-top {
+                    position: sticky;
+                    top: 0;
+                    z-index: 1020;
+                }
+
+                .actions-column {
+                    border-left: 1px solid rgba(0, 0, 0, 0.05);
+                }
+
+                .actions-column-header {
+                    border-left: 1px solid rgba(0, 0, 0, 0.05);
+                }
+
+                .dropdown-container {
+                    position: relative;
+                    z-index: 1000;
+                }
+
+                .dropdown-menu-custom {
+                    position: fixed;
+                    z-index: 10000;
+                    min-width: 140px;
+                    padding: 0.5rem 0;
+                    margin: 0;
+                    font-size: 0.8rem;
+                    background: white;
+                    border: 1px solid rgba(0, 0, 0, 0.1);
+                    border-radius: 0.5rem;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                }
+
+                .dropdown-item-custom {
+                    padding: 0.5rem 1rem;
+                    font-size: 0.8rem;
+                    transition: all 0.2s ease;
+                }
+
+                .dropdown-item-custom:hover {
+                    background-color: rgba(99, 102, 241, 0.05);
+                }
+
+                .action-btn-print,
+                .action-btn-menu {
+                    padding: 0.25rem 0.4rem;
+                    font-size: 0.7rem;
+                    min-width: 32px;
+                    height: 28px;
+                    border-radius: 0.25rem;
+                    transition: all 0.2s ease;
+                }
+
+                .action-btn-print:hover,
+                .action-btn-menu:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                }
+
+                .actions-wrapper {
+                    position: relative;
+                    z-index: 1;
+                }
+
+                @media (max-width: 768px) {
+                    .sales-invoices-container {
+                        padding: 0.25rem;
+                    }
+
+                    .card-header {
+                        padding: 0.75rem;
+                    }
+
+                    .table-responsive {
+                        font-size: 0.7rem;
+                    }
+
+                    .table th,
+                    .table td {
+                        padding: 0.3rem 0.2rem;
+                    }
+
+                    .actions-column {
+                        width: 100px;
+                        min-width: 100px;
+                    }
+
+                    .actions-column-header {
+                        width: 100px;
+                        min-width: 100px;
+                    }
+                }
+
+                .text-primary { color: #6366f1; }
+                .text-success { color: #10b981; }
+                .text-warning { color: #f59e0b; }
+                .text-info { color: #06b6d4; }
+                .text-danger { color: #ef4444; }
+
+                .bg-primary { background-color: #6366f1; }
+                .bg-success { background-color: #10b981; }
+                .bg-warning { background-color: #f59e0b; }
+                .bg-info { background-color: #06b6d4; }
+                .bg-danger { background-color: #ef4444; }
+                .bg-light { background-color: #f8f9fa; }
+                .bg-secondary { background-color: #6c757d; }
+            `}</style>
+        </div>
     );
 }
 

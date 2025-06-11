@@ -1,5 +1,8 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Import transaction service
+import transactionService from './transactionService.js';
+
 class SalesService {
     constructor() {
         this.baseURL = API_BASE_URL;
@@ -13,7 +16,10 @@ class SalesService {
 
         return {
             'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
+            ...(token && {
+                'Authorization': `Bearer ${token}`,
+                'x-auth-token': token  // Add x-auth-token for backend compatibility
+            })
         };
     }
 
@@ -25,22 +31,298 @@ class SalesService {
             ...options
         };
 
-        console.log('🔗 API Call:', url, config);
+        console.log('🔗 Sales API Call:', url);
 
         try {
             const response = await fetch(url, config);
-            const data = await response.json();
+            let data;
+            const contentType = response.headers.get('content-type');
 
-            if (!response.ok) {
-                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
             }
 
+            if (!response.ok) {
+                console.error('❌ Sales API Error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data
+                });
+
+                let errorMessage = data.message || `HTTP error! status: ${response.status}`;
+
+                if (response.status === 400) {
+                    errorMessage = data.message || 'Invalid sales data';
+                } else if (response.status === 401) {
+                    errorMessage = 'Authentication required. Please login again.';
+                } else if (response.status === 403) {
+                    errorMessage = 'Access denied. You do not have permission for this operation.';
+                } else if (response.status === 404) {
+                    errorMessage = 'Sale or resource not found.';
+                } else if (response.status === 500) {
+                    errorMessage = 'Server error. Please try again later.';
+                }
+
+                throw new Error(errorMessage);
+            }
+
+            console.log('✅ Sales API Success:', data);
             return data;
+
         } catch (error) {
-            console.error('❌ API Error:', error);
+            console.error('❌ Sales API Error:', error);
             throw error;
         }
     }
+
+    // ==================== ENHANCED SALES METHODS WITH TRANSACTIONS ====================
+
+    /**
+     * Create invoice with automatic transaction (Enhanced Version)
+     * @param {Object} invoiceData - Invoice data
+     * @returns {Promise<Object>} Created invoice with transaction
+     */
+    async createInvoiceWithTransaction(invoiceData) {
+        console.log('📄 Creating invoice with transaction:', invoiceData);
+
+        try {
+            // Validate required fields for transaction
+            if (!invoiceData.companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            // First create the invoice using existing method
+            const invoiceResponse = await this.createInvoice(invoiceData);
+
+            if (!invoiceResponse.success) {
+                throw new Error(invoiceResponse.message || 'Failed to create invoice');
+            }
+
+            const createdInvoice = invoiceResponse.data;
+            console.log('✅ Invoice created successfully:', createdInvoice._id || createdInvoice.id);
+
+            // Check if payment was received and create transaction
+            const paymentReceived = parseFloat(invoiceData.paymentReceived || invoiceData.payment?.paidAmount || 0);
+
+            if (paymentReceived > 0 && invoiceData.bankAccountId) {
+                console.log('💰 Creating sales transaction for payment received:', paymentReceived);
+
+                try {
+                    const transactionData = {
+                        bankAccountId: invoiceData.bankAccountId,
+                        amount: paymentReceived,
+                        paymentMethod: invoiceData.paymentMethod || 'cash',
+                        description: `Sales receipt for invoice ${createdInvoice.invoiceNumber || 'N/A'}`,
+                        notes: `Payment received for sale to ${invoiceData.customerName || invoiceData.customer?.name || 'customer'}`,
+                        customerId: invoiceData.customer?.id || invoiceData.customerId || null,
+                        customerName: invoiceData.customerName || invoiceData.customer?.name || '',
+                        saleId: createdInvoice._id || createdInvoice.id,
+                        invoiceNumber: createdInvoice.invoiceNumber,
+                        chequeNumber: invoiceData.chequeNumber || '',
+                        chequeDate: invoiceData.chequeDate || null,
+                        upiTransactionId: invoiceData.upiTransactionId || '',
+                        bankTransactionId: invoiceData.bankTransactionId || ''
+                    };
+
+                    const transactionResponse = await transactionService.createSalesTransaction(
+                        invoiceData.companyId,
+                        transactionData
+                    );
+
+                    console.log('✅ Sales transaction created:', transactionResponse.data);
+
+                    // Add transaction info to invoice response
+                    createdInvoice.transaction = transactionResponse.data;
+                    createdInvoice.transactionId = transactionResponse.data.transactionId;
+
+                } catch (transactionError) {
+                    console.warn('⚠️ Invoice created but transaction failed:', transactionError);
+                    // Don't fail the whole operation, just add warning
+                    createdInvoice.transactionError = transactionError.message;
+                    createdInvoice.transactionWarning = 'Invoice created successfully, but payment transaction could not be recorded. You can add payment manually later.';
+                }
+            } else if (paymentReceived > 0 && !invoiceData.bankAccountId) {
+                console.warn('⚠️ Payment received but no bank account specified');
+                createdInvoice.transactionWarning = 'Payment amount specified but no bank account selected. Transaction not created.';
+            }
+
+            return {
+                success: true,
+                data: createdInvoice,
+                message: 'Invoice created successfully' +
+                    (createdInvoice.transaction ? ' with payment transaction' : '') +
+                    (createdInvoice.transactionWarning ? '. Note: ' + createdInvoice.transactionWarning : '')
+            };
+
+        } catch (error) {
+            console.error('❌ Error creating invoice with transaction:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Add payment to existing sale with transaction
+     * @param {string} companyId - Company ID
+     * @param {string} saleId - Sale ID
+     * @param {Object} paymentData - Payment data
+     * @returns {Promise<Object>} Updated sale with transaction
+     */
+    async addPaymentWithTransaction(companyId, saleId, paymentData) {
+        console.log('💰 Adding payment with transaction:', { companyId, saleId, paymentData });
+
+        try {
+            // Validate required fields
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+            if (!saleId) {
+                throw new Error('Sale ID is required');
+            }
+            if (!paymentData.amount || parseFloat(paymentData.amount) <= 0) {
+                throw new Error('Valid payment amount is required');
+            }
+            if (!paymentData.bankAccountId) {
+                throw new Error('Bank account is required for payment transaction');
+            }
+
+            // First get the sale details
+            const saleResponse = await this.getInvoiceById(saleId);
+            if (!saleResponse.success) {
+                throw new Error('Sale not found');
+            }
+
+            const sale = saleResponse.data;
+
+            // Add payment to sale using existing method
+            const paymentResponse = await this.addPayment(saleId, paymentData);
+
+            if (!paymentResponse.success) {
+                throw new Error(paymentResponse.message || 'Failed to add payment');
+            }
+
+            // Create transaction for the payment
+            const paymentAmount = parseFloat(paymentData.amount);
+
+            console.log('💰 Creating payment transaction for amount:', paymentAmount);
+
+            try {
+                const transactionData = {
+                    bankAccountId: paymentData.bankAccountId,
+                    amount: paymentAmount,
+                    paymentMethod: paymentData.method || paymentData.paymentMethod || 'cash',
+                    description: `Payment received for invoice ${sale.invoiceNumber || saleId}`,
+                    notes: paymentData.notes || `Additional payment received from ${sale.customerName || 'customer'}`,
+                    customerId: sale.customer?._id || sale.customer?.id || null,
+                    customerName: sale.customerName || sale.customer?.name || '',
+                    saleId: saleId,
+                    invoiceNumber: sale.invoiceNumber,
+                    chequeNumber: paymentData.chequeNumber || '',
+                    chequeDate: paymentData.chequeDate || null,
+                    upiTransactionId: paymentData.upiTransactionId || '',
+                    bankTransactionId: paymentData.bankTransactionId || ''
+                };
+
+                const transactionResponse = await transactionService.createSalesTransaction(
+                    companyId,
+                    transactionData
+                );
+
+                console.log('✅ Payment transaction created:', transactionResponse.data);
+
+                // Add transaction info to payment response
+                paymentResponse.data.transaction = transactionResponse.data;
+                paymentResponse.data.transactionId = transactionResponse.data.transactionId;
+
+            } catch (transactionError) {
+                console.warn('⚠️ Payment added but transaction failed:', transactionError);
+                paymentResponse.data.transactionError = transactionError.message;
+                paymentResponse.data.transactionWarning = 'Payment recorded successfully, but bank transaction could not be created. Please check your bank account settings.';
+            }
+
+            return {
+                success: true,
+                data: paymentResponse.data,
+                message: 'Payment added successfully' +
+                    (paymentResponse.data.transaction ? ' with bank transaction' : '') +
+                    (paymentResponse.data.transactionWarning ? '. Note: ' + paymentResponse.data.transactionWarning : '')
+            };
+
+        } catch (error) {
+            console.error('❌ Error adding payment with transaction:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create quick cash sale with automatic transaction
+     * @param {Object} saleData - Quick sale data
+     * @returns {Promise<Object>} Created sale with transaction
+     */
+    async createQuickSaleWithTransaction(saleData) {
+        console.log('⚡ Creating quick sale with transaction:', saleData);
+
+        try {
+            // Validate required fields
+            if (!saleData.companyId) {
+                throw new Error('Company ID is required');
+            }
+            if (!saleData.amount || parseFloat(saleData.amount) <= 0) {
+                throw new Error('Valid sale amount is required');
+            }
+            if (!saleData.bankAccountId) {
+                throw new Error('Bank account is required for cash sale');
+            }
+
+            // Prepare invoice data for quick sale
+            const quickInvoiceData = {
+                companyId: saleData.companyId,
+                customerName: saleData.customerName || 'Cash Customer',
+                customerMobile: saleData.customerMobile || '',
+                invoiceType: 'non-gst', // Quick sales are usually non-GST
+                gstEnabled: false,
+                paymentMethod: saleData.paymentMethod || 'cash',
+                paymentReceived: saleData.amount,
+                bankAccountId: saleData.bankAccountId,
+                items: saleData.items || [{
+                    itemName: saleData.itemName || 'Quick Sale Item',
+                    quantity: 1,
+                    pricePerUnit: parseFloat(saleData.amount),
+                    taxRate: 0,
+                    amount: parseFloat(saleData.amount)
+                }],
+                totals: {
+                    subtotal: parseFloat(saleData.amount),
+                    totalDiscount: 0,
+                    totalTax: 0,
+                    finalTotal: parseFloat(saleData.amount)
+                },
+                notes: saleData.notes || 'Quick cash sale',
+                status: 'completed',
+                // Transaction fields
+                chequeNumber: saleData.chequeNumber,
+                chequeDate: saleData.chequeDate,
+                upiTransactionId: saleData.upiTransactionId,
+                bankTransactionId: saleData.bankTransactionId
+            };
+
+            // Create invoice with transaction
+            const result = await this.createInvoiceWithTransaction(quickInvoiceData);
+
+            return {
+                ...result,
+                message: 'Quick sale created successfully' +
+                    (result.data.transaction ? ' with payment transaction' : '')
+            };
+
+        } catch (error) {
+            console.error('❌ Error creating quick sale with transaction:', error);
+            throw error;
+        }
+    }
+
+    // ==================== EXISTING METHODS (Keep all your existing methods) ====================
 
     // Create new sale/invoice
     async createInvoice(invoiceData) {
@@ -411,6 +693,91 @@ class SalesService {
         });
 
         return await this.apiCall(`/sales/report?${queryParams}`);
+    }
+
+    // ==================== TRANSACTION-RELATED UTILITY METHODS ====================
+
+    /**
+     * Get sales with transaction details
+     * @param {string} companyId - Company ID
+     * @param {Object} filters - Query filters
+     * @returns {Promise<Object>} Sales with transaction info
+     */
+    async getSalesWithTransactions(companyId, filters = {}) {
+        try {
+            console.log('📊 Getting sales with transaction details:', { companyId, filters });
+
+            // Get sales data
+            const salesResponse = await this.getInvoices(companyId, filters);
+
+            if (!salesResponse.success) {
+                return salesResponse;
+            }
+
+            // Get transaction summary for the same period
+            const transactionSummary = await transactionService.getTransactionSummary(companyId, {
+                transactionType: 'sale',
+                dateFrom: filters.dateFrom,
+                dateTo: filters.dateTo
+            });
+
+            return {
+                success: true,
+                data: {
+                    ...salesResponse.data,
+                    transactionSummary: transactionSummary.data?.summary || {}
+                }
+            };
+
+        } catch (error) {
+            console.error('❌ Error getting sales with transactions:', error);
+            return {
+                success: false,
+                message: error.message,
+                data: { sales: [], summary: {} }
+            };
+        }
+    }
+
+    /**
+     * Check if sale has associated transactions
+     * @param {string} companyId - Company ID
+     * @param {string} saleId - Sale ID
+     * @returns {Promise<Object>} Transaction status
+     */
+    async getSaleTransactionStatus(companyId, saleId) {
+        try {
+            console.log('🔍 Checking transaction status for sale:', { companyId, saleId });
+
+            // Get transactions for this sale
+            const transactions = await transactionService.getTransactions(companyId, {
+                referenceId: saleId,
+                referenceType: 'sale'
+            });
+
+            const saleTransactions = transactions.data?.transactions || [];
+            const totalTransacted = saleTransactions.reduce((sum, txn) => {
+                return sum + (txn.direction === 'in' ? txn.amount : 0);
+            }, 0);
+
+            return {
+                success: true,
+                data: {
+                    hasTransactions: saleTransactions.length > 0,
+                    transactionCount: saleTransactions.length,
+                    totalTransacted: totalTransacted,
+                    transactions: saleTransactions
+                }
+            };
+
+        } catch (error) {
+            console.error('❌ Error checking sale transaction status:', error);
+            return {
+                success: false,
+                message: error.message,
+                data: { hasTransactions: false, transactionCount: 0, totalTransacted: 0 }
+            };
+        }
     }
 }
 

@@ -32,7 +32,6 @@ function PurchaseBillsHeader({
             return;
         }
 
-        console.log('🛒 Navigating to Add Purchase form for company:', effectiveCompanyId);
 
         if (onAddPurchase) {
             onAddPurchase();
@@ -52,7 +51,6 @@ function PurchaseBillsHeader({
             return;
         }
 
-        console.log('🧾 Navigating to Add Sale form for company:', effectiveCompanyId);
 
         if (onAddSale) {
             onAddSale();
@@ -64,7 +62,7 @@ function PurchaseBillsHeader({
 
     // Handle More Options
     const handleMoreOptions = () => {
-        console.log('⚙️ More options clicked');
+
         if (onMoreOptions) {
             onMoreOptions();
         } else {
@@ -74,7 +72,7 @@ function PurchaseBillsHeader({
 
     // Handle Settings
     const handleSettings = () => {
-        console.log('🔧 Settings clicked');
+
         if (onSettings) {
             onSettings();
         } else {

@@ -2,476 +2,197 @@ const express = require('express');
 const router = express.Router();
 const purchaseController = require('../controllers/purchaseController');
 
-console.log('🔧 Loading Purchase Routes...');
-
-// Debug middleware to log all requests
-router.use((req, res, next) => {
-    console.log(`📡 Purchase Route Hit: ${req.method} ${req.originalUrl}`);
-    console.log(`📡 Route Params:`, req.params);
-    console.log(`📡 Query Params:`, req.query);
-    next();
-});
-
-// Middleware for validation
+// Middleware for validation (you can add authentication middleware here)
 const validateRequest = (req, res, next) => {
-    console.log('✅ validateRequest middleware passed');
+    // Add any common validation logic here
     next();
 };
 
-// Authentication middleware - SIMPLIFIED FOR TESTING
+// Authentication middleware (add your auth logic)
 const authenticate = (req, res, next) => {
-    console.log('✅ authenticate middleware passed - auth disabled for testing');
-    // Skip auth for testing
+    // Add your authentication logic here
+    // For now, just passing through
     next();
 };
 
-// Company validation middleware for company-specific routes
-const validateCompanyParam = (req, res, next) => {
-    const companyId = req.params.companyId;
-    console.log('🏢 validateCompanyParam - companyId:', companyId);
-
-    if (!companyId) {
-        console.log('❌ Company ID missing in URL path');
-        return res.status(400).json({
-            success: false,
-            message: 'Company ID is required in URL path'
-        });
-    }
-
-    // Basic validation
-    if (companyId.length < 10) {
-        console.log('❌ Invalid companyId format:', companyId);
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid company ID format',
-            companyId: companyId
-        });
-    }
-
-    req.companyId = companyId;
-    console.log('✅ validateCompanyParam middleware passed');
-    next();
-};
-
-// Company validation middleware for query params
+// Company validation middleware
 const validateCompany = (req, res, next) => {
     const companyId = req.query.companyId || req.body.companyId;
     if (!companyId) {
         return res.status(400).json({
             success: false,
-            message: 'Company ID is required in query or body'
+            message: 'Company ID is required'
         });
     }
     next();
 };
 
-// Middleware to add companyId to req.query for controller compatibility
-const addCompanyIdToQuery = (req, res, next) => {
-    if (req.params.companyId && !req.query.companyId) {
-        req.query.companyId = req.params.companyId;
-    }
-    next();
-};
-
-// ==================== TEST ROUTE ====================
-router.get('/test-purchases', (req, res) => {
-    console.log('🧪 Test route hit!');
-    res.json({
-        success: true,
-        message: 'Purchase routes are working!',
-        timestamp: new Date().toISOString(),
-        route: req.originalUrl
-    });
-});
-
-// ==================== COMPANY-SPECIFIC ROUTES ====================
-// NOTE: More specific routes MUST come before general routes
+// ==================== BASIC CRUD ROUTES ====================
 
 /**
- * @route   GET /api/companies/:companyId/purchases/dashboard
- * @desc    Get purchases dashboard data (SPECIFIC ROUTE FIRST)
+ * @route   POST /api/purchases
+ * @desc    Create a new purchase/bill
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/dashboard',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    (req, res, next) => {
-        console.log('📊 Dashboard route hit for company:', req.params.companyId);
-        console.log('📊 Query params:', req.query);
-        next();
-    },
-    purchaseController.getDashboardData
-);
+router.post('/', authenticate, validateRequest, purchaseController.createPurchase);
 
 /**
- * @route   GET /api/companies/:companyId/purchases/reports/summary
- * @desc    Get purchases summary report
+ * @route   GET /api/purchases
+ * @desc    Get all purchases with pagination and filters
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/reports/summary',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getPurchasesReport
-);
+router.get('/', authenticate, validateCompany, purchaseController.getAllPurchases);
 
 /**
- * @route   GET /api/companies/:companyId/purchases/reports/today
- * @desc    Get today's purchases
+ * @route   GET /api/purchases/:id
+ * @desc    Get purchase by ID with full details
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/reports/today',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getTodaysPurchases
-);
+router.get('/:id', authenticate, validateRequest, purchaseController.getPurchaseById);
 
 /**
- * @route   GET /api/companies/:companyId/purchases/reports/monthly
- * @desc    Get monthly purchases report
+ * @route   PUT /api/purchases/:id
+ * @desc    Update purchase (only draft purchases can be updated)
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/reports/monthly',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getMonthlyReport
-);
+router.put('/:id', authenticate, validateRequest, purchaseController.updatePurchase);
 
 /**
- * @route   GET /api/companies/:companyId/purchases/reports/pending
- * @desc    Get pending purchases
+ * @route   DELETE /api/purchases/:id
+ * @desc    Cancel purchase (soft delete)
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/reports/pending',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getPendingPurchases
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/analytics/top-items
- * @desc    Get top purchased items analytics
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/analytics/top-items',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getTopItems
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/analytics/supplier-stats
- * @desc    Get supplier statistics
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/analytics/supplier-stats',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getSupplierStats
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/next-purchase-number
- * @desc    Get next purchase number
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/next-purchase-number',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.getNextPurchaseNumber
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/search
- * @desc    Search purchases
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/search',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    async (req, res) => {
-        try {
-            const { companyId } = req.params;
-            const { q, page = 1, limit = 10 } = req.query;
-
-            console.log('🔍 Search route hit:', { companyId, q, page, limit });
-
-            if (!q) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Search query is required'
-                });
-            }
-
-            // Add search to req.query and call getAllPurchases
-            req.query.search = q;
-            await purchaseController.getAllPurchases(req, res);
-
-        } catch (error) {
-            console.error('❌ Search error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to search purchases',
-                error: error.message
-            });
-        }
-    }
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/status/:status
- * @desc    Get purchases by status
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/status/:status',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    async (req, res) => {
-        try {
-            const { companyId, status } = req.params;
-            const { page = 1, limit = 10 } = req.query;
-
-            console.log('📊 Status route hit:', { companyId, status, page, limit });
-
-            const validStatuses = ['draft', 'ordered', 'received', 'completed', 'cancelled'];
-            if (!validStatuses.includes(status)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid status. Valid statuses: ' + validStatuses.join(', ')
-                });
-            }
-
-            // Add status to req.query and call getAllPurchases
-            req.query.status = status;
-            await purchaseController.getAllPurchases(req, res);
-
-        } catch (error) {
-            console.error('❌ Status route error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to get purchases by status',
-                error: error.message
-            });
-        }
-    }
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/export/csv
- * @desc    Export purchases to CSV
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/export/csv',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    purchaseController.exportCSV
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases
- * @desc    Get all purchases for a specific company (GENERAL ROUTE AFTER SPECIFIC ONES)
- * @access  Private
- */
-router.get('/companies/:companyId/purchases',
-    authenticate,
-    validateCompanyParam,
-    addCompanyIdToQuery,
-    (req, res, next) => {
-        console.log('🛒 GET purchases route hit for company:', req.params.companyId);
-        console.log('🛒 Query params:', req.query);
-        next();
-    },
-    purchaseController.getAllPurchases
-);
-
-/**
- * @route   POST /api/companies/:companyId/purchases
- * @desc    Create a new purchase for a specific company
- * @access  Private
- */
-router.post('/companies/:companyId/purchases',
-    authenticate,
-    validateCompanyParam,
-    (req, res, next) => {
-        console.log('🛒 POST purchases route hit for company:', req.params.companyId);
-        // Add companyId to request body for controller
-        if (!req.body.companyId) {
-            req.body.companyId = req.params.companyId;
-        }
-        next();
-    },
-    purchaseController.createPurchase
-);
-
-/**
- * @route   GET /api/companies/:companyId/purchases/:id
- * @desc    Get purchase by ID for a specific company
- * @access  Private
- */
-router.get('/companies/:companyId/purchases/:id',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.getPurchaseById
-);
-
-/**
- * @route   PUT /api/companies/:companyId/purchases/:id
- * @desc    Update purchase for a specific company
- * @access  Private
- */
-router.put('/companies/:companyId/purchases/:id',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.updatePurchase
-);
-
-/**
- * @route   DELETE /api/companies/:companyId/purchases/:id
- * @desc    Delete purchase for a specific company
- * @access  Private
- */
-router.delete('/companies/:companyId/purchases/:id',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.deletePurchase
-);
+router.delete('/:id', authenticate, validateRequest, purchaseController.deletePurchase);
 
 // ==================== STATUS MANAGEMENT ROUTES ====================
 
 /**
- * @route   PATCH /api/companies/:companyId/purchases/:id/order
+ * @route   PATCH /api/purchases/:id/order
  * @desc    Mark purchase as ordered
  * @access  Private
  */
-router.patch('/companies/:companyId/purchases/:id/order',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.markAsOrdered
-);
+router.patch('/:id/order', authenticate, validateRequest, purchaseController.markAsOrdered);
 
 /**
- * @route   PATCH /api/companies/:companyId/purchases/:id/receive
+ * @route   PATCH /api/purchases/:id/receive
  * @desc    Mark purchase as received
  * @access  Private
  */
-router.patch('/companies/:companyId/purchases/:id/receive',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.markAsReceived
-);
+router.patch('/:id/receive', authenticate, validateRequest, purchaseController.markAsReceived);
 
 /**
- * @route   PATCH /api/companies/:companyId/purchases/:id/complete
- * @desc    Complete purchase
+ * @route   PATCH /api/purchases/:id/complete
+ * @desc    Mark purchase as completed
  * @access  Private
  */
-router.patch('/companies/:companyId/purchases/:id/complete',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.completePurchase
-);
+router.patch('/:id/complete', authenticate, validateRequest, purchaseController.completePurchase);
 
 /**
- * @route   PATCH /api/companies/:companyId/purchases/:id/cancel
- * @desc    Cancel purchase
+ * @route   PATCH /api/purchases/:id/cancel
+ * @desc    Cancel a purchase
  * @access  Private
  */
-router.patch('/companies/:companyId/purchases/:id/cancel',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.deletePurchase
-);
+router.patch('/:id/cancel', authenticate, validateRequest, purchaseController.deletePurchase);
 
 // ==================== PAYMENT ROUTES ====================
 
 /**
- * @route   POST /api/companies/:companyId/purchases/:id/payment
- * @desc    Add payment to purchase
+ * @route   POST /api/purchases/:id/payment
+ * @desc    Add payment to a purchase
  * @access  Private
  */
-router.post('/companies/:companyId/purchases/:id/payment',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.addPayment
-);
+router.post('/:id/payment', authenticate, validateRequest, purchaseController.addPayment);
 
 /**
- * @route   GET /api/companies/:companyId/purchases/:id/payment-status
- * @desc    Get payment status
+ * @route   GET /api/purchases/:id/payment-status
+ * @desc    Get payment status of a purchase
  * @access  Private
  */
-router.get('/companies/:companyId/purchases/:id/payment-status',
-    authenticate,
-    validateCompanyParam,
-    purchaseController.getPaymentStatus
-);
+router.get('/:id/payment-status', authenticate, validateRequest, purchaseController.getPaymentStatus);
 
-// ==================== LEGACY ROUTES (for backward compatibility) ====================
+// ==================== REPORTING ROUTES ====================
 
 /**
- * @route   POST /api/purchases
- * @desc    Create purchase (legacy route)
+ * @route   GET /api/purchases/reports/today
+ * @desc    Get today's purchases summary
  * @access  Private
  */
-router.post('/',
-    authenticate,
-    validateCompany,
-    purchaseController.createPurchase
-);
+router.get('/reports/today', authenticate, validateCompany, purchaseController.getTodaysPurchases);
 
 /**
- * @route   GET /api/purchases
- * @desc    Get all purchases (legacy route)
+ * @route   GET /api/purchases/reports/dashboard
+ * @desc    Get purchases dashboard data (today, week, month metrics)
  * @access  Private
  */
-router.get('/',
-    authenticate,
-    validateCompany,
-    purchaseController.getAllPurchases
-);
+router.get('/reports/dashboard', authenticate, validateCompany, purchaseController.getDashboardData);
 
 /**
- * @route   GET /api/purchases/:id
- * @desc    Get purchase by ID (legacy route)
+ * @route   GET /api/purchases/reports/summary
+ * @desc    Get purchases report for date range
  * @access  Private
  */
-router.get('/:id',
-    authenticate,
-    validateRequest,
-    purchaseController.getPurchaseById
-);
+router.get('/reports/summary', authenticate, validateCompany, purchaseController.getPurchasesReport);
 
 /**
- * @route   PUT /api/purchases/:id
- * @desc    Update purchase (legacy route)
+ * @route   GET /api/purchases/reports/monthly
+ * @desc    Get monthly purchases breakdown
  * @access  Private
  */
-router.put('/:id',
-    authenticate,
-    validateRequest,
-    purchaseController.updatePurchase
-);
+router.get('/reports/monthly', authenticate, validateCompany, purchaseController.getMonthlyReport);
 
 /**
- * @route   DELETE /api/purchases/:id
- * @desc    Delete purchase (legacy route)
+ * @route   GET /api/purchases/reports/pending
+ * @desc    Get pending purchases
  * @access  Private
  */
-router.delete('/:id',
-    authenticate,
-    validateRequest,
-    purchaseController.deletePurchase
-);
+router.get('/reports/pending', authenticate, validateCompany, purchaseController.getPendingPurchases);
 
-console.log('✅ Purchase Routes loaded successfully');
+/**
+ * @route   GET /api/purchases/reports/overdue
+ * @desc    Get overdue purchases
+ * @access  Private
+ */
+router.get('/reports/overdue', authenticate, validateCompany, purchaseController.getOverduePurchases);
+
+// ==================== ANALYTICS ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/analytics/top-items
+ * @desc    Get top purchased items
+ * @access  Private
+ */
+router.get('/analytics/top-items', authenticate, validateCompany, purchaseController.getTopItems);
+
+/**
+ * @route   GET /api/purchases/analytics/supplier-stats
+ * @desc    Get supplier purchase statistics
+ * @access  Private
+ */
+router.get('/analytics/supplier-stats', authenticate, validateCompany, purchaseController.getSupplierStats);
+
+// ==================== UTILITY ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/next-purchase-number
+ * @desc    Get next available purchase number
+ * @access  Private
+ */
+router.get('/next-purchase-number', authenticate, validateCompany, purchaseController.getNextPurchaseNumber);
+
+/**
+ * @route   POST /api/purchases/validate-stock
+ * @desc    Validate item availability (not for stock checking in purchases)
+ * @access  Private
+ */
+router.post('/validate-stock', authenticate, validateRequest, purchaseController.validateStock);
+
+// ==================== EXPORT ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/export/csv
+ * @desc    Export purchases data as CSV
+ * @access  Private
+ */
+router.get('/export/csv', authenticate, validateCompany, purchaseController.exportCSV);
+
 module.exports = router;

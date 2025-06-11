@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
-import { useParams } from 'react-router-dom'; // ✅ Added for URL params
+import { useParams } from 'react-router-dom';
 import './Bank.css';
 
 // Import services
@@ -49,21 +49,41 @@ function Bank({ view = 'allAccounts', onNavigate }) {
     const [editingAccount, setEditingAccount] = useState(null);
     const [selectedAccountForTransaction, setSelectedAccountForTransaction] = useState(null);
 
-    // Form data states
-    const [accountFormData, setAccountFormData] = useState(
-        bankAccountService.createAccountTemplate()
-    );
+    // ✅ ENHANCED: Form data states with proper initialization
+    const [accountFormData, setAccountFormData] = useState({
+        accountName: '',
+        accountNumber: '',
+        bankName: '',
+        branchName: '',
+        ifscCode: '',
+        accountType: 'savings',
+        accountHolderName: '',
+        type: 'bank',
+        openingBalance: 0,
+        asOfDate: new Date().toISOString().split('T')[0],
+        printUpiQrCodes: false,
+        printBankDetails: false,
+        upiId: '',
+        isActive: true
+    });
 
     const [transactionFormData, setTransactionFormData] = useState({
         accountId: '',
-        transactionType: 'deposit', // 'deposit' or 'withdrawal'
+        transactionType: 'deposit', // 'deposit', 'withdraw', 'transfer', 'adjustment'
         amount: 0,
         description: '',
         reference: '',
         transactionDate: new Date().toISOString().split('T')[0],
         category: '',
-        paymentMethod: 'bank_transfer'
+        paymentMethod: 'bank_transfer',
+        // ✅ Add additional fields for transfers
+        fromAccountId: '',
+        toAccountId: '',
+        transferType: ''
     });
+
+    // ✅ Success/Error alert state
+    const [alert, setAlert] = useState({ show: false, variant: '', message: '' });
 
     // ✅ ENHANCED: Company ID resolution with fallbacks
     useEffect(() => {
@@ -132,10 +152,11 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 limit: 100
             });
 
-            const accounts = response.data.accounts || [];
+            // ✅ FIXED: Handle response structure properly
+            const accounts = response?.data?.accounts || response?.accounts || [];
             setBankAccounts(accounts);
 
-            // Set first account as selected by default
+            // Set first account as selected by default if none selected
             const typeAccounts = accounts.filter(acc => acc.type === activeType);
             if (typeAccounts.length > 0 && !selectedAccount) {
                 setSelectedAccount(typeAccounts[0]);
@@ -145,7 +166,8 @@ function Bank({ view = 'allAccounts', onNavigate }) {
 
         } catch (error) {
             console.error('❌ Error loading bank accounts:', error);
-            setError(error.response?.data?.message || 'Failed to load bank accounts');
+            const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load bank accounts';
+            setError(errorMessage);
         } finally {
             setLoading(false);
             setAccountsLoading(false);
@@ -162,6 +184,7 @@ function Bank({ view = 'allAccounts', onNavigate }) {
             // You can use this data for dashboard widgets
         } catch (error) {
             console.error('❌ Error loading account summary:', error);
+            // Don't show error for summary - it's optional
         }
     };
 
@@ -175,91 +198,221 @@ function Bank({ view = 'allAccounts', onNavigate }) {
             setError('Company selection required. Please navigate to a valid company URL.');
             setLoading(false);
         }
-    }, [effectiveCompanyId]); // Watch effectiveCompanyId instead of companyId
+    }, [effectiveCompanyId, activeType]); // ✅ Added activeType dependency
 
     // Update selected account when type changes
     useEffect(() => {
-        const typeAccounts = bankAccounts.filter(account => account.type === activeType);
-        if (typeAccounts.length > 0) {
-            const currentSelected = typeAccounts.find(acc => acc._id === selectedAccount?._id);
-            if (!currentSelected) {
-                setSelectedAccount(typeAccounts[0]);
+        if (bankAccounts.length > 0) {
+            const typeAccounts = bankAccounts.filter(account => account.type === activeType);
+            if (typeAccounts.length > 0) {
+                const currentSelected = typeAccounts.find(acc => 
+                    (acc._id || acc.id) === (selectedAccount?._id || selectedAccount?.id)
+                );
+                if (!currentSelected) {
+                    setSelectedAccount(typeAccounts[0]);
+                }
+            } else {
+                setSelectedAccount(null);
             }
-        } else {
-            setSelectedAccount(null);
         }
-    }, [activeType, bankAccounts]);
+    }, [activeType, bankAccounts, selectedAccount]);
 
-    // Filter accounts based on active type
-    const filteredAccounts = bankAccounts.filter(account => account.type === activeType);
+    // ✅ Auto-hide alerts after 5 seconds
+    useEffect(() => {
+        if (alert.show) {
+            const timer = setTimeout(() => {
+                setAlert({ show: false, variant: '', message: '' });
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [alert]);
+
+    // Filter accounts based on active type and search query
+    const filteredAccounts = bankAccounts.filter(account => {
+        const matchesType = account.type === activeType;
+        const matchesSearch = !sidebarSearchQuery || 
+            account.accountName?.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
+            account.accountNumber?.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
+            account.bankName?.toLowerCase().includes(sidebarSearchQuery.toLowerCase());
+        
+        return matchesType && matchesSearch;
+    });
 
     // Handle type change
     const handleTypeChange = (type) => {
+        console.log('🔄 Changing account type to:', type);
         setActiveType(type);
         setSidebarSearchQuery('');
     };
 
     // Handle account selection
     const handleAccountSelect = (account) => {
+        console.log('📋 Selecting account:', account.accountName);
         setSelectedAccount(account);
     };
 
-    // Handle Add Account
+    // ✅ ENHANCED: Handle Add Account with proper type setting
     const handleAddAccount = (accountType) => {
+        console.log('➕ Adding new account of type:', accountType);
+
         setEditingAccount(null);
-        const template = bankAccountService.createAccountTemplate();
         setAccountFormData({
-            ...template,
+            accountName: '',
+            accountNumber: '',
+            bankName: '',
+            branchName: '',
+            ifscCode: '',
+            accountType: accountType === 'cash' ? 'cash' : 'savings',
+            accountHolderName: '',
             type: accountType,
-            accountType: accountType === 'cash' ? 'cash' : 'savings'
+            openingBalance: 0,
+            asOfDate: new Date().toISOString().split('T')[0],
+            printUpiQrCodes: false,
+            printBankDetails: false,
+            upiId: '',
+            isActive: true
         });
         setShowAccountModal(true);
     };
 
-    // Handle Edit Account
+    // ✅ ENHANCED: Handle Edit Account with proper data population
     const handleEditAccount = (account) => {
+        console.log('✏️ Editing account:', account);
+
         setEditingAccount(account);
-        setAccountFormData({
-            ...account,
-            asOfDate: account.asOfDate ? account.asOfDate.split('T')[0] : new Date().toISOString().split('T')[0]
-        });
+
+        // ✅ FIXED: Properly populate form data for editing with proper date formatting
+        const editFormData = {
+            accountName: account.accountName || '',
+            accountNumber: account.accountNumber || '',
+            bankName: account.bankName || '',
+            branchName: account.branchName || '',
+            ifscCode: account.ifscCode || '',
+            accountType: account.accountType || 'savings',
+            accountHolderName: account.accountHolderName || '',
+            type: account.type || 'bank',
+            openingBalance: parseFloat(account.openingBalance) || 0,
+            asOfDate: account.asOfDate ? 
+                new Date(account.asOfDate).toISOString().split('T')[0] :
+                new Date().toISOString().split('T')[0],
+            printUpiQrCodes: Boolean(account.printUpiQrCodes),
+            printBankDetails: Boolean(account.printBankDetails),
+            upiId: account.upiId || '',
+            isActive: account.isActive !== false
+        };
+
+        console.log('📝 Setting form data for edit:', editFormData);
+        setAccountFormData(editFormData);
         setShowAccountModal(true);
     };
 
-    // Handle Add Transaction
-    const handleAddTransaction = (account, type = null) => {
+    // ✅ FIXED: Handle Add Transaction with proper transaction type handling
+    const handleAddTransaction = (account, transactionData = null) => {
+        console.log('💰 Adding transaction for account:', account.accountName);
+        console.log('📊 Transaction data received:', transactionData);
+
         setSelectedAccountForTransaction(account);
+
+        // ✅ FIXED: Handle different transaction types properly
+        let transactionType = 'deposit'; // default
+        let paymentMethod = account.type === 'cash' ? 'cash' : 'bank_transfer';
+
+        if (transactionData) {
+            // If transactionData is an object with type property
+            if (typeof transactionData === 'object' && transactionData.type) {
+                switch (transactionData.type) {
+                    case 'deposit':
+                        transactionType = 'deposit';
+                        break;
+                    case 'withdraw':
+                        transactionType = 'withdraw';
+                        break;
+                    case 'transfer-bank-to-cash':
+                        transactionType = 'transfer-bank-to-cash';
+                        paymentMethod = 'transfer_bank_to_cash';
+                        break;
+                    case 'transfer-cash-to-bank':
+                        transactionType = 'transfer-cash-to-bank';
+                        paymentMethod = 'transfer_cash_to_bank';
+                        break;
+                    case 'transfer-bank-to-bank':
+                        transactionType = 'transfer-bank-to-bank';
+                        paymentMethod = 'transfer_bank_to_bank';
+                        break;
+                    case 'adjust-balance':
+                        transactionType = 'adjust-balance';
+                        paymentMethod = 'balance_adjustment';
+                        break;
+                    default:
+                        transactionType = 'deposit';
+                }
+            } else if (typeof transactionData === 'string') {
+                // If transactionData is a simple string (backward compatibility)
+                transactionType = transactionData;
+            }
+        }
+
+        console.log('🔄 Processed transaction type:', transactionType);
+        console.log('💳 Payment method:', paymentMethod);
+
         setTransactionFormData({
             accountId: account._id || account.id,
-            transactionType: 'deposit',
+            transactionType: transactionType,
             amount: 0,
             description: '',
             reference: '',
             transactionDate: new Date().toISOString().split('T')[0],
             category: '',
-            paymentMethod: account.type === 'cash' ? 'cash' : 'bank_transfer'
+            paymentMethod: paymentMethod,
+            // ✅ Add additional fields for transfers
+            fromAccountId: transactionType.includes('transfer') ? (account._id || account.id) : '',
+            toAccountId: '',
+            transferType: transactionData?.type || ''
         });
+
         setShowTransactionModal(true);
     };
 
     // Handle Reconciliation
     const handleReconciliation = (account) => {
+        console.log('🔄 Starting reconciliation for account:', account.accountName);
         setSelectedAccountForTransaction(account);
         setShowReconciliationModal(true);
     };
 
-    // Modal handlers
+    // ✅ ENHANCED: Modal handlers with proper cleanup
     const handleCloseAccountModal = () => {
+        console.log('❌ Closing account modal');
         setShowAccountModal(false);
         setEditingAccount(null);
-        setAccountFormData(bankAccountService.createAccountTemplate());
+        setAccountFormData({
+            accountName: '',
+            accountNumber: '',
+            bankName: '',
+            branchName: '',
+            ifscCode: '',
+            accountType: 'savings',
+            accountHolderName: '',
+            type: activeType,
+            openingBalance: 0,
+            asOfDate: new Date().toISOString().split('T')[0],
+            printUpiQrCodes: false,
+            printBankDetails: false,
+            upiId: '',
+            isActive: true
+        });
     };
 
+    // ✅ ENHANCED: Handle account form input changes
     const handleAccountInputChange = (e) => {
         const { name, value, type, checked } = e.target;
+        const inputValue = type === 'checkbox' ? checked : value;
+
+        console.log(`📝 Account form field changed: ${name} = ${inputValue}`);
+
         setAccountFormData(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : value
+            [name]: inputValue
         }));
     };
 
@@ -271,64 +424,223 @@ function Bank({ view = 'allAccounts', onNavigate }) {
         }));
     };
 
-    // Save account (connected to backend)
+    // ✅ ENHANCED: Save account (connected to backend)
     const handleSaveAccount = async (savedAccount) => {
         try {
             console.log('💾 Account saved successfully:', savedAccount);
 
+            // Show success message
+            setAlert({
+                show: true,
+                variant: 'success',
+                message: `Account ${editingAccount ? 'updated' : 'created'} successfully!`
+            });
+
             // Reload accounts to get fresh data
             await loadBankAccounts();
 
-            // Update selected account if it was being edited
-            if (editingAccount && savedAccount._id === editingAccount._id) {
+            // ✅ FIXED: Update selected account properly
+            if (editingAccount && savedAccount && 
+                (savedAccount._id === editingAccount._id || savedAccount.id === editingAccount.id)) {
+                setSelectedAccount(savedAccount);
+            } else if (!editingAccount && savedAccount) {
+                // Select the newly created account
                 setSelectedAccount(savedAccount);
             }
+
+            // Close modal
+            handleCloseAccountModal();
 
             return true;
         } catch (error) {
             console.error('❌ Error after saving account:', error);
+            setAlert({
+                show: true,
+                variant: 'danger',
+                message: `Failed to ${editingAccount ? 'update' : 'create'} account: ${error.message}`
+            });
             return false;
         }
     };
 
-    // ✅ UPDATED: Save transaction using effectiveCompanyId
+    // ✅ FIXED: Handle Save Transaction with proper transaction type handling
     const handleSaveTransaction = async (e) => {
         e.preventDefault();
 
         if (!selectedAccountForTransaction || !effectiveCompanyId) {
-            alert('Missing account or company information');
+            setAlert({
+                show: true,
+                variant: 'danger',
+                message: 'Missing account or company information'
+            });
             return false;
         }
 
         try {
             console.log('💰 Saving transaction:', transactionFormData);
 
-            // Update account balance using backend service
-            const response = await bankAccountService.updateAccountBalance(
-                effectiveCompanyId, // ✅ Use effectiveCompanyId
-                selectedAccountForTransaction._id || selectedAccountForTransaction.id,
-                {
-                    amount: parseFloat(transactionFormData.amount),
-                    type: transactionFormData.transactionType === 'deposit' ? 'credit' : 'debit',
-                    reason: transactionFormData.description || `${transactionFormData.transactionType} transaction`
-                }
-            );
+            let response;
+            const amount = parseFloat(transactionFormData.amount);
 
-            console.log('✅ Balance updated:', response.data);
+            // ✅ ENHANCED: Better amount validation
+            if (isNaN(amount) || amount <= 0) {
+                setAlert({
+                    show: true,
+                    variant: 'warning',
+                    message: 'Please enter a valid amount greater than 0'
+                });
+                return false;
+            }
+
+            // ✅ FIXED: Handle transaction types correctly
+            const transactionType = transactionFormData.transactionType;
+            console.log('🔄 Processing transaction type:', transactionType);
+
+            switch (transactionType) {
+                case 'deposit':
+                    console.log('💰 Processing deposit transaction');
+                    response = await bankAccountService.updateAccountBalance(
+                        effectiveCompanyId,
+                        selectedAccountForTransaction._id || selectedAccountForTransaction.id,
+                        {
+                            amount: amount,
+                            type: 'credit', // ✅ Deposit = credit
+                            reason: transactionFormData.description || 'Deposit transaction',
+                            reference: transactionFormData.reference || null,
+                            category: transactionFormData.category || 'general'
+                        }
+                    );
+                    break;
+
+                case 'withdraw':
+                    console.log('💸 Processing withdraw transaction');
+                    response = await bankAccountService.updateAccountBalance(
+                        effectiveCompanyId,
+                        selectedAccountForTransaction._id || selectedAccountForTransaction.id,
+                        {
+                            amount: amount,
+                            type: 'debit', // ✅ Withdrawal = debit
+                            reason: transactionFormData.description || 'Withdrawal transaction',
+                            reference: transactionFormData.reference || null,
+                            category: transactionFormData.category || 'general'
+                        }
+                    );
+                    break;
+
+                case 'adjust-balance':
+                    console.log('⚖️ Processing balance adjustment');
+                    response = await bankAccountService.adjustBalance(
+                        effectiveCompanyId,
+                        selectedAccountForTransaction._id || selectedAccountForTransaction.id,
+                        {
+                            adjustmentAmount: amount, // Positive adjustment
+                            reason: transactionFormData.description || 'Balance adjustment',
+                            reference: transactionFormData.reference || null,
+                            category: 'adjustment'
+                        }
+                    );
+                    break;
+
+                // ✅ FIXED: Handle transfer types from dropdown
+                case 'transfer-bank-to-cash':
+                case 'transfer-cash-to-bank':
+                case 'transfer-bank-to-bank':
+                    console.log('🔄 Processing transfer type:', transactionType);
+                    
+                    // For now, treat as balance update on the source account
+                    const transferBalanceType = 'debit'; // Money going out of source account
+                    response = await bankAccountService.updateAccountBalance(
+                        effectiveCompanyId,
+                        selectedAccountForTransaction._id || selectedAccountForTransaction.id,
+                        {
+                            amount: amount,
+                            type: transferBalanceType,
+                            reason: transactionFormData.description || `${transactionType.replace(/-/g, ' ')} transaction`,
+                            reference: transactionFormData.reference || null,
+                            category: 'transfer'
+                        }
+                    );
+                    break;
+
+                default:
+                    console.error('❌ Unknown transaction type:', transactionType);
+                    setAlert({
+                        show: true,
+                        variant: 'danger',
+                        message: `Unknown transaction type: ${transactionType}`
+                    });
+                    return false;
+            }
+
+            // ✅ FIXED: Handle response properly
+            console.log('✅ Transaction response:', response);
+
+            // Extract new balance from response
+            const newBalance = response?.data?.data?.newBalance || 
+                              response?.data?.newBalance || 
+                              'Updated';
+
+            // Show success message
+            const transactionTypeNames = {
+                'deposit': 'Deposit',
+                'withdraw': 'Withdrawal',
+                'adjust-balance': 'Balance Adjustment',
+                'transfer-bank-to-cash': 'Bank to Cash Transfer',
+                'transfer-cash-to-bank': 'Cash to Bank Transfer',
+                'transfer-bank-to-bank': 'Bank to Bank Transfer'
+            };
+
+            const transactionName = transactionTypeNames[transactionType] || 'Transaction';
+
+            setAlert({
+                show: true,
+                variant: 'success',
+                message: `${transactionName} completed successfully! New balance: ${
+                    typeof newBalance === 'number' ? 
+                    bankAccountService.formatCurrency(newBalance) : 
+                    'Updated'
+                }`
+            });
 
             // Reload accounts to get updated balances
             await loadBankAccounts();
 
-            // Close modal
+            // Close modal and reset
             setShowTransactionModal(false);
             setSelectedAccountForTransaction(null);
+            setTransactionFormData({
+                accountId: '',
+                transactionType: 'deposit',
+                amount: 0,
+                description: '',
+                reference: '',
+                transactionDate: new Date().toISOString().split('T')[0],
+                category: '',
+                paymentMethod: 'bank_transfer',
+                fromAccountId: '',
+                toAccountId: '',
+                transferType: ''
+            });
 
-            alert(`Transaction completed successfully! New balance: ${bankAccountService.formatCurrency(response.data.newBalance)}`);
             return true;
 
         } catch (error) {
             console.error('❌ Error saving transaction:', error);
-            alert(error.response?.data?.message || 'Failed to save transaction');
+            
+            // ✅ ENHANCED: Better error handling
+            let errorMessage = 'Failed to save transaction';
+            
+            if (error?.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error?.message) {
+                errorMessage = error.message;
+            }
+
+            setAlert({
+                show: true,
+                variant: 'danger',
+                message: `Transaction failed: ${errorMessage}`
+            });
             return false;
         }
     };
@@ -354,8 +666,8 @@ function Bank({ view = 'allAccounts', onNavigate }) {
             try {
                 // Update account balance with sale amount
                 await bankAccountService.updateAccountBalance(
-                    effectiveCompanyId, // ✅ Use effectiveCompanyId
-                    selectedAccount._id,
+                    effectiveCompanyId,
+                    selectedAccount._id || selectedAccount.id,
                     {
                         amount: saleData.totals.finalTotal,
                         type: 'credit',
@@ -367,10 +679,18 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 await loadBankAccounts();
 
                 setCurrentView('bank');
-                alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
+                setAlert({
+                    show: true,
+                    variant: 'success',
+                    message: `Sale ${saleData.invoiceNumber} saved successfully!`
+                });
             } catch (error) {
                 console.error('❌ Error updating balance for sale:', error);
-                alert('Sale saved but failed to update account balance');
+                setAlert({
+                    show: true,
+                    variant: 'warning',
+                    message: 'Sale saved but failed to update account balance'
+                });
             }
         }
     };
@@ -382,8 +702,8 @@ function Bank({ view = 'allAccounts', onNavigate }) {
             try {
                 // Update account balance with purchase amount
                 await bankAccountService.updateAccountBalance(
-                    effectiveCompanyId, // ✅ Use effectiveCompanyId
-                    selectedAccount._id,
+                    effectiveCompanyId,
+                    selectedAccount._id || selectedAccount.id,
                     {
                         amount: purchaseData.totals.finalTotal,
                         type: 'debit',
@@ -395,21 +715,31 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 await loadBankAccounts();
 
                 setCurrentView('bank');
-                alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
+                setAlert({
+                    show: true,
+                    variant: 'success',
+                    message: `Purchase ${purchaseData.purchaseNumber} saved successfully!`
+                });
             } catch (error) {
                 console.error('❌ Error updating balance for purchase:', error);
-                alert('Purchase saved but failed to update account balance');
+                setAlert({
+                    show: true,
+                    variant: 'warning',
+                    message: 'Purchase saved but failed to update account balance'
+                });
             }
         }
     };
 
     // Header action handlers
     const handleMoreOptions = () => {
-        console.log('More options clicked');
+        console.log('⚙️ More options clicked');
+        // You can implement export, bulk operations, etc.
     };
 
     const handleSettings = () => {
-        console.log('Settings clicked');
+        console.log('⚙️ Settings clicked');
+        // You can implement bank settings, preferences, etc.
     };
 
     // ✅ ENHANCED: Show loading state while resolving company ID
@@ -539,9 +869,21 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 onSettings={handleSettings}
             />
 
+            {/* ✅ ENHANCED: Success/Error Alerts */}
+            {alert.show && (
+                <Alert
+                    variant={alert.variant}
+                    className="m-3 mb-0"
+                    dismissible
+                    onClose={() => setAlert({ show: false, variant: '', message: '' })}
+                >
+                    {alert.message}
+                </Alert>
+            )}
+
             {/* Error Alert */}
-            {error && (
-                <Alert variant="danger" className="m-3" dismissible onClose={() => setError('')}>
+            {error && !alert.show && (
+                <Alert variant="danger" className="m-3 mb-0" dismissible onClose={() => setError('')}>
                     {error}
                 </Alert>
             )}
@@ -595,7 +937,7 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 </Container>
             </div>
 
-            {/* Modals */}
+            {/* ✅ ENHANCED: Modals with proper props */}
             <BankAccountModal
                 show={showAccountModal}
                 onHide={handleCloseAccountModal}
@@ -618,9 +960,11 @@ function Bank({ view = 'allAccounts', onNavigate }) {
                 show={showReconciliationModal}
                 onHide={() => setShowReconciliationModal(false)}
                 account={selectedAccountForTransaction}
-                transactions={transactions.filter(t => t.accountId === selectedAccountForTransaction?.id)}
+                transactions={transactions.filter(t => 
+                    (t.accountId || t.account_id) === (selectedAccountForTransaction?.id || selectedAccountForTransaction?._id)
+                )}
                 onReconcile={(reconciliationData) => {
-                    console.log('Reconciliation data:', reconciliationData);
+                    console.log('🔄 Reconciliation data:', reconciliationData);
                     setShowReconciliationModal(false);
                 }}
             />

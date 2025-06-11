@@ -275,28 +275,7 @@ function PurchaseBillsTable({
         return { totalCGST, totalSGST, totalIGST };
     };
 
-    // ✅ ENHANCED: Debug purchase data structure
-    const debugPurchaseData = (purchase, index) => {
-        if (index === 0) {
-            console.log('🔍 Sample Purchase Data Structure:', {
-                id: purchase.id,
-                purchaseNo: purchase.purchaseNo,
-                purchaseNumber: purchase.purchaseNumber,
-                amount: purchase.amount,
-                finalTotal: purchase.finalTotal,
-                balance: purchase.balance,
-                pendingAmount: purchase.pendingAmount,
-                supplierName: purchase.supplierName,
-                date: purchase.date,
-                purchaseDate: purchase.purchaseDate,
-                status: purchase.status,
-                purchaseStatus: purchase.purchaseStatus,
-                items: purchase.items?.length || 0,
-                fullObject: purchase.fullObject,
-                extractedValues: extractPurchaseValues(purchase)
-            });
-        }
-    };
+
 
     return (
         <>
@@ -434,8 +413,7 @@ function PurchaseBillsTable({
                                         </tr>
                                     ) : (
                                         filteredPurchases.map((purchase, index) => {
-                                            // ✅ DEBUG: Log purchase data structure
-                                            debugPurchaseData(purchase, index);
+
 
                                             // ✅ FIXED: Extract values properly
                                             const values = extractPurchaseValues(purchase);

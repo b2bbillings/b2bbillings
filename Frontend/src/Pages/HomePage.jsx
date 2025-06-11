@@ -17,15 +17,19 @@ import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
 import SalesOrders from '../components/Home/SalesOrders';
-// ❌ REMOVED: import Purchases from '../components/Home/Purchases';
 import Inventory from '../components/Home/Inventory';
 import StaffManagement from '../components/Home/StaffManagement';
 import PurchaseOrders from '../components/Home/PurchaseOrders'; // ✅ This will handle all purchase-related views
 import Bank from '../components/Home/Bank';
 
+// ✅ NEW: Import form components
+import PurchaseForm from '../components/Home/Purchases/PurchaseForm';
+
 // Import services
 import companyService from '../services/companyService';
 import partyService from '../services/partyService';
+// ✅ NEW: Import purchase service for form handling
+import purchaseService from '../services/purchaseService';
 
 // Import utility components
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -44,10 +48,21 @@ function HomePage({
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Extract view from URL path
+    // ✅ ENHANCED: Update pathViewMap to handle form routes
     const getViewFromPath = () => {
         const pathParts = location.pathname.split('/');
         const lastPart = pathParts[pathParts.length - 1];
+        const secondLastPart = pathParts[pathParts.length - 2];
+
+        console.log('🧭 HomePage: Parsing path - lastPart:', lastPart, 'secondLastPart:', secondLastPart);
+
+        // Handle form routes like "purchases/add", "sales/add"
+        if (lastPart === 'add') {
+            if (secondLastPart === 'purchases') return 'createPurchase';
+            if (secondLastPart === 'sales') return 'createInvoice';
+            if (secondLastPart === 'sales-orders') return 'createSalesOrder';
+            if (secondLastPart === 'purchase-orders') return 'createPurchaseOrder';
+        }
 
         // Map URL paths to views - Updated to use PurchaseOrders for all purchase views
         const pathViewMap = {
@@ -79,7 +94,9 @@ function HomePage({
             'settings': 'settings'
         };
 
-        return pathViewMap[lastPart] || 'dailySummary';
+        const resolvedView = pathViewMap[lastPart] || 'dailySummary';
+        console.log('🎯 HomePage: Resolved view:', resolvedView);
+        return resolvedView;
     };
 
     // Current view state - derived from URL
@@ -144,6 +161,7 @@ function HomePage({
         const id = Date.now() + Math.random();
         const toast = { id, message, type, duration };
 
+        console.log('📢 HomePage: Adding toast:', { message, type });
         setToasts(prev => [...prev, toast]);
 
         // Auto remove toast after duration
@@ -291,6 +309,35 @@ function HomePage({
         }
     }, [onCompanyChange, addToast, navigate]);
 
+    // ✅ NEW: Handle purchase form save
+    const handleSavePurchase = useCallback(async (purchaseData) => {
+        console.log('💾 HomePage: Saving purchase from form:', purchaseData);
+
+        try {
+            // Call the purchase service with transaction support
+            const result = await purchaseService.createPurchaseWithTransaction(purchaseData);
+
+            console.log('✅ Purchase saved successfully:', result);
+
+            if (result && result.success) {
+                addToast('Purchase created successfully!', 'success');
+
+                // Navigate back to purchase bills
+                const companyId = currentCompany.id || currentCompany._id;
+                navigate(`/companies/${companyId}/purchase-bills`);
+
+                return result;
+            } else {
+                throw new Error(result?.message || 'Failed to create purchase');
+            }
+
+        } catch (error) {
+            console.error('❌ Error saving purchase:', error);
+            addToast(`Error creating purchase: ${error.message}`, 'error');
+            throw error;
+        }
+    }, [currentCompany, addToast, navigate]);
+
     // Common props to pass to all components
     const commonProps = {
         currentCompany,
@@ -342,7 +389,7 @@ function HomePage({
         </div>
     );
 
-    // Check if component requires company - Updated list
+    // ✅ UPDATED: Check if component requires company - Added form views
     const requiresCompany = (viewName) => {
         const companyRequiredViews = [
             'inventory', 'allProducts', 'lowStock', 'stockMovement',
@@ -352,12 +399,14 @@ function HomePage({
             'purchaseReturn', 'allPurchases', 'purchaseOrders',
             'bankAccounts', 'cashAccounts', 'bankTransactions',
             'bankReconciliation', 'cashFlow',
-            'parties'
+            'parties',
+            // ✅ NEW: Add form views that require company
+            'createPurchase', 'createInvoice', 'createSalesOrder', 'createPurchaseOrder'
         ];
         return companyRequiredViews.includes(viewName);
     };
 
-    // Render the appropriate component based on the current view
+    // ✅ ENHANCED: Render the appropriate component based on the current view
     const renderContent = () => {
         // Show loading state if company is being loaded
         if (isLoadingCompany) {
@@ -397,7 +446,12 @@ function HomePage({
                 'bankTransactions': 'Bank Transactions',
                 'bankReconciliation': 'Bank Reconciliation',
                 'cashFlow': 'Cash Flow',
-                'parties': 'Parties Management'
+                'parties': 'Parties Management',
+                // ✅ NEW: Add form view names
+                'createPurchase': 'Create Purchase',
+                'createInvoice': 'Create Sales Invoice',
+                'createSalesOrder': 'Create Sales Order',
+                'createPurchaseOrder': 'Create Purchase Order'
             };
 
             return renderNoCompanyState(componentNameMap[currentView] || 'this feature');
@@ -409,6 +463,8 @@ function HomePage({
                 {component}
             </ErrorBoundary>
         );
+
+        console.log('🎬 HomePage: Rendering view:', currentView);
 
         switch (currentView) {
             // Day Book cases
@@ -449,6 +505,67 @@ function HomePage({
             case 'purchaseOrders':
                 return wrapWithErrorBoundary(
                     <PurchaseOrders view={currentView} {...commonProps} />
+                );
+
+            // ✅ NEW: Form cases
+            case 'createPurchase':
+                console.log('🛒 HomePage: Rendering PurchaseForm for company:', currentCompany?.businessName);
+                return wrapWithErrorBoundary(
+                    <PurchaseForm
+                        onSave={handleSavePurchase}
+                        onCancel={() => {
+                            const companyId = currentCompany.id || currentCompany._id;
+                            navigate(`/companies/${companyId}/purchase-bills`);
+                        }}
+                        onExit={() => {
+                            const companyId = currentCompany.id || currentCompany._id;
+                            navigate(`/companies/${companyId}/purchase-bills`);
+                        }}
+                        inventoryItems={[]} // TODO: Pass actual inventory items
+                        categories={[]} // TODO: Pass actual categories
+                        bankAccounts={[]} // TODO: Pass actual bank accounts
+                        addToast={addToast}
+                        {...commonProps}
+                    />
+                );
+
+            case 'createInvoice':
+                return wrapWithErrorBoundary(
+                    <div className="placeholder-content">
+                        <Container className="py-5 text-center">
+                            <h3>Create Sales Invoice</h3>
+                            <p className="text-muted">Sales form coming soon...</p>
+                            <small className="text-muted">
+                                Current Company: {currentCompany?.businessName || currentCompany?.name}
+                            </small>
+                        </Container>
+                    </div>
+                );
+
+            case 'createSalesOrder':
+                return wrapWithErrorBoundary(
+                    <div className="placeholder-content">
+                        <Container className="py-5 text-center">
+                            <h3>Create Sales Order</h3>
+                            <p className="text-muted">Sales order form coming soon...</p>
+                            <small className="text-muted">
+                                Current Company: {currentCompany?.businessName || currentCompany?.name}
+                            </small>
+                        </Container>
+                    </div>
+                );
+
+            case 'createPurchaseOrder':
+                return wrapWithErrorBoundary(
+                    <div className="placeholder-content">
+                        <Container className="py-5 text-center">
+                            <h3>Create Purchase Order</h3>
+                            <p className="text-muted">Purchase order form coming soon...</p>
+                            <small className="text-muted">
+                                Current Company: {currentCompany?.businessName || currentCompany?.name}
+                            </small>
+                        </Container>
+                    </div>
                 );
 
             // Bank & Cash cases
@@ -536,6 +653,7 @@ function HomePage({
 
             // Default case
             default:
+                console.log('⚠️ HomePage: Unknown view, defaulting to dailySummary:', currentView);
                 return wrapWithErrorBoundary(
                     <DayBook view="dailySummary" {...commonProps} />
                 );

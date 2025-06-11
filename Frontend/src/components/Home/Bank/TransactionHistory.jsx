@@ -1,333 +1,854 @@
-import React from 'react';
-import { Card, Table, Badge, InputGroup, Form } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Card, Table, Badge, InputGroup, Form, Button, Dropdown } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSearch, faFilter } from '@fortawesome/free-solid-svg-icons';
+import {
+    faSearch,
+    faFilter,
+    faArrowUp,
+    faArrowDown,
+    faExchange,
+    faUniversity,
+    faMobile,
+    faCalendarAlt,
+    faSort,
+    faFileExcel,
+    faPrint,
+    faEllipsisV,
+    faEye,
+    faEdit,
+    faTrash
+} from '@fortawesome/free-solid-svg-icons';
+import { useParams } from 'react-router-dom';
+import transactionService from '../../../services/transactionService';
 
-function TransactionHistory({ transactions = [], selectedAccount, searchQuery = '', onSearchChange }) {
-    const filtered = transactions
-        .filter(txn => selectedAccount && txn.accountId === selectedAccount.id)
-        .filter(txn =>
-            txn.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            txn.reference?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            txn.category?.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-        .sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
+function TransactionHistory({
+    selectedAccount,
+    searchQuery = '',
+    onSearchChange,
+    loading = false,
+    onRefresh
+}) {
+    const { companyId } = useParams();
 
+    // ✅ State management
+    const [transactions, setTransactions] = useState([]);
+    const [transactionLoading, setTransactionLoading] = useState(false);
+    const [transactionError, setTransactionError] = useState('');
+    const [filterType, setFilterType] = useState('all');
+    const [sortField, setSortField] = useState('transactionDate');
+    const [sortDirection, setSortDirection] = useState('desc');
+    const [dateRange, setDateRange] = useState('all');
+    const [pagination, setPagination] = useState({
+        page: 1,
+        limit: 50,
+        total: 0,
+        totalPages: 0
+    });
+
+    // ✅ Load transactions from backend
+    const loadTransactions = async () => {
+        if (!selectedAccount || !companyId) {
+            setTransactions([]);
+            return;
+        }
+
+        setTransactionLoading(true);
+        setTransactionError('');
+
+        try {
+            const filters = {
+                page: pagination.page,
+                limit: pagination.limit,
+                sortBy: sortField,
+                sortOrder: sortDirection,
+                bankAccountId: selectedAccount._id || selectedAccount.id
+            };
+
+            // Add type filter
+            if (filterType !== 'all') {
+                filters.direction = filterType === 'credit' ? 'in' : 'out';
+            }
+
+            // Add date range filter
+            if (dateRange !== 'all') {
+                const now = new Date();
+                const startDate = new Date();
+
+                switch (dateRange) {
+                    case 'today':
+                        startDate.setHours(0, 0, 0, 0);
+                        filters.dateFrom = startDate.toISOString().split('T')[0];
+                        filters.dateTo = now.toISOString().split('T')[0];
+                        break;
+                    case 'week':
+                        startDate.setDate(now.getDate() - 7);
+                        filters.dateFrom = startDate.toISOString().split('T')[0];
+                        break;
+                    case 'month':
+                        startDate.setMonth(now.getMonth() - 1);
+                        filters.dateFrom = startDate.toISOString().split('T')[0];
+                        break;
+                }
+            }
+
+            // Add search filter
+            if (searchQuery.trim()) {
+                filters.search = searchQuery.trim();
+            }
+
+            const response = await transactionService.getTransactions(companyId, filters);
+
+            if (response.success) {
+                setTransactions(response.data.transactions || []);
+                setPagination(response.data.pagination || pagination);
+            } else {
+                throw new Error(response.message || 'Failed to load transactions');
+            }
+
+        } catch (error) {
+            setTransactionError(error.message || 'Failed to load transactions');
+            setTransactions([]);
+        } finally {
+            setTransactionLoading(false);
+        }
+    };
+
+    // ✅ Load transactions when dependencies change
+    useEffect(() => {
+        loadTransactions();
+    }, [selectedAccount, companyId, filterType, sortField, sortDirection, dateRange, searchQuery, pagination.page]);
+
+    // ✅ Enhanced date formatting
     const formatDate = (dateString) => {
-        return new Date(dateString).toLocaleDateString('en-IN', {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-IN', {
             day: '2-digit',
             month: '2-digit',
-            year: 'numeric'
+            year: '2-digit'
         });
     };
 
-    const getTransactionIcon = (type) => {
-        return type === 'deposit' ? '↗️' : '↙️';
+    const formatTime = (dateString) => {
+        return new Date(dateString).toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
     };
 
+    // ✅ Get transaction icon
+    const getTransactionIcon = (direction, method) => {
+        if (method?.toLowerCase().includes('upi')) {
+            return faMobile;
+        }
+        switch (direction) {
+            case 'in':
+                return faArrowUp;
+            case 'out':
+                return faArrowDown;
+            default:
+                return faExchange;
+        }
+    };
+
+    // ✅ Get transaction variant
+    const getTransactionVariant = (direction) => {
+        switch (direction) {
+            case 'in':
+                return 'success';
+            case 'out':
+                return 'danger';
+            default:
+                return 'info';
+        }
+    };
+
+    // ✅ Fixed Format currency - No double rupee symbols
+    const formatCurrency = (amount) => {
+        if (!amount && amount !== 0) return '0';
+
+        const numAmount = parseFloat(amount);
+
+        if (numAmount >= 10000000) {
+            return `${(numAmount / 10000000).toFixed(1)}Cr`;
+        } else if (numAmount >= 100000) {
+            return `${(numAmount / 100000).toFixed(1)}L`;
+        } else if (numAmount >= 1000) {
+            return `${(numAmount / 1000).toFixed(1)}K`;
+        }
+        return `${Math.round(numAmount)}`;
+    };
+
+    // ✅ Handle sort
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
+
+    // ✅ Get sort icon
+    const getSortIcon = (field) => {
+        if (sortField !== field) {
+            return <FontAwesomeIcon icon={faSort} className="ms-1 text-muted" style={{ fontSize: '0.6rem' }} />;
+        }
+        return (
+            <FontAwesomeIcon
+                icon={sortDirection === 'asc' ? faArrowUp : faArrowDown}
+                className="ms-1 text-primary"
+                style={{ fontSize: '0.6rem' }}
+            />
+        );
+    };
+
+    // ✅ Calculate summary stats
+    const getSummaryStats = () => {
+        const credits = transactions.filter(t => t.direction === 'in');
+        const debits = transactions.filter(t => t.direction === 'out');
+
+        return {
+            totalCredits: credits.reduce((sum, t) => sum + (t.amount || 0), 0),
+            totalDebits: debits.reduce((sum, t) => sum + (t.amount || 0), 0),
+            creditCount: credits.length,
+            debitCount: debits.length
+        };
+    };
+
+    const stats = getSummaryStats();
+
     return (
-        <>
-            <Card className="transaction-history-card border-0">
-                <Card.Header className="bg-gradient-purple border-0 pb-0">
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <h6 className="fw-bold mb-1 text-white fs-6">Transaction History</h6>
-                            <small className="text-white-50 small">
-                                {filtered.length} transaction{filtered.length !== 1 ? 's' : ''} found
+        <div className="transaction-history-container">
+            <div className="card border-0 shadow-sm">
+                {/* Header - Styled like SalesInvoicesTable */}
+                <div className="card-header bg-primary text-white border-0">
+                    <div className="row align-items-center">
+                        <div className="col-md-6">
+                            <h5 className="mb-1 fw-bold">Transaction History</h5>
+                            <small className="text-white-50">
+                                {selectedAccount ? `${selectedAccount.accountName} • ` : ''}
+                                {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
                             </small>
                         </div>
-                        <InputGroup style={{ width: '250px' }}>
-                            <InputGroup.Text className="bg-white bg-opacity-25 border-white border-opacity-25 text-white">
-                                <FontAwesomeIcon icon={faSearch} className="text-white" size="xs" />
-                            </InputGroup.Text>
-                            <Form.Control
-                                type="text"
-                                placeholder="Search transactions..."
-                                value={searchQuery}
-                                onChange={e => onSearchChange(e.target.value)}
-                                className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50 small search-input"
-                                size="sm"
-                            />
-                        </InputGroup>
+                        <div className="col-md-6">
+                            <div className="row g-2">
+                                <div className="col-md-8">
+                                    <InputGroup size="sm">
+                                        <InputGroup.Text className="bg-white bg-opacity-25 border-white border-opacity-25 text-white">
+                                            <FontAwesomeIcon icon={faSearch} />
+                                        </InputGroup.Text>
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Search transactions..."
+                                            value={searchQuery}
+                                            onChange={e => onSearchChange(e.target.value)}
+                                            className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50"
+                                            disabled={transactionLoading}
+                                        />
+                                    </InputGroup>
+                                </div>
+                                <div className="col-md-4">
+                                    <div className="d-flex gap-1">
+                                        <Button variant="outline-light" size="sm" title="Export">
+                                            <FontAwesomeIcon icon={faFileExcel} />
+                                        </Button>
+                                        <Button variant="outline-light" size="sm" title="Print">
+                                            <FontAwesomeIcon icon={faPrint} />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </Card.Header>
-                
-                <Card.Body className="p-0">
-                    <div className="table-responsive">
-                        <Table className="mb-0 transaction-table">
-                            <thead>
-                                <tr>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold small">Date</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold small">Type</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold small">Description</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold small">Reference</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end small">Amount</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end small">Balance</th>
-                                    <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center small">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.length === 0 ? (
+
+                    {/* Filters Row */}
+                    <div className="row g-2 mt-2">
+                        <div className="col-md-4">
+                            <Dropdown>
+                                <Dropdown.Toggle
+                                    variant="outline-light"
+                                    size="sm"
+                                    className="bg-white bg-opacity-25 border-white border-opacity-25 text-white w-100"
+                                >
+                                    <FontAwesomeIcon icon={faFilter} className="me-1" size="xs" />
+                                    {filterType === 'all' ? 'All Types' : filterType === 'credit' ? 'Credits' : 'Debits'}
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu>
+                                    <Dropdown.Item onClick={() => setFilterType('all')}>
+                                        All Types ({transactions.length})
+                                    </Dropdown.Item>
+                                    <Dropdown.Item onClick={() => setFilterType('credit')}>
+                                        Credits ({stats.creditCount})
+                                    </Dropdown.Item>
+                                    <Dropdown.Item onClick={() => setFilterType('debit')}>
+                                        Debits ({stats.debitCount})
+                                    </Dropdown.Item>
+                                </Dropdown.Menu>
+                            </Dropdown>
+                        </div>
+                        <div className="col-md-4">
+                            <Dropdown>
+                                <Dropdown.Toggle
+                                    variant="outline-light"
+                                    size="sm"
+                                    className="bg-white bg-opacity-25 border-white border-opacity-25 text-white w-100"
+                                >
+                                    <FontAwesomeIcon icon={faCalendarAlt} className="me-1" size="xs" />
+                                    {dateRange === 'all' ? 'All Time' : dateRange.charAt(0).toUpperCase() + dateRange.slice(1)}
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu>
+                                    <Dropdown.Item onClick={() => setDateRange('all')}>All Time</Dropdown.Item>
+                                    <Dropdown.Item onClick={() => setDateRange('today')}>Today</Dropdown.Item>
+                                    <Dropdown.Item onClick={() => setDateRange('week')}>Last 7 Days</Dropdown.Item>
+                                    <Dropdown.Item onClick={() => setDateRange('month')}>Last Month</Dropdown.Item>
+                                </Dropdown.Menu>
+                            </Dropdown>
+                        </div>
+                        <div className="col-md-4">
+                            <Button
+                                variant="outline-light"
+                                size="sm"
+                                className="bg-white bg-opacity-25 border-white border-opacity-25 text-white w-100"
+                                onClick={() => {
+                                    loadTransactions();
+                                    if (onRefresh) onRefresh();
+                                }}
+                                disabled={transactionLoading}
+                            >
+                                {transactionLoading ? 'Loading...' : '🔄 Refresh'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Table Body */}
+                <div className="card-body p-0">
+                    {/* Loading State */}
+                    {(transactionLoading || loading) && (
+                        <div className="text-center py-5">
+                            <div className="spinner-border text-primary mb-2" role="status">
+                                <span className="visually-hidden">Loading transactions...</span>
+                            </div>
+                            <div className="text-muted">Loading transactions...</div>
+                        </div>
+                    )}
+
+                    {/* Error State */}
+                    {transactionError && !transactionLoading && (
+                        <div className="alert alert-danger m-3">
+                            <div>
+                                <strong>Error:</strong> {transactionError}
+                                <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    className="ms-2"
+                                    onClick={loadTransactions}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Transactions Table - Styled like SalesInvoicesTable */}
+                    {!transactionLoading && !loading && !transactionError && (
+                        <div className="table-responsive" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                            <Table className="mb-0 table-hover table-sm sticky-header">
+                                <thead className="table-light sticky-top">
                                     <tr>
-                                        <td colSpan={7} className="text-center text-muted py-4 border-0">
-                                            <div className="empty-state">
-                                                <div className="mb-2">📊</div>
-                                                <div className="fw-semibold mb-1 small text-purple">No transactions found</div>
-                                                <small className="small text-muted">
-                                                    {searchQuery 
-                                                        ? 'Try adjusting your search terms' 
-                                                        : selectedAccount 
-                                                            ? 'No transactions available for this account'
-                                                            : 'Select an account to view transactions'
-                                                    }
-                                                </small>
+                                        <th
+                                            className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                            onClick={() => handleSort('transactionDate')}
+                                            style={{ minWidth: '80px', width: '80px' }}
+                                        >
+                                            <div className="d-flex align-items-center">
+                                                <span style={{ fontSize: '0.7rem' }}>Date</span>
+                                                {getSortIcon('transactionDate')}
                                             </div>
-                                        </td>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                            onClick={() => handleSort('transactionId')}
+                                            style={{ minWidth: '100px', width: '100px' }}
+                                        >
+                                            <div className="d-flex align-items-center">
+                                                <span style={{ fontSize: '0.7rem' }}>Reference</span>
+                                                {getSortIcon('transactionId')}
+                                            </div>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold cursor-pointer px-2"
+                                            onClick={() => handleSort('direction')}
+                                            style={{ minWidth: '70px', width: '70px' }}
+                                        >
+                                            <div className="d-flex align-items-center">
+                                                <span style={{ fontSize: '0.7rem' }}>Type</span>
+                                                {getSortIcon('direction')}
+                                            </div>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold px-2"
+                                            style={{ minWidth: '180px' }}
+                                        >
+                                            <span style={{ fontSize: '0.7rem' }}>Description</span>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold px-2 d-none d-md-table-cell"
+                                            style={{ minWidth: '80px', width: '80px' }}
+                                        >
+                                            <span style={{ fontSize: '0.7rem' }}>Method</span>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold text-end cursor-pointer px-2"
+                                            onClick={() => handleSort('amount')}
+                                            style={{ minWidth: '90px', width: '90px' }}
+                                        >
+                                            <div className="d-flex align-items-center justify-content-end">
+                                                <span style={{ fontSize: '0.7rem' }}>Amount</span>
+                                                {getSortIcon('amount')}
+                                            </div>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold text-end px-2 d-none d-lg-table-cell"
+                                            style={{ minWidth: '90px', width: '90px' }}
+                                        >
+                                            <span style={{ fontSize: '0.7rem' }}>Balance</span>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold text-center px-2"
+                                            style={{ minWidth: '70px', width: '70px' }}
+                                        >
+                                            <span style={{ fontSize: '0.7rem' }}>Status</span>
+                                        </th>
+                                        <th
+                                            className="border-0 text-primary fw-semibold text-center px-2 actions-column-header"
+                                            style={{
+                                                minWidth: '110px',
+                                                width: '110px',
+                                                position: 'sticky',
+                                                right: 0,
+                                                background: '#f8f9fa',
+                                                zIndex: 30
+                                            }}
+                                        >
+                                            <span style={{ fontSize: '0.7rem' }}>Actions</span>
+                                        </th>
                                     </tr>
-                                ) : (
-                                    filtered.map((txn, index) => (
-                                        <tr key={txn.id} className="transaction-row">
-                                            <td className="border-0 py-2">
-                                                <span className="text-dark fw-medium small">
-                                                    {formatDate(txn.transactionDate)}
-                                                </span>
-                                            </td>
-                                            <td className="border-0 py-2">
-                                                <div className="d-flex align-items-center">
-                                                    <span className="me-1 small">{getTransactionIcon(txn.transactionType)}</span>
-                                                    <Badge 
-                                                        className={`px-2 py-1 text-capitalize transaction-badge small ${
-                                                            txn.transactionType === 'deposit' ? 'badge-success-gradient' : 'badge-danger-gradient'
-                                                        }`}
-                                                    >
-                                                        {txn.transactionType}
-                                                    </Badge>
+                                </thead>
+                                <tbody>
+                                    {transactions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={9} className="text-center text-muted py-5 border-0">
+                                                <div className="d-flex flex-column align-items-center">
+                                                    <div className="mb-3" style={{ fontSize: '3rem', opacity: '0.5' }}>
+                                                        {selectedAccount?.type === 'upi' ? '📱' : '🏦'}
+                                                    </div>
+                                                    <h6 className="fw-semibold mb-2 text-secondary">No transactions found</h6>
+                                                    <p className="text-muted mb-0">
+                                                        {searchQuery
+                                                            ? 'Try adjusting your search or filter terms'
+                                                            : selectedAccount
+                                                                ? `No transactions available for this ${selectedAccount.type === 'upi' ? 'UPI' : 'bank'} account`
+                                                                : 'Select an account to view transaction history'
+                                                        }
+                                                    </p>
                                                 </div>
-                                            </td>
-                                            <td className="border-0 py-2">
-                                                <div>
-                                                    <div className="fw-medium text-dark small">{txn.description}</div>
-                                                    {txn.category && (
-                                                        <small className="text-purple-muted" style={{fontSize: '0.7rem'}}>{txn.category}</small>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="border-0 py-2">
-                                                <code className="bg-purple-light px-2 py-1 rounded text-purple small">
-                                                    {txn.reference || '—'}
-                                                </code>
-                                            </td>
-                                            <td className={`border-0 py-2 text-end fw-bold small ${
-                                                txn.transactionType === 'deposit' ? 'text-success' : 'text-danger'
-                                            }`}>
-                                                {txn.transactionType === 'deposit' ? '+' : '-'}₹{txn.amount.toLocaleString('en-IN')}
-                                            </td>
-                                            <td className="border-0 py-2 text-end fw-semibold text-dark small">
-                                                ₹{txn.balance?.toLocaleString('en-IN')}
-                                            </td>
-                                            <td className="border-0 py-2 text-center">
-                                                <Badge 
-                                                    className={`px-2 py-1 status-badge small ${
-                                                        txn.status === 'completed' ? 'badge-success-gradient' : 'badge-warning-gradient'
-                                                    }`}
-                                                >
-                                                    {txn.status === 'completed' ? '✓ Done' : '⏳ Pending'}
-                                                </Badge>
                                             </td>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </Table>
-                    </div>
-                </Card.Body>
-            </Card>
+                                    ) : (
+                                        transactions.map((transaction, index) => (
+                                            <tr key={transaction._id || transaction.id || index} className="align-middle">
+                                                {/* Date */}
+                                                <td className="border-0 px-2" style={{ width: '80px' }}>
+                                                    <div>
+                                                        <span className="text-dark fw-medium" style={{ fontSize: '0.7rem' }}>
+                                                            {formatDate(transaction.transactionDate)}
+                                                        </span>
+                                                        <small className="text-muted d-block" style={{ fontSize: '0.6rem' }}>
+                                                            {formatTime(transaction.transactionDate)}
+                                                        </small>
+                                                    </div>
+                                                </td>
 
-            {/* Custom Purple Theme Styles */}
-            <style>
-                {`
-                .transaction-history-card {
-                    border-radius: 16px;
+                                                {/* Reference */}
+                                                <td className="border-0 px-2" style={{ width: '100px' }}>
+                                                    <Badge bg="primary" bg-opacity="10" text="primary" className="fw-bold" style={{ fontSize: '0.6rem' }}>
+                                                        {transaction.transactionId || transaction.referenceNumber || 'N/A'}
+                                                    </Badge>
+                                                </td>
+
+                                                {/* Type */}
+                                                <td className="border-0 px-2" style={{ width: '70px' }}>
+                                                    <div className="d-flex align-items-center">
+                                                        <FontAwesomeIcon
+                                                            icon={getTransactionIcon(transaction.direction, transaction.paymentMethod)}
+                                                            className={`me-1 text-${getTransactionVariant(transaction.direction)}`}
+                                                            style={{ fontSize: '0.6rem' }}
+                                                        />
+                                                        <Badge
+                                                            bg={getTransactionVariant(transaction.direction)}
+                                                            text="dark"
+                                                            className="text-capitalize"
+                                                            style={{ fontSize: '0.55rem' }}
+                                                        >
+                                                            {transaction.direction === 'in' ? 'Credit' : 'Debit'}
+                                                        </Badge>
+                                                    </div>
+                                                </td>
+
+                                                {/* Description */}
+                                                <td className="border-0 px-2" style={{ minWidth: '180px' }}>
+                                                    <div>
+                                                        <div className="fw-medium text-dark" style={{ fontSize: '0.7rem' }}>
+                                                            {transaction.description?.length > 25
+                                                                ? `${transaction.description.substring(0, 25)}...`
+                                                                : transaction.description || 'Transaction'}
+                                                        </div>
+                                                        {transaction.notes && (
+                                                            <small className="text-muted" style={{ fontSize: '0.6rem' }}>
+                                                                {transaction.notes.length > 18
+                                                                    ? `${transaction.notes.substring(0, 18)}...`
+                                                                    : transaction.notes}
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Method */}
+                                                <td className="border-0 px-2 d-none d-md-table-cell" style={{ width: '80px' }}>
+                                                    <Badge bg="light" text="dark" style={{ fontSize: '0.55rem' }}>
+                                                        {transaction.paymentMethod?.length > 8
+                                                            ? `${transaction.paymentMethod.substring(0, 8)}...`
+                                                            : transaction.paymentMethod || 'Transfer'}
+                                                    </Badge>
+                                                </td>
+
+                                                {/* Amount - Fixed with single rupee symbol */}
+                                                <td className="border-0 text-end px-2" style={{ width: '90px' }}>
+                                                    <div className={`fw-bold ${transaction.direction === 'in' ? 'text-success' : 'text-danger'}`} style={{ fontSize: '0.75rem' }}>
+                                                        {transaction.direction === 'in' ? '+' : '-'}₹{formatCurrency(transaction.amount)}
+                                                    </div>
+                                                </td>
+
+                                                {/* Balance - Fixed with single rupee symbol */}
+                                                <td className="border-0 text-end px-2 d-none d-lg-table-cell" style={{ width: '90px' }}>
+                                                    <div className="fw-bold text-dark" style={{ fontSize: '0.7rem' }}>
+                                                        ₹{formatCurrency(transaction.balanceAfter || selectedAccount?.currentBalance || 0)}
+                                                    </div>
+                                                </td>
+
+                                                {/* Status */}
+                                                <td className="border-0 text-center px-2" style={{ width: '70px' }}>
+                                                    <Badge
+                                                        bg={transaction.status === 'completed' ? 'success' : transaction.status === 'pending' ? 'warning' : 'danger'}
+                                                        style={{ fontSize: '0.55rem' }}
+                                                    >
+                                                        {transaction.status === 'completed' ? '✓' :
+                                                            transaction.status === 'pending' ? '⏳' : '❌'}
+                                                    </Badge>
+                                                </td>
+
+                                                {/* Actions */}
+                                                <td
+                                                    className="border-0 text-center px-2 actions-column"
+                                                    style={{
+                                                        width: '110px',
+                                                        position: 'sticky',
+                                                        right: 0,
+                                                        background: 'white',
+                                                        zIndex: 20,
+                                                        boxShadow: '-2px 0 4px rgba(0,0,0,0.05)'
+                                                    }}
+                                                >
+                                                    <div className="d-flex gap-1 justify-content-center actions-wrapper">
+                                                        <Button
+                                                            variant="outline-primary"
+                                                            size="sm"
+                                                            title="Print"
+                                                            className="action-btn-print"
+                                                        >
+                                                            <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.7rem' }} />
+                                                        </Button>
+                                                        <div className="dropdown-container">
+                                                            <Dropdown>
+                                                                <Dropdown.Toggle
+                                                                    variant="outline-secondary"
+                                                                    size="sm"
+                                                                    className="dropdown-toggle-no-caret action-btn-menu"
+                                                                    title="More Actions"
+                                                                >
+                                                                    <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.7rem' }} />
+                                                                </Dropdown.Toggle>
+                                                                <Dropdown.Menu align="end" className="dropdown-menu-custom">
+                                                                    <Dropdown.Item className="d-flex align-items-center dropdown-item-custom">
+                                                                        <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
+                                                                        View Details
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Item className="d-flex align-items-center dropdown-item-custom">
+                                                                        <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
+                                                                        Edit
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Divider />
+                                                                    <Dropdown.Item className="d-flex align-items-center dropdown-item-custom text-danger">
+                                                                        <FontAwesomeIcon icon={faTrash} className="me-2" />
+                                                                        Delete
+                                                                    </Dropdown.Item>
+                                                                </Dropdown.Menu>
+                                                            </Dropdown>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </Table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer with Summary - Fixed with single rupee symbols */}
+                {!transactionLoading && !loading && transactions.length > 0 && (
+                    <div className="card-footer bg-light border-0">
+                        <div className="row align-items-center">
+                            <div className="col-md-6">
+                                <small className="text-muted">
+                                    Showing {transactions.length} of {pagination.total || transactions.length} transactions
+                                </small>
+                            </div>
+                            <div className="col-md-6">
+                                <div className="row text-center small">
+                                    <div className="col-6">
+                                        <div className="text-success fw-bold">+₹{formatCurrency(stats.totalCredits)}</div>
+                                        <small className="text-muted">Credits ({stats.creditCount})</small>
+                                    </div>
+                                    <div className="col-6">
+                                        <div className="text-danger fw-bold">-₹{formatCurrency(stats.totalDebits)}</div>
+                                        <small className="text-muted">Debits ({stats.debitCount})</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Styling to match SalesInvoicesTable */}
+            <style jsx>{`
+                .transaction-history-container {
+                    padding: 0.5rem;
+                    width: 100%;
                     overflow: hidden;
                 }
 
-                .bg-gradient-purple {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 50%, #b794f6 100%);
-                    padding: 1.25rem 1.5rem 0.75rem;
+                .card {
+                    border-radius: 0.75rem;
+                    overflow: hidden;
+                    width: 100%;
                 }
 
-                .bg-gradient-light-purple {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.08) 0%, rgba(156, 136, 255, 0.08) 100%);
-                }
-
-                .text-purple {
-                    color: #6c63ff !important;
-                }
-
-                .text-purple-muted {
-                    color: #9c88ff !important;
-                }
-
-                .bg-purple-light {
-                    background: rgba(108, 99, 255, 0.1) !important;
+                .card-header {
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    border-bottom: none;
+                    padding: 1rem;
                 }
 
                 .placeholder-white-50::placeholder {
-                    color: rgba(255, 255, 255, 0.7) !important;
+                    color: rgba(255, 255, 255, 0.7);
                 }
 
-                .search-input:focus {
-                    background: rgba(255, 255, 255, 0.35) !important;
-                    border-color: rgba(255, 255, 255, 0.5) !important;
-                    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25) !important;
-                    color: white !important;
+                .form-control:focus {
+                    background: rgba(255, 255, 255, 0.35);
+                    border-color: rgba(255, 255, 255, 0.5);
+                    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
+                    color: white;
                 }
 
-                .search-input:focus::placeholder {
-                    color: rgba(255, 255, 255, 0.8) !important;
+                .cursor-pointer {
+                    cursor: pointer;
+                    transition: all 0.2s ease;
                 }
 
-                .transaction-table {
-                    font-size: 0.8rem;
+                .cursor-pointer:hover {
+                    background-color: rgba(99, 102, 241, 0.05);
                 }
 
-                .transaction-table th {
-                    font-size: 0.7rem;
+                .table-hover tbody tr:hover {
+                    background-color: rgba(99, 102, 241, 0.02);
+                    transition: all 0.2s ease;
+                }
+
+                .table-hover tbody tr:hover .actions-column {
+                    background-color: rgba(99, 102, 241, 0.02);
+                }
+
+                .dropdown-toggle-no-caret::after {
+                    display: none;
+                }
+
+                .badge {
+                    font-weight: 600;
+                }
+
+                .table th {
+                    border-bottom: 2px solid rgba(99, 102, 241, 0.1);
+                    font-weight: 600;
                     text-transform: uppercase;
-                    letter-spacing: 0.3px;
-                    padding: 0.75rem 1rem;
-                    font-weight: 600;
-                    border-bottom: 2px solid rgba(108, 99, 255, 0.1);
+                    letter-spacing: 0.05em;
+                    padding: 0.4rem 0.3rem;
+                    white-space: nowrap;
+                    background-color: #f8f9fa;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
                 }
 
-                .transaction-table td {
-                    padding: 0.5rem 1rem;
+                .table td {
+                    padding: 0.4rem 0.3rem;
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
                     vertical-align: middle;
+                    white-space: nowrap;
+                }
+
+                .table-responsive {
+                    overflow-x: auto;
+                    overflow-y: auto;
+                    max-width: 100%;
+                    scrollbar-width: thin;
+                    scrollbar-color: #6366f1 #f1f1f1;
+                }
+
+                .table-responsive::-webkit-scrollbar {
+                    height: 8px;
+                    width: 8px;
+                }
+
+                .table-responsive::-webkit-scrollbar-track {
+                    background: #f1f1f1;
+                    border-radius: 4px;
+                }
+
+                .table-responsive::-webkit-scrollbar-thumb {
+                    background: #6366f1;
+                    border-radius: 4px;
+                }
+
+                .table-responsive::-webkit-scrollbar-thumb:hover {
+                    background: #4f46e5;
+                }
+
+                .sticky-header {
+                    position: relative;
+                }
+
+                .sticky-top {
+                    position: sticky;
+                    top: 0;
+                    z-index: 1020;
+                }
+
+                .actions-column {
+                    border-left: 1px solid rgba(0, 0, 0, 0.05);
+                }
+
+                .actions-column-header {
+                    border-left: 1px solid rgba(0, 0, 0, 0.05);
+                }
+
+                .dropdown-container {
+                    position: relative;
+                    z-index: 1000;
+                }
+
+                .dropdown-menu-custom {
+                    position: fixed;
+                    z-index: 10000;
+                    min-width: 140px;
+                    padding: 0.5rem 0;
+                    margin: 0;
                     font-size: 0.8rem;
+                    background: white;
+                    border: 1px solid rgba(0, 0, 0, 0.1);
+                    border-radius: 0.5rem;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
                 }
 
-                .transaction-row {
-                    border-bottom: 1px solid rgba(108, 99, 255, 0.08);
-                }
-
-                .transaction-row:last-child {
-                    border-bottom: none;
-                }
-
-                .badge-success-gradient {
-                    background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
-                    color: white !important;
-                    font-size: 0.65rem;
-                    font-weight: 600;
-                    border: none;
-                }
-
-                .badge-danger-gradient {
-                    background: linear-gradient(135deg, #ef4444 0%, #f87171 100%) !important;
-                    color: white !important;
-                    font-size: 0.65rem;
-                    font-weight: 600;
-                    border: none;
-                }
-
-                .badge-warning-gradient {
-                    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%) !important;
-                    color: white !important;
-                    font-size: 0.65rem;
-                    font-weight: 500;
-                    border: none;
-                }
-
-                .empty-state {
+                .dropdown-item-custom {
+                    padding: 0.5rem 1rem;
                     font-size: 0.8rem;
-                    padding: 2rem;
+                    transition: all 0.2s ease;
                 }
 
-                .empty-state div:first-child {
-                    font-size: 2.5rem;
-                    opacity: 0.6;
-                    filter: grayscale(0.3);
+                .dropdown-item-custom:hover {
+                    background-color: rgba(99, 102, 241, 0.05);
+                }
+
+                .action-btn-print,
+                .action-btn-menu {
+                    padding: 0.25rem 0.4rem;
+                    font-size: 0.7rem;
+                    min-width: 32px;
+                    height: 28px;
+                    border-radius: 0.25rem;
+                    transition: all 0.2s ease;
+                }
+
+                .action-btn-print:hover,
+                .action-btn-menu:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                }
+
+                .actions-wrapper {
+                    position: relative;
+                    z-index: 1;
                 }
 
                 @media (max-width: 768px) {
-                    .bg-gradient-purple {
-                        padding: 1rem;
+                    .transaction-history-container {
+                        padding: 0.25rem;
                     }
 
-                    .transaction-history-card .card-header .d-flex {
-                        flex-direction: column;
-                        gap: 1rem;
+                    .card-header {
+                        padding: 0.75rem;
                     }
 
-                    .transaction-table th,
-                    .transaction-table td {
-                        padding: 0.4rem 0.6rem;
-                        font-size: 0.75rem;
-                    }
-
-                    .transaction-table th {
-                        font-size: 0.65rem;
-                    }
-
-                    .input-group {
-                        width: 100% !important;
-                    }
-
-                    .badge-success-gradient,
-                    .badge-danger-gradient,
-                    .badge-warning-gradient {
-                        font-size: 0.6rem;
-                    }
-                }
-
-                @media (max-width: 576px) {
-                    .transaction-table {
+                    .table-responsive {
                         font-size: 0.7rem;
                     }
 
-                    .transaction-table th:nth-child(4),
-                    .transaction-table td:nth-child(4) {
-                        display: none;
+                    .table th,
+                    .table td {
+                        padding: 0.3rem 0.2rem;
                     }
 
-                    .transaction-table th:nth-child(6),
-                    .transaction-table td:nth-child(6) {
-                        display: none;
+                    .actions-column {
+                        width: 100px;
+                        min-width: 100px;
                     }
 
-                    .transaction-table th,
-                    .transaction-table td {
-                        padding: 0.3rem 0.5rem;
-                        font-size: 0.7rem;
-                    }
-                }
-
-                /* Subtle animations */
-                @keyframes fadeInUp {
-                    from {
-                        opacity: 0;
-                        transform: translateY(10px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
+                    .actions-column-header {
+                        width: 100px;
+                        min-width: 100px;
                     }
                 }
 
-                .transaction-row {
-                    animation: fadeInUp 0.3s ease-out;
-                }
+                .text-primary { color: #6366f1; }
+                .text-success { color: #10b981; }
+                .text-warning { color: #f59e0b; }
+                .text-info { color: #06b6d4; }
+                .text-danger { color: #ef4444; }
 
-                .transaction-row:nth-child(odd) {
-                    animation-delay: 0.05s;
-                }
-
-                .transaction-row:nth-child(even) {
-                    animation-delay: 0.1s;
-                }
-                `}
-            </style>
-        </>
+                .bg-primary { background-color: #6366f1; }
+                .bg-success { background-color: #10b981; }
+                .bg-warning { background-color: #f59e0b; }
+                .bg-info { background-color: #06b6d4; }
+                .bg-danger { background-color: #ef4444; }
+                .bg-light { background-color: #f8f9fa; }
+                .bg-secondary { background-color: #6c757d; }
+            `}</style>
+        </div>
     );
 }
 

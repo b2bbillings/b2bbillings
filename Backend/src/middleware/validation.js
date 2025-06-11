@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 
 // Helper function to handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -15,6 +16,110 @@ const handleValidationErrors = (req, res, next) => {
 
     next();
 };
+
+// ✅ NEW: Company parameter validation middleware
+const validateCompanyParam = (req, res, next) => {
+    const companyId = req.params.companyId;
+
+    console.log('🏢 Validating company parameter:', companyId);
+
+    if (!companyId) {
+        console.log('❌ Company ID missing from URL parameters');
+        return res.status(400).json({
+            success: false,
+            message: 'Company ID is required in URL parameters',
+            code: 'COMPANY_ID_REQUIRED'
+        });
+    }
+
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        console.log('❌ Invalid company ID format:', companyId);
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid company ID format',
+            code: 'INVALID_COMPANY_ID_FORMAT',
+            provided: companyId
+        });
+    }
+
+    console.log('✅ Company ID validation passed:', companyId);
+    next();
+};
+
+// ✅ NEW: Transaction validation middleware
+const validateTransactionData = [
+    body('amount')
+        .notEmpty()
+        .withMessage('Amount is required')
+        .isFloat({ min: 0.01 })
+        .withMessage('Amount must be greater than 0'),
+
+    body('direction')
+        .notEmpty()
+        .withMessage('Transaction direction is required')
+        .isIn(['in', 'out'])
+        .withMessage('Direction must be either "in" or "out"'),
+
+    body('transactionType')
+        .notEmpty()
+        .withMessage('Transaction type is required')
+        .isIn(['purchase', 'sale', 'payment_in', 'payment_out', 'expense', 'income', 'transfer', 'adjustment'])
+        .withMessage('Invalid transaction type'),
+
+    body('paymentMethod')
+        .optional()
+        .isIn(['cash', 'upi', 'bank_transfer', 'cheque', 'card', 'online', 'neft', 'rtgs'])
+        .withMessage('Invalid payment method'),
+
+    body('description')
+        .notEmpty()
+        .withMessage('Description is required')
+        .trim()
+        .isLength({ min: 1, max: 500 })
+        .withMessage('Description must be between 1 and 500 characters'),
+
+    body('bankAccountId')
+        .notEmpty()
+        .withMessage('Bank account ID is required')
+        .custom((value) => {
+            if (!mongoose.Types.ObjectId.isValid(value)) {
+                throw new Error('Invalid bank account ID format');
+            }
+            return true;
+        }),
+
+    body('notes')
+        .optional()
+        .trim()
+        .isLength({ max: 1000 })
+        .withMessage('Notes cannot exceed 1000 characters'),
+
+    body('chequeNumber')
+        .optional()
+        .trim()
+        .isLength({ max: 50 })
+        .withMessage('Cheque number cannot exceed 50 characters'),
+
+    body('chequeDate')
+        .optional()
+        .isISO8601()
+        .withMessage('Invalid cheque date format'),
+
+    body('upiTransactionId')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('UPI transaction ID cannot exceed 100 characters'),
+
+    body('bankTransactionId')
+        .optional()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Bank transaction ID cannot exceed 100 characters'),
+
+    handleValidationErrors
+];
 
 // Bank Account Validation
 const validateBankAccount = [
@@ -86,17 +191,7 @@ const validateBankAccount = [
         return true;
     }),
 
-    (req, res, next) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error',
-                errors: errors.array()
-            });
-        }
-        next();
-    }
+    handleValidationErrors
 ];
 
 const validateAccountUpdate = [
@@ -156,23 +251,8 @@ const validateAccountUpdate = [
         .isBoolean()
         .withMessage('Print bank details must be a boolean'),
 
-    (req, res, next) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error',
-                errors: errors.array()
-            });
-        }
-        next();
-    }
+    handleValidationErrors
 ];
-
-module.exports = {
-    validateBankAccount,
-    validateAccountUpdate
-};
 
 // Validation rules for user signup
 const validateSignup = [
@@ -241,7 +321,11 @@ const validateLogin = [
 ];
 
 module.exports = {
+    validateBankAccount,
+    validateAccountUpdate,
     validateSignup,
     validateLogin,
+    validateCompanyParam, // ✅ NEW: Export company parameter validation
+    validateTransactionData, // ✅ NEW: Export transaction validation
     handleValidationErrors
 };

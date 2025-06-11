@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ListGroup, Button, InputGroup, Form, Spinner, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUniversity, faMoneyBillWave, faPlus, faSearch, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { faUniversity, faMobile, faPlus, faSearch, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import bankAccountService from '../../../services/bankAccountService';
 
@@ -16,15 +16,12 @@ function BankSidebar({
     onTypeChange,
     loading = false
 }) {
-    // ✅ Get company ID from URL
     const { companyId } = useParams();
 
-    // ✅ Local state for sidebar-specific data
     const [sidebarAccounts, setSidebarAccounts] = useState([]);
     const [sidebarLoading, setSidebarLoading] = useState(false);
     const [sidebarError, setSidebarError] = useState('');
 
-    // ✅ Enhanced company ID resolution
     const getEffectiveCompanyId = () => {
         const sources = [
             companyId,
@@ -42,19 +39,17 @@ function BankSidebar({
                 }
             }
         } catch (error) {
-            console.warn('⚠️ Failed to parse currentCompany:', error);
+            // Silent fallback
         }
 
         for (const source of sources) {
             if (source && source.trim() !== '') {
-                console.log('✅ BankSidebar using company ID:', source);
                 return source;
             }
         }
         return null;
     };
 
-    // ✅ Load accounts from backend
     const loadSidebarAccounts = async () => {
         const effectiveCompanyId = getEffectiveCompanyId();
 
@@ -68,8 +63,6 @@ function BankSidebar({
         setSidebarError('');
 
         try {
-            console.log('🔄 Loading sidebar accounts for company:', effectiveCompanyId, 'type:', activeType);
-
             const response = await bankAccountService.getBankAccounts(effectiveCompanyId, {
                 type: activeType === 'all' ? 'all' : activeType,
                 active: 'true',
@@ -80,35 +73,25 @@ function BankSidebar({
             });
 
             const fetchedAccounts = response.data?.accounts || [];
-            console.log('✅ Sidebar accounts loaded:', fetchedAccounts.length, 'accounts');
-            console.log('📋 Account data:', fetchedAccounts);
-
             setSidebarAccounts(fetchedAccounts);
 
         } catch (error) {
-            console.error('❌ Error loading sidebar accounts:', error);
             setSidebarError(error.response?.data?.message || 'Failed to load accounts');
         } finally {
             setSidebarLoading(false);
         }
     };
 
-    // ✅ Load data when component mounts or dependencies change
     useEffect(() => {
-        console.log('🔄 BankSidebar effect triggered:', { companyId, activeType });
         loadSidebarAccounts();
     }, [companyId, activeType]);
 
-    // ✅ Use parent accounts if provided, otherwise use sidebar accounts
     const displayAccounts = accounts.length > 0 ? accounts : sidebarAccounts;
 
-    // ✅ Filter accounts based on search query and active type
     const filteredAccounts = displayAccounts.filter(acc => {
-        // ✅ FIXED: First filter by type
         const matchesType = activeType === 'all' || acc.type === activeType;
         if (!matchesType) return false;
 
-        // Then filter by search query
         if (!searchQuery) return true;
 
         const query = searchQuery.toLowerCase();
@@ -117,58 +100,80 @@ function BankSidebar({
             acc.accountNumber?.toLowerCase().includes(query) ||
             acc.bankName?.toLowerCase().includes(query) ||
             acc.accountHolderName?.toLowerCase().includes(query) ||
-            acc.ifscCode?.toLowerCase().includes(query)
+            acc.ifscCode?.toLowerCase().includes(query) ||
+            acc.upiId?.toLowerCase().includes(query) ||
+            acc.mobileNumber?.toLowerCase().includes(query)
         );
     });
 
-    // ✅ Get account display info with proper ID handling
     const getAccountDisplayInfo = (account) => {
         return {
             id: account._id || account.id,
             name: account.accountName || 'Unknown Account',
             number: account.accountNumber || 'N/A',
+            upiId: account.upiId || null,
+            mobileNumber: account.mobileNumber || null,
             balance: account.currentBalance || 0,
             type: account.type || 'bank',
             isActive: account.isActive !== false
         };
     };
 
-    // ✅ Handle account type change
     const handleTypeChange = (newType) => {
-        console.log('🔄 Changing account type to:', newType);
         if (onTypeChange) {
             onTypeChange(newType);
         }
     };
 
-    // ✅ Calculate type totals
     const getTypeTotals = () => {
         const bankAccounts = displayAccounts.filter(acc => acc.type === 'bank');
-        const cashAccounts = displayAccounts.filter(acc => acc.type === 'cash');
+        const upiAccounts = displayAccounts.filter(acc => acc.type === 'upi');
 
         return {
             bank: {
                 count: bankAccounts.length,
                 total: bankAccounts.reduce((sum, acc) => sum + (acc.currentBalance || 0), 0)
             },
-            cash: {
-                count: cashAccounts.length,
-                total: cashAccounts.reduce((sum, acc) => sum + (acc.currentBalance || 0), 0)
+            upi: {
+                count: upiAccounts.length,
+                total: upiAccounts.reduce((sum, acc) => sum + (acc.currentBalance || 0), 0),
+                enabledCount: upiAccounts.filter(acc => acc.upiId && acc.mobileNumber && acc.isActive).length
             }
         };
     };
 
     const typeTotals = getTypeTotals();
 
-    // ✅ Get account icon based on type
     const getAccountIcon = (account) => {
-        if (account.type === 'cash') return faMoneyBillWave;
+        if (account.type === 'upi') return faMobile;
         return faUniversity;
     };
 
-    // ✅ Format currency
     const formatCurrency = (amount) => {
         return bankAccountService.formatCurrency(amount || 0);
+    };
+
+    const getAccountSubtitle = (account) => {
+        const accountInfo = getAccountDisplayInfo(account);
+
+        if (account.type === 'upi') {
+            return accountInfo.upiId || accountInfo.mobileNumber || accountInfo.number;
+        }
+        return accountInfo.number !== 'N/A' && accountInfo.number !== '' ? accountInfo.number : null;
+    };
+
+    // ✅ Format amount for display - compact version
+    const formatDisplayAmount = (amount) => {
+        const num = parseFloat(amount) || 0;
+
+        if (Math.abs(num) >= 10000000) {
+            return `₹${(num / 10000000).toFixed(1)}Cr`;
+        } else if (Math.abs(num) >= 100000) {
+            return `₹${(num / 100000).toFixed(1)}L`;
+        } else if (Math.abs(num) >= 1000) {
+            return `₹${(num / 1000).toFixed(1)}K`;
+        }
+        return `₹${Math.round(num).toLocaleString('en-IN')}`;
     };
 
     return (
@@ -196,31 +201,41 @@ function BankSidebar({
                                 type="radio"
                                 className="btn-check"
                                 name="accountType"
-                                id="cashType"
-                                checked={activeType === 'cash'}
-                                onChange={() => handleTypeChange('cash')}
+                                id="upiType"
+                                checked={activeType === 'upi'}
+                                onChange={() => handleTypeChange('upi')}
                             />
-                            <label className="btn btn-outline-primary btn-sm flex-fill" htmlFor="cashType">
-                                <FontAwesomeIcon icon={faMoneyBillWave} className="me-1" size="xs" />
-                                Cash ({typeTotals.cash.count})
+                            <label className="btn btn-outline-primary btn-sm flex-fill" htmlFor="upiType">
+                                <FontAwesomeIcon icon={faMobile} className="me-1" size="xs" />
+                                UPI ({typeTotals.upi.count})
+                                {typeTotals.upi.enabledCount > 0 && (
+                                    <span className="badge bg-success ms-1" style={{ fontSize: '0.6rem' }}>
+                                        {typeTotals.upi.enabledCount}
+                                    </span>
+                                )}
                             </label>
                         </div>
                     </div>
 
                     {/* Title and Add Button */}
                     <div className="d-flex justify-content-between align-items-center mb-3">
-                        <div>
+                        <div className="flex-grow-1 me-2">
                             <h6 className="mb-0 fw-bold text-dark small">
-                                {activeType === 'bank' ? 'Bank Accounts' : 'Cash Accounts'}
+                                {activeType === 'bank' ? 'Bank Accounts' : 'UPI Accounts'}
                             </h6>
                             <small className="text-muted">
-                                Total: {formatCurrency(activeType === 'bank' ? typeTotals.bank.total : typeTotals.cash.total)}
+                                Total: {formatCurrency(activeType === 'bank' ? typeTotals.bank.total : typeTotals.upi.total)}
+                                {activeType === 'upi' && typeTotals.upi.enabledCount > 0 && (
+                                    <span className="text-success ms-1">
+                                        • {typeTotals.upi.enabledCount} enabled
+                                    </span>
+                                )}
                             </small>
                         </div>
                         <Button
                             size="sm"
                             variant="primary"
-                            className="btn-add-account"
+                            className="btn-add-account flex-shrink-0"
                             onClick={() => onAddAccount(activeType)}
                             disabled={sidebarLoading || !getEffectiveCompanyId()}
                         >
@@ -236,7 +251,7 @@ function BankSidebar({
                         </InputGroup.Text>
                         <Form.Control
                             type="text"
-                            placeholder="Search accounts..."
+                            placeholder={activeType === 'upi' ? "Search by name, UPI ID, mobile..." : "Search accounts..."}
                             value={searchQuery}
                             onChange={e => onSearchChange(e.target.value)}
                             className="border-start-0 bg-light text-dark"
@@ -268,23 +283,28 @@ function BankSidebar({
                     {!sidebarLoading && !loading && filteredAccounts.length === 0 && (
                         <div className="text-center py-4">
                             <div className="mb-2" style={{ fontSize: '2rem', opacity: 0.3 }}>
-                                <FontAwesomeIcon icon={activeType === 'bank' ? faUniversity : faMoneyBillWave} />
+                                <FontAwesomeIcon icon={activeType === 'bank' ? faUniversity : faMobile} />
                             </div>
                             <div className="text-muted small fw-medium mb-1">
                                 {searchQuery ? 'No accounts found' : `No ${activeType} accounts`}
                             </div>
                             <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                                {searchQuery ? 'Try different search terms' : `Click Add to create your first ${activeType} account`}
+                                {searchQuery
+                                    ? 'Try different search terms'
+                                    : `Click Add to create your first ${activeType === 'upi' ? 'UPI' : 'bank'} account`
+                                }
                             </small>
                         </div>
                     )}
 
-                    {/* Accounts List */}
+                    {/* ✅ FIXED: Accounts List - Better Layout */}
                     {!sidebarLoading && !loading && filteredAccounts.length > 0 && (
                         <ListGroup variant="flush">
                             {filteredAccounts.map((account) => {
                                 const accountInfo = getAccountDisplayInfo(account);
                                 const isSelected = selectedAccount?._id === accountInfo.id || selectedAccount?.id === accountInfo.id;
+                                const subtitle = getAccountSubtitle(account);
+                                const isUpiEnabled = account.type === 'upi' && account.upiId && account.mobileNumber && account.isActive;
 
                                 return (
                                     <ListGroup.Item
@@ -302,67 +322,80 @@ function BankSidebar({
                                             opacity: accountInfo.isActive ? 1 : 0.6
                                         }}
                                     >
-                                        <div className="d-flex justify-content-between align-items-start">
-                                            <div className="flex-grow-1 me-2">
-                                                <div className="d-flex align-items-center mb-1">
+                                        {/* ✅ FIXED: Container with proper flex layout */}
+                                        <div className="account-item-container">
+                                            {/* ✅ Main row - Icon, Name and Amount */}
+                                            <div className="account-main-row">
+                                                <div className="account-info">
                                                     <FontAwesomeIcon
                                                         icon={getAccountIcon(account)}
-                                                        className={`me-2 ${isSelected ? 'text-primary' : 'text-muted'
+                                                        className={`account-icon ${isSelected ? 'text-primary' : account.type === 'upi' ? 'text-info' : 'text-muted'
                                                             }`}
                                                         size="sm"
                                                     />
                                                     <span
-                                                        className={`fw-semibold small ${isSelected ? 'text-primary' : 'text-dark'
+                                                        className={`account-name ${isSelected ? 'text-primary' : 'text-dark'
                                                             }`}
-                                                        style={{
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}
                                                         title={accountInfo.name}
                                                     >
                                                         {accountInfo.name}
                                                     </span>
-                                                    {!accountInfo.isActive && (
-                                                        <span className="badge bg-secondary ms-2" style={{ fontSize: '0.6rem' }}>
-                                                            Inactive
-                                                        </span>
-                                                    )}
                                                 </div>
-                                                {accountInfo.number !== 'N/A' && accountInfo.number !== '' && (
-                                                    <div
-                                                        className={`${isSelected ? 'text-primary' : 'text-muted'
+                                                <div className="account-balance">
+                                                    <span
+                                                        className={`balance-amount ${accountInfo.balance < 0 ? 'text-danger' : 'text-success'
                                                             }`}
-                                                        style={{
-                                                            fontSize: '0.7rem',
-                                                            fontFamily: 'monospace',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}
-                                                        title={accountInfo.number}
+                                                        title={formatCurrency(accountInfo.balance)}
                                                     >
-                                                        {accountInfo.number}
-                                                    </div>
+                                                        {formatDisplayAmount(accountInfo.balance)}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* ✅ Badges row */}
+                                            <div className="account-badges">
+                                                {!accountInfo.isActive && (
+                                                    <span className="badge bg-secondary">
+                                                        Inactive
+                                                    </span>
+                                                )}
+                                                {account.type === 'upi' && isUpiEnabled && (
+                                                    <span className="badge bg-success">
+                                                        UPI Ready
+                                                    </span>
                                                 )}
                                             </div>
-                                            <div className="text-end">
-                                                <span
-                                                    className={`fw-bold small ${accountInfo.balance < 0 ? 'text-danger' : 'text-success'
-                                                        }`}
-                                                    title={formatCurrency(accountInfo.balance)}
-                                                >
-                                                    ₹{(accountInfo.balance || 0).toLocaleString('en-IN', {
-                                                        maximumFractionDigits: 0
-                                                    })}
-                                                </span>
-                                            </div>
+
+                                            {/* ✅ Subtitle row */}
+                                            {subtitle && (
+                                                <div className="account-subtitle">
+                                                    <span
+                                                        className={`subtitle-text ${isSelected ? 'text-primary' : 'text-muted'
+                                                            }`}
+                                                        title={subtitle}
+                                                    >
+                                                        {subtitle}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* ✅ Mobile number row (UPI only) */}
+                                            {account.type === 'upi' && accountInfo.mobileNumber && subtitle !== accountInfo.mobileNumber && (
+                                                <div className="account-mobile">
+                                                    <span
+                                                        className={`mobile-text ${isSelected ? 'text-primary' : 'text-muted'
+                                                            }`}
+                                                        title={accountInfo.mobileNumber}
+                                                    >
+                                                        {accountInfo.mobileNumber}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
+
+                                        {/* Selection Indicator */}
                                         {isSelected && (
-                                            <div
-                                                className="position-absolute start-0 top-0 bottom-0 bg-primary rounded-start"
-                                                style={{ width: '3px' }}
-                                            />
+                                            <div className="selection-indicator" />
                                         )}
                                     </ListGroup.Item>
                                 );
@@ -377,10 +410,15 @@ function BankSidebar({
                         <div className="text-center">
                             <small className="text-muted d-block mb-1">
                                 {filteredAccounts.length} of {displayAccounts.length} accounts
+                                {activeType === 'upi' && typeTotals.upi.enabledCount > 0 && (
+                                    <span className="text-success ms-1">
+                                        • {typeTotals.upi.enabledCount} UPI enabled
+                                    </span>
+                                )}
                             </small>
                             <small className="fw-bold text-primary">
                                 Total: {formatCurrency(
-                                    activeType === 'bank' ? typeTotals.bank.total : typeTotals.cash.total
+                                    activeType === 'bank' ? typeTotals.bank.total : typeTotals.upi.total
                                 )}
                             </small>
                         </div>
@@ -388,7 +426,7 @@ function BankSidebar({
                 )}
             </div>
 
-            {/* Enhanced Custom Styles */}
+            {/* ✅ FIXED: Enhanced Custom Styles - Better Layout */}
             <style>
                 {`
                 .btn-add-account {
@@ -398,6 +436,7 @@ function BankSidebar({
                     border-radius: 6px;
                     transition: all 0.2s ease;
                     white-space: nowrap;
+                    min-width: 60px;
                 }
 
                 .btn-add-account:hover:not(:disabled) {
@@ -408,6 +447,105 @@ function BankSidebar({
                 .btn-add-account:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
+                }
+
+                /* ✅ FIXED: Account item container layout */
+                .account-item-container {
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.25rem;
+                }
+
+                .account-main-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    min-height: 20px;
+                }
+
+                .account-info {
+                    display: flex;
+                    align-items: center;
+                    flex: 1;
+                    min-width: 0; /* Important for text truncation */
+                    gap: 0.5rem;
+                }
+
+                .account-icon {
+                    flex-shrink: 0;
+                    width: 16px;
+                }
+
+                .account-name {
+                    font-weight: 600;
+                    font-size: 0.875rem;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    flex: 1;
+                    min-width: 0;
+                }
+
+                .account-balance {
+                    flex-shrink: 0;
+                    margin-left: 0.5rem;
+                    min-width: fit-content;
+                }
+
+                .balance-amount {
+                    font-weight: 700;
+                    font-size: 0.8rem;
+                    white-space: nowrap;
+                }
+
+                .account-badges {
+                    display: flex;
+                    gap: 0.25rem;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    min-height: 16px;
+                }
+
+                .account-badges .badge {
+                    font-size: 0.6rem;
+                    padding: 0.2rem 0.4rem;
+                    border-radius: 4px;
+                }
+
+                .account-subtitle {
+                    margin-left: 22px; /* Align with account name */
+                }
+
+                .subtitle-text {
+                    font-size: 0.7rem;
+                    font-family: monospace;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    display: block;
+                }
+
+                .account-mobile {
+                    margin-left: 22px; /* Align with account name */
+                }
+
+                .mobile-text {
+                    font-size: 0.65rem;
+                    font-family: monospace;
+                    opacity: 0.8;
+                    display: block;
+                }
+
+                .selection-indicator {
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    bottom: 0;
+                    width: 3px;
+                    background-color: #0d6efd;
+                    border-radius: 0 2px 2px 0;
                 }
 
                 .account-item:hover:not(.list-group-item-action[disabled]) {
@@ -470,6 +608,14 @@ function BankSidebar({
                     padding: 0.375rem 0.5rem;
                 }
 
+                .account-item .badge.bg-success {
+                    background-color: #198754 !important;
+                }
+
+                .account-item .text-info {
+                    color: #0dcaf0 !important;
+                }
+
                 @media (max-width: 768px) {
                     .sidebar-header {
                         padding: 0.75rem !important;
@@ -488,16 +634,25 @@ function BankSidebar({
                     .btn-add-account {
                         font-size: 0.7rem;
                         padding: 0.3rem 0.6rem;
+                        min-width: 50px;
                     }
 
                     .btn-group .btn-outline-primary {
                         font-size: 0.7rem;
                         padding: 0.3rem 0.4rem;
                     }
+
+                    .account-name {
+                        font-size: 0.8rem;
+                    }
+
+                    .balance-amount {
+                        font-size: 0.75rem;
+                    }
                 }
 
                 @media (max-width: 576px) {
-                    .sidebar-header .d-flex:last-child {
+                    .sidebar-header .d-flex:nth-child(2) {
                         flex-direction: column;
                         gap: 0.75rem;
                         align-items: stretch;
@@ -506,6 +661,22 @@ function BankSidebar({
                     .btn-add-account {
                         width: 100%;
                         text-align: center;
+                    }
+
+                    .account-main-row {
+                        gap: 0.25rem;
+                    }
+
+                    .account-info {
+                        gap: 0.35rem;
+                    }
+
+                    .account-name {
+                        font-size: 0.75rem;
+                    }
+
+                    .balance-amount {
+                        font-size: 0.7rem;
                     }
                 }
                 `}

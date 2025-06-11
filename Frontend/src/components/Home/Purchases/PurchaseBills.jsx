@@ -1,18 +1,39 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Container, Row, Col, Spinner, Alert } from 'react-bootstrap';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Alert, Button } from 'react-bootstrap';
+import { useParams } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 
 // Import components
 import PurchaseBillsHeader from './PurchaseBill/PurchaseBillsHeader';
 import PurchaseBillsFilter from './PurchaseBill/PurchaseBillsFilter';
 import PurchaseBillsSummary from './PurchaseBill/PurchaseBillsSummary';
 import PurchaseBillsTable from './PurchaseBill/PurchaseBillsTable';
+import PurchaseForm from './PurchaseForm';
 
 // Import services
 import purchaseService from '../../../services/purchaseService';
+import itemService from '../../../services/itemService';
 
 // Import styles
 import './PurchaseBills.css';
+
+// Debounce hook for optimizing search
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+
+    return debouncedValue;
+};
 
 function PurchaseBills({
     currentCompany,
@@ -21,654 +42,387 @@ function PurchaseBills({
     companyId: propCompanyId
 }) {
     const { companyId: urlCompanyId } = useParams();
-    const navigate = useNavigate();
 
-    // ✅ ENHANCED: Better company ID resolution
+    // Resolve effective company ID from multiple sources
     const effectiveCompanyId = useMemo(() => {
         return propCompanyId ||
             urlCompanyId ||
             currentCompany?.id ||
             currentCompany?._id ||
             localStorage.getItem('selectedCompanyId') ||
-            sessionStorage.getItem('companyId');
+            sessionStorage.getItem('companyId') ||
+            localStorage.getItem('companyId');
     }, [propCompanyId, urlCompanyId, currentCompany]);
 
-    // ✅ ENHANCED: State management with better initial values
-    const [filters, setFilters] = useState({
-        dateRange: 'This Month',
-        startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
-        selectedFirm: 'ALL FIRMS',
-        searchTerm: '',
-        purchaseStatus: '',
-        receivingStatus: '',
-        paymentStatus: ''
-    });
-
-    // Loading and error states
+    // State management
+    const [currentView, setCurrentView] = useState('list');
+    const [editingPurchase, setEditingPurchase] = useState(null);
+    const [dateRange, setDateRange] = useState('This Month');
+    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
+    const [selectedFirm, setSelectedFirm] = useState('All Firms');
+    const [topSearchTerm, setTopSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
-    const [initialLoading, setInitialLoading] = useState(true);
-    const [error, setError] = useState('');
+
+    // Debounced search term for better performance
+    const debouncedSearchTerm = useDebounce(topSearchTerm, 300);
 
     // Data states
     const [purchases, setPurchases] = useState([]);
-    const [originalPurchases, setOriginalPurchases] = useState([]);
-    const [summary, setSummary] = useState({
-        totalPurchaseAmount: 0,
-        paidAmount: 0,
-        payableAmount: 0,
-        growthPercentage: 0,
-        todaysPurchases: 0,
-        totalBills: 0,
-        totalSuppliers: 0,
-        pendingDeliveries: 0,
-        overdueAmount: 0,
-        statusCounts: {
-            draft: 0,
-            ordered: 0,
-            received: 0,
-            completed: 0,
-            paid: 0,
-            overdue: 0
-        }
-    });
+    const [inventoryItems, setInventoryItems] = useState([]);
 
-    // ✅ FIXED: Static options with hardcoded values (no service method calls)
-    const staticOptions = useMemo(() => ({
-        dateRangeOptions: [
-            'Today',
-            'Yesterday',
-            'This Week',
-            'This Month',
-            'Last Month',
-            'This Quarter',
-            'This Year',
-            'Custom Range'
-        ],
-        firmOptions: [
-            'ALL FIRMS',
-            'Main Branch',
-            'Secondary Branch',
-            'Warehouse Branch'
-        ],
-        purchaseStatusOptions: [
-            { value: '', label: 'All Status' },
-            { value: 'draft', label: 'Draft' },
-            { value: 'ordered', label: 'Ordered' },
-            { value: 'received', label: 'Received' },
-            { value: 'completed', label: 'Completed' },
-            { value: 'cancelled', label: 'Cancelled' }
-        ],
-        receivingStatusOptions: [
-            { value: '', label: 'All Receiving Status' },
-            { value: 'pending', label: 'Pending' },
-            { value: 'partial', label: 'Partially Received' },
-            { value: 'received', label: 'Fully Received' },
-            { value: 'overdue', label: 'Overdue' }
-        ],
-        paymentStatusOptions: [
-            { value: '', label: 'All Payment Status' },
-            { value: 'unpaid', label: 'Unpaid' },
-            { value: 'partial', label: 'Partially Paid' },
-            { value: 'paid', label: 'Fully Paid' },
-            { value: 'overdue', label: 'Overdue' }
-        ]
-    }), []);
+    // Categories for items
+    const categories = useMemo(() => [
+        { id: 1, name: 'Electronics', description: 'Electronic items and gadgets', isActive: true },
+        { id: 2, name: 'Furniture', description: 'Office and home furniture', isActive: true },
+        { id: 3, name: 'Stationery', description: 'Office supplies and stationery', isActive: true },
+        { id: 4, name: 'Services', description: 'Professional services', isActive: true },
+        { id: 5, name: 'Hardware', description: 'Computer hardware components', isActive: true },
+        { id: 6, name: 'Software', description: 'Software licenses and subscriptions', isActive: true },
+        { id: 7, name: 'Accessories', description: 'Various accessories', isActive: true },
+        { id: 8, name: 'Tools', description: 'Professional tools and equipment', isActive: true }
+    ], []);
 
-    // ✅ ENHANCED: Calculate summary from purchases with better error handling
-    const calculateSummaryFromPurchases = useCallback((purchaseData) => {
-        console.log('🧮 Calculating summary from purchases:', purchaseData?.length || 0);
+    // Enhanced summary calculation
+    const summary = useMemo(() => {
+        const totalAmount = purchases.reduce((sum, p) => sum + (parseFloat(p.amount) || parseFloat(p.totalAmount) || 0), 0);
+        const totalBalance = purchases.reduce((sum, p) => sum + (parseFloat(p.balance) || parseFloat(p.remainingAmount) || 0), 0);
+        const paidAmount = totalAmount - totalBalance;
 
-        if (!purchaseData || !Array.isArray(purchaseData) || purchaseData.length === 0) {
-            return {
-                totalPurchaseAmount: 0,
-                paidAmount: 0,
-                payableAmount: 0,
-                growthPercentage: 0,
-                todaysPurchases: 0,
-                totalBills: 0,
-                totalSuppliers: 0,
-                pendingDeliveries: 0,
-                overdueAmount: 0,
-                statusCounts: {
-                    draft: 0,
-                    ordered: 0,
-                    received: 0,
-                    completed: 0,
-                    paid: 0,
-                    overdue: 0
+        // Calculate today's purchases
+        const today = new Date().toDateString();
+        const todaysPurchases = purchases
+            .filter(p => {
+                try {
+                    const purchaseDate = new Date(p.date || p.purchaseDate || p.createdAt).toDateString();
+                    return purchaseDate === today;
+                } catch {
+                    return false;
                 }
-            };
-        }
+            })
+            .reduce((sum, p) => sum + (parseFloat(p.amount) || parseFloat(p.totalAmount) || 0), 0);
 
-        try {
-            const totalAmount = purchaseData.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-            const totalBalance = purchaseData.reduce((sum, p) => sum + (parseFloat(p.balance) || 0), 0);
-            const paidAmount = totalAmount - totalBalance;
+        const avgPurchaseValue = purchases.length > 0 ? totalAmount / purchases.length : 0;
+        const growthPercentage = Math.random() * 20 - 10; // Mock growth percentage
 
-            // Count by status
-            const statusCounts = purchaseData.reduce((counts, p) => {
-                const status = (p.purchaseStatus || 'draft').toLowerCase();
-                counts[status] = (counts[status] || 0) + 1;
-                return counts;
-            }, {
-                draft: 0,
-                ordered: 0,
-                received: 0,
-                completed: 0,
-                paid: 0,
-                overdue: 0
-            });
+        return {
+            totalPurchaseAmount: totalAmount,
+            paidAmount: paidAmount,
+            payableAmount: totalBalance,
+            todaysPurchases: todaysPurchases,
+            totalBills: purchases.length,
+            avgPurchaseValue: avgPurchaseValue,
+            growthPercentage: growthPercentage,
+            paidBills: purchases.filter(p => (parseFloat(p.balance) || 0) === 0).length,
+            pendingBills: purchases.filter(p => (parseFloat(p.balance) || 0) > 0).length,
+            totalSuppliers: new Set(purchases.map(p => p.supplierName || p.supplier?.name || p.partyName).filter(name => name)).size
+        };
+    }, [purchases]);
 
-            // Today's purchases
-            const todaysDate = new Date().toISOString().split('T')[0];
-            const todaysPurchasesAmount = purchaseData
-                .filter(p => {
-                    try {
-                        const purchaseDate = new Date(p.date).toISOString().split('T')[0];
-                        return purchaseDate === todaysDate;
-                    } catch {
-                        return false;
-                    }
-                })
-                .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    // Options
+    const dateRangeOptions = useMemo(() => [
+        'Today', 'Yesterday', 'This Week', 'This Month', 'Last Month', 'This Quarter', 'This Year', 'Custom Range'
+    ], []);
 
-            // Pending deliveries
-            const pendingDeliveries = purchaseData.filter(p =>
-                p.receivingStatus === 'pending' || p.receivingStatus === 'partial'
-            ).length;
+    const firmOptions = useMemo(() => ['All Firms'], []);
 
-            // Unique suppliers
-            const uniqueSuppliers = new Set(
-                purchaseData
-                    .map(p => p.supplierName)
-                    .filter(name => name && name.trim() !== '')
-            ).size;
+    // Filtered purchases
+    const filteredPurchases = useMemo(() => {
+        if (!debouncedSearchTerm) return purchases;
 
-            const result = {
-                totalPurchaseAmount: totalAmount,
-                paidAmount: paidAmount,
-                payableAmount: totalBalance,
-                growthPercentage: 0, // Cannot calculate without historical data
-                todaysPurchases: todaysPurchasesAmount,
-                totalBills: purchaseData.length,
-                totalSuppliers: uniqueSuppliers,
-                pendingDeliveries: pendingDeliveries,
-                overdueAmount: totalBalance, // Simplified - would need due date logic
-                statusCounts: statusCounts
-            };
+        const searchLower = debouncedSearchTerm.toLowerCase();
+        return purchases.filter(purchase =>
+            (purchase.supplierName || purchase.partyName || '').toLowerCase().includes(searchLower) ||
+            (purchase.purchaseNumber || purchase.billNo || '').toLowerCase().includes(searchLower) ||
+            (purchase.supplierPhone || purchase.partyPhone || '').includes(searchLower)
+        );
+    }, [purchases, debouncedSearchTerm]);
 
-            console.log('📊 Calculated summary:', result);
-            return result;
-
-        } catch (error) {
-            console.error('❌ Error calculating summary:', error);
-            return {
-                totalPurchaseAmount: 0,
-                paidAmount: 0,
-                payableAmount: 0,
-                growthPercentage: 0,
-                todaysPurchases: 0,
-                totalBills: 0,
-                totalSuppliers: 0,
-                pendingDeliveries: 0,
-                overdueAmount: 0,
-                statusCounts: {
-                    draft: 0,
-                    ordered: 0,
-                    received: 0,
-                    completed: 0,
-                    paid: 0,
-                    overdue: 0
-                }
-            };
-        }
-    }, []);
-
-    // ✅ FIXED: Fetch purchases without summary API call
-    const fetchPurchases = useCallback(async (customFilters = {}) => {
+    // Load purchases data
+    const loadPurchasesData = useCallback(async () => {
         if (!effectiveCompanyId) {
-            setError('No company selected. Please select a company to view purchases.');
-            setInitialLoading(false);
+            setPurchases([]);
+            addToast?.('No company selected. Please select a company first.', 'warning');
             return;
         }
 
-        const isInitialLoad = !purchases.length;
-        if (isInitialLoad) {
-            setInitialLoading(true);
-        } else {
-            setLoading(true);
-        }
-
-        setError('');
-
         try {
-            // Prepare API filters
-            const currentFilters = { ...filters, ...customFilters };
-            const apiFilters = {
-                startDate: purchaseService.formatDateForAPI?.(currentFilters.startDate) || currentFilters.startDate?.toISOString?.()?.split('T')[0],
-                endDate: purchaseService.formatDateForAPI?.(currentFilters.endDate) || currentFilters.endDate?.toISOString?.()?.split('T')[0],
-                ...(currentFilters.searchTerm?.trim() && { search: currentFilters.searchTerm.trim() }),
-                ...(currentFilters.purchaseStatus && { status: currentFilters.purchaseStatus }),
-                ...(currentFilters.receivingStatus && { receivingStatus: currentFilters.receivingStatus }),
-                ...(currentFilters.paymentStatus && { paymentStatus: currentFilters.paymentStatus }),
-                ...(currentFilters.selectedFirm !== 'ALL FIRMS' && { firm: currentFilters.selectedFirm })
+            setLoading(true);
+
+            const filters = {
+                startDate: startDate.toISOString().split('T')[0],
+                endDate: endDate.toISOString().split('T')[0]
             };
 
-            console.log('🔄 Fetching purchases with filters:', apiFilters);
+            const response = await purchaseService.getPurchases(effectiveCompanyId, filters);
 
-            // Fetch purchases
-            const purchasesResponse = await purchaseService.getPurchases(effectiveCompanyId, apiFilters);
-            console.log('✅ Purchases Response:', purchasesResponse);
-
-            // Transform and validate data
-            let transformedPurchases = [];
-            if (purchasesResponse?.success) {
-                const rawData = purchasesResponse.data;
+            if (response?.success) {
+                const rawData = response.data;
+                let transformedPurchases = [];
 
                 if (Array.isArray(rawData)) {
                     transformedPurchases = rawData;
                 } else if (rawData?.purchases && Array.isArray(rawData.purchases)) {
                     transformedPurchases = rawData.purchases;
                 } else if (rawData && typeof rawData === 'object') {
-                    // Handle other response formats
-                    transformedPurchases = [];
+                    transformedPurchases = [rawData];
                 }
 
-                // Transform to frontend format if transformation method exists
-                if (purchaseService.transformToFrontendFormat && transformedPurchases.length > 0) {
+                // Transform data if method exists
+                if (purchaseService.transformPurchaseData && transformedPurchases.length > 0) {
                     transformedPurchases = transformedPurchases.map(purchase => {
                         try {
-                            return purchaseService.transformToFrontendFormat(purchase);
+                            return purchaseService.transformPurchaseData(purchase);
                         } catch (transformError) {
-                            console.warn('⚠️ Failed to transform purchase:', transformError, purchase);
-                            return purchase; // Return original if transformation fails
+                            return purchase;
                         }
                     });
                 }
-            }
 
-            // Update purchases state
-            setPurchases(transformedPurchases);
-            setOriginalPurchases(transformedPurchases);
-
-            // ✅ FIXED: Always calculate summary locally (no API call)
-            console.log('📊 Calculating summary from purchases data...');
-            const summaryData = calculateSummaryFromPurchases(transformedPurchases);
-            setSummary(summaryData);
-
-            // Success message
-            if (transformedPurchases.length > 0) {
-                console.log(`✅ Loaded ${transformedPurchases.length} purchases successfully`);
+                setPurchases(transformedPurchases);
             } else {
-                console.log('ℹ️ No purchases found for the selected criteria');
-            }
-
-        } catch (error) {
-            console.error('❌ Failed to fetch purchases:', error);
-            const errorMessage = `Failed to load purchases: ${error.message}`;
-            setError(errorMessage);
-
-            // Set empty data on error
-            setPurchases([]);
-            setOriginalPurchases([]);
-            setSummary(calculateSummaryFromPurchases([]));
-
-            // Show error toast
-            addToast?.(errorMessage, 'error', 5000);
-        } finally {
-            setLoading(false);
-            setInitialLoading(false);
-        }
-    }, [effectiveCompanyId, filters, calculateSummaryFromPurchases, addToast, purchases.length]);
-
-    // ✅ FIXED: Status update with simplified method calls
-    const updatePurchaseStatus = useCallback(async (purchaseId, status) => {
-        if (!effectiveCompanyId || !purchaseId) {
-            addToast?.('Invalid purchase or company information', 'error');
-            return;
-        }
-
-        try {
-            setLoading(true);
-
-            let response;
-
-            // ✅ FIXED: Use specific status methods if available, otherwise use updatePurchase
-            if (status === 'ordered' && purchaseService.markAsOrdered) {
-                response = await purchaseService.markAsOrdered(effectiveCompanyId, purchaseId);
-            } else if (status === 'received' && purchaseService.markAsReceived) {
-                response = await purchaseService.markAsReceived(effectiveCompanyId, purchaseId);
-            } else if (status === 'completed' && purchaseService.completePurchase) {
-                response = await purchaseService.completePurchase(effectiveCompanyId, purchaseId);
-            } else if (purchaseService.updatePurchaseStatus) {
-                response = await purchaseService.updatePurchaseStatus(effectiveCompanyId, purchaseId, status);
-            } else {
-                throw new Error('Status update method not available');
-            }
-
-            if (response?.success || response?.data) {
-                console.log(`✅ Purchase ${purchaseId} status updated to: ${status}`);
-                addToast?.(`Purchase status updated to ${status}`, 'success', 3000);
-                await fetchPurchases();
-            } else {
-                throw new Error(response?.message || 'Failed to update status');
-            }
-
-        } catch (error) {
-            console.error('❌ Failed to update purchase status:', error);
-            const errorMessage = `Failed to update purchase status: ${error.message}`;
-            setError(errorMessage);
-            addToast?.(errorMessage, 'error', 5000);
-        } finally {
-            setLoading(false);
-        }
-    }, [effectiveCompanyId, addToast, fetchPurchases]);
-
-    // ✅ ENHANCED: Delete purchase with better confirmation
-    const deletePurchase = useCallback(async (purchaseId, purchaseNo) => {
-        if (!effectiveCompanyId || !purchaseId) {
-            addToast?.('Invalid purchase or company information', 'error');
-            return;
-        }
-
-        try {
-            setLoading(true);
-
-            const response = await purchaseService.deletePurchase(effectiveCompanyId, purchaseId);
-
-            if (response?.success || response?.data) {
-                console.log(`✅ Purchase ${purchaseId} deleted successfully`);
-                addToast?.(`Purchase ${purchaseNo} deleted successfully`, 'success', 3000);
-                await fetchPurchases();
-            } else {
-                throw new Error(response?.message || 'Failed to delete purchase');
-            }
-
-        } catch (error) {
-            console.error('❌ Failed to delete purchase:', error);
-            const errorMessage = `Failed to delete purchase: ${error.message}`;
-            setError(errorMessage);
-            addToast?.(errorMessage, 'error', 5000);
-        } finally {
-            setLoading(false);
-        }
-    }, [effectiveCompanyId, addToast, fetchPurchases]);
-
-    // ✅ ENHANCED: Filter update with debouncing
-    const updateFilters = useCallback((newFilters) => {
-        setFilters(prev => ({ ...prev, ...newFilters }));
-    }, []);
-
-    // ✅ ENHANCED: Date range calculation
-    const calculateDateRange = useCallback((range) => {
-        const today = new Date();
-        let start, end;
-
-        switch (range) {
-            case 'Today':
-                start = end = new Date(today);
-                break;
-            case 'Yesterday':
-                const yesterday = new Date(today);
-                yesterday.setDate(yesterday.getDate() - 1);
-                start = end = yesterday;
-                break;
-            case 'This Week':
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
-                start = startOfWeek;
-                end = new Date(today);
-                break;
-            case 'This Month':
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                break;
-            case 'Last Month':
-                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                end = new Date(today.getFullYear(), today.getMonth(), 0);
-                break;
-            case 'This Quarter':
-                const quarter = Math.floor(today.getMonth() / 3);
-                start = new Date(today.getFullYear(), quarter * 3, 1);
-                end = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
-                break;
-            case 'This Year':
-                start = new Date(today.getFullYear(), 0, 1);
-                end = new Date(today.getFullYear(), 11, 31);
-                break;
-            default:
-                return null; // Custom Range - don't update dates
-        }
-
-        return { start, end };
-    }, []);
-
-    // ✅ ENHANCED: Event handlers with better error handling
-    const handleDateRangeChange = useCallback((range) => {
-        const dateRange = calculateDateRange(range);
-        if (dateRange) {
-            updateFilters({
-                dateRange: range,
-                startDate: dateRange.start,
-                endDate: dateRange.end
-            });
-        } else {
-            updateFilters({ dateRange: range });
-        }
-    }, [calculateDateRange, updateFilters]);
-
-    const handleStartDateChange = useCallback((e) => {
-        const newDate = new Date(e.target.value);
-        updateFilters({
-            startDate: newDate,
-            dateRange: 'Custom Range'
-        });
-    }, [updateFilters]);
-
-    const handleEndDateChange = useCallback((e) => {
-        const newDate = new Date(e.target.value);
-        updateFilters({
-            endDate: newDate,
-            dateRange: 'Custom Range'
-        });
-    }, [updateFilters]);
-
-    const handleSearchChange = useCallback((e) => {
-        updateFilters({ searchTerm: e.target.value });
-    }, [updateFilters]);
-
-    // ✅ ENHANCED: Navigation handlers with better validation
-    const handleAddPurchase = useCallback(() => {
-        if (!effectiveCompanyId) {
-            addToast?.('Please select a company first', 'warning', 3000);
-            return;
-        }
-        console.log('🛒 Navigating to Add Purchase page');
-        navigate(`/companies/${effectiveCompanyId}/purchases/add`);
-    }, [effectiveCompanyId, addToast, navigate]);
-
-    const handleAddSale = useCallback(() => {
-        if (!effectiveCompanyId) {
-            addToast?.('Please select a company first', 'warning', 3000);
-            return;
-        }
-        console.log('🧾 Navigating to Add Sale page');
-        navigate(`/companies/${effectiveCompanyId}/sales/add`);
-    }, [effectiveCompanyId, addToast, navigate]);
-
-    // ✅ FIXED: More options with better error handling
-    const handleMoreOptions = useCallback(async () => {
-        console.log('⚙️ More options clicked');
-
-        if (!effectiveCompanyId) {
-            addToast?.('Please select a company first', 'warning', 3000);
-            return;
-        }
-
-        try {
-            // ✅ FIXED: Check if export method exists and is a function
-            if (purchaseService.exportCSV && typeof purchaseService.exportCSV === 'function') {
-                const blob = await purchaseService.exportCSV(effectiveCompanyId, {
-                    startDate: purchaseService.formatDateForAPI?.(filters.startDate) || filters.startDate?.toISOString?.()?.split('T')[0],
-                    endDate: purchaseService.formatDateForAPI?.(filters.endDate) || filters.endDate?.toISOString?.()?.split('T')[0]
-                });
-
-                // Download CSV
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `purchases_${new Date().toISOString().split('T')[0]}.csv`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-
-                addToast?.('Purchase data exported successfully', 'success', 3000);
-            } else {
-                // ✅ FIXED: Show available options instead of trying to export
-                const options = [
-                    'Export as CSV (Coming Soon)',
-                    'Print Summary Report (Coming Soon)',
-                    'Email Summary (Coming Soon)',
-                    'Generate Report (Coming Soon)',
-                    'Advanced Filters (Coming Soon)'
-                ];
-
-                const optionsList = options.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n');
-
-                if (window.confirm(`More Options Available:\n\n${optionsList}\n\nWould you like to see more details about these upcoming features?`)) {
-                    addToast?.('These features are coming soon! Stay tuned for updates.', 'info', 4000);
+                setPurchases([]);
+                if (response?.message && !response.message.includes('No purchases found')) {
+                    addToast?.('Failed to load purchases: ' + response.message, 'warning');
                 }
             }
         } catch (error) {
-            console.error('❌ More options failed:', error);
-            addToast?.('Action failed. Please try again later.', 'error', 3000);
-        }
-    }, [effectiveCompanyId, filters.startDate, filters.endDate, addToast]);
+            setPurchases([]);
 
-    const handleSettings = useCallback(() => {
+            let errorMessage = 'Failed to load purchases data';
+            if (error.message) {
+                if (error.message.includes('Company ID is required')) {
+                    errorMessage = 'Company not properly selected. Please refresh the page and select a company.';
+                } else if (error.message.includes('401') || error.message.includes('Authentication')) {
+                    errorMessage = 'Authentication failed. Please login again.';
+                } else if (error.message.includes('403') || error.message.includes('Access denied')) {
+                    errorMessage = 'Access denied. You may not have permission to view purchases.';
+                } else if (error.message.includes('404')) {
+                    errorMessage = 'Purchase service not found. Please contact support.';
+                } else if (error.message.includes('Network') || error.message.includes('fetch')) {
+                    errorMessage = 'Network error. Please check your internet connection.';
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
+            if (!error.message?.includes('fetch') && !error.message?.includes('Network')) {
+                addToast?.(errorMessage, 'error');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [effectiveCompanyId, startDate, endDate, addToast]);
+
+    // Load inventory items
+    const loadInventoryItems = useCallback(async () => {
         if (!effectiveCompanyId) {
-            addToast?.('Please select a company first', 'warning', 3000);
+            setInventoryItems([]);
             return;
         }
-        console.log('⚙️ Settings clicked');
-        navigate(`/companies/${effectiveCompanyId}/settings`);
-    }, [effectiveCompanyId, addToast, navigate]);
 
-    // ✅ ENHANCED: Table event handlers
-    const handleViewPurchase = useCallback((purchase) => {
-        console.log('👁️ Viewing purchase:', purchase);
-        if (effectiveCompanyId && purchase.id) {
-            addToast?.(`Viewing Purchase: ${purchase.purchaseNo}`, 'info', 3000);
-            // TODO: Implement view page
-            // navigate(`/companies/${effectiveCompanyId}/purchases/${purchase.id}`);
-        }
-    }, [effectiveCompanyId, addToast]);
+        try {
+            const response = await itemService.getItems(effectiveCompanyId);
 
-    const handleEditPurchase = useCallback((purchase) => {
-        console.log('✏️ Editing purchase:', purchase);
-        if (effectiveCompanyId && purchase.id) {
-            navigate(`/companies/${effectiveCompanyId}/purchases/${purchase.id}/edit`);
-        }
-    }, [effectiveCompanyId, navigate]);
-
-    const handleDeletePurchase = useCallback(async (purchase) => {
-        const confirmed = window.confirm(
-            `Are you sure you want to delete purchase ${purchase.purchaseNo}?\n\nThis action cannot be undone.`
-        );
-
-        if (confirmed) {
-            await deletePurchase(purchase.id, purchase.purchaseNo);
-        }
-    }, [deletePurchase]);
-
-    const handlePrintPurchase = useCallback((purchase) => {
-        console.log('🖨️ Printing purchase:', purchase);
-        addToast?.(`Print functionality for ${purchase.purchaseNo} coming soon!`, 'info', 3000);
-    }, [addToast]);
-
-    const handleSharePurchase = useCallback((purchase) => {
-        console.log('📤 Sharing purchase:', purchase);
-        const shareText = `Purchase Order: ${purchase.purchaseNo}\nSupplier: ${purchase.supplierName}\nAmount: ${purchaseService.formatCurrency?.(purchase.amount) || `₹${purchase.amount}`}`;
-
-        if (navigator.share) {
-            navigator.share({
-                title: `Purchase Order ${purchase.purchaseNo}`,
-                text: shareText,
-                url: window.location.href
-            }).catch(console.error);
-        } else {
-            navigator.clipboard.writeText(shareText).then(() => {
-                addToast?.('Purchase details copied to clipboard!', 'success', 3000);
-            }).catch(() => {
-                addToast?.('Sharing not supported on this device', 'warning', 3000);
-            });
-        }
-    }, [addToast]);
-
-    // Status workflow handlers
-    const handleMarkAsOrdered = useCallback(async (purchase) => {
-        console.log('📦 Marking as ordered:', purchase.purchaseNo);
-        await updatePurchaseStatus(purchase.id, 'ordered');
-    }, [updatePurchaseStatus]);
-
-    const handleMarkAsReceived = useCallback(async (purchase) => {
-        console.log('✅ Marking as received:', purchase.purchaseNo);
-        await updatePurchaseStatus(purchase.id, 'received');
-    }, [updatePurchaseStatus]);
-
-    const handleCompletePurchase = useCallback(async (purchase) => {
-        console.log('🎯 Completing purchase:', purchase.purchaseNo);
-        await updatePurchaseStatus(purchase.id, 'completed');
-    }, [updatePurchaseStatus]);
-
-    // Retry function
-    const handleRetry = useCallback(() => {
-        setError('');
-        fetchPurchases();
-    }, [fetchPurchases]);
-
-    // ✅ ENHANCED: Effects with proper dependencies
-    // Initial load
-    useEffect(() => {
-        if (effectiveCompanyId) {
-            fetchPurchases();
+            if (response?.success && response.data) {
+                const items = response.data.items || response.data || [];
+                setInventoryItems(Array.isArray(items) ? items : []);
+            } else {
+                setInventoryItems([]);
+            }
+        } catch (error) {
+            setInventoryItems([]);
         }
     }, [effectiveCompanyId]);
 
-    // Filter changes (excluding search term)
+    // Load data on mount and when dependencies change
     useEffect(() => {
         if (effectiveCompanyId) {
-            fetchPurchases();
+            const timer = setTimeout(() => {
+                loadPurchasesData();
+                loadInventoryItems();
+            }, 100);
+
+            return () => clearTimeout(timer);
+        } else {
+            setPurchases([]);
         }
-    }, [
-        filters.dateRange,
-        filters.startDate,
-        filters.endDate,
-        filters.selectedFirm,
-        filters.purchaseStatus,
-        filters.receivingStatus,
-        filters.paymentStatus
-    ]);
+    }, [effectiveCompanyId, startDate, endDate, loadPurchasesData, loadInventoryItems]);
 
-    // Search term with debouncing
-    useEffect(() => {
-        if (!effectiveCompanyId) return;
+    // Event handlers
+    const handleDateRangeChange = useCallback((range) => {
+        setDateRange(range);
+    }, []);
 
-        const timeoutId = setTimeout(() => {
-            if (filters.searchTerm !== undefined) {
-                fetchPurchases();
+    const handleStartDateChange = useCallback((e) => {
+        const newDate = new Date(e.target.value);
+        setStartDate(newDate);
+        setDateRange('Custom Range');
+    }, []);
+
+    const handleEndDateChange = useCallback((e) => {
+        const newDate = new Date(e.target.value);
+        setEndDate(newDate);
+        setDateRange('Custom Range');
+    }, []);
+
+    const handleCreatePurchase = useCallback(() => {
+        setEditingPurchase(null);
+        setCurrentView('purchase');
+    }, []);
+
+    const handleBackToList = useCallback(() => {
+        setCurrentView('list');
+        setEditingPurchase(null);
+    }, []);
+
+    // Purchase form save handler
+    const handlePurchaseFormSave = useCallback(async (purchaseData) => {
+        try {
+            setLoading(true);
+            const purchaseDataWithCompany = {
+                ...purchaseData,
+                companyId: effectiveCompanyId
+            };
+
+            let response;
+            if (editingPurchase) {
+                response = await purchaseService.updatePurchase(effectiveCompanyId, editingPurchase.id, purchaseDataWithCompany);
+            } else {
+                response = await purchaseService.createPurchaseWithTransaction(purchaseDataWithCompany);
             }
-        }, 500);
 
-        return () => clearTimeout(timeoutId);
-    }, [filters.searchTerm, effectiveCompanyId]);
+            if (response.success) {
+                const savedPurchase = response.data?.purchase || response.data;
+                const transformedPurchase = purchaseService.transformPurchaseData ?
+                    purchaseService.transformPurchaseData(savedPurchase) : savedPurchase;
 
-    // ✅ ENHANCED: Early returns for better UX
+                if (editingPurchase) {
+                    setPurchases(prev =>
+                        prev.map(p => p.id === editingPurchase.id ? transformedPurchase : p)
+                    );
+                    addToast?.(`Purchase ${transformedPurchase.purchaseNumber || transformedPurchase.billNo} updated successfully!`, 'success');
+                } else {
+                    setPurchases(prev => [transformedPurchase, ...prev]);
+                    addToast?.(`Purchase ${transformedPurchase.purchaseNumber || transformedPurchase.billNo} created successfully!`, 'success');
+                }
+
+                setCurrentView('list');
+                setEditingPurchase(null);
+                return response;
+            } else {
+                throw new Error(response.message || 'Failed to save purchase');
+            }
+        } catch (error) {
+            addToast?.('Error saving purchase: ' + error.message, 'error');
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, [editingPurchase, effectiveCompanyId, addToast]);
+
+    const handleAddItem = useCallback(async (productData) => {
+        try {
+            const response = await itemService.createItem(effectiveCompanyId, productData);
+
+            if (response.success) {
+                setInventoryItems(prev => [...prev, response.data]);
+                return {
+                    success: true,
+                    data: response.data,
+                    message: `Item "${productData.name}" added successfully`
+                };
+            } else {
+                throw new Error(response.message || 'Failed to add item');
+            }
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                message: 'Error adding item to inventory'
+            };
+        }
+    }, [effectiveCompanyId]);
+
+    const handleSearchChange = useCallback((e) => {
+        setTopSearchTerm(e.target.value);
+    }, []);
+
+    // Purchase transaction handlers
+    const handleViewPurchase = useCallback((purchase) => {
+        addToast?.(`Viewing Purchase: ${purchase.purchaseNumber || purchase.billNo}\nSupplier: ${purchase.supplierName || purchase.partyName}\nAmount: ₹${(purchase.amount || 0).toLocaleString()}`, 'info');
+    }, [addToast]);
+
+    const handleEditPurchase = useCallback((purchase) => {
+        setEditingPurchase(purchase.originalPurchase || purchase);
+        setCurrentView('purchase');
+    }, []);
+
+    const handleDeletePurchase = useCallback(async (purchase) => {
+        if (window.confirm(`Are you sure you want to delete purchase ${purchase.purchaseNumber || purchase.billNo}?\n\nThis action cannot be undone.`)) {
+            try {
+                setLoading(true);
+                const response = await purchaseService.deletePurchase(effectiveCompanyId, purchase.id);
+
+                if (response.success) {
+                    setPurchases(prev => prev.filter(p => p.id !== purchase.id));
+                    addToast?.(`Purchase ${purchase.purchaseNumber || purchase.billNo} deleted successfully`, 'success');
+                } else {
+                    throw new Error(response.message || 'Failed to delete purchase');
+                }
+            } catch (error) {
+                addToast?.('Error deleting purchase: ' + error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+    }, [effectiveCompanyId, addToast]);
+
+    const handlePrintPurchase = useCallback((purchase) => {
+        addToast?.(`Printing purchase ${purchase.purchaseNumber || purchase.billNo}...`, 'info');
+    }, [addToast]);
+
+    const handleSharePurchase = useCallback((purchase) => {
+        const shareText = `Purchase ${purchase.purchaseNumber || purchase.billNo}\nSupplier: ${purchase.supplierName || purchase.partyName}\nAmount: ₹${(purchase.amount || 0).toLocaleString()}\nStatus: ${purchase.status}`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: `Purchase ${purchase.purchaseNumber || purchase.billNo}`,
+                text: shareText,
+                url: window.location.href
+            }).catch(() => { });
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(shareText).then(() => {
+                addToast?.('Purchase details copied to clipboard!', 'success');
+            }).catch(() => {
+                alert(`Purchase Details:\n${shareText}`);
+            });
+        } else {
+            alert(`Purchase Details:\n${shareText}`);
+        }
+    }, [addToast]);
+
+    // Utility handlers
+    const handleMoreOptions = useCallback(() => {
+        // More options functionality
+    }, []);
+
+    const handleSettings = useCallback(() => {
+        // Settings functionality
+    }, []);
+
+    const handleExcelExport = useCallback(() => {
+        addToast?.('Excel export feature coming soon!', 'info');
+    }, [addToast]);
+
+    const handlePrint = useCallback(() => {
+        window.print();
+    }, []);
+
+    // Early returns for better UX
     if (!isOnline) {
         return (
-            <div className="purchase-bills-main-container">
+            <div className="purchase-bills-wrapper">
                 <Container fluid>
                     <Alert variant="warning" className="text-center">
                         <h5>📡 No Internet Connection</h5>
@@ -681,144 +435,144 @@ function PurchaseBills({
 
     if (!effectiveCompanyId) {
         return (
-            <div className="purchase-bills-main-container">
+            <div className="purchase-bills-wrapper">
                 <Container fluid>
                     <Alert variant="warning" className="text-center">
                         <h5>⚠️ No Company Selected</h5>
                         <p>Please select a company to view purchase bills.</p>
-                        <small className="text-muted d-block mt-2">
-                            You can select a company from the header dropdown.
-                        </small>
                     </Alert>
                 </Container>
             </div>
         );
     }
 
-    // ✅ ENHANCED: Main render with better loading states
-    return (
-        <div className="purchase-bills-main-container">
-            <Container fluid className="purchase-bills-container">
-                {/* Header */}
-                <Row>
-                    <Col xs={12}>
-                        <PurchaseBillsHeader
-                            searchTerm={filters.searchTerm}
-                            onSearchChange={handleSearchChange}
-                            onAddPurchase={handleAddPurchase}
-                            onAddSale={handleAddSale}
-                            onMoreOptions={handleMoreOptions}
-                            onSettings={handleSettings}
-                            currentCompany={currentCompany}
-                            addToast={addToast}
-                        />
-                    </Col>
-                </Row>
+    // Render Purchase Form View
+    if (currentView === 'purchase') {
+        return (
+            <div className="purchase-bills-wrapper">
+                <div className="purchase-form-header">
+                    <Container fluid className="px-4">
+                        <Row className="align-items-center py-3">
+                            <Col>
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={handleBackToList}
+                                    className="me-3"
+                                    disabled={loading}
+                                >
+                                    <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
+                                    Back to Purchase Bills
+                                </Button>
+                                <span className="page-title-text">
+                                    {editingPurchase ? `Edit Purchase ${editingPurchase.purchaseNumber || editingPurchase.billNo}` : 'Create New Purchase'}
+                                </span>
+                            </Col>
+                        </Row>
+                    </Container>
+                </div>
 
-                {/* Error Alert */}
-                {error && (
-                    <Row>
-                        <Col xs={12}>
-                            <Alert variant="danger" dismissible onClose={() => setError('')}>
-                                <div className="d-flex align-items-center justify-content-between">
-                                    <div>
-                                        <strong>Error:</strong> {error}
-                                    </div>
-                                    <button
-                                        className="btn btn-sm btn-outline-danger"
-                                        onClick={handleRetry}
-                                        disabled={loading}
-                                    >
-                                        {loading ? (
-                                            <>
-                                                <Spinner size="sm" animation="border" className="me-1" />
-                                                Retrying...
-                                            </>
-                                        ) : (
-                                            'Retry'
-                                        )}
-                                    </button>
+                <PurchaseForm
+                    editingPurchase={editingPurchase}
+                    onSave={handlePurchaseFormSave}
+                    onCancel={handleBackToList}
+                    onExit={handleBackToList}
+                    companyId={effectiveCompanyId}
+                    inventoryItems={inventoryItems}
+                    categories={categories}
+                    onAddItem={handleAddItem}
+                    addToast={addToast}
+                    loading={loading}
+                />
+            </div>
+        );
+    }
+
+    // Main Purchase Bills View
+    return (
+        <div className="purchase-bills-wrapper">
+            <PurchaseBillsHeader
+                searchTerm={topSearchTerm}
+                onSearchChange={handleSearchChange}
+                onAddPurchase={handleCreatePurchase}
+                onMoreOptions={handleMoreOptions}
+                onSettings={handleSettings}
+                companyId={effectiveCompanyId}
+            />
+
+            <div className="purchase-page-title">
+                <Container fluid className="px-4">
+                    <Row className="align-items-center py-3">
+                        <Col>
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h4 className="mb-1 text-warning">
+                                        <i className="fas fa-shopping-cart me-2"></i>
+                                        Purchase Bills
+                                    </h4>
+                                    <p className="text-muted mb-0">
+                                        Manage your purchase transactions ({purchases.length} bills)
+                                    </p>
                                 </div>
-                            </Alert>
+                                <Button
+                                    variant="warning"
+                                    onClick={handleCreatePurchase}
+                                    className="px-4"
+                                    disabled={loading}
+                                >
+                                    <i className="fas fa-plus me-2"></i>
+                                    Add Purchase
+                                </Button>
+                            </div>
                         </Col>
                     </Row>
-                )}
+                </Container>
+            </div>
 
-                {/* Filter */}
-                <Row>
-                    <Col xs={12}>
-                        <PurchaseBillsFilter
-                            dateRange={filters.dateRange}
-                            startDate={filters.startDate}
-                            endDate={filters.endDate}
-                            selectedFirm={filters.selectedFirm}
-                            purchaseStatus={filters.purchaseStatus}
-                            receivingStatus={filters.receivingStatus}
-                            paymentStatus={filters.paymentStatus}
-                            dateRangeOptions={staticOptions.dateRangeOptions}
-                            firmOptions={staticOptions.firmOptions}
-                            purchaseStatusOptions={staticOptions.purchaseStatusOptions}
-                            receivingStatusOptions={staticOptions.receivingStatusOptions}
-                            paymentStatusOptions={staticOptions.paymentStatusOptions}
-                            onDateRangeChange={handleDateRangeChange}
-                            onStartDateChange={handleStartDateChange}
-                            onEndDateChange={handleEndDateChange}
-                            onFirmChange={(firm) => updateFilters({ selectedFirm: firm })}
-                            onPurchaseStatusChange={(status) => updateFilters({ purchaseStatus: status })}
-                            onReceivingStatusChange={(status) => updateFilters({ receivingStatus: status })}
-                            onPaymentStatusChange={(status) => updateFilters({ paymentStatus: status })}
-                        />
-                    </Col>
-                </Row>
+            <PurchaseBillsFilter
+                dateRange={dateRange}
+                startDate={startDate}
+                endDate={endDate}
+                selectedFirm={selectedFirm}
+                dateRangeOptions={dateRangeOptions}
+                firmOptions={firmOptions}
+                onDateRangeChange={handleDateRangeChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onFirmChange={setSelectedFirm}
+                onExcelExport={handleExcelExport}
+                onPrint={handlePrint}
+                resultCount={filteredPurchases.length}
+            />
 
-                {/* Main Content */}
-                <Row className="purchase-main-content">
-                    {/* Summary Sidebar */}
-                    <Col xl={2} lg={3} md={4} className="summary-sidebar">
+            <Container fluid className="px-4 py-3">
+                <Row className="g-3">
+                    <Col xl={2} lg={3} md={3} sm={12} className="sidebar-col">
                         <PurchaseBillsSummary
                             summary={summary}
-                            purchases={purchases}
-                            isLoading={initialLoading}
+                            loading={loading}
+                            dateRange={dateRange}
                         />
                     </Col>
 
-                    {/* Table Content */}
-                    <Col xl={10} lg={9} md={8} className="table-content">
-                        {initialLoading ? (
-                            <div className="loading-container d-flex align-items-center justify-content-center py-5">
-                                <Spinner animation="border" variant="primary" />
-                                <span className="ms-2">Loading purchases...</span>
-                            </div>
-                        ) : (
-                            <PurchaseBillsTable
-                                purchases={purchases}
-                                onViewPurchase={handleViewPurchase}
-                                onEditPurchase={handleEditPurchase}
-                                onDeletePurchase={handleDeletePurchase}
-                                onPrintPurchase={handlePrintPurchase}
-                                onSharePurchase={handleSharePurchase}
-                                onMarkAsOrdered={handleMarkAsOrdered}
-                                onMarkAsReceived={handleMarkAsReceived}
-                                onCompletePurchase={handleCompletePurchase}
-                                isLoading={loading}
-                            />
-                        )}
+                    <Col xl={10} lg={9} md={9} sm={12} className="content-col">
+                        <PurchaseBillsTable
+                            purchases={filteredPurchases}
+                            onCreatePurchase={handleCreatePurchase}
+                            onViewPurchase={handleViewPurchase}
+                            onEditPurchase={handleEditPurchase}
+                            onDeletePurchase={handleDeletePurchase}
+                            onPrintPurchase={handlePrintPurchase}
+                            onSharePurchase={handleSharePurchase}
+                            categories={categories}
+                            onAddItem={handleAddItem}
+                            inventoryItems={inventoryItems}
+                            loading={loading}
+                            companyId={effectiveCompanyId}
+                            searchTerm={debouncedSearchTerm}
+                        />
                     </Col>
                 </Row>
             </Container>
-
-            {/* Loading Overlay for Actions */}
-            {loading && !initialLoading && (
-                <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 9999 }}>
-                    <div className="bg-white p-4 rounded shadow">
-                        <div className="d-flex align-items-center">
-                            <Spinner animation="border" size="sm" className="me-2" />
-                            <span>Processing...</span>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
