@@ -59,6 +59,7 @@ function SalesInvoicesTable({
     const getTransactionIcon = (type) => {
         switch (type?.toLowerCase()) {
             case 'sale': return '💰';
+            case 'gst invoice': return '📋';
             case 'purchase': return '🛒';
             case 'return': return '↩️';
             case 'payment': return '💳';
@@ -79,11 +80,46 @@ function SalesInvoicesTable({
     const getTransactionVariant = (transaction) => {
         switch (transaction?.toLowerCase()) {
             case 'sale': return 'success';
-            case 'purchase': return 'primary';
+            case 'gst invoice': return 'primary';
+            case 'purchase': return 'info';
             case 'return': return 'danger';
-            case 'payment': return 'info';
+            case 'payment': return 'warning';
             default: return 'light';
         }
+    };
+
+    // Enhanced calculation function to handle different invoice types
+    const calculateDisplayAmounts = (transaction) => {
+        const isGSTInvoice = transaction.transaction?.toLowerCase() === 'gst invoice';
+        const baseAmount = parseFloat(transaction.amount || 0);
+        const cgst = parseFloat(transaction.cgst || 0);
+        const sgst = parseFloat(transaction.sgst || 0);
+        const totalTax = cgst + sgst;
+
+        let displayAmount = baseAmount;
+        let displayBalance = parseFloat(transaction.balance || 0);
+
+        // For GST Invoice, show amount inclusive of tax
+        if (isGSTInvoice && totalTax > 0) {
+            // If amount doesn't include tax, add it
+            if (baseAmount > 0 && totalTax > 0) {
+                // Check if tax is already included in the amount
+                const expectedTotalWithTax = baseAmount + totalTax;
+                // If the difference is significant, assume tax needs to be added
+                if (Math.abs(baseAmount - expectedTotalWithTax) > 1) {
+                    displayAmount = baseAmount; // Amount should already include tax from backend
+                }
+            }
+        }
+
+        return {
+            amount: displayAmount,
+            balance: displayBalance,
+            cgst: cgst,
+            sgst: sgst,
+            totalTax: totalTax,
+            baseAmount: baseAmount - totalTax // Amount without tax
+        };
     };
 
     const handleSort = (field) => {
@@ -279,184 +315,200 @@ function SalesInvoicesTable({
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredTransactions.map((transaction, index) => (
-                                        <tr key={transaction.id || index} className="align-middle">
-                                            {/* Date */}
-                                            <td className="border-0 px-2" style={{ width: '65px' }}>
-                                                <span className="text-dark fw-medium" style={{ fontSize: '0.7rem' }}>
-                                                    {formatDate(transaction.date)}
-                                                </span>
-                                            </td>
+                                    filteredTransactions.map((transaction, index) => {
+                                        const calculatedAmounts = calculateDisplayAmounts(transaction);
 
-                                            {/* Invoice Number */}
-                                            <td className="border-0 px-2" style={{ width: '80px' }}>
-                                                <Badge bg="primary" bg-opacity="10" text="primary" className="fw-bold" style={{ fontSize: '0.6rem' }}>
-                                                    {transaction.invoiceNo}
-                                                </Badge>
-                                            </td>
-
-                                            {/* Party Name */}
-                                            <td className="border-0 px-2" style={{ width: '100px' }}>
-                                                <div>
-                                                    <div className="fw-medium text-dark" title={transaction.partyName} style={{ fontSize: '0.7rem' }}>
-                                                        {transaction.partyName?.length > 8
-                                                            ? `${transaction.partyName.substring(0, 8)}...`
-                                                            : transaction.partyName}
-                                                    </div>
-                                                    {transaction.partyPhone && (
-                                                        <small className="text-muted d-block" style={{ fontSize: '0.6rem' }}>
-                                                            {transaction.partyPhone.substring(0, 6)}
-                                                        </small>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Transaction Type */}
-                                            <td className="border-0 px-2" style={{ width: '70px' }}>
-                                                <div className="d-flex align-items-center">
-                                                    <span className="me-1" style={{ fontSize: '0.6rem' }}>
-                                                        {getTransactionIcon(transaction.transaction)}
+                                        return (
+                                            <tr key={transaction.id || index} className="align-middle">
+                                                {/* Date */}
+                                                <td className="border-0 px-2" style={{ width: '65px' }}>
+                                                    <span className="text-dark fw-medium" style={{ fontSize: '0.7rem' }}>
+                                                        {formatDate(transaction.date)}
                                                     </span>
+                                                </td>
+
+                                                {/* Invoice Number */}
+                                                <td className="border-0 px-2" style={{ width: '80px' }}>
+                                                    <Badge bg="primary" bg-opacity="10" text="primary" className="fw-bold" style={{ fontSize: '0.6rem' }}>
+                                                        {transaction.invoiceNo}
+                                                    </Badge>
+                                                </td>
+
+                                                {/* Party Name */}
+                                                <td className="border-0 px-2" style={{ width: '100px' }}>
+                                                    <div>
+                                                        <div className="fw-medium text-dark" title={transaction.partyName} style={{ fontSize: '0.7rem' }}>
+                                                            {transaction.partyName?.length > 8
+                                                                ? `${transaction.partyName.substring(0, 8)}...`
+                                                                : transaction.partyName}
+                                                        </div>
+                                                        {transaction.partyPhone && (
+                                                            <small className="text-muted d-block" style={{ fontSize: '0.6rem' }}>
+                                                                {transaction.partyPhone.substring(0, 6)}
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Transaction Type */}
+                                                <td className="border-0 px-2" style={{ width: '70px' }}>
+                                                    <div className="d-flex align-items-center">
+                                                        <span className="me-1" style={{ fontSize: '0.6rem' }}>
+                                                            {getTransactionIcon(transaction.transaction)}
+                                                        </span>
+                                                        <Badge
+                                                            bg={getTransactionVariant(transaction.transaction)}
+                                                            text="dark"
+                                                            className="text-capitalize"
+                                                            style={{ fontSize: '0.55rem' }}
+                                                        >
+                                                            {transaction.transaction === 'gst invoice' ? 'GST' : transaction.transaction}
+                                                        </Badge>
+                                                    </div>
+                                                </td>
+
+                                                {/* Payment Type */}
+                                                <td className="border-0 px-2" style={{ width: '70px' }}>
                                                     <Badge
-                                                        bg={getTransactionVariant(transaction.transaction)}
+                                                        bg={getPaymentTypeVariant(transaction.paymentType)}
                                                         text="dark"
-                                                        className="text-capitalize"
                                                         style={{ fontSize: '0.55rem' }}
                                                     >
-                                                        {transaction.transaction}
+                                                        {transaction.paymentType}
                                                     </Badge>
-                                                </div>
-                                            </td>
+                                                </td>
 
-                                            {/* Payment Type */}
-                                            <td className="border-0 px-2" style={{ width: '70px' }}>
-                                                <Badge
-                                                    bg={getPaymentTypeVariant(transaction.paymentType)}
-                                                    text="dark"
-                                                    style={{ fontSize: '0.55rem' }}
+                                                {/* CGST */}
+                                                <td className="border-0 text-center px-2" style={{ width: '60px' }}>
+                                                    <div>
+                                                        <div className="fw-semibold text-info" style={{ fontSize: '0.65rem' }}>
+                                                            {formatCurrency(calculatedAmounts.cgst)}
+                                                        </div>
+                                                        {transaction.cgstPercent && calculatedAmounts.cgst > 0 && (
+                                                            <small className="text-muted" style={{ fontSize: '0.55rem' }}>
+                                                                ({transaction.cgstPercent}%)
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* SGST */}
+                                                <td className="border-0 text-center px-2" style={{ width: '60px' }}>
+                                                    <div>
+                                                        <div className="fw-semibold text-warning" style={{ fontSize: '0.65rem' }}>
+                                                            {formatCurrency(calculatedAmounts.sgst)}
+                                                        </div>
+                                                        {transaction.sgstPercent && calculatedAmounts.sgst > 0 && (
+                                                            <small className="text-muted" style={{ fontSize: '0.55rem' }}>
+                                                                ({transaction.sgstPercent}%)
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Total Amount */}
+                                                <td className="border-0 text-end px-2" style={{ width: '80px' }}>
+                                                    <div>
+                                                        <div className="fw-bold text-success" style={{ fontSize: '0.7rem' }}>
+                                                            {formatCurrency(calculatedAmounts.amount)}
+                                                        </div>
+                                                        {calculatedAmounts.totalTax > 0 && (
+                                                            <small className="text-muted" style={{ fontSize: '0.55rem' }}>
+                                                                +₹{Math.round(calculatedAmounts.totalTax)} tax
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Balance */}
+                                                <td className="border-0 text-end px-2" style={{ width: '80px' }}>
+                                                    <div>
+                                                        <div className={`fw-bold ${calculatedAmounts.balance > 0 ? 'text-danger' : 'text-success'}`} style={{ fontSize: '0.7rem' }}>
+                                                            {formatCurrency(calculatedAmounts.balance)}
+                                                        </div>
+                                                        {calculatedAmounts.balance > 0 && (
+                                                            <small className="text-danger" style={{ fontSize: '0.55rem' }}>
+                                                                Due
+                                                            </small>
+                                                        )}
+                                                        {calculatedAmounts.balance === 0 && calculatedAmounts.amount > 0 && (
+                                                            <small className="text-success" style={{ fontSize: '0.55rem' }}>
+                                                                Paid
+                                                            </small>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Actions - Sticky Right */}
+                                                <td
+                                                    className="border-0 text-center px-2 actions-column"
+                                                    style={{
+                                                        width: '110px',
+                                                        position: 'sticky',
+                                                        right: 0,
+                                                        background: 'white',
+                                                        zIndex: 20,
+                                                        boxShadow: '-2px 0 4px rgba(0,0,0,0.05)'
+                                                    }}
                                                 >
-                                                    {transaction.paymentType}
-                                                </Badge>
-                                            </td>
-
-                                            {/* CGST */}
-                                            <td className="border-0 text-center px-2" style={{ width: '60px' }}>
-                                                <div>
-                                                    <div className="fw-semibold text-info" style={{ fontSize: '0.65rem' }}>
-                                                        {formatCurrency(transaction.cgst || 0)}
-                                                    </div>
-                                                    {transaction.cgstPercent && (
-                                                        <small className="text-muted" style={{ fontSize: '0.55rem' }}>
-                                                            ({transaction.cgstPercent}%)
-                                                        </small>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* SGST */}
-                                            <td className="border-0 text-center px-2" style={{ width: '60px' }}>
-                                                <div>
-                                                    <div className="fw-semibold text-warning" style={{ fontSize: '0.65rem' }}>
-                                                        {formatCurrency(transaction.sgst || 0)}
-                                                    </div>
-                                                    {transaction.sgstPercent && (
-                                                        <small className="text-muted" style={{ fontSize: '0.55rem' }}>
-                                                            ({transaction.sgstPercent}%)
-                                                        </small>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Total Amount */}
-                                            <td className="border-0 text-end px-2" style={{ width: '80px' }}>
-                                                <div className="fw-bold text-success" style={{ fontSize: '0.7rem' }}>
-                                                    {formatCurrency(transaction.amount)}
-                                                </div>
-                                            </td>
-
-                                            {/* Balance */}
-                                            <td className="border-0 text-end px-2" style={{ width: '80px' }}>
-                                                <div>
-                                                    <div className={`fw-bold ${transaction.balance > 0 ? 'text-danger' : 'text-success'}`} style={{ fontSize: '0.7rem' }}>
-                                                        {formatCurrency(transaction.balance)}
-                                                    </div>
-                                                    {transaction.balance > 0 && (
-                                                        <small className="text-danger" style={{ fontSize: '0.55rem' }}>
-                                                            Due
-                                                        </small>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Actions - Sticky Right */}
-                                            <td
-                                                className="border-0 text-center px-2 actions-column"
-                                                style={{
-                                                    width: '110px',
-                                                    position: 'sticky',
-                                                    right: 0,
-                                                    background: 'white',
-                                                    zIndex: 20,
-                                                    boxShadow: '-2px 0 4px rgba(0,0,0,0.05)'
-                                                }}
-                                            >
-                                                <div className="d-flex gap-1 justify-content-center actions-wrapper">
-                                                    <Button
-                                                        variant="outline-primary"
-                                                        size="sm"
-                                                        title="Print"
-                                                        onClick={() => onPrintTransaction(transaction)}
-                                                        className="action-btn-print"
-                                                    >
-                                                        <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.7rem' }} />
-                                                    </Button>
-                                                    <div className="dropdown-container">
-                                                        <Dropdown>
-                                                            <Dropdown.Toggle
-                                                                variant="outline-secondary"
-                                                                size="sm"
-                                                                className="dropdown-toggle-no-caret action-btn-menu"
-                                                                title="More Actions"
-                                                            >
-                                                                <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.7rem' }} />
-                                                            </Dropdown.Toggle>
-                                                            <Dropdown.Menu align="end" className="dropdown-menu-custom">
-                                                                <Dropdown.Item
-                                                                    onClick={() => onViewTransaction(transaction)}
-                                                                    className="d-flex align-items-center dropdown-item-custom"
+                                                    <div className="d-flex gap-1 justify-content-center actions-wrapper">
+                                                        <Button
+                                                            variant="outline-primary"
+                                                            size="sm"
+                                                            title="Print"
+                                                            onClick={() => onPrintTransaction(transaction)}
+                                                            className="action-btn-print"
+                                                        >
+                                                            <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.7rem' }} />
+                                                        </Button>
+                                                        <div className="dropdown-container">
+                                                            <Dropdown>
+                                                                <Dropdown.Toggle
+                                                                    variant="outline-secondary"
+                                                                    size="sm"
+                                                                    className="dropdown-toggle-no-caret action-btn-menu"
+                                                                    title="More Actions"
                                                                 >
-                                                                    <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
-                                                                    View
-                                                                </Dropdown.Item>
-                                                                <Dropdown.Item
-                                                                    onClick={() => onEditTransaction(transaction)}
-                                                                    className="d-flex align-items-center dropdown-item-custom"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
-                                                                    Edit
-                                                                </Dropdown.Item>
-                                                                <Dropdown.Item
-                                                                    onClick={() => onShareTransaction(transaction)}
-                                                                    className="d-flex align-items-center dropdown-item-custom"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faShare} className="me-2 text-info" />
-                                                                    Share
-                                                                </Dropdown.Item>
-                                                                <Dropdown.Divider />
-                                                                <Dropdown.Item
-                                                                    onClick={() => onDeleteTransaction(transaction)}
-                                                                    className="d-flex align-items-center dropdown-item-custom text-danger"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                                                    Delete
-                                                                </Dropdown.Item>
-                                                            </Dropdown.Menu>
-                                                        </Dropdown>
+                                                                    <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.7rem' }} />
+                                                                </Dropdown.Toggle>
+                                                                <Dropdown.Menu align="end" className="dropdown-menu-custom">
+                                                                    <Dropdown.Item
+                                                                        onClick={() => onViewTransaction(transaction)}
+                                                                        className="d-flex align-items-center dropdown-item-custom"
+                                                                    >
+                                                                        <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
+                                                                        View
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Item
+                                                                        onClick={() => onEditTransaction(transaction)}
+                                                                        className="d-flex align-items-center dropdown-item-custom"
+                                                                    >
+                                                                        <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
+                                                                        Edit
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Item
+                                                                        onClick={() => onShareTransaction(transaction)}
+                                                                        className="d-flex align-items-center dropdown-item-custom"
+                                                                    >
+                                                                        <FontAwesomeIcon icon={faShare} className="me-2 text-info" />
+                                                                        Share
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Divider />
+                                                                    <Dropdown.Item
+                                                                        onClick={() => onDeleteTransaction(transaction)}
+                                                                        className="d-flex align-items-center dropdown-item-custom text-danger"
+                                                                    >
+                                                                        <FontAwesomeIcon icon={faTrash} className="me-2" />
+                                                                        Delete
+                                                                    </Dropdown.Item>
+                                                                </Dropdown.Menu>
+                                                            </Dropdown>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </Table>
@@ -487,6 +539,7 @@ function SalesInvoicesTable({
                 </div>
             </div>
 
+            {/* ...existing styles... */}
             <style jsx>{`
                 .sales-invoices-container {
                     padding: 0.5rem;
@@ -694,7 +747,7 @@ function SalesInvoicesTable({
 
                 .bg-primary { background-color: #6366f1; }
                 .bg-success { background-color: #10b981; }
-                .bg-warning { background-color: #f59e0b; }
+                .bg-warning { color: #f59e0b; }
                 .bg-info { background-color: #06b6d4; }
                 .bg-danger { background-color: #ef4444; }
                 .bg-light { background-color: #f8f9fa; }

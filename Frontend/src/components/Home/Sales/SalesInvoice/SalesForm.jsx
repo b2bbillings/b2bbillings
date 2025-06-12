@@ -8,6 +8,8 @@ import InvoiceDetails from './SalesForm/InvoiceDetails';
 import ItemsTableWithTotals from './SalesForm/itemsTableWithTotals';
 import './SalesForm.css';
 
+
+
 function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories = [], onAddItem }) {
     // Get companyId from URL params
     const { companyId } = useParams();

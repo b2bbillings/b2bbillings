@@ -43,6 +43,38 @@ router.post('/', authenticate, validateRequest, saleController.createSale);
  */
 router.get('/', authenticate, validateCompany, saleController.getAllSales);
 
+// ==================== NEW: DUE DATE MANAGEMENT ROUTES ====================
+
+/**
+ * @route   GET /api/sales/overdue
+ * @desc    Get overdue sales
+ * @access  Private
+ */
+router.get('/overdue', authenticate, validateCompany, saleController.getOverdueSales);
+
+/**
+ * @route   GET /api/sales/due-today
+ * @desc    Get sales due today
+ * @access  Private
+ */
+router.get('/due-today', authenticate, validateCompany, saleController.getSalesDueToday);
+
+/**
+ * @route   PUT /api/sales/:id/due-date
+ * @desc    Update payment due date
+ * @access  Private
+ */
+router.put('/:id/due-date', authenticate, validateRequest, saleController.updatePaymentDueDate);
+
+/**
+ * @route   GET /api/sales/payment-summary-overdue
+ * @desc    Get payment summary with overdue analysis
+ * @access  Private
+ */
+router.get('/payment-summary-overdue', authenticate, validateCompany, saleController.getPaymentSummaryWithOverdue);
+
+// ==================== INDIVIDUAL SALE ROUTES ====================
+
 /**
  * @route   GET /api/sales/:id
  * @desc    Get sale by ID with full details
@@ -88,6 +120,13 @@ router.patch('/:id/cancel', authenticate, validateRequest, saleController.delete
  * @access  Private
  */
 router.post('/:id/payment', authenticate, validateRequest, saleController.addPayment);
+
+/**
+ * @route   POST /api/sales/:id/payments
+ * @desc    Add payment to a sale (alternative endpoint)
+ * @access  Private
+ */
+router.post('/:id/payments', authenticate, validateRequest, saleController.addPayment);
 
 /**
  * @route   GET /api/sales/:id/payment-status

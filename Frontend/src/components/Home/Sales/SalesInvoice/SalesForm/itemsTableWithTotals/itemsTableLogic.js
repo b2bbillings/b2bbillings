@@ -18,24 +18,45 @@ export const calculateTotals = (items, gstEnabled = true) => {
     let totalSgstAmount = 0;
     let subtotal = 0;
     let totalAmount = 0;
+    let totalTaxableAmount = 0;
 
-    items.forEach(item => {
+    console.log('🧮 Calculating totals for items:', {
+        itemCount: items.length,
+        gstEnabled,
+        items: items.map(item => ({
+            name: item.itemName,
+            taxMode: item.taxMode,
+            priceIncludesTax: item.priceIncludesTax,
+            amount: item.amount,
+            taxableAmount: item.taxableAmount
+        }))
+    });
+
+    items.forEach((item, index) => {
         const quantity = parseFloat(item.quantity) || 0;
         const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
         const amount = parseFloat(item.amount) || 0;
         const discountAmount = parseFloat(item.discountAmount) || 0;
         const cgstAmount = parseFloat(item.cgstAmount) || 0;
         const sgstAmount = parseFloat(item.sgstAmount) || 0;
+        const taxableAmount = parseFloat(item.taxableAmount) || 0;
 
         if (quantity > 0 && pricePerUnit > 0) {
-            const baseAmount = quantity * pricePerUnit;
-
             totalQuantity += quantity;
             totalDiscountAmount += discountAmount;
             totalCgstAmount += cgstAmount;
             totalSgstAmount += sgstAmount;
-            subtotal += (baseAmount - discountAmount); // Subtotal before tax
-            totalAmount += amount; // Final amount after tax
+            totalAmount += amount;
+            totalTaxableAmount += taxableAmount;
+
+            console.log(`📊 Item ${index + 1} contribution:`, {
+                itemName: item.itemName,
+                quantity,
+                amount,
+                taxableAmount,
+                cgstAmount,
+                sgstAmount
+            });
         }
     });
 
@@ -51,7 +72,7 @@ export const calculateTotals = (items, gstEnabled = true) => {
         totalAmount: parseFloat(totalAmount.toFixed(2)),
 
         // ✅ For TotalSection compatibility (matching expected field names)
-        subtotal: parseFloat(subtotal.toFixed(2)),
+        subtotal: parseFloat(totalTaxableAmount.toFixed(2)), // Use taxable amount as subtotal
         totalCGST: parseFloat(totalCgstAmount.toFixed(2)), // Maps cgstAmount → totalCGST
         totalSGST: parseFloat(totalSgstAmount.toFixed(2)), // Maps sgstAmount → totalSGST
         totalTax: parseFloat(totalTax.toFixed(2)),
@@ -59,114 +80,227 @@ export const calculateTotals = (items, gstEnabled = true) => {
 
         // ✅ NEW: For better TotalSection display logic
         withTaxTotal: gstEnabled ? parseFloat(totalAmount.toFixed(2)) : 0,
-        withoutTaxTotal: parseFloat(subtotal.toFixed(2))
+        withoutTaxTotal: parseFloat(totalTaxableAmount.toFixed(2)),
+        totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2))
     };
 
-    console.log('📊 ItemsTable calculated totals:', calculatedTotals);
+    console.log('✅ Final totals calculated:', calculatedTotals);
     return calculatedTotals;
 };
 
-// ✅ Enhanced calculation function for proper "with tax" handling
-export const calculateItemTotals = (item, index, allItems, changedField = null, gstEnabled = true, globalTaxMode = 'with-tax') => {
-    const quantity = parseFloat(item.quantity) || 0;
-    const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
-    const taxMode = item.taxMode || globalTaxMode;
-
-    // Base amount calculation
-    const baseAmount = quantity * pricePerUnit;
-
-    let discountPercent = parseFloat(item.discountPercent) || 0;
-    let discountAmount = parseFloat(item.discountAmount) || 0;
-    let cgstAmount = parseFloat(item.cgstAmount) || 0;
-    let sgstAmount = parseFloat(item.sgstAmount) || 0;
-
-    // Handle discount calculations
-    if (changedField === 'discountPercent') {
-        discountAmount = (baseAmount * discountPercent) / 100;
-    } else if (changedField === 'discountAmount') {
-        discountPercent = baseAmount > 0 ? (discountAmount * 100) / baseAmount : 0;
-    } else if (!changedField || changedField === 'quantity' || changedField === 'pricePerUnit') {
-        discountAmount = (baseAmount * discountPercent) / 100;
-    }
-
-    const amountAfterDiscount = baseAmount - discountAmount;
-
-    // ✅ Handle tax calculations based on mode
-    if (gstEnabled) {
-        if (changedField === 'cgstAmount') {
-            sgstAmount = cgstAmount; // Mirror CGST to SGST
-        } else if (changedField === 'sgstAmount') {
-            cgstAmount = sgstAmount; // Mirror SGST to CGST
-        } else if (!changedField || ['quantity', 'pricePerUnit', 'discountPercent', 'discountAmount', 'taxMode'].includes(changedField)) {
-            const taxRate = parseFloat(item.taxRate) || 0;
-            if (taxRate > 0) {
-                let totalTaxAmount;
-
-                if (taxMode === 'with-tax') {
-                    // ✅ For "with tax" - the price includes tax, so extract tax from the amount
-                    totalTaxAmount = (amountAfterDiscount * taxRate) / (100 + taxRate);
-                } else {
-                    // For "without tax" - add tax to the amount
-                    totalTaxAmount = (amountAfterDiscount * taxRate) / 100;
-                }
-
-                cgstAmount = totalTaxAmount / 2;
-                sgstAmount = totalTaxAmount / 2;
-            }
-        }
-    } else {
-        cgstAmount = 0;
-        sgstAmount = 0;
-    }
-
-    // ✅ Calculate final amount based on tax mode
-    const totalTaxAmount = cgstAmount + sgstAmount;
-    let finalAmount;
-
-    if (gstEnabled && totalTaxAmount > 0) {
-        if (taxMode === 'with-tax') {
-            // ✅ For "with tax" - the amount after discount IS the final amount (tax included)
-            finalAmount = amountAfterDiscount;
-        } else {
-            // For "without tax" - add tax to get final amount
-            finalAmount = amountAfterDiscount + totalTaxAmount;
-        }
-    } else {
-        finalAmount = amountAfterDiscount;
-    }
-
-    const igst = totalTaxAmount;
-
-    // Update the item with calculated values
-    allItems[index] = {
-        ...item,
-        discountPercent: parseFloat(discountPercent.toFixed(2)),
-        discountAmount: parseFloat(discountAmount.toFixed(2)),
-        cgstAmount: parseFloat(cgstAmount.toFixed(2)),
-        sgstAmount: parseFloat(sgstAmount.toFixed(2)),
-        igst: parseFloat(igst.toFixed(2)),
-        amount: parseFloat(finalAmount.toFixed(2))
-    };
-
-    console.log('🧮 Item calculation:', {
-        index,
-        taxMode,
-        baseAmount,
-        amountAfterDiscount,
-        totalTaxAmount,
-        finalAmount,
-        cgstAmount,
-        sgstAmount
+// FIXED: Enhanced calculation function with better debugging
+export const calculateItemTotals = (item, index, allItems, changedField = null, gstEnabled = true, globalTaxMode = 'without-tax') => {
+    console.log(`🧮 CALCULATION START for item ${index + 1}:`, {
+        itemName: item.itemName,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit,
+        itemTaxMode: item.taxMode,
+        globalTaxMode: globalTaxMode,
+        itemPriceIncludesTax: item.priceIncludesTax,
+        gstEnabled,
+        changedField
     });
 
-    return allItems[index];
-};
+    // FIXED: Get item-specific tax mode with proper fallback logic
+    const itemTaxMode = item.taxMode || globalTaxMode;
 
+    // FIXED: Determine if price includes tax using both fields for compatibility
+    let priceIncludesTax;
+    if (item.priceIncludesTax !== undefined) {
+        // Use explicit priceIncludesTax if set (from backend/database)
+        priceIncludesTax = item.priceIncludesTax;
+        console.log(`📋 Using explicit priceIncludesTax from item:`, priceIncludesTax);
+    } else {
+        // Fall back to taxMode for frontend logic
+        priceIncludesTax = itemTaxMode === 'with-tax';
+        console.log(`📋 Derived priceIncludesTax from taxMode:`, {
+            itemTaxMode,
+            priceIncludesTax
+        });
+    }
+
+    // Parse values
+    const quantity = parseFloat(item.quantity) || 0;
+    const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
+    const discountPercent = parseFloat(item.discountPercent) || 0;
+    const discountAmount = parseFloat(item.discountAmount) || 0;
+    const taxRate = parseFloat(item.taxRate || item.gstRate) || 18; // Default 18% GST
+
+    console.log(`📊 CALCULATION INPUTS for item ${index + 1}:`, {
+        itemTaxMode,
+        priceIncludesTax,
+        taxRate,
+        pricePerUnit,
+        quantity,
+        gstEnabled
+    });
+
+    // Early return if no quantity or price
+    if (quantity <= 0 || pricePerUnit <= 0) {
+        console.log(`⚠️ Skipping calculation - invalid quantity or price`);
+        return {
+            ...item,
+            taxMode: itemTaxMode,
+            priceIncludesTax: priceIncludesTax,
+            amount: 0,
+            taxableAmount: 0,
+            cgstAmount: 0,
+            sgstAmount: 0,
+            igst: 0
+        };
+    }
+
+    // Calculate line total before discount
+    let lineTotalBeforeDiscount = quantity * pricePerUnit;
+
+    // Apply discount
+    let totalDiscountAmount = 0;
+    if (changedField === 'discountPercent') {
+        totalDiscountAmount = (lineTotalBeforeDiscount * discountPercent) / 100;
+    } else if (changedField === 'discountAmount') {
+        totalDiscountAmount = discountAmount;
+    } else if (!changedField || changedField === 'quantity' || changedField === 'pricePerUnit') {
+        totalDiscountAmount = (lineTotalBeforeDiscount * discountPercent) / 100;
+    } else {
+        totalDiscountAmount = discountAmount;
+    }
+
+    // Line total after discount (but before tax calculation)
+    const lineTotalAfterDiscount = Math.max(0, lineTotalBeforeDiscount - totalDiscountAmount);
+
+    console.log(`💰 PRE-TAX CALCULATION for item ${index + 1}:`, {
+        lineTotalBeforeDiscount,
+        totalDiscountAmount,
+        lineTotalAfterDiscount
+    });
+
+    let taxableAmount = 0;
+    let cgstAmount = 0;
+    let sgstAmount = 0;
+    let igstAmount = 0;
+    let finalAmount = 0;
+
+    if (gstEnabled && taxRate > 0) {
+        if (priceIncludesTax) {
+            // FIXED: WITH TAX MODE - Extract tax from entered price
+            console.log(`🟢 WITH TAX MODE CALCULATION for item ${index + 1}:`);
+
+            // When price includes tax, we need to extract the tax amount
+            // Formula: taxableAmount = totalAmount / (1 + taxRate/100)
+            const taxMultiplier = 1 + (taxRate / 100);
+            taxableAmount = lineTotalAfterDiscount / taxMultiplier;
+
+            const totalTaxAmount = lineTotalAfterDiscount - taxableAmount;
+            cgstAmount = totalTaxAmount / 2;
+            sgstAmount = totalTaxAmount / 2;
+            igstAmount = totalTaxAmount;
+
+            // Final amount is the discounted amount (tax already included)
+            finalAmount = lineTotalAfterDiscount;
+
+            console.log(`📈 WITH TAX BREAKDOWN for item ${index + 1}:`, {
+                lineTotalAfterDiscount,
+                taxMultiplier,
+                taxableAmount,
+                totalTaxAmount,
+                cgstAmount,
+                sgstAmount,
+                finalAmount,
+                verificationCheck: {
+                    taxableAmountPlusTax: taxableAmount + totalTaxAmount,
+                    shouldEqualFinalAmount: finalAmount,
+                    matches: Math.abs((taxableAmount + totalTaxAmount) - finalAmount) < 0.01
+                }
+            });
+        } else {
+            // FIXED: WITHOUT TAX MODE - Add tax to entered price
+            console.log(`🔵 WITHOUT TAX MODE CALCULATION for item ${index + 1}:`);
+
+            // When price excludes tax, we add tax to the amount
+            taxableAmount = lineTotalAfterDiscount;
+
+            const totalTaxAmount = (taxableAmount * taxRate) / 100;
+            cgstAmount = totalTaxAmount / 2;
+            sgstAmount = totalTaxAmount / 2;
+            igstAmount = totalTaxAmount;
+
+            // Final amount includes the added tax
+            finalAmount = taxableAmount + totalTaxAmount;
+
+            console.log(`📈 WITHOUT TAX BREAKDOWN for item ${index + 1}:`, {
+                taxableAmount,
+                totalTaxAmount,
+                cgstAmount,
+                sgstAmount,
+                finalAmount,
+                verificationCheck: {
+                    taxableAmountPlusTax: taxableAmount + totalTaxAmount,
+                    shouldEqualFinalAmount: finalAmount,
+                    matches: Math.abs((taxableAmount + totalTaxAmount) - finalAmount) < 0.01
+                }
+            });
+        }
+    } else {
+        // No GST calculation
+        taxableAmount = lineTotalAfterDiscount;
+        finalAmount = lineTotalAfterDiscount;
+        cgstAmount = 0;
+        sgstAmount = 0;
+        igstAmount = 0;
+
+        console.log(`❌ NO GST CALCULATION for item ${index + 1}:`, {
+            taxableAmount,
+            finalAmount
+        });
+    }
+
+    // FIXED: Update the item object with calculated values and ensure both fields are set
+    const updatedItem = {
+        ...item,
+        // Ensure both taxMode and priceIncludesTax are set for compatibility
+        taxMode: itemTaxMode,
+        priceIncludesTax: priceIncludesTax,
+
+        // Calculated values
+        discountPercent: parseFloat(discountPercent.toFixed(2)),
+        discountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
+        taxableAmount: parseFloat(taxableAmount.toFixed(2)),
+        cgstAmount: parseFloat(cgstAmount.toFixed(2)),
+        sgstAmount: parseFloat(sgstAmount.toFixed(2)),
+        igst: parseFloat(igstAmount.toFixed(2)),
+        amount: parseFloat(finalAmount.toFixed(2)),
+        totalTaxAmount: parseFloat((cgstAmount + sgstAmount + igstAmount).toFixed(2)),
+
+        // Backend compatibility fields (matching Sale model)
+        itemAmount: parseFloat(finalAmount.toFixed(2)), // Sale model uses itemAmount
+        cgst: parseFloat(cgstAmount.toFixed(2)),        // Sale model uses cgst
+        sgst: parseFloat(sgstAmount.toFixed(2)),        // Sale model uses sgst
+        igst: parseFloat(igstAmount.toFixed(2))         // Sale model uses igst
+    };
+
+    // Update the items array
+    allItems[index] = updatedItem;
+
+    console.log(`✅ CALCULATION COMPLETE for item ${index + 1}:`, {
+        itemName: item.itemName,
+        finalResults: {
+            taxMode: itemTaxMode,
+            priceIncludesTax,
+            pricePerUnit,
+            quantity,
+            taxableAmount,
+            totalTax: cgstAmount + sgstAmount,
+            finalAmount
+        },
+        calculationMode: priceIncludesTax ? 'TAX_INCLUDED_IN_PRICE' : 'TAX_ADDED_TO_PRICE'
+    });
+
+    return updatedItem;
+};
 // ✅ Round off calculations for TotalSection integration
 export const calculateRoundOff = (baseTotal, roundOffEnabled = false, roundOff = 0) => {
     return roundOffEnabled ? baseTotal + (parseFloat(roundOff) || 0) : baseTotal;
 };
-
 
 // ✅ Search and suggestions logic
 export const searchItemsLogic = async (itemService, companyId, query, rowIndex, setters) => {
@@ -226,7 +360,7 @@ export const handleItemSuggestionSelection = (rowIndex, item, items, calculateIt
     const { onItemsChange, setItemSearches, setShowItemSuggestions, setSearchNotFound, setSearchLoading } = callbacks;
 
     const newItems = [...items];
-    const taxRate = item.gstRate || 0;
+    const taxRate = item.gstRate || 18; // Default to 18% if not specified
 
     newItems[rowIndex] = {
         ...newItems[rowIndex],
@@ -254,10 +388,29 @@ export const handleItemSuggestionSelection = (rowIndex, item, items, calculateIt
 
 // ✅ Global tax mode change logic
 export const handleGlobalTaxModeChange = (mode, items, calculateItemTotals, onItemsChange) => {
-    const newItems = items.map(item => ({ ...item, taxMode: mode }));
+    console.log('🏷️ Global tax mode change logic:', {
+        mode,
+        itemCount: items.length
+    });
+
+    const newItems = items.map((item, index) => ({
+        ...item,
+        taxMode: mode,
+        priceIncludesTax: mode === 'with-tax'
+    }));
 
     newItems.forEach((item, index) => {
-        calculateItemTotals(item, index, newItems);
+        calculateItemTotals(item, index, newItems, 'taxMode');
+    });
+
+    console.log('✅ Global tax mode change complete:', {
+        mode,
+        updatedItems: newItems.map(item => ({
+            name: item.itemName,
+            taxMode: item.taxMode,
+            priceIncludesTax: item.priceIncludesTax,
+            amount: item.amount
+        }))
     });
 
     onItemsChange(newItems);
@@ -460,7 +613,6 @@ export const formatCurrency = (amount) => {
     });
 };
 
-
 export const getColumnWidths = (gstEnabled) => {
     if (gstEnabled) {
         return {
@@ -490,9 +642,7 @@ export const getColumnWidths = (gstEnabled) => {
     }
 };
 
-
 export const unitOptions = ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM'];
-
 
 // ✅ NEW: Enhanced round-off calculation with complete logic
 export const calculateFinalTotalWithRoundOff = (totals, gstEnabled = true, roundOffEnabled = false) => {
@@ -551,8 +701,7 @@ export const calculatePaymentBreakdown = (totals, gstEnabled, roundOffEnabled = 
     };
 };
 
-
-// ✅ Default empty item creator
+// FIXED: Default empty item creator with both fields
 export const createEmptyItem = () => ({
     id: Date.now() + Math.random(),
     itemRef: null,
@@ -567,12 +716,20 @@ export const createEmptyItem = () => ({
     cgstAmount: 0,
     sgstAmount: 0,
     igst: 0,
-    taxRate: 0,
+    taxRate: 18, // Default 18% GST
     amount: 0,
     category: '',
     currentStock: 0,
     minStockLevel: 0,
-    taxMode: 'with-tax'
+    // FIXED: Include both fields for compatibility
+    taxMode: 'without-tax',        // Frontend field
+    priceIncludesTax: false,       // Backend field (Sale model)
+    // Backend compatibility fields
+    itemAmount: 0,                 // Sale model field
+    cgst: 0,                       // Sale model field
+    sgst: 0,                       // Sale model field
+    lineNumber: 1,                 // Sale model field
+    taxableAmount: 0               // For calculation tracking
 });
 
 // ✅ Export all functions as default object for easy importing

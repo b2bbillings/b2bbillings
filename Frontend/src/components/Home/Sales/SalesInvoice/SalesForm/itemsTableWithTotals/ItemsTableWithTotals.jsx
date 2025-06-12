@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Card, Table, Button, Form, Row, Col, Alert, ButtonGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -13,7 +13,9 @@ import {
     faSpinner,
     faExclamationTriangle,
     faUser,
-    faBuilding
+    faBuilding,
+    faClock,
+    faCalendarAlt
 } from '@fortawesome/free-solid-svg-icons';
 
 // Import custom hooks and components
@@ -25,8 +27,9 @@ import {
     usePaymentManagement,
     useTaxMode,
     usePartySelection,
-    useInvoiceSave
-} from './itemsTableHooks';
+    useInvoiceSave,
+    useOverdueManagement
+} from './ItemsTableHooks';
 import PaymentModal from './PaymentModal';
 import itemsTableLogic from './itemsTableLogic';
 import './itemsTableStyles.css';
@@ -59,7 +62,29 @@ const ItemsTableWithTotals = ({
 
     // ===== CUSTOM HOOKS =====
 
-    // Items management hook
+    // FIXED: Initialize placeholder functions for items management
+    const placeholderFunctions = {
+        setLocalItems: () => { },
+        calculateItemTotals: () => { },
+        onItemsChange: () => { },
+        updateTotals: () => { }
+    };
+
+    // FIXED: Tax mode hook (initialize FIRST with placeholder functions)
+    const {
+        globalTaxMode: initialGlobalTaxMode,
+        setGlobalTaxMode,
+        handleGlobalTaxModeChange: initialHandleGlobalTaxModeChange,
+        initializeItemTaxMode
+    } = useTaxMode(
+        [], // Start with empty items initially
+        placeholderFunctions.calculateItemTotals,
+        placeholderFunctions.onItemsChange,
+        placeholderFunctions.setLocalItems,
+        placeholderFunctions.updateTotals
+    );
+
+    // FIXED: Items management hook with proper globalTaxMode parameter
     const {
         localItems,
         setLocalItems,
@@ -67,19 +92,28 @@ const ItemsTableWithTotals = ({
         handleItemChange,
         addRow,
         deleteRow,
-        updateTotals
-    } = useItemsManagement(items, onItemsChange, gstEnabled);
+        updateTotals,
+        calculateItemTotals
+    } = useItemsManagement(items, onItemsChange, gstEnabled, initialGlobalTaxMode);
 
-    // Tax mode hook
-    const { globalTaxMode, handleGlobalTaxModeChange } = useTaxMode(
+    // FIXED: Re-initialize tax mode hook with actual functions after items are initialized
+    const {
+        globalTaxMode,
+        handleGlobalTaxModeChange
+    } = useTaxMode(
         localItems,
-        (item, index, allItems, changedField = null) => {
-            return itemsTableLogic.calculateItemTotals(item, index, allItems, changedField, gstEnabled, globalTaxMode);
-        },
+        calculateItemTotals,
         onItemsChange,
         setLocalItems,
         updateTotals
     );
+
+    // FIXED: Sync global tax mode state between hooks
+    useEffect(() => {
+        if (setGlobalTaxMode && initialGlobalTaxMode !== globalTaxMode) {
+            setGlobalTaxMode(globalTaxMode);
+        }
+    }, [globalTaxMode, initialGlobalTaxMode, setGlobalTaxMode]);
 
     // Search functionality hook
     const {
@@ -122,7 +156,7 @@ const ItemsTableWithTotals = ({
         validatePaymentRequirements
     } = usePartySelection(selectedCustomer, selectedSupplier, formType, addToast);
 
-    // Payment management hook
+    // UPDATED: Payment management hook with due date support
     const {
         showPaymentModal,
         setShowPaymentModal,
@@ -135,7 +169,11 @@ const ItemsTableWithTotals = ({
         handlePaymentTypeChange,
         handlePaymentSubmit,
         createTransactionWithInvoice,
-        resetPaymentData
+        resetPaymentData,
+        // Due date management functions
+        handleDueDateToggle,
+        handleCreditDaysChange,
+        handleDueDateChange
     } = usePaymentManagement(
         formType,
         companyId,
@@ -148,7 +186,7 @@ const ItemsTableWithTotals = ({
         bankAccounts
     );
 
-    // Invoice save hook
+    // FIXED: Invoice save hook with globalTaxMode parameter
     const { handleSaveWithTransaction } = useInvoiceSave(
         localItems,
         totals,
@@ -174,8 +212,18 @@ const ItemsTableWithTotals = ({
         getSecondaryPartyType,
         getSecondaryPartyName,
         createTransactionWithInvoice,
-        resetPaymentData
+        resetPaymentData,
+        globalTaxMode // FIXED: Pass the correct globalTaxMode
     );
+
+    // Overdue management hook for dashboard info
+    const {
+        overdueSales,
+        salesDueToday,
+        overdueLoading,
+        dueTodayLoading,
+        getOverdueSummary
+    } = useOverdueManagement(companyId);
 
     // ===== DERIVED VALUES =====
     const hasValidItems = totals.finalTotal > 0 || totals.subtotal > 0;
@@ -195,67 +243,133 @@ const ItemsTableWithTotals = ({
         setShowPaymentModal(true);
     };
 
-    // ===== INDIVIDUAL TAX MODE HANDLER =====
     const handleIndividualTaxModeChange = (index, mode) => {
-        const newItems = [...localItems];
-        newItems[index] = { ...newItems[index], taxMode: mode };
+        console.log(`🔄 Changing item ${index + 1} tax mode to:`, mode);
 
-        // Recalculate item totals with new tax mode
-        const calculateItemTotals = (item, idx, allItems, changedField = null) => {
-            return itemsTableLogic.calculateItemTotals(item, idx, allItems, changedField, gstEnabled, mode);
+        const newItems = [...localItems];
+        const oldItem = newItems[index];
+
+        newItems[index] = {
+            ...oldItem,
+            taxMode: mode,
+            priceIncludesTax: mode === 'with-tax'
         };
 
-        calculateItemTotals(newItems[index], index, newItems, 'taxMode');
+        console.log(`📝 Item ${index + 1} before tax mode change:`, {
+            itemName: oldItem.itemName,
+            oldTaxMode: oldItem.taxMode,
+            oldPriceIncludesTax: oldItem.priceIncludesTax,
+            pricePerUnit: oldItem.pricePerUnit,
+            oldAmount: oldItem.amount
+        });
+
+        // Recalculate item totals with new tax mode
+        if (newItems[index].itemName && newItems[index].pricePerUnit > 0) {
+            const recalculatedItem = calculateItemTotals(newItems[index], index, newItems, 'taxMode');
+            newItems[index] = recalculatedItem;
+
+            console.log(`✅ Item ${index + 1} after tax mode change:`, {
+                itemName: recalculatedItem.itemName,
+                newTaxMode: recalculatedItem.taxMode,
+                newPriceIncludesTax: recalculatedItem.priceIncludesTax,
+                pricePerUnit: recalculatedItem.pricePerUnit,
+                newAmount: recalculatedItem.amount,
+                taxableAmount: recalculatedItem.taxableAmount,
+                totalTax: recalculatedItem.cgstAmount + recalculatedItem.sgstAmount
+            });
+        }
 
         setLocalItems(newItems);
         updateTotals(newItems);
         onItemsChange(newItems);
     };
 
-    // ===== RENDER HELPERS =====
-    const renderTableHeader = () => (
-        <thead className="table-light">
-            <tr>
-                <th style={{ width: columnWidths.serial }}>#</th>
-                <th style={{ width: columnWidths.item }}>ITEM</th>
-                {gstEnabled && <th style={{ width: columnWidths.hsn }}>HSN CODE</th>}
-                <th style={{ width: columnWidths.qty }}>QTY</th>
-                <th style={{ width: columnWidths.unit }}>UNIT</th>
-                <th style={{ width: columnWidths.price }}>
-                    <div className="d-flex flex-column align-items-center">
-                        <span>PRICE/UNIT</span>
-                        {gstEnabled && (
-                            <div className="mt-1">
-                                <ButtonGroup size="sm">
-                                    <Button
-                                        variant={globalTaxMode === 'with-tax' ? 'primary' : 'outline-primary'}
-                                        size="xs"
-                                        onClick={() => handleGlobalTaxModeChange('with-tax')}
-                                        style={{ fontSize: '10px', padding: '2px 6px' }}
-                                    >
-                                        With Tax
-                                    </Button>
-                                    <Button
-                                        variant={globalTaxMode === 'without-tax' ? 'primary' : 'outline-primary'}
-                                        size="xs"
-                                        onClick={() => handleGlobalTaxModeChange('without-tax')}
-                                        style={{ fontSize: '10px', padding: '2px 6px' }}
-                                    >
-                                        Without Tax
-                                    </Button>
-                                </ButtonGroup>
-                            </div>
-                        )}
-                    </div>
-                </th>
-                <th style={{ width: columnWidths.discount }}>DISCOUNT</th>
-                {gstEnabled && <th style={{ width: columnWidths.tax }}>TAX</th>}
-                <th style={{ width: columnWidths.amount }}>AMOUNT</th>
-                <th style={{ width: columnWidths.action }}></th>
-            </tr>
-        </thead>
-    );
 
+    // FIXED: Global tax mode change handler with forced recalculation
+    const handleGlobalTaxModeChangeWithLogging = (mode) => {
+        console.log('🌍 UI: Changing global tax mode to:', mode);
+        console.log('🌍 UI: Current items before change:', localItems.map(item => ({
+            name: item.itemName,
+            taxMode: item.taxMode,
+            priceIncludesTax: item.priceIncludesTax,
+            amount: item.amount,
+            pricePerUnit: item.pricePerUnit
+        })));
+
+        const result = handleGlobalTaxModeChange(mode);
+
+        // Force a re-render to ensure UI updates
+        setTimeout(() => {
+            console.log('🌍 UI: Tax mode changed, current items after change:', localItems.map(item => ({
+                name: item.itemName,
+                taxMode: item.taxMode,
+                priceIncludesTax: item.priceIncludesTax,
+                amount: item.amount,
+                pricePerUnit: item.pricePerUnit
+            })));
+        }, 100);
+
+        console.log('✅ UI: Global tax mode change result:', result);
+        return result;
+    };
+
+    // ===== RENDER HELPERS =====
+
+    // FIXED: Table header with consistent tax mode display
+    const renderTableHeader = () => {
+        const currentTaxMode = globalTaxMode || 'without-tax';
+
+        return (
+            <thead className="table-light">
+                <tr>
+                    <th style={{ width: columnWidths.serial }}>#</th>
+                    <th style={{ width: columnWidths.item }}>ITEM</th>
+                    {gstEnabled && <th style={{ width: columnWidths.hsn }}>HSN CODE</th>}
+                    <th style={{ width: columnWidths.qty }}>QTY</th>
+                    <th style={{ width: columnWidths.unit }}>UNIT</th>
+                    <th style={{ width: columnWidths.price }}>
+                        <div className="d-flex flex-column align-items-center">
+                            <span className="fw-bold">PRICE/UNIT</span>
+                            {gstEnabled && (
+                                <div className="mt-2">
+                                    <ButtonGroup size="sm">
+                                        <Button
+                                            variant={currentTaxMode === 'with-tax' ? 'success' : 'outline-success'}
+                                            size="sm"
+                                            onClick={() => handleGlobalTaxModeChangeWithLogging('with-tax')}
+                                            style={{ fontSize: '11px', padding: '3px 8px' }}
+                                        >
+                                            <small>With Tax</small>
+                                        </Button>
+                                        <Button
+                                            variant={currentTaxMode === 'without-tax' ? 'primary' : 'outline-primary'}
+                                            size="sm"
+                                            onClick={() => handleGlobalTaxModeChangeWithLogging('without-tax')}
+                                            style={{ fontSize: '11px', padding: '3px 8px' }}
+                                        >
+                                            <small>Without Tax</small>
+                                        </Button>
+                                    </ButtonGroup>
+                                </div>
+                            )}
+                            {gstEnabled && (
+                                <small className={`text-${currentTaxMode === 'with-tax' ? 'success' : 'primary'} mt-1`}>
+                                    {/* FIXED: Correct explanation text */}
+                                    {currentTaxMode === 'with-tax' ? 'Price includes tax' : 'Price excludes tax'}
+                                </small>
+                            )}
+                        </div>
+                    </th>
+                    <th style={{ width: columnWidths.discount }}>DISCOUNT</th>
+                    {gstEnabled && <th style={{ width: columnWidths.tax }}>TAX</th>}
+                    <th style={{ width: columnWidths.amount }}>AMOUNT</th>
+                    <th style={{ width: columnWidths.action }}></th>
+                </tr>
+            </thead>
+        );
+    };
+
+    // FIXED: Item row with enhanced tax mode handling
     const renderItemRow = (item, index) => (
         <tr key={item.id || index}>
             <td className="text-center">{index + 1}</td>
@@ -268,7 +382,7 @@ const ItemsTableWithTotals = ({
                         value={itemSearches[index] || item.itemName || ''}
                         onChange={(e) => {
                             handleItemChange(index, 'itemName', e.target.value);
-                            handleItemSearch(index, e.target.value, localItems, updateTotals, onItemsChange, setLocalItems);
+                            handleItemSearch(index, e.target.value);
                         }}
                         placeholder="Search or enter item name..."
                         size="sm"
@@ -293,9 +407,7 @@ const ItemsTableWithTotals = ({
                                             index,
                                             suggestion,
                                             localItems,
-                                            (item, idx, allItems, changedField = null) => {
-                                                return itemsTableLogic.calculateItemTotals(item, idx, allItems, changedField, gstEnabled, globalTaxMode);
-                                            },
+                                            calculateItemTotals,
                                             onItemsChange,
                                             setLocalItems,
                                             updateTotals
@@ -362,7 +474,7 @@ const ItemsTableWithTotals = ({
                 </Form.Select>
             </td>
 
-            {/* Price Per Unit with Individual Tax Mode */}
+            {/* FIXED: Price Per Unit with Individual Tax Mode */}
             <td>
                 <div className="d-flex flex-column gap-1">
                     <Form.Control
@@ -441,13 +553,13 @@ const ItemsTableWithTotals = ({
                 </td>
             )}
 
-            {/* Amount */}
+            {/* FIXED: Amount with tax mode indicator */}
             <td className="text-end">
                 <div className="d-flex flex-column align-items-end">
                     <strong>₹{itemsTableLogic.formatCurrency(item.amount || 0)}</strong>
-                    {gstEnabled && item.taxMode && (
-                        <small className={`text-${item.taxMode === 'with-tax' ? 'success' : 'primary'}`}>
-                            {item.taxMode === 'with-tax' ? 'Inc. Tax' : 'Exc. Tax'}
+                    {gstEnabled && (
+                        <small className={`text-${(item.taxMode || globalTaxMode) === 'with-tax' ? 'success' : 'primary'}`}>
+                            {(item.taxMode || globalTaxMode) === 'with-tax' ? 'Inc. Tax' : 'Exc. Tax'}
                         </small>
                     )}
                 </div>
@@ -494,6 +606,44 @@ const ItemsTableWithTotals = ({
             <td></td>
         </tr>
     );
+
+    // Render overdue dashboard info
+    const renderOverdueDashboard = () => {
+        if (formType !== 'sales') return null; // Only show for sales
+
+        const overdueSummary = getOverdueSummary();
+
+        if (overdueSummary.overdueCount === 0 && overdueSummary.dueTodayCount === 0) {
+            return null;
+        }
+
+        return (
+            <Alert variant="warning" className="mb-3">
+                <div className="d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center">
+                        <FontAwesomeIcon icon={faClock} className="me-2" />
+                        <strong>Payment Reminders</strong>
+                    </div>
+                    <div className="d-flex gap-3">
+                        {overdueSummary.overdueCount > 0 && (
+                            <div className="text-danger">
+                                <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                <strong>{overdueSummary.overdueCount}</strong> Overdue
+                                <small className="ms-1">(₹{itemsTableLogic.formatCurrency(overdueSummary.totalOverdueAmount)})</small>
+                            </div>
+                        )}
+                        {overdueSummary.dueTodayCount > 0 && (
+                            <div className="text-warning">
+                                <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                                <strong>{overdueSummary.dueTodayCount}</strong> Due Today
+                                <small className="ms-1">(₹{itemsTableLogic.formatCurrency(overdueSummary.totalDueTodayAmount)})</small>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Alert>
+        );
+    };
 
     // Party selection indicator supporting both parties
     const renderPartySelectionIndicator = () => {
@@ -607,7 +757,7 @@ const ItemsTableWithTotals = ({
         );
     };
 
-    // Render payment status indicator
+    // FIXED: Render payment status indicator with due date info
     const renderPaymentStatus = () => {
         if (paymentData.amount > 0) {
             const selectedBank = bankAccounts.find(acc => acc._id === paymentData.bankAccountId);
@@ -626,7 +776,25 @@ const ItemsTableWithTotals = ({
                     <div className="mt-1">
                         <small className="text-muted">
                             Method: {paymentData.paymentType} |
-                            Party: {paymentData.partyName} |
+                            Party: {paymentData.partyName}
+                            {/* FIXED: Show due date info */}
+                            {paymentData.hasDueDate && (
+                                <>
+                                    {paymentData.dueDate && (
+                                        <span className="text-warning ms-2">
+                                            | <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                                            Due: {new Date(paymentData.dueDate).toLocaleDateString()}
+                                        </span>
+                                    )}
+                                    {paymentData.creditDays > 0 && (
+                                        <span className="text-info ms-2">
+                                            | <FontAwesomeIcon icon={faClock} className="me-1" />
+                                            {paymentData.creditDays} days credit
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                            |
                             <span className="text-info">Will be recorded when invoice is created</span>
                         </small>
                     </div>
@@ -636,11 +804,88 @@ const ItemsTableWithTotals = ({
         return null;
     };
 
+    // FIXED: Render current tax mode status with proper mapping and consistent logic
+    const renderTaxModeStatus = () => {
+        if (!gstEnabled) return null;
+
+        // FIXED: Use consistent tax mode value
+        const currentTaxMode = globalTaxMode || 'without-tax';
+        const displayText = currentTaxMode === 'with-tax' ? 'With Tax' : 'Without Tax';
+        const explanationText = currentTaxMode === 'with-tax'
+            ? 'Prices entered include tax (tax will be extracted)'
+            : 'Prices entered exclude tax (tax will be added)';
+
+        console.log('🎨 Rendering tax mode status:', {
+            currentTaxMode,
+            displayText,
+            explanationText,
+            globalTaxMode,
+            localItemsCount: localItems?.length || 0
+        });
+
+        // FIXED: Check for items with different tax modes more carefully
+        const itemsWithDifferentModes = localItems.filter(item =>
+            item.itemName && // Only check items with names
+            item.taxMode && // Only check items with tax mode set
+            item.taxMode !== currentTaxMode // Different from current global mode
+        );
+
+        return (
+            <Alert variant="info" className="mb-3">
+                <div className="d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center">
+                        <FontAwesomeIcon icon={faPercent} className="me-2" />
+                        <div>
+                            <strong>Current Tax Mode: </strong>
+                            <span className={`badge bg-${currentTaxMode === 'with-tax' ? 'success' : 'primary'} ms-1`}>
+                                {displayText}
+                            </span>
+                        </div>
+                    </div>
+                    <small className="text-muted">
+                        {explanationText}
+                    </small>
+                </div>
+
+                {/* FIXED: Show items with different tax modes only if they exist and have meaningful data */}
+                {itemsWithDifferentModes.length > 0 && (
+                    <div className="mt-2 pt-2 border-top">
+                        <small className="text-warning">
+                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                            <strong>Mixed Tax Modes:</strong> Some items have individual tax mode settings different from global mode.
+                        </small>
+                        <div className="mt-1">
+                            {itemsWithDifferentModes.map((item, index) => {
+                                const itemDisplayText = item.taxMode === 'with-tax' ? 'With Tax' : 'Without Tax';
+                                const originalIndex = localItems.findIndex(localItem =>
+                                    localItem.id === item.id ||
+                                    (localItem.itemName === item.itemName && localItem.pricePerUnit === item.pricePerUnit)
+                                );
+
+                                return (
+                                    <span key={item.id || index} className="badge bg-warning text-dark me-1">
+                                        {item.itemName || `Item ${originalIndex + 1}`}: {itemDisplayText}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+            </Alert>
+        );
+    };
+
     // ===== MAIN RENDER =====
     return (
         <div className="items-table-with-totals">
+            {/* Overdue Dashboard */}
+            {renderOverdueDashboard()}
+
             {/* Party Selection Indicator */}
             {renderPartySelectionIndicator()}
+
+            {/* Tax Mode Status */}
+            {renderTaxModeStatus()}
 
             {/* Items Table Section */}
             <Card className="items-table-card mb-4">
@@ -652,6 +897,31 @@ const ItemsTableWithTotals = ({
                         </h6>
 
                         <div className="d-flex gap-3 align-items-center">
+                           // FIXED: Global tax mode buttons in header
+                            {gstEnabled && (
+                                <div className="d-flex align-items-center gap-2">
+                                    <small className="text-muted">Global Mode:</small>
+                                    <ButtonGroup size="sm">
+                                        <Button
+                                            variant={globalTaxMode === 'with-tax' ? 'success' : 'outline-success'}
+                                            size="sm"
+                                            onClick={() => handleGlobalTaxModeChangeWithLogging('with-tax')}
+                                            style={{ fontSize: '11px', padding: '4px 8px' }}
+                                        >
+                                            With Tax
+                                        </Button>
+                                        <Button
+                                            variant={globalTaxMode === 'without-tax' ? 'primary' : 'outline-primary'}
+                                            size="sm"
+                                            onClick={() => handleGlobalTaxModeChangeWithLogging('without-tax')}
+                                            style={{ fontSize: '11px', padding: '4px 8px' }}
+                                        >
+                                            Without Tax
+                                        </Button>
+                                    </ButtonGroup>
+                                </div>
+                            )}
+
                             {/* Add Row Button */}
                             <Button
                                 variant="outline-primary"
@@ -713,6 +983,23 @@ const ItemsTableWithTotals = ({
                                                 : `₹${itemsTableLogic.formatCurrency(finalTotalWithRoundOff)}`
                                             }
                                         </small>
+                                        {/* FIXED: Show due date info on payment button */}
+                                        {paymentData.hasDueDate && paymentData.amount > 0 && (
+                                            <small className="text-light mt-1">
+                                                {paymentData.dueDate && (
+                                                    <span>
+                                                        <FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                                                        Due: {new Date(paymentData.dueDate).toLocaleDateString()}
+                                                    </span>
+                                                )}
+                                                {paymentData.creditDays > 0 && !paymentData.dueDate && (
+                                                    <span>
+                                                        <FontAwesomeIcon icon={faClock} className="me-1" />
+                                                        {paymentData.creditDays} days credit
+                                                    </span>
+                                                )}
+                                            </small>
+                                        )}
                                         {!getSelectedParty() && (
                                             <small className="text-warning mt-1">
                                                 Select {formType === 'purchase' ? 'supplier or customer' : 'customer or supplier'} first
@@ -726,7 +1013,7 @@ const ItemsTableWithTotals = ({
                             </Col>
                         )}
 
-                        {/* Tax Breakdown */}
+                        {/* FIXED: Tax Breakdown with mode info */}
                         {gstEnabled && totals.totalTax > 0 && (
                             <Col md={gridLayout.tax}>
                                 <Card className="bg-light border-0 h-100">
@@ -734,10 +1021,15 @@ const ItemsTableWithTotals = ({
                                         <div className="text-center mb-2">
                                             <FontAwesomeIcon icon={faPercent} className="me-2 text-info" />
                                             <span className="fw-bold text-secondary small">GST Breakdown</span>
+                                            <div className="mt-1">
+                                                <span className={`badge bg-${globalTaxMode === 'with-tax' ? 'success' : 'primary'} badge-sm`}>
+                                                    {globalTaxMode === 'with-tax' ? 'With Tax Mode' : 'Without Tax Mode'}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="small">
                                             <div className="d-flex justify-content-between mb-1">
-                                                <span className="text-muted">Subtotal (Pre-Tax):</span>
+                                                <span className="text-muted">Subtotal:</span>
                                                 <span className="fw-semibold">₹{itemsTableLogic.formatCurrency(totals.subtotal || 0)}</span>
                                             </div>
                                             {totals.totalCGST > 0 && (
@@ -758,9 +1050,15 @@ const ItemsTableWithTotals = ({
                                             </div>
                                             <hr className="my-2" />
                                             <div className="d-flex justify-content-between">
-                                                <span className="fw-bold text-dark">Total (Inc. GST):</span>
+                                                <span className="fw-bold text-dark">Final Total:</span>
                                                 <span className="fw-bold text-primary">₹{itemsTableLogic.formatCurrency(totals.finalTotal || 0)}</span>
                                             </div>
+                                            {globalTaxMode === 'with-tax' && (
+                                                <small className="text-success d-block mt-1 text-center">
+                                                    <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                                    Tax included in entered prices
+                                                </small>
+                                            )}
                                         </div>
                                     </Card.Body>
                                 </Card>
@@ -776,6 +1074,13 @@ const ItemsTableWithTotals = ({
                                         <span className="fw-bold text-secondary small">
                                             {currentConfig.totalLabel} {gstEnabled ? '(Inc. GST)' : '(No GST)'}
                                         </span>
+                                        {gstEnabled && (
+                                            <div className="mt-1">
+                                                <span className={`badge bg-${globalTaxMode === 'with-tax' ? 'success' : 'primary'} badge-sm`}>
+                                                    {globalTaxMode === 'with-tax' ? 'With Tax' : 'Without Tax'}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className={`fw-bold ${hasValidItems ? currentConfig.totalTextColor : 'text-secondary'} h4 mb-3 text-center`}>
@@ -839,9 +1144,9 @@ const ItemsTableWithTotals = ({
                                             <>
                                                 <div className="mb-1">
                                                     {gstEnabled && totals.totalTax > 0
-                                                        ? `GST Applied - Base: ₹${itemsTableLogic.formatCurrency(totals.subtotal)} + Tax: ₹${itemsTableLogic.formatCurrency(totals.totalTax)}`
+                                                        ? `GST Applied (${globalTaxMode}) - Base: ₹${itemsTableLogic.formatCurrency(totals.subtotal)} + Tax: ₹${itemsTableLogic.formatCurrency(totals.totalTax)}`
                                                         : gstEnabled
-                                                            ? `GST Enabled - Calculating Tax... (₹${itemsTableLogic.formatCurrency(totals.subtotal)})`
+                                                            ? `GST Enabled (${globalTaxMode}) - Calculating Tax... (₹${itemsTableLogic.formatCurrency(totals.subtotal)})`
                                                             : `Non-GST Transaction - ₹${itemsTableLogic.formatCurrency(totals.finalTotal)}`
                                                     }
                                                 </div>
@@ -879,7 +1184,7 @@ const ItemsTableWithTotals = ({
                                     <FontAwesomeIcon icon={faDownload} />
                                 </Button>
 
-                                {/* Save button using hook */}
+                                {/* FIXED: Save button using hook */}
                                 <Button
                                     variant={currentConfig.saveButtonVariant}
                                     size="lg"
@@ -896,6 +1201,23 @@ const ItemsTableWithTotals = ({
                                     {paymentData.amount > 0 && (
                                         <small className="ms-1 text-light-emphasis">
                                             + Payment
+                                            {/* FIXED: Show due date indicator on save button */}
+                                            {paymentData.hasDueDate && (
+                                                <>
+                                                    {paymentData.dueDate && (
+                                                        <span className="ms-1">
+                                                            (<FontAwesomeIcon icon={faCalendarAlt} className="me-1" />
+                                                            Due: {new Date(paymentData.dueDate).toLocaleDateString()})
+                                                        </span>
+                                                    )}
+                                                    {paymentData.creditDays > 0 && !paymentData.dueDate && (
+                                                        <span className="ms-1">
+                                                            (<FontAwesomeIcon icon={faClock} className="me-1" />
+                                                            {paymentData.creditDays}d)
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
                                         </small>
                                     )}
                                     {!getSelectedParty() && (
@@ -924,7 +1246,7 @@ const ItemsTableWithTotals = ({
                 </Card.Body>
             </Card>
 
-            {/* Payment Modal */}
+            {/* FIXED: Payment Modal with due date props */}
             <PaymentModal
                 show={showPaymentModal}
                 onHide={() => setShowPaymentModal(false)}
@@ -947,6 +1269,10 @@ const ItemsTableWithTotals = ({
                 roundOffValue={roundOffValue}
                 invoiceNumber={invoiceNumber}
                 invoiceDate={invoiceDate}
+                // Due date handler props
+                handleDueDateToggle={handleDueDateToggle}
+                handleCreditDaysChange={handleCreditDaysChange}
+                handleDueDateChange={handleDueDateChange}
             />
         </div>
     );

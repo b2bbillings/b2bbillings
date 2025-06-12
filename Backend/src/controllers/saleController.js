@@ -4,14 +4,15 @@ const Party = require('../models/Party');
 const mongoose = require('mongoose');
 
 const saleController = {
-    // Create a new sale/invoice
+
+    // Create a new sale/invoice - FIXED WITH PROPER TAX MODE SUPPORT
     createSale: async (req, res) => {
         try {
             const {
                 customerName,           // Customer name (will find or create)
                 customerMobile,         // Customer mobile
-                customer,
-                invoiceNumber,               // Customer ID (if provided directly)
+                customer,               // Customer ID (if provided directly)
+                invoiceNumber,          // Invoice number
                 invoiceDate,           // Invoice date
                 gstEnabled = true,     // GST enabled flag
                 companyId,             // Company ID
@@ -21,10 +22,20 @@ const saleController = {
                 termsAndConditions,    // Terms and conditions
                 roundOff = 0,          // Round off amount
                 roundOffEnabled = false, // Round off enabled flag
-                status = 'draft'       // Sale status
+                status = 'draft',      // Sale status
+                // FIXED: Handle both tax mode fields properly
+                taxMode = 'without-tax',         // Tax mode (with-tax/without-tax)
+                priceIncludesTax = false        // Whether the price includes tax (for backward compatibility)
             } = req.body;
 
-            // Validate required fields - check for either customer ID or customer name
+            console.log('📥 Creating sale with tax mode:', {
+                taxMode,
+                priceIncludesTax,
+                gstEnabled,
+                itemCount: items?.length || 0
+            });
+
+            // Validate required fields
             if ((!customerName && !customer) || !companyId || !items || items.length === 0) {
                 return res.status(400).json({
                     success: false,
@@ -32,10 +43,20 @@ const saleController = {
                 });
             }
 
-            // Find or create customer
+            // FIXED: Sync tax mode fields
+            const finalTaxMode = taxMode || (priceIncludesTax ? 'with-tax' : 'without-tax');
+            const finalPriceIncludesTax = finalTaxMode === 'with-tax';
+
+            console.log('🔄 Tax mode synchronization:', {
+                originalTaxMode: taxMode,
+                originalPriceIncludesTax: priceIncludesTax,
+                finalTaxMode,
+                finalPriceIncludesTax
+            });
+
+            // Find or create customer (keeping existing logic)
             let customerRecord;
 
-            // If customer ID is provided, use it directly
             if (customer && mongoose.Types.ObjectId.isValid(customer)) {
                 customerRecord = await Party.findById(customer);
                 if (!customerRecord) {
@@ -45,7 +66,6 @@ const saleController = {
                     });
                 }
             } else {
-                // Find customer by mobile first, then by name
                 if (customerMobile) {
                     customerRecord = await Party.findOne({
                         mobile: customerMobile,
@@ -60,7 +80,6 @@ const saleController = {
                     });
                 }
 
-                // If customer not found, create new customer
                 if (!customerRecord) {
                     if (!customerName) {
                         return res.status(400).json({
@@ -69,32 +88,62 @@ const saleController = {
                         });
                     }
 
+                    const userId = req.user?.id || companyId;
+
                     customerRecord = new Party({
                         name: customerName,
                         mobile: customerMobile || '',
+                        phoneNumber: customerMobile || '',
                         type: 'customer',
                         email: '',
+                        companyId: companyId,
+                        userId: userId,
+                        createdBy: userId,
                         address: {
                             street: '',
                             city: '',
                             state: '',
                             pincode: '',
                             country: 'India'
-                        }
+                        },
+                        gstNumber: '',
+                        panNumber: '',
+                        status: 'active',
+                        creditLimit: 0,
+                        creditDays: 0
                     });
-                    await customerRecord.save();
-                    console.log('Created new customer:', customerRecord._id);
+
+                    try {
+                        await customerRecord.save();
+                        console.log('✅ Created new customer:', customerRecord._id);
+                    } catch (customerError) {
+                        console.error('❌ Error creating customer:', customerError);
+                        return res.status(400).json({
+                            success: false,
+                            message: 'Failed to create customer',
+                            error: customerError.message
+                        });
+                    }
                 }
             }
 
-            // Validate and process items
+            // FIXED: Process items with proper tax mode handling
             const processedItems = [];
             let subtotal = 0;
             let totalDiscount = 0;
             let totalTax = 0;
+            let totalTaxableAmount = 0;
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
+
+                console.log(`🔄 Processing item ${i + 1}:`, {
+                    itemName: item.itemName,
+                    itemTaxMode: item.taxMode,
+                    itemPriceIncludesTax: item.priceIncludesTax,
+                    globalTaxMode: finalTaxMode,
+                    globalPriceIncludesTax: finalPriceIncludesTax
+                });
 
                 // Basic validation
                 if (!item.itemName || !item.quantity || !item.pricePerUnit) {
@@ -109,7 +158,7 @@ const saleController = {
                 const pricePerUnit = parseFloat(item.pricePerUnit);
                 const discountPercent = parseFloat(item.discountPercent || 0);
                 const discountAmount = parseFloat(item.discountAmount || 0);
-                const taxRate = parseFloat(item.taxRate || 0);
+                const taxRate = parseFloat(item.taxRate || 18);
 
                 // Validate numeric values
                 if (isNaN(quantity) || isNaN(pricePerUnit) || quantity <= 0 || pricePerUnit < 0) {
@@ -119,61 +168,166 @@ const saleController = {
                     });
                 }
 
+                // FIXED: Determine item-level tax mode
+                const itemTaxMode = item.taxMode || finalTaxMode;
+                const itemPriceIncludesTax = itemTaxMode === 'with-tax';
+
+                console.log(`📋 Item ${i + 1} tax mode determined:`, {
+                    itemTaxMode,
+                    itemPriceIncludesTax,
+                    taxRate
+                });
+
+                // Get tax rates
+                let itemCgstRate = 0;
+                let itemSgstRate = 0;
+                let itemIgstRate = 0;
+
+                if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+                    const itemDetails = await Item.findById(item.itemRef).select('cgst sgst igst taxRate');
+                    if (itemDetails) {
+                        itemCgstRate = parseFloat(itemDetails.cgst || 0);
+                        itemSgstRate = parseFloat(itemDetails.sgst || 0);
+                        itemIgstRate = parseFloat(itemDetails.igst || 0);
+
+                        if (itemCgstRate === 0 && itemSgstRate === 0 && itemIgstRate === 0) {
+                            const itemTaxRate = parseFloat(itemDetails.taxRate || taxRate || 0);
+                            if (itemTaxRate > 0) {
+                                itemCgstRate = itemTaxRate / 2;
+                                itemSgstRate = itemTaxRate / 2;
+                                itemIgstRate = 0;
+                            }
+                        }
+                    }
+                } else if (taxRate > 0) {
+                    itemCgstRate = taxRate / 2;
+                    itemSgstRate = taxRate / 2;
+                    itemIgstRate = 0;
+                }
+
                 // Calculate base amount
                 const baseAmount = quantity * pricePerUnit;
-                subtotal += baseAmount;
 
-                // Calculate discount (use discountAmount if provided, else use discountPercent)
+                // Calculate discount
                 let itemDiscountAmount = discountAmount;
                 if (discountAmount === 0 && discountPercent > 0) {
                     itemDiscountAmount = (baseAmount * discountPercent) / 100;
                 }
-                totalDiscount += itemDiscountAmount;
 
-                // Amount after discount
                 const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
-                // Calculate taxes
-                let cgst = parseFloat(item.cgst || 0);
-                let sgst = parseFloat(item.sgst || 0);
-                let igst = parseFloat(item.igst || 0);
+                // FIXED: Calculate taxes based on item tax mode
+                let cgst = 0;
+                let sgst = 0;
+                let igst = 0;
+                let itemAmount = 0;
+                let itemTaxableAmount = 0;
 
-                // Auto-calculate CGST/SGST if tax rate is provided but individual taxes are not
-                if (gstEnabled && taxRate > 0 && cgst === 0 && sgst === 0 && igst === 0) {
-                    // For intra-state transactions (CGST + SGST)
-                    cgst = (taxRate / 2 * amountAfterDiscount) / 100;
-                    sgst = (taxRate / 2 * amountAfterDiscount) / 100;
-                    // For inter-state transactions, use IGST instead
-                    // igst = (taxRate * amountAfterDiscount) / 100;
+                if (gstEnabled && (itemCgstRate > 0 || itemSgstRate > 0 || itemIgstRate > 0)) {
+                    const totalTaxRate = itemCgstRate + itemSgstRate + itemIgstRate;
+
+                    if (itemPriceIncludesTax) {
+                        // WITH TAX MODE - Extract tax from amount
+                        console.log(`🟢 Item ${i + 1}: WITH TAX calculation`);
+
+                        const taxMultiplier = 1 + (totalTaxRate / 100);
+                        itemTaxableAmount = amountAfterDiscount / taxMultiplier;
+
+                        const totalTaxAmount = amountAfterDiscount - itemTaxableAmount;
+                        cgst = (itemTaxableAmount * itemCgstRate) / 100;
+                        sgst = (itemTaxableAmount * itemSgstRate) / 100;
+                        igst = (itemTaxableAmount * itemIgstRate) / 100;
+
+                        itemAmount = amountAfterDiscount; // Amount stays same (tax included)
+
+                        console.log(`✅ Item ${i + 1} WITH TAX result:`, {
+                            amountAfterDiscount,
+                            itemTaxableAmount,
+                            totalTaxAmount,
+                            cgst, sgst, igst,
+                            itemAmount
+                        });
+                    } else {
+                        // WITHOUT TAX MODE - Add tax to amount
+                        console.log(`🔵 Item ${i + 1}: WITHOUT TAX calculation`);
+
+                        itemTaxableAmount = amountAfterDiscount;
+                        cgst = (itemTaxableAmount * itemCgstRate) / 100;
+                        sgst = (itemTaxableAmount * itemSgstRate) / 100;
+                        igst = (itemTaxableAmount * itemIgstRate) / 100;
+
+                        itemAmount = itemTaxableAmount + cgst + sgst + igst; // Add tax
+
+                        console.log(`✅ Item ${i + 1} WITHOUT TAX result:`, {
+                            itemTaxableAmount,
+                            cgst, sgst, igst,
+                            itemAmount
+                        });
+                    }
+                } else {
+                    // No GST
+                    itemTaxableAmount = amountAfterDiscount;
+                    itemAmount = amountAfterDiscount;
+                    console.log(`❌ Item ${i + 1}: No GST`);
                 }
 
+                // Update totals
+                subtotal += baseAmount;
+                totalDiscount += itemDiscountAmount;
+                totalTaxableAmount += itemTaxableAmount;
                 const itemTotalTax = cgst + sgst + igst;
                 totalTax += itemTotalTax;
 
-                // Final item amount
-                const itemAmount = amountAfterDiscount + itemTotalTax;
-
-                // Process item
+                // FIXED: Create processed item with all required fields
                 const processedItem = {
                     itemRef: item.itemRef || null,
                     itemName: item.itemName.trim(),
+                    itemCode: item.itemCode || '',
                     hsnCode: item.hsnCode || '0000',
+                    category: item.category || '',
                     quantity,
                     unit: item.unit || 'PCS',
                     pricePerUnit,
-                    taxRate,
+                    taxRate: itemCgstRate + itemSgstRate + itemIgstRate,
+
+                    // FIXED: Include both tax mode fields for compatibility
+                    taxMode: itemTaxMode,
+                    priceIncludesTax: itemPriceIncludesTax,
+
                     discountPercent,
-                    discountAmount: itemDiscountAmount,
+                    discountAmount: parseFloat(itemDiscountAmount.toFixed(2)),
+
+                    // Tax amounts - both formats for compatibility
                     cgst: parseFloat(cgst.toFixed(2)),
                     sgst: parseFloat(sgst.toFixed(2)),
                     igst: parseFloat(igst.toFixed(2)),
+                    cgstAmount: parseFloat(cgst.toFixed(2)),
+                    sgstAmount: parseFloat(sgst.toFixed(2)),
+                    igstAmount: parseFloat(igst.toFixed(2)),
+
+                    // Calculated amounts
+                    taxableAmount: parseFloat(itemTaxableAmount.toFixed(2)),
+                    totalTaxAmount: parseFloat(itemTotalTax.toFixed(2)),
+
+                    // Final amounts - both formats for compatibility
+                    amount: parseFloat(itemAmount.toFixed(2)),
                     itemAmount: parseFloat(itemAmount.toFixed(2)),
+
                     lineNumber: i + 1
                 };
 
                 processedItems.push(processedItem);
 
-                // If itemRef is provided, validate stock
+                console.log(`✅ Item ${i + 1} processed:`, {
+                    itemName: processedItem.itemName,
+                    taxMode: processedItem.taxMode,
+                    priceIncludesTax: processedItem.priceIncludesTax,
+                    taxableAmount: processedItem.taxableAmount,
+                    totalTax: processedItem.totalTaxAmount,
+                    finalAmount: processedItem.amount
+                });
+
+                // Stock validation
                 if (item.itemRef) {
                     const itemDetails = await Item.findById(item.itemRef);
                     if (itemDetails && itemDetails.currentStock < quantity) {
@@ -186,64 +340,124 @@ const saleController = {
             }
 
             // Calculate final totals
-            const baseTotal = subtotal - totalDiscount;
-            let finalTotal = baseTotal + totalTax;
+            const finalTotal = processedItems.reduce((sum, item) => sum + item.amount, 0);
 
             // Apply round off if enabled
             let appliedRoundOff = 0;
+            let adjustedFinalTotal = finalTotal;
             if (roundOffEnabled && roundOff !== 0) {
                 appliedRoundOff = parseFloat(roundOff);
-                finalTotal += appliedRoundOff;
+                adjustedFinalTotal = finalTotal + appliedRoundOff;
             }
 
-            // Prepare totals object
+            // FIXED: Prepare totals object with comprehensive fields
             const totals = {
                 subtotal: parseFloat(subtotal.toFixed(2)),
+                totalQuantity: processedItems.reduce((sum, item) => sum + item.quantity, 0),
                 totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+                totalDiscountAmount: parseFloat(totalDiscount.toFixed(2)),
                 totalTax: parseFloat(totalTax.toFixed(2)),
-                finalTotal: parseFloat(finalTotal.toFixed(2))
+                totalCGST: parseFloat(processedItems.reduce((sum, item) => sum + item.cgst, 0).toFixed(2)),
+                totalSGST: parseFloat(processedItems.reduce((sum, item) => sum + item.sgst, 0).toFixed(2)),
+                totalIGST: parseFloat(processedItems.reduce((sum, item) => sum + item.igst, 0).toFixed(2)),
+                totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2)),
+                finalTotal: parseFloat(adjustedFinalTotal.toFixed(2)),
+                roundOff: parseFloat(appliedRoundOff.toFixed(2)),
+                // Additional fields for tax mode compatibility
+                withTaxTotal: finalPriceIncludesTax ? parseFloat(adjustedFinalTotal.toFixed(2)) : parseFloat((totalTaxableAmount + totalTax + appliedRoundOff).toFixed(2)),
+                withoutTaxTotal: finalPriceIncludesTax ? parseFloat(totalTaxableAmount.toFixed(2)) : parseFloat(adjustedFinalTotal.toFixed(2))
             };
 
-            // Prepare payment object
+            console.log('💰 Final totals calculated:', totals);
+
+            // Payment details (keeping existing logic)
             const paymentDetails = {
                 method: payment?.method || 'cash',
                 status: payment?.status || 'pending',
                 paidAmount: parseFloat(payment?.paidAmount || 0),
-                pendingAmount: parseFloat((finalTotal - (payment?.paidAmount || 0)).toFixed(2)),
+                pendingAmount: 0,
                 paymentDate: payment?.paymentDate ? new Date(payment.paymentDate) : new Date(),
-                reference: payment?.reference || ''
+                dueDate: payment?.dueDate ? new Date(payment.dueDate) : null,
+                creditDays: parseInt(payment?.creditDays || 0),
+                reference: payment?.reference || '',
+                notes: payment?.notes || ''
             };
 
-            // Auto-determine payment status based on amount
-            if (paymentDetails.paidAmount >= finalTotal) {
+            const paidAmount = paymentDetails.paidAmount;
+            paymentDetails.pendingAmount = parseFloat((adjustedFinalTotal - paidAmount).toFixed(2));
+
+            // Auto-determine payment status
+            if (paidAmount >= adjustedFinalTotal) {
                 paymentDetails.status = 'paid';
                 paymentDetails.pendingAmount = 0;
-            } else if (paymentDetails.paidAmount > 0) {
+                paymentDetails.dueDate = null;
+            } else if (paidAmount > 0) {
                 paymentDetails.status = 'partial';
+                if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
+                    const dueDate = new Date();
+                    dueDate.setDate(dueDate.getDate() + paymentDetails.creditDays);
+                    paymentDetails.dueDate = dueDate;
+                }
             } else {
                 paymentDetails.status = 'pending';
-                paymentDetails.pendingAmount = finalTotal;
+                paymentDetails.pendingAmount = adjustedFinalTotal;
+                if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
+                    const dueDate = new Date();
+                    dueDate.setDate(dueDate.getDate() + paymentDetails.creditDays);
+                    paymentDetails.dueDate = dueDate;
+                }
             }
 
-            // Create sale object
+            if (paymentDetails.pendingAmount < 0) {
+                paymentDetails.pendingAmount = 0;
+            }
+
+            // Initialize payment history
+            let paymentHistory = [];
+            if (paidAmount > 0) {
+                paymentHistory.push({
+                    amount: paidAmount,
+                    method: paymentDetails.method,
+                    reference: paymentDetails.reference,
+                    paymentDate: paymentDetails.paymentDate,
+                    dueDate: paymentDetails.dueDate,
+                    notes: paymentDetails.notes || 'Initial payment',
+                    createdAt: new Date(),
+                    createdBy: req.user?.id || 'system'
+                });
+            }
+
+            // FIXED: Create sale object with proper tax mode fields
             const saleData = {
-                // Invoice number will be auto-generated by pre-save middleware
                 invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
                 invoiceType: gstEnabled ? 'gst' : 'non-gst',
                 customer: customerRecord._id,
                 invoiceNumber,
                 customerMobile: customerMobile || customerRecord.mobile,
                 gstEnabled,
+
+                // FIXED: Include both tax mode fields for full compatibility
+                taxMode: finalTaxMode,
+                priceIncludesTax: finalPriceIncludesTax,
+
                 companyId,
                 items: processedItems,
                 totals,
                 payment: paymentDetails,
+                paymentHistory: paymentHistory,
                 notes: notes || '',
                 termsAndConditions: termsAndConditions || '',
                 status,
                 createdBy: req.user?.id || 'system',
                 lastModifiedBy: req.user?.id || 'system'
             };
+
+            console.log('💾 Creating sale with data:', {
+                taxMode: saleData.taxMode,
+                priceIncludesTax: saleData.priceIncludesTax,
+                itemCount: saleData.items.length,
+                finalTotal: saleData.totals.finalTotal
+            });
 
             // Create the sale
             const sale = new Sale(saleData);
@@ -252,7 +466,7 @@ const saleController = {
             // Populate customer details for response
             await sale.populate('customer', 'name mobile email address type');
 
-            // Update item stock if itemRef is provided
+            // Update item stock
             for (const item of processedItems) {
                 if (item.itemRef) {
                     await Item.findByIdAndUpdate(
@@ -263,6 +477,14 @@ const saleController = {
                 }
             }
 
+            console.log('✅ Sale created successfully:', {
+                id: sale._id,
+                invoiceNumber: sale.invoiceNumber,
+                taxMode: sale.taxMode,
+                priceIncludesTax: sale.priceIncludesTax
+            });
+
+            // FIXED: Enhanced response with proper tax mode info
             res.status(201).json({
                 success: true,
                 message: 'Sale created successfully',
@@ -276,13 +498,23 @@ const saleController = {
                             mobile: customerRecord.mobile
                         },
                         totals: sale.totals,
-                        payment: sale.payment
+                        payment: {
+                            ...sale.payment,
+                            dueDate: sale.payment.dueDate,
+                            creditDays: sale.payment.creditDays,
+                            isOverdue: sale.isOverdue,
+                            daysOverdue: sale.daysOverdue
+                        },
+                        // FIXED: Include both tax mode fields in response
+                        taxMode: sale.taxMode,
+                        priceIncludesTax: sale.priceIncludesTax,
+                        gstEnabled: sale.gstEnabled
                     }
                 }
             });
 
         } catch (error) {
-            console.error('Error creating sale:', error);
+            console.error('❌ Error creating sale:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to create sale',
@@ -291,100 +523,7 @@ const saleController = {
         }
     },
 
-    // Get all sales with pagination and filters
-    getAllSales: async (req, res) => {
-        try {
-            const {
-                page = 1,
-                limit = 10,
-                companyId,
-                customer,
-                status,
-                paymentStatus,
-                invoiceType,
-                dateFrom,
-                dateTo,
-                search
-            } = req.query;
-
-            // Build filter object
-            const filter = {};
-
-            if (companyId) filter.companyId = companyId;
-            if (customer) filter.customer = customer;
-            if (status) filter.status = status;
-            if (paymentStatus) filter['payment.status'] = paymentStatus;
-            if (invoiceType) filter.invoiceType = invoiceType;
-
-            // Date range filter
-            if (dateFrom || dateTo) {
-                filter.invoiceDate = {};
-                if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
-                if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
-            }
-
-            // Search filter
-            if (search) {
-                filter.$or = [
-                    { invoiceNumber: { $regex: search, $options: 'i' } },
-                    { customerMobile: { $regex: search, $options: 'i' } },
-                    { notes: { $regex: search, $options: 'i' } }
-                ];
-            }
-
-            // Calculate pagination
-            const skip = (parseInt(page) - 1) * parseInt(limit);
-
-            // Get sales with pagination
-            const sales = await Sale.find(filter)
-                .populate('customer', 'name mobile email address type')
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(parseInt(limit));
-
-            // Get total count
-            const totalSales = await Sale.countDocuments(filter);
-            const totalPages = Math.ceil(totalSales / parseInt(limit));
-
-            // Calculate summary using correct field names
-            const summary = await Sale.aggregate([
-                { $match: filter },
-                {
-                    $group: {
-                        _id: null,
-                        totalAmount: { $sum: '$totals.finalTotal' },
-                        totalTax: { $sum: '$totals.totalTax' },
-                        totalDiscount: { $sum: '$totals.totalDiscount' }
-                    }
-                }
-            ]);
-
-            res.status(200).json({
-                success: true,
-                data: {
-                    sales,
-                    pagination: {
-                        currentPage: parseInt(page),
-                        totalPages,
-                        totalSales,
-                        hasNext: parseInt(page) < totalPages,
-                        hasPrev: parseInt(page) > 1
-                    },
-                    summary: summary[0] || { totalAmount: 0, totalTax: 0, totalDiscount: 0 }
-                }
-            });
-
-        } catch (error) {
-            console.error('Error getting sales:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to get sales',
-                error: error.message
-            });
-        }
-    },
-
-    // Get sale by ID
+    // FIXED: Get sale by ID with proper tax mode handling
     getSaleById: async (req, res) => {
         try {
             const { id } = req.params;
@@ -407,22 +546,283 @@ const saleController = {
                 });
             }
 
-            res.status(200).json({
+            // FIXED: Ensure backward compatibility for tax mode fields
+            const compatibleSale = {
+                ...sale.toObject(),
+                taxMode: sale.taxMode || (sale.priceIncludesTax ? 'with-tax' : 'without-tax'),
+                priceIncludesTax: sale.priceIncludesTax ?? (sale.taxMode === 'with-tax'),
+                items: sale.items.map(item => ({
+                    ...item,
+                    taxMode: item.taxMode || sale.taxMode || 'without-tax',
+                    priceIncludesTax: item.priceIncludesTax ?? (item.taxMode === 'with-tax'),
+                    // Ensure frontend compatibility fields
+                    cgstAmount: item.cgstAmount || item.cgst || 0,
+                    sgstAmount: item.sgstAmount || item.sgst || 0,
+                    igstAmount: item.igstAmount || item.igst || 0,
+                    amount: item.amount || item.itemAmount || 0
+                }))
+            };
+
+            console.log('📤 Sending sale data with tax mode compatibility:', {
+                id: sale._id,
+                taxMode: compatibleSale.taxMode,
+                priceIncludesTax: compatibleSale.priceIncludesTax
+            });
+
+            res.json({
                 success: true,
-                data: sale
+                data: compatibleSale
             });
 
         } catch (error) {
-            console.error('Error getting sale:', error);
+            console.error('❌ Error fetching sale:', error);
             res.status(500).json({
                 success: false,
-                message: 'Failed to get sale',
+                message: 'Failed to fetch sale',
                 error: error.message
             });
         }
     },
 
-    // Update sale
+    // Keep all other existing methods unchanged...
+    addPayment: async (req, res) => {
+        try {
+            const { id } = req.params;
+            const {
+                amount,
+                method = 'cash',
+                reference = '',
+                paymentDate,
+                dueDate,
+                creditDays,
+                notes = ''
+            } = req.body;
+
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid sale ID'
+                });
+            }
+
+            if (!amount || amount <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Valid payment amount is required'
+                });
+            }
+
+            const sale = await Sale.findById(id);
+            if (!sale) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Sale not found'
+                });
+            }
+
+            const currentBalance = sale.balanceAmount;
+            if (amount > currentBalance) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Payment amount cannot exceed balance amount of ₹${currentBalance.toFixed(2)}`
+                });
+            }
+
+            const newPaidAmount = sale.payment.paidAmount + parseFloat(amount);
+            const newPendingAmount = sale.totals.finalTotal - newPaidAmount;
+
+            let newPaymentStatus = 'pending';
+            let newDueDate = sale.payment.dueDate;
+
+            if (newPaidAmount >= sale.totals.finalTotal) {
+                newPaymentStatus = 'paid';
+                newDueDate = null;
+            } else if (newPaidAmount > 0) {
+                newPaymentStatus = 'partial';
+
+                if (dueDate) {
+                    newDueDate = new Date(dueDate);
+                } else if (creditDays && creditDays > 0) {
+                    const calculatedDueDate = new Date();
+                    calculatedDueDate.setDate(calculatedDueDate.getDate() + parseInt(creditDays));
+                    newDueDate = calculatedDueDate;
+                }
+            }
+
+            if (newDueDate && new Date() > newDueDate && newPendingAmount > 0) {
+                newPaymentStatus = 'overdue';
+            }
+
+            sale.payment = {
+                ...sale.payment,
+                method: method,
+                status: newPaymentStatus,
+                paidAmount: parseFloat(newPaidAmount.toFixed(2)),
+                pendingAmount: parseFloat(Math.max(0, newPendingAmount).toFixed(2)),
+                paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+                dueDate: newDueDate,
+                creditDays: creditDays ? parseInt(creditDays) : sale.payment.creditDays,
+                reference: reference,
+                notes: notes
+            };
+
+            if (!sale.paymentHistory) {
+                sale.paymentHistory = [];
+            }
+
+            sale.paymentHistory.push({
+                amount: parseFloat(amount),
+                method,
+                reference,
+                paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+                dueDate: newDueDate,
+                notes,
+                createdAt: new Date(),
+                createdBy: req.user?.id || 'system'
+            });
+
+            await sale.save();
+
+            res.status(200).json({
+                success: true,
+                message: 'Payment added successfully',
+                data: {
+                    invoiceNumber: sale.invoiceNumber,
+                    totalAmount: sale.totals.finalTotal,
+                    paidAmount: sale.payment.paidAmount,
+                    pendingAmount: sale.payment.pendingAmount,
+                    paymentStatus: sale.payment.status,
+                    paymentMethod: sale.payment.method,
+                    paymentDate: sale.payment.paymentDate,
+                    dueDate: sale.payment.dueDate,
+                    creditDays: sale.payment.creditDays,
+                    isOverdue: sale.isOverdue,
+                    daysOverdue: sale.daysOverdue,
+                    paymentHistory: sale.paymentHistory,
+                    balanceAmount: sale.balanceAmount
+                }
+            });
+
+        } catch (error) {
+            console.error('Error adding payment:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to add payment',
+                error: error.message
+            });
+        }
+    },
+    getAllSales: async (req, res) => {
+        try {
+            const {
+                page = 1,
+                limit = 10,
+                companyId,
+                customer,
+                status,
+                paymentStatus,
+                invoiceType,
+                dateFrom,
+                dateTo,
+                search
+            } = req.query;
+
+            const filter = {};
+
+            if (companyId) filter.companyId = companyId;
+            if (customer) filter.customer = customer;
+            if (status) filter.status = status;
+            if (paymentStatus) filter['payment.status'] = paymentStatus;
+            if (invoiceType) filter.invoiceType = invoiceType;
+
+            if (dateFrom || dateTo) {
+                filter.invoiceDate = {};
+                if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+                if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+            }
+
+            if (search) {
+                filter.$or = [
+                    { invoiceNumber: { $regex: search, $options: 'i' } },
+                    { customerMobile: { $regex: search, $options: 'i' } },
+                    { notes: { $regex: search, $options: 'i' } }
+                ];
+            }
+
+            const skip = (parseInt(page) - 1) * parseInt(limit);
+
+            const sales = await Sale.find(filter)
+                .populate('customer', 'name mobile email address type')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit));
+
+            const transformedSales = sales.map(sale => ({
+                id: sale._id,
+                invoiceNo: sale.invoiceNumber,
+                date: sale.invoiceDate,
+                partyName: sale.customer?.name || 'Unknown',
+                partyPhone: sale.customer?.mobile || sale.customerMobile,
+                transaction: sale.invoiceType === 'gst' ? 'GST Invoice' : 'Sale',
+                paymentType: sale.payment?.method || 'cash',
+                amount: sale.totals?.finalTotal || 0,
+                balance: sale.payment?.pendingAmount || 0,
+                cgst: sale.items?.reduce((sum, item) => sum + (item.cgst || 0), 0) || 0,
+                sgst: sale.items?.reduce((sum, item) => sum + (item.sgst || 0), 0) || 0,
+                igst: sale.items?.reduce((sum, item) => sum + (item.igst || 0), 0) || 0,
+                status: sale.status,
+                paymentStatus: sale.payment?.status || 'pending',
+                ...sale.toObject()
+            }));
+
+            const totalSales = await Sale.countDocuments(filter);
+            const totalPages = Math.ceil(totalSales / parseInt(limit));
+
+            const summary = await Sale.aggregate([
+                { $match: filter },
+                {
+                    $group: {
+                        _id: null,
+                        totalAmount: { $sum: '$totals.finalTotal' },
+                        totalTax: { $sum: '$totals.totalTax' },
+                        totalDiscount: { $sum: '$totals.totalDiscount' },
+                        paidAmount: { $sum: '$payment.paidAmount' },
+                        pendingAmount: { $sum: '$payment.pendingAmount' }
+                    }
+                }
+            ]);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    sales: transformedSales,
+                    pagination: {
+                        currentPage: parseInt(page),
+                        totalPages,
+                        totalSales,
+                        hasNext: parseInt(page) < totalPages,
+                        hasPrev: parseInt(page) > 1
+                    },
+                    summary: summary[0] || {
+                        totalAmount: 0,
+                        totalTax: 0,
+                        totalDiscount: 0,
+                        paidAmount: 0,
+                        pendingAmount: 0
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Error getting sales:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get sales',
+                error: error.message
+            });
+        }
+    },
+
     updateSale: async (req, res) => {
         try {
             const { id } = req.params;
@@ -443,7 +843,6 @@ const saleController = {
                 });
             }
 
-            // Check if sale can be updated
             if (sale.status === 'completed' || sale.status === 'cancelled') {
                 return res.status(400).json({
                     success: false,
@@ -451,10 +850,8 @@ const saleController = {
                 });
             }
 
-            // Update metadata
             updateData.lastModifiedBy = req.user?.id || 'system';
 
-            // If updating items, validate stock again
             if (updateData.items) {
                 for (let i = 0; i < updateData.items.length; i++) {
                     const item = updateData.items[i];
@@ -492,7 +889,6 @@ const saleController = {
         }
     },
 
-    // Delete sale (soft delete by marking as cancelled)
     deleteSale: async (req, res) => {
         try {
             const { id } = req.params;
@@ -512,7 +908,6 @@ const saleController = {
                 });
             }
 
-            // Mark as cancelled instead of hard delete
             sale.status = 'cancelled';
             sale.lastModifiedBy = req.user?.id || 'system';
             await sale.save();
@@ -532,7 +927,6 @@ const saleController = {
         }
     },
 
-    // Mark sale as completed
     completeSale: async (req, res) => {
         try {
             const { id } = req.params;
@@ -559,7 +953,6 @@ const saleController = {
                 });
             }
 
-            // Mark as completed
             await sale.markAsCompleted();
 
             res.status(200).json({
@@ -578,67 +971,6 @@ const saleController = {
         }
     },
 
-    // Add payment to sale
-    addPayment: async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { amount, method = 'cash', reference = '' } = req.body;
-
-            if (!mongoose.Types.ObjectId.isValid(id)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid sale ID'
-                });
-            }
-
-            if (!amount || amount <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Valid payment amount is required'
-                });
-            }
-
-            const sale = await Sale.findById(id);
-            if (!sale) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Sale not found'
-                });
-            }
-
-            // Check if payment amount is valid
-            const balance = sale.balanceAmount;
-            if (amount > balance) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Payment amount cannot exceed balance amount of ₹${balance}`
-                });
-            }
-
-            // Add payment
-            await sale.addPayment(amount, method, reference);
-
-            res.status(200).json({
-                success: true,
-                message: 'Payment added successfully',
-                data: {
-                    paidAmount: sale.payment.paidAmount,
-                    pendingAmount: sale.payment.pendingAmount,
-                    paymentStatus: sale.payment.status
-                }
-            });
-
-        } catch (error) {
-            console.error('Error adding payment:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to add payment',
-                error: error.message
-            });
-        }
-    },
-
-    // Get today's sales
     getTodaysSales: async (req, res) => {
         try {
             const { companyId } = req.query;
@@ -654,7 +986,6 @@ const saleController = {
                 .populate('customer', 'name mobile')
                 .select('invoiceNumber invoiceDate totals.finalTotal payment.status items');
 
-            // Calculate today's summary
             const summary = {
                 totalSales: sales.length,
                 totalAmount: sales.reduce((sum, sale) => sum + sale.totals.finalTotal, 0),
@@ -681,7 +1012,6 @@ const saleController = {
         }
     },
 
-    // Get sales report
     getSalesReport: async (req, res) => {
         try {
             const { companyId, startDate, endDate } = req.query;
@@ -699,7 +1029,7 @@ const saleController = {
             const report = await Sale.aggregate([
                 {
                     $match: {
-                        companyId: mongoose.Types.ObjectId(companyId),
+                        companyId: new mongoose.Types.ObjectId(companyId),
                         invoiceDate: { $gte: start, $lte: end },
                         status: { $ne: 'cancelled' }
                     }
@@ -711,7 +1041,9 @@ const saleController = {
                         totalInvoices: { $sum: 1 },
                         totalItems: { $sum: { $size: '$items' } },
                         totalTax: { $sum: '$totals.totalTax' },
-                        avgInvoiceValue: { $avg: '$totals.finalTotal' }
+                        avgInvoiceValue: { $avg: '$totals.finalTotal' },
+                        totalPaid: { $sum: '$payment.paidAmount' },
+                        totalPending: { $sum: '$payment.pendingAmount' }
                     }
                 }
             ]);
@@ -723,7 +1055,9 @@ const saleController = {
                     totalInvoices: 0,
                     totalItems: 0,
                     totalTax: 0,
-                    avgInvoiceValue: 0
+                    avgInvoiceValue: 0,
+                    totalPaid: 0,
+                    totalPending: 0
                 }
             });
 
@@ -737,7 +1071,6 @@ const saleController = {
         }
     },
 
-    // Get sales dashboard data
     getDashboardData: async (req, res) => {
         try {
             const { companyId } = req.query;
@@ -750,10 +1083,11 @@ const saleController = {
             }
 
             const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
             const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
             const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
 
-            // Get various metrics
             const [
                 todaysSales,
                 weekSales,
@@ -761,15 +1095,11 @@ const saleController = {
                 recentSales,
                 topCustomers
             ] = await Promise.all([
-                // Today's sales
                 Sale.aggregate([
                     {
                         $match: {
-                            companyId: mongoose.Types.ObjectId(companyId),
-                            invoiceDate: {
-                                $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-                                $lt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-                            },
+                            companyId: new mongoose.Types.ObjectId(companyId),
+                            invoiceDate: { $gte: startOfDay, $lt: endOfDay },
                             status: { $ne: 'cancelled' }
                         }
                     },
@@ -782,11 +1112,10 @@ const saleController = {
                     }
                 ]),
 
-                // This week's sales
                 Sale.aggregate([
                     {
                         $match: {
-                            companyId: mongoose.Types.ObjectId(companyId),
+                            companyId: new mongoose.Types.ObjectId(companyId),
                             invoiceDate: { $gte: startOfWeek },
                             status: { $ne: 'cancelled' }
                         }
@@ -800,11 +1129,10 @@ const saleController = {
                     }
                 ]),
 
-                // This month's sales
                 Sale.aggregate([
                     {
                         $match: {
-                            companyId: mongoose.Types.ObjectId(companyId),
+                            companyId: new mongoose.Types.ObjectId(companyId),
                             invoiceDate: { $gte: startOfMonth },
                             status: { $ne: 'cancelled' }
                         }
@@ -818,18 +1146,16 @@ const saleController = {
                     }
                 ]),
 
-                // Recent sales
                 Sale.find({ companyId, status: { $ne: 'cancelled' } })
                     .populate('customer', 'name mobile')
                     .sort({ createdAt: -1 })
                     .limit(5)
                     .select('invoiceNumber invoiceDate totals.finalTotal payment.status'),
 
-                // Top customers
                 Sale.aggregate([
                     {
                         $match: {
-                            companyId: mongoose.Types.ObjectId(companyId),
+                            companyId: new mongoose.Types.ObjectId(companyId),
                             status: { $ne: 'cancelled' }
                         }
                     },
@@ -883,12 +1209,11 @@ const saleController = {
         }
     },
 
-    // Get payment status
     getPaymentStatus: async (req, res) => {
         try {
             const { id } = req.params;
 
-            const sale = await Sale.findById(id).select('payment totals');
+            const sale = await Sale.findById(id).select('payment totals paymentHistory');
 
             if (!sale) {
                 return res.status(404).json({
@@ -906,7 +1231,8 @@ const saleController = {
                     totalAmount: sale.totals.finalTotal,
                     balanceAmount: sale.balanceAmount,
                     paymentMethod: sale.payment.method,
-                    paymentDate: sale.payment.paymentDate
+                    paymentDate: sale.payment.paymentDate,
+                    paymentHistory: sale.paymentHistory || []
                 }
             });
         } catch (error) {
@@ -919,7 +1245,6 @@ const saleController = {
         }
     },
 
-    // Get monthly report
     getMonthlyReport: async (req, res) => {
         try {
             const { companyId, year = new Date().getFullYear(), month = new Date().getMonth() + 1 } = req.query;
@@ -930,7 +1255,7 @@ const saleController = {
             const monthlyData = await Sale.aggregate([
                 {
                     $match: {
-                        companyId: mongoose.Types.ObjectId(companyId),
+                        companyId: new mongoose.Types.ObjectId(companyId),
                         invoiceDate: { $gte: startDate, $lte: endDate },
                         status: { $ne: 'cancelled' }
                     }
@@ -949,7 +1274,7 @@ const saleController = {
             const summary = await Sale.aggregate([
                 {
                     $match: {
-                        companyId: mongoose.Types.ObjectId(companyId),
+                        companyId: new mongoose.Types.ObjectId(companyId),
                         invoiceDate: { $gte: startDate, $lte: endDate },
                         status: { $ne: 'cancelled' }
                     }
@@ -983,13 +1308,12 @@ const saleController = {
         }
     },
 
-    // Get top items
     getTopItems: async (req, res) => {
         try {
             const { companyId, limit = 10, dateFrom, dateTo } = req.query;
 
             const matchConditions = {
-                companyId: mongoose.Types.ObjectId(companyId),
+                companyId: new mongoose.Types.ObjectId(companyId),
                 status: { $ne: 'cancelled' }
             };
 
@@ -1029,7 +1353,6 @@ const saleController = {
         }
     },
 
-    // Get customer stats
     getCustomerStats: async (req, res) => {
         try {
             const { companyId, customerId } = req.query;
@@ -1044,8 +1367,8 @@ const saleController = {
             const customerStats = await Sale.aggregate([
                 {
                     $match: {
-                        companyId: mongoose.Types.ObjectId(companyId),
-                        customer: mongoose.Types.ObjectId(customerId),
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        customer: new mongoose.Types.ObjectId(customerId),
                         status: { $ne: 'cancelled' }
                     }
                 },
@@ -1095,7 +1418,6 @@ const saleController = {
         }
     },
 
-    // Get next invoice number
     getNextInvoiceNumber: async (req, res) => {
         try {
             const { companyId, invoiceType = 'gst' } = req.query;
@@ -1141,7 +1463,6 @@ const saleController = {
         }
     },
 
-    // Validate stock
     validateStock: async (req, res) => {
         try {
             const { items } = req.body;
@@ -1196,7 +1517,6 @@ const saleController = {
         }
     },
 
-    // Export CSV
     exportCSV: async (req, res) => {
         try {
             const {
@@ -1209,7 +1529,6 @@ const saleController = {
                 dateTo
             } = req.query;
 
-            // Build filter object (same as getAllSales)
             const filter = { companyId };
             if (customer) filter.customer = customer;
             if (status) filter.status = status;
@@ -1225,9 +1544,8 @@ const saleController = {
             const sales = await Sale.find(filter)
                 .populate('customer', 'name mobile email')
                 .sort({ invoiceDate: -1 })
-                .limit(1000); // Limit for performance
+                .limit(1000);
 
-            // Convert to CSV format
             const csvHeaders = [
                 'Invoice Number',
                 'Invoice Date',
@@ -1236,6 +1554,8 @@ const saleController = {
                 'Invoice Type',
                 'Total Amount',
                 'Tax Amount',
+                'Paid Amount',
+                'Pending Amount',
                 'Payment Status',
                 'Status'
             ];
@@ -1248,6 +1568,8 @@ const saleController = {
                 sale.invoiceType,
                 sale.totals.finalTotal,
                 sale.totals.totalTax,
+                sale.payment.paidAmount,
+                sale.payment.pendingAmount,
                 sale.payment.status,
                 sale.status
             ]);
@@ -1268,7 +1590,277 @@ const saleController = {
                 error: error.message
             });
         }
-    }
+    },
+
+    getOverdueSales: async (req, res) => {
+        try {
+            const { companyId } = req.query;
+
+            if (!companyId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Company ID is required'
+                });
+            }
+
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+
+            const overdueSales = await Sale.find({
+                companyId: companyId,
+                status: { $ne: 'cancelled' },
+                'payment.pendingAmount': { $gt: 0 },
+                'payment.dueDate': {
+                    $exists: true,
+                    $ne: null,
+                    $lt: today
+                }
+            })
+                .populate('customer', 'name mobile email')
+                .sort({ 'payment.dueDate': 1 });
+
+            const salesWithOverdueInfo = overdueSales.map(sale => {
+                const saleObj = sale.toObject();
+                const dueDate = new Date(sale.payment.dueDate);
+                const diffTime = Math.abs(today - dueDate);
+                const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                return {
+                    ...saleObj,
+                    isOverdue: true,
+                    daysOverdue: daysOverdue
+                };
+            });
+
+            console.log(`Found ${salesWithOverdueInfo.length} overdue sales for company ${companyId}`);
+
+            res.status(200).json({
+                success: true,
+                data: salesWithOverdueInfo,
+                message: `Found ${salesWithOverdueInfo.length} overdue sales`
+            });
+
+        } catch (error) {
+            console.error('Error getting overdue sales:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get overdue sales',
+                error: error.message
+            });
+        }
+    },
+    // NEW: Get sales due today
+    getSalesDueToday: async (req, res) => {
+        try {
+            const { companyId } = req.query;
+
+            if (!companyId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Company ID is required'
+                });
+            }
+
+            const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+            // Find sales due today
+            const salesDueToday = await Sale.find({
+                companyId: companyId,
+                status: { $ne: 'cancelled' },
+                'payment.pendingAmount': { $gt: 0 },
+                'payment.dueDate': {
+                    $gte: startOfDay,
+                    $lt: endOfDay
+                }
+            })
+                .populate('customer', 'name mobile email')
+                .sort({ 'payment.dueDate': 1 });
+
+            console.log(`Found ${salesDueToday.length} sales due today for company ${companyId}`);
+
+            res.status(200).json({
+                success: true,
+                data: salesDueToday,
+                message: `Found ${salesDueToday.length} sales due today`
+            });
+
+        } catch (error) {
+            console.error('Error getting sales due today:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get sales due today',
+                error: error.message
+            });
+        }
+    },
+
+    // NEW: Update payment due date
+    updatePaymentDueDate: async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { dueDate, creditDays } = req.body;
+
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid sale ID'
+                });
+            }
+
+            const sale = await Sale.findById(id);
+            if (!sale) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Sale not found'
+                });
+            }
+
+            // Update due date and credit days
+            sale.payment.dueDate = dueDate ? new Date(dueDate) : null;
+            sale.payment.creditDays = creditDays ? parseInt(creditDays) : 0;
+            sale.lastModifiedBy = req.user?.id || 'system';
+
+            await sale.save();
+
+            console.log(`Updated due date for sale ${id}`);
+
+            res.status(200).json({
+                success: true,
+                data: sale,
+                message: 'Payment due date updated successfully'
+            });
+
+        } catch (error) {
+            console.error('Error updating payment due date:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to update payment due date',
+                error: error.message
+            });
+        }
+    },
+
+    // NEW: Get payment summary with overdue analysis
+    getPaymentSummaryWithOverdue: async (req, res) => {
+        try {
+            const { companyId, dateFrom, dateTo } = req.query;
+
+            if (!companyId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Company ID is required'
+                });
+            }
+
+            // Build date filter
+            const dateFilter = { companyId, status: { $ne: 'cancelled' } };
+            if (dateFrom || dateTo) {
+                dateFilter.invoiceDate = {};
+                if (dateFrom) dateFilter.invoiceDate.$gte = new Date(dateFrom);
+                if (dateTo) dateFilter.invoiceDate.$lte = new Date(dateTo);
+            }
+
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+
+            // Get comprehensive payment analysis
+            const [salesData, overdueSummary, dueTodaySummary] = await Promise.all([
+                // Regular sales summary
+                Sale.aggregate([
+                    { $match: dateFilter },
+                    {
+                        $group: {
+                            _id: null,
+                            totalSales: { $sum: 1 },
+                            totalAmount: { $sum: '$totals.finalTotal' },
+                            totalPaid: { $sum: '$payment.paidAmount' },
+                            totalPending: { $sum: '$payment.pendingAmount' },
+                            paidCount: {
+                                $sum: { $cond: [{ $eq: ['$payment.status', 'paid'] }, 1, 0] }
+                            },
+                            partialCount: {
+                                $sum: { $cond: [{ $eq: ['$payment.status', 'partial'] }, 1, 0] }
+                            },
+                            pendingCount: {
+                                $sum: { $cond: [{ $eq: ['$payment.status', 'pending'] }, 1, 0] }
+                            }
+                        }
+                    }
+                ]),
+
+                // Overdue summary
+                Sale.aggregate([
+                    {
+                        $match: {
+                            ...dateFilter,
+                            'payment.pendingAmount': { $gt: 0 },
+                            'payment.dueDate': { $lt: today }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            overdueCount: { $sum: 1 },
+                            overdueAmount: { $sum: '$payment.pendingAmount' }
+                        }
+                    }
+                ]),
+
+                // Due today summary
+                Sale.aggregate([
+                    {
+                        $match: {
+                            ...dateFilter,
+                            'payment.pendingAmount': { $gt: 0 },
+                            'payment.dueDate': {
+                                $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+                                $lt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+                            }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            dueTodayCount: { $sum: 1 },
+                            dueTodayAmount: { $sum: '$payment.pendingAmount' }
+                        }
+                    }
+                ])
+            ]);
+
+            const summary = {
+                ...(salesData[0] || {
+                    totalSales: 0,
+                    totalAmount: 0,
+                    totalPaid: 0,
+                    totalPending: 0,
+                    paidCount: 0,
+                    partialCount: 0,
+                    pendingCount: 0
+                }),
+                overdueCount: overdueSummary[0]?.overdueCount || 0,
+                overdueAmount: overdueSummary[0]?.overdueAmount || 0,
+                dueTodayCount: dueTodaySummary[0]?.dueTodayCount || 0,
+                dueTodayAmount: dueTodaySummary[0]?.dueTodayAmount || 0
+            };
+
+            res.status(200).json({
+                success: true,
+                data: { summary },
+                message: 'Payment summary with overdue analysis retrieved successfully'
+            });
+
+        } catch (error) {
+            console.error('Error getting payment summary with overdue:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get payment summary',
+                error: error.message
+            });
+        }
+    },
 };
 
 module.exports = saleController;

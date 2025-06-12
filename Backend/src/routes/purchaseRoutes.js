@@ -43,6 +43,38 @@ router.post('/', authenticate, validateRequest, purchaseController.createPurchas
  */
 router.get('/', authenticate, validateCompany, purchaseController.getAllPurchases);
 
+// ==================== NEW: DUE DATE MANAGEMENT ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/overdue
+ * @desc    Get overdue purchases
+ * @access  Private
+ */
+router.get('/overdue', authenticate, validateCompany, purchaseController.getOverduePurchases);
+
+/**
+ * @route   GET /api/purchases/due-today
+ * @desc    Get purchases due today
+ * @access  Private
+ */
+router.get('/due-today', authenticate, validateCompany, purchaseController.getPurchasesDueToday);
+
+/**
+ * @route   PUT /api/purchases/:id/due-date
+ * @desc    Update payment due date
+ * @access  Private
+ */
+router.put('/:id/due-date', authenticate, validateRequest, purchaseController.updatePaymentDueDate);
+
+/**
+ * @route   GET /api/purchases/payment-summary-overdue
+ * @desc    Get payment summary with overdue analysis
+ * @access  Private
+ */
+router.get('/payment-summary-overdue', authenticate, validateCompany, purchaseController.getPaymentSummaryWithOverdue);
+
+// ==================== INDIVIDUAL PURCHASE ROUTES ====================
+
 /**
  * @route   GET /api/purchases/:id
  * @desc    Get purchase by ID with full details
@@ -104,6 +136,13 @@ router.patch('/:id/cancel', authenticate, validateRequest, purchaseController.de
 router.post('/:id/payment', authenticate, validateRequest, purchaseController.addPayment);
 
 /**
+ * @route   POST /api/purchases/:id/payments
+ * @desc    Add payment to a purchase (alternative endpoint)
+ * @access  Private
+ */
+router.post('/:id/payments', authenticate, validateRequest, purchaseController.addPayment);
+
+/**
  * @route   GET /api/purchases/:id/payment-status
  * @desc    Get payment status of a purchase
  * @access  Private
@@ -140,20 +179,6 @@ router.get('/reports/summary', authenticate, validateCompany, purchaseController
  */
 router.get('/reports/monthly', authenticate, validateCompany, purchaseController.getMonthlyReport);
 
-/**
- * @route   GET /api/purchases/reports/pending
- * @desc    Get pending purchases
- * @access  Private
- */
-router.get('/reports/pending', authenticate, validateCompany, purchaseController.getPendingPurchases);
-
-/**
- * @route   GET /api/purchases/reports/overdue
- * @desc    Get overdue purchases
- * @access  Private
- */
-router.get('/reports/overdue', authenticate, validateCompany, purchaseController.getOverduePurchases);
-
 // ==================== ANALYTICS ROUTES ====================
 
 /**
@@ -181,7 +206,7 @@ router.get('/next-purchase-number', authenticate, validateCompany, purchaseContr
 
 /**
  * @route   POST /api/purchases/validate-stock
- * @desc    Validate item availability (not for stock checking in purchases)
+ * @desc    Validate stock availability (not applicable for purchases - kept for consistency)
  * @access  Private
  */
 router.post('/validate-stock', authenticate, validateRequest, purchaseController.validateStock);
