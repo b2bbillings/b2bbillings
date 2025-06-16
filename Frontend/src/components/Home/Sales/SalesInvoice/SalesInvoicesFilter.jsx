@@ -5,7 +5,9 @@ import {
     faCalendarAlt,
     faChevronDown,
     faFilter,
-    faBuilding
+    faBuilding,
+    faFileContract,
+    faFileInvoice
 } from '@fortawesome/free-solid-svg-icons';
 
 function SalesInvoicesFilter({
@@ -18,7 +20,13 @@ function SalesInvoicesFilter({
     onDateRangeChange,
     onStartDateChange,
     onEndDateChange,
-    onFirmChange
+    onFirmChange,
+    onExcelExport,
+    onPrint,
+    resultCount,
+    mode = 'invoices',
+    documentType = 'invoice',
+    pageTitle = 'Sales Invoices'
 }) {
     const formatDateForInput = (date) => {
         return date.toISOString().split('T')[0];
@@ -31,17 +39,80 @@ function SalesInvoicesFilter({
         return `${day}/${month}/${year}`;
     };
 
+    // ✅ UPDATED: Better mode detection
+    const isQuotationsMode = mode === 'quotations' || documentType === 'quotation';
+
+    const getFilterTitle = () => {
+        return isQuotationsMode ? 'Quotation Filters' : 'Invoice Filters';
+    };
+
+    const getFilterIcon = () => {
+        return isQuotationsMode ? faFileContract : faFileInvoice;
+    };
+
+    const getDateRangeLabel = () => {
+        return isQuotationsMode ? 'Quote Date Range' : 'Invoice Date Range';
+    };
+
+    const getFromDateLabel = () => {
+        return isQuotationsMode ? 'Quote From' : 'Invoice From';
+    };
+
+    const getToDateLabel = () => {
+        return isQuotationsMode ? 'Quote To' : 'Invoice To';
+    };
+
+    const getActiveFiltersText = () => {
+        return isQuotationsMode ? 'Quote Filters' : 'Invoice Filters';
+    };
+
+    const getResultText = () => {
+        const count = resultCount || 0;
+        if (isQuotationsMode) {
+            return count === 1 ? `${count} quotation found` : `${count} quotations found`;
+        } else {
+            return count === 1 ? `${count} invoice found` : `${count} invoices found`;
+        }
+    };
+
+    // ✅ FIXED: Light color scheme
+    const getColorScheme = () => {
+        return isQuotationsMode
+            ? {
+                primary: '#0ea5e9', // Light sky blue for quotations
+                primaryRgb: '14, 165, 233',
+                secondary: '#38bdf8',
+                gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)'
+            }
+            : {
+                primary: '#6366f1', // Light indigo for invoices
+                primaryRgb: '99, 102, 241',
+                secondary: '#8b5cf6',
+                gradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
+            };
+    };
+
+    const colors = getColorScheme();
+
     return (
         <>
-            <div className="sales-filter-section">
+            <div className="sales-filter-section" data-mode={mode}>
                 <Container fluid>
                     <div className="filter-container">
                         <div className="filter-header mb-3">
-                            <div className="d-flex align-items-center">
-                                <div className="filter-icon">
-                                    <FontAwesomeIcon icon={faFilter} />
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div className="d-flex align-items-center">
+                                    <div className="filter-icon">
+                                        <FontAwesomeIcon icon={getFilterIcon()} />
+                                    </div>
+                                    <div className="filter-title-group">
+                                        <h6 className="mb-0 fw-semibold text-dark">{getFilterTitle()}</h6>
+                                        <small className="text-muted">{pageTitle}</small>
+                                    </div>
                                 </div>
-                                <h6 className="mb-0 fw-semibold text-dark">Filter Options</h6>
+                                <div className="results-count">
+                                    <small className="text-muted">{getResultText()}</small>
+                                </div>
                             </div>
                         </div>
 
@@ -49,10 +120,10 @@ function SalesInvoicesFilter({
                             {/* Date Range Dropdown */}
                             <Col md={3} sm={6}>
                                 <div className="filter-group">
-                                    <label className="filter-label">Date Range</label>
+                                    <label className="filter-label">{getDateRangeLabel()}</label>
                                     <Dropdown className="custom-dropdown">
                                         <Dropdown.Toggle className="custom-dropdown-toggle w-100">
-                                            <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-purple" />
+                                            <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-themed" />
                                             {dateRange}
                                             <FontAwesomeIcon icon={faChevronDown} className="ms-auto" />
                                         </Dropdown.Toggle>
@@ -75,10 +146,10 @@ function SalesInvoicesFilter({
                             {/* Start Date */}
                             <Col md={2} sm={6}>
                                 <div className="filter-group">
-                                    <label className="filter-label">From Date</label>
+                                    <label className="filter-label">{getFromDateLabel()}</label>
                                     <InputGroup className="custom-date-input-group">
                                         <InputGroup.Text className="date-icon-wrapper">
-                                            <FontAwesomeIcon icon={faCalendarAlt} className="text-purple" />
+                                            <FontAwesomeIcon icon={faCalendarAlt} className="text-themed" />
                                         </InputGroup.Text>
                                         <Form.Control
                                             type="date"
@@ -93,7 +164,7 @@ function SalesInvoicesFilter({
                             {/* End Date */}
                             <Col md={2} sm={6}>
                                 <div className="filter-group">
-                                    <label className="filter-label">To Date</label>
+                                    <label className="filter-label">{getToDateLabel()}</label>
                                     <Form.Control
                                         type="date"
                                         value={formatDateForInput(endDate)}
@@ -106,10 +177,10 @@ function SalesInvoicesFilter({
                             {/* Firm Dropdown */}
                             <Col md={3} sm={6}>
                                 <div className="filter-group">
-                                    <label className="filter-label">Firm/Branch</label>
+                                    <label className="filter-label">Company/Branch</label>
                                     <Dropdown className="custom-dropdown">
                                         <Dropdown.Toggle className="custom-dropdown-toggle w-100">
-                                            <FontAwesomeIcon icon={faBuilding} className="me-2 text-purple" />
+                                            <FontAwesomeIcon icon={faBuilding} className="me-2 text-themed" />
                                             {selectedFirm}
                                             <FontAwesomeIcon icon={faChevronDown} className="ms-auto" />
                                         </Dropdown.Toggle>
@@ -133,10 +204,16 @@ function SalesInvoicesFilter({
                             <Col md={2} sm={12}>
                                 <div className="filter-group">
                                     <div className="quick-stats">
-                                        <small className="text-muted">Active Filters</small>
-                                        <div className="d-flex gap-1 mt-1">
+                                        <small className="text-muted">{getActiveFiltersText()}</small>
+                                        <div className="d-flex gap-1 mt-1 flex-wrap justify-content-center">
                                             <span className="filter-chip">{dateRange}</span>
                                             <span className="filter-chip">{selectedFirm}</span>
+                                            {isQuotationsMode && (
+                                                <span className="filter-chip mode-chip">
+                                                    <FontAwesomeIcon icon={faFileContract} className="me-1" />
+                                                    Quotes
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -146,19 +223,23 @@ function SalesInvoicesFilter({
                 </Container>
             </div>
 
-
-            {/* Enhanced Purple Theme Styles */}
-
+            {/* ✅ FIXED: Light theme styles */}
             <style>
                 {`
                 .sales-filter-section {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.03) 0%, rgba(156, 136, 255, 0.03) 100%);
-                    border: 1px solid rgba(108, 99, 255, 0.1);
+                    background: linear-gradient(135deg, rgba(${colors.primaryRgb}, 0.04) 0%, rgba(${colors.primaryRgb}, 0.02) 100%);
+                    border: 1px solid rgba(${colors.primaryRgb}, 0.12);
                     border-radius: 12px;
                     margin-bottom: 1.5rem;
-                    backdrop-filter: blur(10px);
+                    backdrop-filter: blur(5px);
                     position: relative;
                     z-index: 10;
+                    transition: all 0.3s ease;
+                }
+
+                .sales-filter-section[data-mode="quotations"] {
+                    background: linear-gradient(135deg, rgba(14, 165, 233, 0.04) 0%, rgba(56, 189, 248, 0.02) 100%);
+                    border-color: rgba(14, 165, 233, 0.12);
                 }
 
                 .filter-container {
@@ -168,21 +249,61 @@ function SalesInvoicesFilter({
                 }
 
                 .filter-header {
-                    border-bottom: 1px solid rgba(108, 99, 255, 0.1);
+                    border-bottom: 1px solid rgba(${colors.primaryRgb}, 0.1);
                     padding-bottom: 1rem;
                 }
 
+                .sales-filter-section[data-mode="quotations"] .filter-header {
+                    border-bottom-color: rgba(14, 165, 233, 0.1);
+                }
+
                 .filter-icon {
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 8px;
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 10px;
+                    background: white;
+                    border: 2px solid ${colors.primary};
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    color: white;
-                    font-size: 0.8rem;
+                    color: ${colors.primary};
+                    font-size: 0.9rem;
                     margin-right: 0.75rem;
+                    transition: all 0.3s ease;
+                }
+
+                .filter-icon:hover {
+                    background: ${colors.primary};
+                    color: white;
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(${colors.primaryRgb}, 0.2);
+                }
+
+                .filter-title-group {
+                    flex: 1;
+                }
+
+                .filter-title-group h6 {
+                    color: #374151;
+                    font-size: 1rem;
+                }
+
+                .filter-title-group small {
+                    font-size: 0.75rem;
+                    color: #6b7280;
+                }
+
+                .results-count {
+                    background: rgba(${colors.primaryRgb}, 0.08);
+                    padding: 0.375rem 0.75rem;
+                    border-radius: 20px;
+                    border: 1px solid rgba(${colors.primaryRgb}, 0.15);
+                }
+
+                .results-count small {
+                    color: ${colors.primary};
+                    font-weight: 500;
+                    font-size: 0.75rem;
                 }
 
                 .filter-group {
@@ -195,10 +316,11 @@ function SalesInvoicesFilter({
                     display: block;
                     font-size: 0.75rem;
                     font-weight: 600;
-                    color: #6c63ff;
+                    color: #374151;
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
                     margin-bottom: 0.5rem;
+                    transition: color 0.3s ease;
                 }
 
                 .custom-dropdown {
@@ -209,11 +331,11 @@ function SalesInvoicesFilter({
 
                 .custom-dropdown-toggle {
                     background: white;
-                    border: 1px solid rgba(108, 99, 255, 0.2);
+                    border: 1px solid #d1d5db;
                     border-radius: 8px;
                     padding: 0.6rem 0.75rem;
                     font-size: 0.85rem;
-                    color: #495057;
+                    color: #374151;
                     transition: all 0.2s ease;
                     display: flex;
                     align-items: center;
@@ -225,10 +347,10 @@ function SalesInvoicesFilter({
 
                 .custom-dropdown-toggle:hover,
                 .custom-dropdown-toggle:focus {
-                    background: rgba(108, 99, 255, 0.05);
-                    border-color: rgba(108, 99, 255, 0.3);
-                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
-                    color: #495057;
+                    background: #f9fafb;
+                    border-color: ${colors.primary};
+                    box-shadow: 0 0 0 3px rgba(${colors.primaryRgb}, 0.1);
+                    color: #374151;
                 }
 
                 .custom-dropdown-toggle::after {
@@ -236,9 +358,9 @@ function SalesInvoicesFilter({
                 }
 
                 .custom-dropdown-menu {
-                    border: 1px solid rgba(108, 99, 255, 0.15);
+                    border: 1px solid #e5e7eb;
                     border-radius: 8px;
-                    box-shadow: 0 4px 20px rgba(108, 99, 255, 0.15);
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
                     padding: 0.5rem 0;
                     margin-top: 0.25rem;
                     position: absolute;
@@ -252,41 +374,43 @@ function SalesInvoicesFilter({
                 .custom-dropdown-item {
                     padding: 0.5rem 1rem;
                     font-size: 0.85rem;
-                    color: #495057;
+                    color: #374151;
                     transition: all 0.2s ease;
                     border-radius: 4px;
                     margin: 0 0.25rem;
                 }
 
                 .custom-dropdown-item:hover {
-                    background: rgba(108, 99, 255, 0.1);
-                    color: #6c63ff;
+                    background: rgba(${colors.primaryRgb}, 0.08);
+                    color: ${colors.primary};
                     transform: translateX(2px);
                 }
 
                 .custom-dropdown-item.active {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
+                    background: ${colors.primary};
                     color: white;
                 }
 
                 .custom-date-input-group {
                     border-radius: 8px;
                     overflow: hidden;
-                    border: 1px solid rgba(108, 99, 255, 0.2);
+                    border: 1px solid #d1d5db;
                     transition: all 0.2s ease;
                     position: relative;
                     z-index: 10;
+                    background: white;
                 }
 
                 .custom-date-input-group:focus-within {
-                    border-color: rgba(108, 99, 255, 0.3);
-                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
+                    border-color: ${colors.primary};
+                    box-shadow: 0 0 0 3px rgba(${colors.primaryRgb}, 0.1);
                 }
 
                 .date-icon-wrapper {
-                    background: rgba(108, 99, 255, 0.1);
+                    background: #f9fafb;
                     border: none;
-                    border-right: 1px solid rgba(108, 99, 255, 0.2);
+                    border-right: 1px solid #e5e7eb;
+                    color: ${colors.primary};
                 }
 
                 .custom-date-input,
@@ -295,42 +419,66 @@ function SalesInvoicesFilter({
                     font-size: 0.85rem;
                     padding: 0.6rem 0.75rem;
                     background: white;
+                    color: #374151;
                     transition: all 0.2s ease;
                     position: relative;
                     z-index: 10;
                 }
 
                 .custom-date-input-standalone {
-                    border: 1px solid rgba(108, 99, 255, 0.2);
+                    border: 1px solid #d1d5db;
                     border-radius: 8px;
                 }
 
                 .custom-date-input-standalone:focus,
                 .custom-date-input:focus {
-                    background: rgba(108, 99, 255, 0.02);
-                    border-color: rgba(108, 99, 255, 0.3);
-                    box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1);
+                    background: #f9fafb;
+                    border-color: ${colors.primary};
+                    box-shadow: 0 0 0 3px rgba(${colors.primaryRgb}, 0.1);
+                    outline: none;
                 }
 
-                .text-purple {
-                    color: #6c63ff !important;
+                .text-themed {
+                    color: ${colors.primary} !important;
                 }
 
                 .quick-stats {
                     text-align: center;
                     padding: 0.5rem;
-                    background: rgba(108, 99, 255, 0.05);
+                    background: white;
                     border-radius: 8px;
-                    border: 1px solid rgba(108, 99, 255, 0.1);
+                    border: 1px solid #e5e7eb;
+                    transition: all 0.3s ease;
+                }
+
+                .quick-stats:hover {
+                    background: #f9fafb;
+                    border-color: ${colors.primary};
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(${colors.primaryRgb}, 0.1);
                 }
 
                 .filter-chip {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
+                    background: ${colors.primary};
                     color: white;
-                    padding: 2px 6px;
-                    border-radius: 4px;
+                    padding: 3px 8px;
+                    border-radius: 6px;
                     font-size: 0.7rem;
                     font-weight: 500;
+                    display: inline-flex;
+                    align-items: center;
+                    transition: all 0.2s ease;
+                }
+
+                .filter-chip:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 6px rgba(${colors.primaryRgb}, 0.2);
+                }
+
+                .mode-chip {
+                    background: white !important;
+                    color: ${colors.primary} !important;
+                    border: 1px solid ${colors.primary};
                 }
 
                 /* Override Bootstrap dropdown z-index */
@@ -360,12 +508,15 @@ function SalesInvoicesFilter({
 
                     .filter-header {
                         margin-bottom: 1rem;
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 0.75rem;
                     }
 
                     .filter-icon {
-                        width: 28px;
-                        height: 28px;
-                        font-size: 0.7rem;
+                        width: 32px;
+                        height: 32px;
+                        font-size: 0.8rem;
                     }
 
                     .custom-dropdown-toggle,
@@ -383,6 +534,19 @@ function SalesInvoicesFilter({
 
                     .custom-dropdown-menu {
                         z-index: 1055 !important;
+                    }
+
+                    .filter-title-group h6 {
+                        font-size: 0.9rem;
+                    }
+
+                    .filter-title-group small {
+                        font-size: 0.7rem;
+                    }
+
+                    .results-count {
+                        width: 100%;
+                        text-align: center;
                     }
                 }
 
@@ -402,7 +566,19 @@ function SalesInvoicesFilter({
 
                     .filter-chip {
                         font-size: 0.65rem;
-                        padding: 1px 4px;
+                        padding: 2px 6px;
+                    }
+
+                    .filter-header .d-flex {
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 0.5rem;
+                    }
+
+                    .filter-icon {
+                        width: 28px;
+                        height: 28px;
+                        font-size: 0.7rem;
                     }
                 }
 
@@ -438,17 +614,37 @@ function SalesInvoicesFilter({
                 }
 
                 .custom-dropdown-menu::-webkit-scrollbar-track {
-                    background: rgba(108, 99, 255, 0.1);
+                    background: #f3f4f6;
                     border-radius: 2px;
                 }
 
                 .custom-dropdown-menu::-webkit-scrollbar-thumb {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%);
+                    background: ${colors.primary};
                     border-radius: 2px;
                 }
 
                 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-                    background: linear-gradient(135deg, #5a52d5 0%, #8a7ae8 100%);
+                    background: ${colors.secondary};
+                }
+
+                /* Print styles */
+                @media print {
+                    .sales-filter-section {
+                        background: none !important;
+                        border: 1px solid #ddd;
+                        box-shadow: none;
+                    }
+
+                    .filter-icon {
+                        background: #666 !important;
+                        color: white !important;
+                        border-color: #666 !important;
+                    }
+
+                    .filter-chip {
+                        background: #666 !important;
+                        color: white !important;
+                    }
                 }
                 `}
             </style>

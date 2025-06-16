@@ -8,40 +8,27 @@ import salesService from '../../../../../../services/salesService';
 import purchaseService from '../../../../../../services/purchaseService';
 
 // ===== CUSTOM HOOKS =====
-// UPDATED: Items management hook with enhanced field compatibility
+// Items management hook with enhanced field compatibility
 export const useItemsManagement = (items, onItemsChange, gstEnabled, globalTaxMode) => {
     const [localItems, setLocalItems] = useState([]);
     const [totals, setTotals] = useState({});
 
     // Initialize items with proper tax mode and priceIncludesTax
     useEffect(() => {
-        console.log('🔄 Initializing items with tax mode:', {
-            itemsLength: items.length,
-            globalTaxMode,
-            gstEnabled
-        });
-
         if (items.length === 0) {
             const emptyItem = itemsTableLogic.createEmptyItem();
-            // Set both fields for compatibility
             emptyItem.taxMode = globalTaxMode;
             emptyItem.priceIncludesTax = globalTaxMode === 'with-tax';
-            console.log('📝 Created empty item:', emptyItem);
             setLocalItems([emptyItem]);
         } else {
-            // Update existing items with current tax mode if not set
             const updatedItems = items.map((item, index) => {
-                // FIXED: Handle both taxMode and priceIncludesTax for compatibility
                 let itemTaxMode = item.taxMode || globalTaxMode;
                 let itemPriceIncludesTax;
 
-                // If priceIncludesTax is explicitly set (from backend), use it
                 if (item.priceIncludesTax !== undefined) {
                     itemPriceIncludesTax = item.priceIncludesTax;
-                    // Sync taxMode with priceIncludesTax
                     itemTaxMode = item.priceIncludesTax ? 'with-tax' : 'without-tax';
                 } else {
-                    // Use taxMode to set priceIncludesTax
                     itemPriceIncludesTax = itemTaxMode === 'with-tax';
                 }
 
@@ -50,15 +37,6 @@ export const useItemsManagement = (items, onItemsChange, gstEnabled, globalTaxMo
                     taxMode: itemTaxMode,
                     priceIncludesTax: itemPriceIncludesTax
                 };
-
-                console.log(`📝 Updated item ${index + 1}:`, {
-                    name: updatedItem.itemName,
-                    taxMode: updatedItem.taxMode,
-                    priceIncludesTax: updatedItem.priceIncludesTax,
-                    pricePerUnit: updatedItem.pricePerUnit,
-                    originalPriceIncludesTax: item.priceIncludesTax,
-                    derivedFrom: item.priceIncludesTax !== undefined ? 'backend' : 'taxMode'
-                });
 
                 return updatedItem;
             });
@@ -76,39 +54,19 @@ export const useItemsManagement = (items, onItemsChange, gstEnabled, globalTaxMo
         return calculated;
     }, [gstEnabled]);
 
-    // FIXED: Enhanced item change handler to sync both fields
+    // Enhanced item change handler to sync both fields
     const handleItemChange = (index, field, value) => {
-        console.log(`🔄 Hook: Item ${index + 1} field '${field}' changing to:`, value);
-
         const newItems = [...localItems];
         newItems[index] = { ...newItems[index], [field]: value };
 
-        // FIXED: Update both taxMode and priceIncludesTax when either changes
         if (field === 'taxMode') {
             newItems[index].priceIncludesTax = value === 'with-tax';
-            console.log(`🏷️ Hook: Item ${index + 1} tax mode changed:`, {
-                taxMode: value,
-                priceIncludesTax: value === 'with-tax'
-            });
         } else if (field === 'priceIncludesTax') {
             newItems[index].taxMode = value ? 'with-tax' : 'without-tax';
-            console.log(`🏷️ Hook: Item ${index + 1} priceIncludesTax changed:`, {
-                priceIncludesTax: value,
-                taxMode: value ? 'with-tax' : 'without-tax'
-            });
         }
 
-        // FIXED: Recalculate with proper tax mode
         const updatedItem = calculateItemTotals(newItems[index], index, newItems, field);
         newItems[index] = updatedItem;
-
-        console.log(`✅ Hook: Item ${index + 1} updated:`, {
-            field,
-            value,
-            finalAmount: updatedItem.amount,
-            taxMode: updatedItem.taxMode,
-            priceIncludesTax: updatedItem.priceIncludesTax
-        });
 
         setLocalItems(newItems);
         updateTotals(newItems);
@@ -117,14 +75,8 @@ export const useItemsManagement = (items, onItemsChange, gstEnabled, globalTaxMo
 
     const addRow = () => {
         const newItem = itemsTableLogic.createEmptyItem();
-        // Set both fields for compatibility
         newItem.taxMode = globalTaxMode;
         newItem.priceIncludesTax = globalTaxMode === 'with-tax';
-
-        console.log('➕ Hook: Adding new row with tax mode:', {
-            taxMode: newItem.taxMode,
-            priceIncludesTax: newItem.priceIncludesTax
-        });
 
         const newItems = [...localItems, newItem];
         setLocalItems(newItems);
@@ -305,7 +257,6 @@ export const usePartySelection = (selectedCustomer, selectedSupplier, formType, 
             (selectedCustomer.name || selectedCustomer.businessName || selectedCustomer.companyName || selectedCustomer.customerName)
         );
 
-        // Handle both parties being selected
         if (hasValidSupplier && hasValidCustomer) {
             return {
                 type: 'both',
@@ -316,7 +267,6 @@ export const usePartySelection = (selectedCustomer, selectedSupplier, formType, 
             };
         }
 
-        // Prefer based on form type
         if (formType === 'purchase') {
             if (hasValidSupplier) {
                 return { type: 'supplier', party: selectedSupplier };
@@ -496,7 +446,7 @@ export const usePartySelection = (selectedCustomer, selectedSupplier, formType, 
     };
 };
 
-// UPDATED: Hook for invoice save operations with tax mode support
+// Hook for invoice save operations with tax mode support
 export const useInvoiceSave = (
     localItems,
     totals,
@@ -523,12 +473,11 @@ export const useInvoiceSave = (
     getSecondaryPartyName,
     createTransactionWithInvoice,
     resetPaymentData,
-    globalTaxMode // Added parameter for global tax mode
+    globalTaxMode
 ) => {
 
     const handleSaveWithTransaction = useCallback(async () => {
         try {
-            // Validate onSave function exists
             if (!onSave || typeof onSave !== 'function') {
                 const message = 'Save function is not available. Please refresh the page and try again.';
                 addToast?.(message, 'error');
@@ -537,28 +486,24 @@ export const useInvoiceSave = (
 
             const hasValidItems = totals.finalTotal > 0 || totals.subtotal > 0;
 
-            // Validate items
             if (!hasValidItems) {
                 const message = 'Please add items before saving the invoice.';
                 addToast?.(message, 'warning');
                 return { success: false, message };
             }
 
-            // Validate totals data
             if (!totals || typeof totals !== 'object') {
                 const message = 'Invoice totals calculation error. Please refresh and try again.';
                 addToast?.(message, 'error');
                 return { success: false, message };
             }
 
-            // Validate final total
             if (!finalTotalWithRoundOff || finalTotalWithRoundOff <= 0) {
                 const message = 'Invoice total is invalid. Please check item amounts.';
                 addToast?.(message, 'error');
                 return { success: false, message };
             }
 
-            // Validate party selection
             const result = getSelectedParty();
             if (!result) {
                 const message = `Please select a ${formType === 'purchase' ? 'supplier or customer' : 'customer or supplier'} before saving the invoice.`;
@@ -566,7 +511,6 @@ export const useInvoiceSave = (
                 return { success: false, message };
             }
 
-            // Prepare enhanced totals
             const enhancedTotals = {
                 ...totals,
                 finalTotal: finalTotalWithRoundOff,
@@ -574,7 +518,6 @@ export const useInvoiceSave = (
                 roundOffEnabled: roundOffEnabled
             };
 
-            // Filter valid items and ensure tax mode consistency
             const validItems = localItems.filter(item =>
                 item.itemName &&
                 (parseFloat(item.quantity) || 0) > 0 &&
@@ -591,28 +534,16 @@ export const useInvoiceSave = (
                 return { success: false, message };
             }
 
-            console.log('🏷️ Items Tax Mode Validation:', {
-                globalTaxMode,
-                itemsWithTaxMode: validItems.map(item => ({
-                    name: item.itemName,
-                    taxMode: item.taxMode,
-                    priceIncludesTax: item.priceIncludesTax
-                }))
-            });
-
-            // UPDATED: Prepare data for save with enhanced payment information
             const invoiceDataForSave = {
                 companyId: companyId,
                 items: validItems,
                 totals: enhancedTotals,
 
-                // FIXED: Enhanced tax mode information
                 globalTaxMode: globalTaxMode,
-                taxMode: globalTaxMode, // Backward compatibility
+                taxMode: globalTaxMode,
                 gstEnabled: gstEnabled,
                 priceIncludesTax: globalTaxMode === 'with-tax',
 
-                // Party information
                 selectedSupplier: result.type === 'supplier' ? result.party :
                     result.type === 'both' ? result.supplier :
                         selectedSupplier,
@@ -620,19 +551,17 @@ export const useInvoiceSave = (
                     result.type === 'both' ? result.customer :
                         selectedCustomer,
 
-                // UPDATED: Enhanced payment information
                 paymentReceived: paymentData.amount || 0,
                 bankAccountId: paymentData.bankAccountId || null,
                 paymentMethod: paymentData.paymentMethod || 'cash',
                 dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
                 creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
 
-                // UPDATED: Enhanced paymentInfo object with all payment details
                 paymentInfo: paymentData.amount > 0 ? {
                     amount: paymentData.amount,
                     paymentType: paymentData.paymentType,
                     method: paymentData.paymentMethod || 'cash',
-                    paymentMethod: paymentData.paymentMethod || 'cash', // Ensure both fields
+                    paymentMethod: paymentData.paymentMethod || 'cash',
                     bankAccountId: paymentData.bankAccountId,
                     partyName: getPartyName(),
                     partyType: getPartyType(),
@@ -641,7 +570,6 @@ export const useInvoiceSave = (
                     creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
                     paymentDate: new Date().toISOString(),
                     reference: paymentData.transactionId || paymentData.chequeNumber || '',
-                    // Transaction details
                     chequeNumber: paymentData.chequeNumber || '',
                     chequeDate: paymentData.chequeDate || null,
                     transactionId: paymentData.transactionId || '',
@@ -680,23 +608,6 @@ export const useInvoiceSave = (
                 roundOff: roundOffValue || 0
             };
 
-            console.log('💾 Saving with enhanced payment data:', {
-                globalTaxMode,
-                priceIncludesTax: globalTaxMode === 'with-tax',
-                paymentReceived: invoiceDataForSave.paymentReceived,
-                paymentMethod: invoiceDataForSave.paymentMethod,
-                bankAccountId: invoiceDataForSave.bankAccountId,
-                dueDate: invoiceDataForSave.dueDate,
-                creditDays: invoiceDataForSave.creditDays,
-                paymentInfo: invoiceDataForSave.paymentInfo,
-                itemTaxModes: validItems.map(item => ({
-                    name: item.itemName,
-                    taxMode: item.taxMode,
-                    priceIncludesTax: item.priceIncludesTax
-                }))
-            });
-
-            // Call onSave with error handling
             let invoiceResult;
             try {
                 invoiceResult = await onSave(invoiceDataForSave);
@@ -710,7 +621,6 @@ export const useInvoiceSave = (
                 };
             }
 
-            // Handle undefined or null result from onSave
             if (invoiceResult === undefined || invoiceResult === null) {
                 const errorMessage = `${formType === 'purchase' ? 'Purchase' : 'Sales'} save function returned no result. Please try again.`;
                 addToast?.(errorMessage, 'error');
@@ -721,7 +631,6 @@ export const useInvoiceSave = (
                 };
             }
 
-            // Enhanced success validation
             const isSuccessfulResult = (
                 (invoiceResult && invoiceResult.success === true) ||
                 (invoiceResult && invoiceResult.data && invoiceResult.success !== false) ||
@@ -742,7 +651,6 @@ export const useInvoiceSave = (
             );
 
             if (isSuccessfulResult) {
-                // Extract invoice data with fallbacks
                 const invoiceData = invoiceResult?.data ||
                     invoiceResult?.purchase ||
                     invoiceResult?.sale ||
@@ -754,7 +662,6 @@ export const useInvoiceSave = (
                     createdAt: new Date().toISOString()
                 };
 
-                // Handle payment processing
                 if (paymentData.amount > 0) {
                     if (createTransactionWithInvoice && typeof createTransactionWithInvoice === 'function') {
                         try {
@@ -876,7 +783,7 @@ export const useInvoiceSave = (
         selectedCustomer, selectedSupplier, onSave, addToast,
         getSelectedParty, getPartyType, getPartyId, getPartyName,
         getSecondaryParty, getSecondaryPartyType, getSecondaryPartyName,
-        createTransactionWithInvoice, resetPaymentData, globalTaxMode // Include globalTaxMode in dependencies
+        createTransactionWithInvoice, resetPaymentData, globalTaxMode
     ]);
 
     return {
@@ -906,7 +813,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         previousPayments: [],
         totalPaid: 0,
         remainingAmount: 0,
-        // Due date fields
         dueDate: '',
         creditDays: 0,
         hasDueDate: false
@@ -972,7 +878,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                     remainingAmount: Math.max(0, finalTotalWithRoundOff),
                     totalPaid: 0,
                     isPartialPayment: false,
-                    // Reset due date fields
                     dueDate: '',
                     creditDays: 0,
                     hasDueDate: false
@@ -1027,7 +932,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         try {
             setSubmittingPayment(true);
 
-            // Validation
             if (!paymentData.amount || paymentData.amount <= 0) {
                 throw new Error('Please enter a valid payment amount');
             }
@@ -1053,7 +957,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 }
             }
 
-            // Due date validation
             if (paymentData.hasDueDate) {
                 if (paymentData.creditDays > 0 && paymentData.dueDate) {
                     throw new Error('Please specify either credit days or due date, not both');
@@ -1070,7 +973,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 message: 'Payment details saved successfully',
                 paymentData: {
                     ...paymentData,
-                    // Include due date info in return
                     dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
                     creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0
                 }
@@ -1109,7 +1011,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 upiTransactionId: paymentData.transactionId || null,
                 bankTransactionId: paymentData.transactionId || null,
 
-                // Due date information
                 dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
                 creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
 
@@ -1181,7 +1082,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
             previousPayments: [],
             totalPaid: 0,
             remainingAmount: 0,
-            // Reset due date fields
             dueDate: '',
             creditDays: 0,
             hasDueDate: false
@@ -1189,7 +1089,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         setPaymentHistory([]);
     };
 
-    // Helper functions for due date management
     const handleDueDateToggle = (enabled) => {
         setPaymentData(prev => ({
             ...prev,
@@ -1246,7 +1145,6 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         handlePaymentSubmit,
         createTransactionWithInvoice,
         resetPaymentData,
-        // Due date management functions
         handleDueDateToggle,
         handleCreditDaysChange,
         handleDueDateChange
@@ -1254,45 +1152,17 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
 };
 
 export const useTaxMode = (localItems, calculateItemTotals, onItemsChange, setLocalItems, updateTotals) => {
-    // FIXED: Initialize with 'without-tax' and ensure consistent state
     const [globalTaxMode, setGlobalTaxMode] = useState('without-tax');
 
-    console.log('🏷️ Tax mode hook state:', {
-        globalTaxMode,
-        itemCount: localItems?.length || 0,
-        itemTaxModes: localItems?.map(item => ({
-            name: item.itemName,
-            taxMode: item.taxMode,
-            priceIncludesTax: item.priceIncludesTax
-        })) || []
-    });
-
-    // FIXED: Ensure items are initialized with correct tax mode on mount
     useEffect(() => {
         if (localItems && localItems.length > 0) {
-            console.log('🔄 Checking items tax mode consistency:', {
-                globalTaxMode,
-                itemsWithDifferentModes: localItems.filter(item =>
-                    item.itemName && item.taxMode && item.taxMode !== globalTaxMode
-                )
-            });
-
-            // Check if any items have inconsistent tax modes
             const hasInconsistentModes = localItems.some(item =>
                 item.itemName && item.taxMode && item.taxMode !== globalTaxMode
             );
 
             if (hasInconsistentModes) {
-                console.log('⚠️ Found inconsistent tax modes, fixing...');
-
                 const updatedItems = localItems.map((item, index) => {
                     if (item.itemName && item.taxMode !== globalTaxMode) {
-                        console.log(`🔧 Fixing item ${index + 1} tax mode:`, {
-                            itemName: item.itemName,
-                            oldTaxMode: item.taxMode,
-                            newTaxMode: globalTaxMode
-                        });
-
                         return {
                             ...item,
                             taxMode: globalTaxMode,
@@ -1302,7 +1172,6 @@ export const useTaxMode = (localItems, calculateItemTotals, onItemsChange, setLo
                     return item;
                 });
 
-                // Only update if there are actual changes
                 if (JSON.stringify(updatedItems) !== JSON.stringify(localItems)) {
                     setLocalItems && setLocalItems(updatedItems);
                     onItemsChange && onItemsChange(updatedItems);
@@ -1311,8 +1180,6 @@ export const useTaxMode = (localItems, calculateItemTotals, onItemsChange, setLo
         }
     }, [globalTaxMode, localItems, setLocalItems, onItemsChange]);
 
-
-    // Initialize tax mode for new items
     const initializeItemTaxMode = useCallback((item) => {
         return {
             ...item,
@@ -1322,16 +1189,12 @@ export const useTaxMode = (localItems, calculateItemTotals, onItemsChange, setLo
     }, [globalTaxMode]);
 
     const handleGlobalTaxModeChange = useCallback((mode) => {
-        console.log('🏷️ Hook: Changing global tax mode FROM:', globalTaxMode, 'TO:', mode);
-
         setGlobalTaxMode(mode);
 
         if (!localItems || localItems.length === 0) {
-            console.log('⚠️ No items to update, only setting global mode');
             return mode;
         }
 
-        // FIXED: Update all items with the new tax mode and recalculate
         const updatedItems = localItems.map((item, index) => {
             const updatedItem = {
                 ...item,
@@ -1339,48 +1202,14 @@ export const useTaxMode = (localItems, calculateItemTotals, onItemsChange, setLo
                 priceIncludesTax: mode === 'with-tax'
             };
 
-            console.log(`🔄 Hook: Updating item ${index + 1} tax mode:`, {
-                itemName: updatedItem.itemName,
-                oldTaxMode: item.taxMode,
-                newTaxMode: mode,
-                oldPriceIncludesTax: item.priceIncludesTax,
-                newPriceIncludesTax: mode === 'with-tax',
-                pricePerUnit: updatedItem.pricePerUnit
-            });
-
-            // IMPORTANT: Only recalculate if we have the function and item has data
             if (calculateItemTotals && updatedItem.itemName && updatedItem.pricePerUnit > 0) {
                 const recalculatedItem = calculateItemTotals(updatedItem, index, localItems, 'taxMode');
-
-                console.log(`✅ Hook: Item ${index + 1} recalculated for tax mode ${mode}:`, {
-                    itemName: recalculatedItem.itemName,
-                    pricePerUnit: recalculatedItem.pricePerUnit,
-                    beforeAmount: item.amount,
-                    afterAmount: recalculatedItem.amount,
-                    taxableAmount: recalculatedItem.taxableAmount,
-                    totalTax: recalculatedItem.cgstAmount + recalculatedItem.sgstAmount,
-                    priceIncludesTax: recalculatedItem.priceIncludesTax
-                });
-
                 return recalculatedItem;
             }
 
             return updatedItem;
         });
 
-        console.log('🏷️ Hook: All items updated with new tax mode:', {
-            mode,
-            itemsCount: updatedItems.length,
-            itemsPreview: updatedItems.map(item => ({
-                name: item.itemName,
-                taxMode: item.taxMode,
-                priceIncludesTax: item.priceIncludesTax,
-                amount: item.amount,
-                taxableAmount: item.taxableAmount
-            }))
-        });
-
-        // Update state
         if (setLocalItems) setLocalItems(updatedItems);
         if (updateTotals) updateTotals(updatedItems);
         if (onItemsChange) onItemsChange(updatedItems);
@@ -1416,7 +1245,6 @@ export const useOverdueManagement = (companyId) => {
                 setOverdueSales([]);
             }
         } catch (error) {
-            console.error('Error loading overdue sales:', error);
             setOverdueSales([]);
         } finally {
             setOverdueLoading(false);
@@ -1436,7 +1264,6 @@ export const useOverdueManagement = (companyId) => {
                 setSalesDueToday([]);
             }
         } catch (error) {
-            console.error('Error loading sales due today:', error);
             setSalesDueToday([]);
         } finally {
             setDueTodayLoading(false);
@@ -1448,14 +1275,12 @@ export const useOverdueManagement = (companyId) => {
             const response = await salesService.updatePaymentDueDate(saleId, dueDate, creditDays);
 
             if (response && response.success) {
-                // Refresh overdue data
                 await Promise.all([loadOverdueSales(), loadSalesDueToday()]);
                 return { success: true, message: 'Due date updated successfully' };
             } else {
                 throw new Error(response?.message || 'Failed to update due date');
             }
         } catch (error) {
-            console.error('Error updating due date:', error);
             return { success: false, message: error.message };
         }
     };
@@ -1523,7 +1348,6 @@ export const usePaymentScheduling = (companyId) => {
                 setPaymentSchedule([]);
             }
         } catch (error) {
-            console.error('Error loading payment schedule:', error);
             setPaymentSchedule([]);
         } finally {
             setScheduleLoading(false);

@@ -12,23 +12,28 @@ import {
     faExclamationCircle
 } from '@fortawesome/free-solid-svg-icons';
 
-// Import the components
+// Import the components - UPDATED: Added PurchaseOrderForm
 import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
-import SalesOrders from '../components/Home/SalesOrders';
+import SalesOrderForm from '../components/Home/Sales/SalesOrder/SalesOrderForm';
 import Inventory from '../components/Home/Inventory';
 import StaffManagement from '../components/Home/StaffManagement';
-import PurchaseOrders from '../components/Home/PurchaseOrders'; // ✅ This will handle all purchase-related views
+import PurchaseOrders from '../components/Home/PurchaseOrders';
 import Bank from '../components/Home/Bank';
 
-// ✅ NEW: Import form components
+// ✅ NEW: Import PurchaseOrder component
+import PurchaseOrder from '../components/Home/Purchases/PurchaseOrder';
+
+// ✅ NEW: Import PurchaseOrderForm for direct page rendering
+import PurchaseOrderForm from '../components/Home/Purchases/PurchaseOrderForm';
+
+// Import form components
 import PurchaseForm from '../components/Home/Purchases/PurchaseForm';
 
 // Import services
 import companyService from '../services/companyService';
 import partyService from '../services/partyService';
-// ✅ NEW: Import purchase service for form handling
 import purchaseService from '../services/purchaseService';
 
 // Import utility components
@@ -43,60 +48,59 @@ function HomePage({
     companies,
     currentUser
 }) {
-    // Get URL parameters
     const { companyId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
 
-    // ✅ ENHANCED: Update pathViewMap to handle form routes
     const getViewFromPath = () => {
         const pathParts = location.pathname.split('/');
         const lastPart = pathParts[pathParts.length - 1];
         const secondLastPart = pathParts[pathParts.length - 2];
 
-        console.log('🧭 HomePage: Parsing path - lastPart:', lastPart, 'secondLastPart:', secondLastPart);
-
-        // Handle form routes like "purchases/add", "sales/add"
+        // Handle form routes like "purchases/add", "sales/add", "quotations/add", "sales-orders/add"
         if (lastPart === 'add') {
             if (secondLastPart === 'purchases') return 'createPurchase';
             if (secondLastPart === 'sales') return 'createInvoice';
-            if (secondLastPart === 'sales-orders') return 'createSalesOrder';
             if (secondLastPart === 'purchase-orders') return 'createPurchaseOrder';
+            if (secondLastPart === 'quotations') return 'createQuotation';
+            if (secondLastPart === 'sales-orders') return 'createSalesOrder';
         }
 
-        // Map URL paths to views - Updated to use PurchaseOrders for all purchase views
+        // Map URL paths to views - ✅ UPDATED: Properly map purchase-order URL
         const pathViewMap = {
             'dashboard': 'dailySummary',
             'daybook': 'dailySummary',
             'transactions': 'transactions',
             'cash-bank': 'cashAndBank',
             'parties': 'parties',
-            'sales': 'allSales',
-            'invoices': 'invoices',
-            'credit-notes': 'creditNotes',
+            // Sales
+            'sales': 'invoices',
+            'quotations': 'quotations',
             'sales-orders': 'salesOrders',
-            // ✅ UPDATED: All purchase routes now map to purchase-related views
+            'invoices': 'invoices',
+            // Purchase - ✅ UPDATED: Map purchase-order to purchaseOrder
             'purchases': 'allPurchases',
             'purchase-bills': 'purchaseBills',
-            'purchase-orders': 'purchaseOrders',
+            'purchase-orders': 'purchaseOrder', // ✅ FIXED: This should map to purchaseOrder view
+            // Inventory
             'inventory': 'inventory',
             'products': 'allProducts',
             'low-stock': 'lowStock',
             'stock-movement': 'stockMovement',
+            // Bank & Cash
             'bank-accounts': 'bankAccounts',
             'cash-accounts': 'cashAccounts',
             'bank-transactions': 'bankTransactions',
             'bank-reconciliation': 'bankReconciliation',
             'cash-flow': 'cashFlow',
+            // Other
             'staff': 'staff',
             'insights': 'insights',
             'reports': 'reports',
             'settings': 'settings'
         };
 
-        const resolvedView = pathViewMap[lastPart] || 'dailySummary';
-        console.log('🎯 HomePage: Resolved view:', resolvedView);
-        return resolvedView;
+        return pathViewMap[lastPart] || 'dailySummary';
     };
 
     // Current view state - derived from URL
@@ -117,40 +121,33 @@ function HomePage({
     const [componentHealth, setComponentHealth] = useState({
         parties: 'unknown',
         sales: 'unknown',
-        purchaseOrders: 'unknown', // ✅ UPDATED: Changed from 'purchases' to 'purchaseOrders'
+        purchaseOrders: 'unknown',
         inventory: 'unknown'
     });
 
     // Update view when URL changes
     useEffect(() => {
         const newView = getViewFromPath();
-        console.log('🧭 HomePage: URL changed, updating view to:', newView);
         setCurrentView(newView);
     }, [location.pathname]);
 
     // Update company when companyId in URL changes or when prop changes
     useEffect(() => {
         if (companyId && companies.length > 0) {
-            console.log('🏢 HomePage: Looking for company with ID:', companyId);
-
             const foundCompany = companies.find(c =>
                 (c.id || c._id) === companyId
             );
 
             if (foundCompany) {
-                console.log('✅ Company found in URL:', foundCompany.businessName || foundCompany.name);
                 setCurrentCompany(foundCompany);
                 setCompanyError(null);
             } else if (propCurrentCompany && (propCurrentCompany.id || propCurrentCompany._id) === companyId) {
-                console.log('✅ Using company from props:', propCurrentCompany.businessName || propCurrentCompany.name);
                 setCurrentCompany(propCurrentCompany);
                 setCompanyError(null);
             } else {
-                console.warn('⚠️ Company not found for ID:', companyId);
                 setCompanyError(`Company with ID ${companyId} not found`);
             }
         } else if (propCurrentCompany) {
-            console.log('🏢 HomePage: Using company from props:', propCurrentCompany.businessName || propCurrentCompany.name);
             setCurrentCompany(propCurrentCompany);
             setCompanyError(null);
         }
@@ -161,7 +158,6 @@ function HomePage({
         const id = Date.now() + Math.random();
         const toast = { id, message, type, duration };
 
-        console.log('📢 HomePage: Adding toast:', { message, type });
         setToasts(prev => [...prev, toast]);
 
         // Auto remove toast after duration
@@ -206,14 +202,13 @@ function HomePage({
                 await partyService.getParties({ limit: 1 });
                 setComponentHealth(prev => ({ ...prev, parties: 'healthy' }));
             } catch (error) {
-                console.warn('Parties service health check failed:', error);
                 setComponentHealth(prev => ({ ...prev, parties: 'error' }));
             }
 
             // Add other service health checks here as they're implemented
 
         } catch (error) {
-            console.error('Health check failed:', error);
+            // Silent error handling
         }
     }, [isOnline, currentCompany]);
 
@@ -224,10 +219,8 @@ function HomePage({
         }
     }, [currentCompany, isOnline, performHealthCheck]);
 
-    // Handle navigation changes - Updated to work with new routing system
+    // Handle navigation changes - ✅ UPDATED: Map purchaseOrder to purchase-orders URL
     const handleNavigation = useCallback((page) => {
-        console.log('🧭 HomePage: Navigating to:', page);
-
         if (!currentCompany?.id && !currentCompany?._id) {
             addToast('Please select a company first to access this feature', 'warning', 5000);
             return;
@@ -235,47 +228,53 @@ function HomePage({
 
         const companyId = currentCompany.id || currentCompany._id;
 
-        // Map views to URL paths - Updated to match new routing
+        // Map views to URL paths - ✅ UPDATED: Properly map purchaseOrder to URL
         const viewPathMap = {
             'dailySummary': 'dashboard',
             'transactions': 'transactions',
             'cashAndBank': 'cash-bank',
             'parties': 'parties',
-            'allSales': 'sales',
-            'invoices': 'invoices',
-            'creditNotes': 'credit-notes',
+            // Sales
+            'invoices': 'sales',
+            'quotations': 'quotations',
             'salesOrders': 'sales-orders',
+            // Purchase - ✅ UPDATED: Map purchaseOrder to purchase-orders URL
             'allPurchases': 'purchases',
             'purchaseBills': 'purchase-bills',
-            'purchaseOrders': 'purchase-orders',
+            'purchaseOrder': 'purchase-orders', // ✅ FIXED: This should map to purchase-orders URL
+            'purchaseOrders': 'purchase-orders', // ✅ Keep both for backward compatibility
+            // Inventory
             'inventory': 'inventory',
             'allProducts': 'products',
             'lowStock': 'low-stock',
             'stockMovement': 'stock-movement',
+            // Bank & Cash
             'bankAccounts': 'bank-accounts',
             'cashAccounts': 'cash-accounts',
             'bankTransactions': 'bank-transactions',
             'bankReconciliation': 'bank-reconciliation',
             'cashFlow': 'cash-flow',
+            // Other
             'staff': 'staff',
             'insights': 'insights',
             'reports': 'reports',
             'settings': 'settings',
-            // Form routes - Navigate to dedicated form pages
+            // Form routes
             'createInvoice': 'sales/add',
-            'createPurchase': 'purchases/add',
+            'createQuotation': 'quotations/add',
             'createSalesOrder': 'sales-orders/add',
+            'createPurchase': 'purchases/add',
             'createPurchaseOrder': 'purchase-orders/add'
         };
 
         const urlPath = viewPathMap[page] || 'dashboard';
-        navigate(`/companies/${companyId}/${urlPath}`);
+        const newPath = `/companies/${companyId}/${urlPath}`;
+
+        navigate(newPath);
     }, [currentCompany, navigate, addToast]);
 
     // Handle company change from child components
     const handleCompanyChange = useCallback(async (company) => {
-        console.log('🏢 HomePage: Company changed from child component:', company);
-
         setIsLoadingCompany(true);
         setCompanyError(null);
 
@@ -301,7 +300,6 @@ function HomePage({
             }
 
         } catch (error) {
-            console.error('Error changing company:', error);
             setCompanyError(error.message);
             addToast('Failed to change company: ' + error.message, 'error', 5000);
         } finally {
@@ -309,15 +307,11 @@ function HomePage({
         }
     }, [onCompanyChange, addToast, navigate]);
 
-    // ✅ NEW: Handle purchase form save
+    // Handle purchase form save
     const handleSavePurchase = useCallback(async (purchaseData) => {
-        console.log('💾 HomePage: Saving purchase from form:', purchaseData);
-
         try {
             // Call the purchase service with transaction support
             const result = await purchaseService.createPurchaseWithTransaction(purchaseData);
-
-            console.log('✅ Purchase saved successfully:', result);
 
             if (result && result.success) {
                 addToast('Purchase created successfully!', 'success');
@@ -332,11 +326,46 @@ function HomePage({
             }
 
         } catch (error) {
-            console.error('❌ Error saving purchase:', error);
             addToast(`Error creating purchase: ${error.message}`, 'error');
             throw error;
         }
     }, [currentCompany, addToast, navigate]);
+
+    // ✅ NEW: Handle purchase order form save
+    const handleSavePurchaseOrder = useCallback(async (purchaseOrderData) => {
+        try {
+            addToast('Purchase order created successfully!', 'success');
+            // Navigate back to purchase orders
+            handleNavigation('purchaseOrder');
+        } catch (error) {
+            addToast(`Error saving purchase order: ${error.message}`, 'error');
+            throw error;
+        }
+    }, [handleNavigation, addToast]);
+
+    // Handle quotation save
+    const handleSaveQuotation = useCallback(async (orderData, status) => {
+        try {
+            addToast(`Quotation ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
+            // Navigate back to quotations
+            handleNavigation('quotations');
+        } catch (error) {
+            addToast(`Error saving quotation: ${error.message}`, 'error');
+            throw error;
+        }
+    }, [handleNavigation, addToast]);
+
+    // Handle sales order save
+    const handleSaveSalesOrder = useCallback(async (orderData, status) => {
+        try {
+            addToast(`Sales order ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
+            // Navigate back to sales orders
+            handleNavigation('salesOrders');
+        } catch (error) {
+            addToast(`Error saving sales order: ${error.message}`, 'error');
+            throw error;
+        }
+    }, [handleNavigation, addToast]);
 
     // Common props to pass to all components
     const commonProps = {
@@ -389,24 +418,23 @@ function HomePage({
         </div>
     );
 
-    // ✅ UPDATED: Check if component requires company - Added form views
+    // Check if component requires company - ✅ UPDATED: Removed expenses and purchaseReturn
     const requiresCompany = (viewName) => {
         const companyRequiredViews = [
             'inventory', 'allProducts', 'lowStock', 'stockMovement',
-            'allSales', 'invoices', 'creditNotes',
-            'salesOrders',
-            'purchaseBills', 'paymentOut', 'expenses', 'purchaseOrder',
-            'purchaseReturn', 'allPurchases', 'purchaseOrders',
+            'quotations', 'invoices', 'salesOrders',
+            'purchaseBills', 'purchaseOrder', // ✅ REMOVED: expenses, purchaseReturn
+            'allPurchases', 'purchaseOrders',
             'bankAccounts', 'cashAccounts', 'bankTransactions',
             'bankReconciliation', 'cashFlow',
             'parties',
-            // ✅ NEW: Add form views that require company
-            'createPurchase', 'createInvoice', 'createSalesOrder', 'createPurchaseOrder'
+            'createPurchase', 'createInvoice', 'createPurchaseOrder',
+            'createQuotation', 'createSalesOrder'
         ];
         return companyRequiredViews.includes(viewName);
     };
 
-    // ✅ ENHANCED: Render the appropriate component based on the current view
+    // Render the appropriate component based on the current view - ✅ UPDATED
     const renderContent = () => {
         // Show loading state if company is being loaded
         if (isLoadingCompany) {
@@ -430,15 +458,11 @@ function HomePage({
                 'allProducts': 'Products & Services',
                 'lowStock': 'Low Stock Items',
                 'stockMovement': 'Stock Movement',
-                'allSales': 'Sales Management',
-                'invoices': 'Sales Invoices',
-                'creditNotes': 'Credit Notes',
+                'quotations': 'Quotations',
                 'salesOrders': 'Sales Orders',
+                'invoices': 'Sales Invoices',
                 'purchaseBills': 'Purchase Bills',
-                'paymentOut': 'Payment Out',
-                'expenses': 'Expenses',
-                'purchaseOrder': 'Purchase Orders',
-                'purchaseReturn': 'Purchase Returns',
+                'purchaseOrder': 'Purchase Orders', // ✅ UPDATED: Removed expenses, purchaseReturn
                 'allPurchases': 'Purchase Management',
                 'purchaseOrders': 'Purchase Orders',
                 'bankAccounts': 'Bank Accounts',
@@ -447,11 +471,11 @@ function HomePage({
                 'bankReconciliation': 'Bank Reconciliation',
                 'cashFlow': 'Cash Flow',
                 'parties': 'Parties Management',
-                // ✅ NEW: Add form view names
                 'createPurchase': 'Create Purchase',
                 'createInvoice': 'Create Sales Invoice',
-                'createSalesOrder': 'Create Sales Order',
-                'createPurchaseOrder': 'Create Purchase Order'
+                'createPurchaseOrder': 'Create Purchase Order',
+                'createQuotation': 'Create Quotation',
+                'createSalesOrder': 'Create Sales Order'
             };
 
             return renderNoCompanyState(componentNameMap[currentView] || 'this feature');
@@ -463,8 +487,6 @@ function HomePage({
                 {component}
             </ErrorBoundary>
         );
-
-        console.log('🎬 HomePage: Rendering view:', currentView);
 
         switch (currentView) {
             // Day Book cases
@@ -481,35 +503,37 @@ function HomePage({
                     <Parties {...commonProps} />
                 );
 
-            // Sales cases - Only list views, forms handled by dedicated routes
-            case 'allSales':
+            // Sales cases
+            case 'quotations':
+                return wrapWithErrorBoundary(
+                    <Sales
+                        view="quotations"
+                        {...commonProps}
+                        onNavigate={handleNavigation}
+                    />
+                );
             case 'invoices':
-            case 'creditNotes':
+            case 'salesOrders':
                 return wrapWithErrorBoundary(
                     <Sales view={currentView} {...commonProps} />
                 );
 
-            // Sales Orders cases
-            case 'salesOrders':
+            // ✅ UPDATED: Purchase cases - Separate purchaseOrder from others
+            case 'purchaseOrder':
                 return wrapWithErrorBoundary(
-                    <SalesOrders view={currentView} {...commonProps} />
+                    <PurchaseOrder {...commonProps} />
                 );
 
-            // ✅ UPDATED: Purchase cases - All handled by PurchaseOrders component
+            // Other purchase cases handled by PurchaseOrders component
             case 'purchaseBills':
-            case 'paymentOut':
-            case 'expenses':
-            case 'purchaseOrder':
-            case 'purchaseReturn':
             case 'allPurchases':
             case 'purchaseOrders':
                 return wrapWithErrorBoundary(
                     <PurchaseOrders view={currentView} {...commonProps} />
                 );
 
-            // ✅ NEW: Form cases
+            // Form cases
             case 'createPurchase':
-                console.log('🛒 HomePage: Rendering PurchaseForm for company:', currentCompany?.businessName);
                 return wrapWithErrorBoundary(
                     <PurchaseForm
                         onSave={handleSavePurchase}
@@ -521,9 +545,9 @@ function HomePage({
                             const companyId = currentCompany.id || currentCompany._id;
                             navigate(`/companies/${companyId}/purchase-bills`);
                         }}
-                        inventoryItems={[]} // TODO: Pass actual inventory items
-                        categories={[]} // TODO: Pass actual categories
-                        bankAccounts={[]} // TODO: Pass actual bank accounts
+                        inventoryItems={[]}
+                        categories={[]}
+                        bankAccounts={[]}
                         addToast={addToast}
                         {...commonProps}
                     />
@@ -534,38 +558,55 @@ function HomePage({
                     <div className="placeholder-content">
                         <Container className="py-5 text-center">
                             <h3>Create Sales Invoice</h3>
-                            <p className="text-muted">Sales form coming soon...</p>
-                            <small className="text-muted">
+                            <p className="text-muted">Sales invoice form is handled within the Sales component</p>
+                            <button
+                                className="btn btn-primary mt-3"
+                                onClick={() => handleNavigation('invoices')}
+                            >
+                                Go to Invoices
+                            </button>
+                            <small className="text-muted d-block mt-2">
                                 Current Company: {currentCompany?.businessName || currentCompany?.name}
                             </small>
                         </Container>
                     </div>
+                );
+
+            case 'createQuotation':
+                return wrapWithErrorBoundary(
+                    <SalesOrderForm
+                        show={true}
+                        onHide={() => handleNavigation('quotations')}
+                        onSaveOrder={handleSaveQuotation}
+                        orderType="quotation"
+                        {...commonProps}
+                    />
                 );
 
             case 'createSalesOrder':
                 return wrapWithErrorBoundary(
-                    <div className="placeholder-content">
-                        <Container className="py-5 text-center">
-                            <h3>Create Sales Order</h3>
-                            <p className="text-muted">Sales order form coming soon...</p>
-                            <small className="text-muted">
-                                Current Company: {currentCompany?.businessName || currentCompany?.name}
-                            </small>
-                        </Container>
-                    </div>
+                    <SalesOrderForm
+                        show={true}
+                        onHide={() => handleNavigation('salesOrders')}
+                        onSaveOrder={handleSaveSalesOrder}
+                        orderType="sales_order"
+                        {...commonProps}
+                    />
                 );
 
+            // ✅ UPDATED: Purchase Order Form - Now renders as a page instead of placeholder
             case 'createPurchaseOrder':
                 return wrapWithErrorBoundary(
-                    <div className="placeholder-content">
-                        <Container className="py-5 text-center">
-                            <h3>Create Purchase Order</h3>
-                            <p className="text-muted">Purchase order form coming soon...</p>
-                            <small className="text-muted">
-                                Current Company: {currentCompany?.businessName || currentCompany?.name}
-                            </small>
-                        </Container>
-                    </div>
+                    <PurchaseOrderForm
+                        onSave={handleSavePurchaseOrder}
+                        onCancel={() => handleNavigation('purchaseOrder')}
+                        currentCompany={currentCompany}
+                        currentUser={currentUser}
+                        companyId={currentCompany?.id || currentCompany?._id}
+                        addToast={addToast}
+                        onNavigate={handleNavigation}
+                        {...commonProps}
+                    />
                 );
 
             // Bank & Cash cases
@@ -653,7 +694,6 @@ function HomePage({
 
             // Default case
             default:
-                console.log('⚠️ HomePage: Unknown view, defaulting to dailySummary:', currentView);
                 return wrapWithErrorBoundary(
                     <DayBook view="dailySummary" {...commonProps} />
                 );

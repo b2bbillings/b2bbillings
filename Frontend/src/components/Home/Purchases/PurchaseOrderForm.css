@@ -1,0 +1,316 @@
+.purchase-order-form {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+.purchase-order-header {
+    border-left: 4px solid #6f42c1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.purchase-order-actions .btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.purchase-order-actions .btn-primary {
+    background: linear-gradient(135deg, #6f42c1 0%, #9c88ff 100%);
+    border: none;
+    box-shadow: 0 2px 4px rgba(111, 66, 193, 0.25);
+}
+
+.purchase-order-actions .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(111, 66, 193, 0.3);
+}
+
+.purchase-order-actions .btn-outline-primary {
+    border-width: 2px;
+    border-color: #6f42c1;
+    color: #6f42c1;
+}
+
+.purchase-order-actions .btn-outline-primary:hover {
+    transform: translateY(-1px);
+    background-color: #6f42c1;
+    border-color: #6f42c1;
+}
+
+.purchase-order-actions .btn-outline-secondary {
+    border-width: 2px;
+}
+
+.purchase-order-actions .btn-outline-secondary:hover {
+    transform: translateY(-1px);
+}
+
+/* Card styling */
+.purchase-order-form .card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    transition: box-shadow 0.2s ease;
+}
+
+.purchase-order-form .card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.purchase-order-form .card-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 1rem 1.25rem;
+}
+
+.purchase-order-form .card-header h6 {
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+/* Form styling */
+.purchase-order-form .form-control,
+.purchase-order-form .form-select {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease;
+}
+
+.purchase-order-form .form-control:focus,
+.purchase-order-form .form-select:focus {
+    border-color: #6f42c1;
+    box-shadow: 0 0 0 0.2rem rgba(111, 66, 193, 0.25);
+}
+
+.purchase-order-form .form-select-lg {
+    font-size: 1.1rem;
+    padding: 0.75rem 1rem;
+    font-weight: 500;
+}
+
+/* Form labels */
+.purchase-order-form .form-label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.purchase-order-form .form-label.fw-semibold {
+    color: #6f42c1;
+}
+
+/* Status badges */
+.badge {
+    font-size: 0.75em;
+    padding: 0.4em 0.8em;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+/* Priority badges */
+.badge.bg-success {
+    background: linear-gradient(135deg, #198754 0%, #20c997 100%) !important;
+}
+
+.badge.bg-warning {
+    background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%) !important;
+}
+
+.badge.bg-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%) !important;
+}
+
+.badge.bg-dark {
+    background: linear-gradient(135deg, #212529 0%, #495057 100%) !important;
+}
+
+/* Purple theme colors */
+.text-primary {
+    color: #6f42c1 !important;
+}
+
+.bg-primary {
+    background-color: #6f42c1 !important;
+}
+
+.bg-primary.bg-opacity-10 {
+    background-color: rgba(111, 66, 193, 0.1) !important;
+}
+
+/* Icons */
+.purchase-order-form .fas {
+    width: 16px;
+    text-align: center;
+}
+
+/* Form text helpers */
+.form-text {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* Card body spacing */
+.purchase-order-form .card-body {
+    padding: 1.25rem;
+}
+
+/* Textarea styling */
+.purchase-order-form textarea.form-control {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Focus states */
+.purchase-order-form .form-control:focus {
+    background-color: #fff;
+    border-color: #6f42c1;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(111, 66, 193, 0.25);
+}
+
+/* Hover effects for interactive elements */
+.purchase-order-form .form-control:hover:not(:focus):not(:disabled) {
+    border-color: #adb5bd;
+}
+
+.purchase-order-form .form-select:hover:not(:focus):not(:disabled) {
+    border-color: #adb5bd;
+}
+
+/* Responsive design */
+@media (max-width: 992px) {
+    .purchase-order-form {
+        padding: 1rem !important;
+    }
+
+    .purchase-order-header {
+        text-align: center;
+        padding: 1rem;
+    }
+
+    .purchase-order-header .d-flex {
+        flex-direction: column;
+        align-items: center !important;
+        text-align: center;
+    }
+
+    .purchase-order-header .me-3 {
+        margin-right: 0 !important;
+        margin-bottom: 1rem;
+    }
+
+    .purchase-order-actions {
+        margin-top: 1rem;
+        justify-content: center;
+    }
+
+    .purchase-order-actions .btn {
+        margin-bottom: 0.5rem;
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .purchase-order-form .card-body {
+        padding: 1rem;
+    }
+
+    .purchase-order-form .card-header {
+        padding: 0.75rem 1rem;
+    }
+
+    .purchase-order-form .form-select-lg {
+        font-size: 1rem;
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Animation for smooth transitions */
+.purchase-order-form .card,
+.purchase-order-form .btn,
+.purchase-order-form .form-control,
+.purchase-order-form .form-select {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Custom scrollbar for textareas */
+.purchase-order-form textarea.form-control::-webkit-scrollbar {
+    width: 6px;
+}
+
+.purchase-order-form textarea.form-control::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.purchase-order-form textarea.form-control::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.purchase-order-form textarea.form-control::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Loading states */
+.purchase-order-form .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.purchase-order-form .form-control:disabled,
+.purchase-order-form .form-select:disabled {
+    background-color: #f8f9fa;
+    opacity: 0.8;
+}
+
+/* Success states */
+.purchase-order-form .is-valid {
+    border-color: #198754;
+}
+
+.purchase-order-form .is-valid:focus {
+    border-color: #198754;
+    box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25);
+}
+
+/* Error states */
+.purchase-order-form .is-invalid {
+    border-color: #dc3545;
+}
+
+.purchase-order-form .is-invalid:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* Enhanced spacing */
+.purchase-order-form .row.g-3>.col {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+/* Header icon styling */
+.purchase-order-header .bg-primary.bg-opacity-10 {
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+}
+
+/* Improved spacing for form groups */
+.purchase-order-form .form-group {
+    margin-bottom: 1rem;
+}
+
+.purchase-order-form .form-group:last-child {
+    margin-bottom: 0;
+}

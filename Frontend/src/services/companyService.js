@@ -1,5 +1,4 @@
 import axios from 'axios';
-
 import apiConfig from '../config/api';
 
 const API_BASE_URL = apiConfig.baseURL;
@@ -42,30 +41,23 @@ apiClient.interceptors.response.use(
                 case 401:
                     // Unauthorized - clear token and redirect to login
                     localStorage.removeItem('token');
-                    window.location.href = '/login';
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('currentCompany');
+
+                    // Only redirect if not already on login page
+                    if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/auth')) {
+                        window.location.href = '/login';
+                    }
                     break;
-                case 403:
-                    console.error('Access forbidden:', data.message);
-                    break;
-                case 404:
-                    console.error('Resource not found:', data.message);
-                    break;
-                case 500:
-                    console.error('Server error:', data.message);
-                    break;
-                default:
-                    console.error('API Error:', data.message || error.message);
             }
 
             // Throw error with server message
             throw new Error(data.message || `HTTP Error: ${status}`);
         } else if (error.request) {
             // Network error
-            console.error('Network Error:', error.message);
             throw new Error('Unable to connect to server. Please check your internet connection.');
         } else {
             // Other error
-            console.error('Error:', error.message);
             throw new Error(error.message || 'An unexpected error occurred.');
         }
     }
@@ -79,8 +71,6 @@ class CompanyService {
      */
     async createCompany(companyData) {
         try {
-            console.log('🚀 Creating company with data:', companyData);
-
             // Prepare data for JSON submission (not FormData since we're sending base64)
             const payload = {
                 businessName: companyData.businessName,
@@ -107,12 +97,9 @@ class CompanyService {
             });
 
             const response = await apiClient.post('/api/companies', payload);
-
-            console.log('✅ Company created successfully:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error creating company:', error);
             throw error;
         }
     }
@@ -124,8 +111,6 @@ class CompanyService {
      */
     async getCompanies(params = {}) {
         try {
-            console.log('📋 Fetching companies with params:', params);
-
             const response = await apiClient.get('/api/companies', {
                 params: {
                     page: params.page || 1,
@@ -139,11 +124,9 @@ class CompanyService {
                 }
             });
 
-            console.log('✅ Companies fetched successfully:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching companies:', error);
             throw error;
         }
     }
@@ -155,19 +138,14 @@ class CompanyService {
      */
     async getCompanyById(id) {
         try {
-            console.log('🔍 Fetching company by ID:', id);
-
             if (!id) {
                 throw new Error('Company ID is required');
             }
 
             const response = await apiClient.get(`/api/companies/${id}`);
-
-            console.log('✅ Company fetched successfully:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching company by ID:', error);
             throw error;
         }
     }
@@ -180,8 +158,6 @@ class CompanyService {
      */
     async updateCompany(id, companyData) {
         try {
-            console.log('📝 Updating company:', id, companyData);
-
             if (!id) {
                 throw new Error('Company ID is required');
             }
@@ -213,12 +189,9 @@ class CompanyService {
             });
 
             const response = await apiClient.put(`/api/companies/${id}`, payload);
-
-            console.log('✅ Company updated successfully:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error updating company:', error);
             throw error;
         }
     }
@@ -230,8 +203,6 @@ class CompanyService {
      */
     async deleteCompany(id) {
         try {
-            console.log('🗑️ Deleting company:', id);
-
             if (!id) {
                 throw new Error('Company ID is required');
             }
@@ -246,12 +217,9 @@ class CompanyService {
             }
 
             const response = await apiClient.delete(`/api/companies/${id}`);
-
-            console.log('✅ Company deleted successfully:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error deleting company:', error);
             throw error;
         }
     }
@@ -264,8 +232,6 @@ class CompanyService {
      */
     async searchCompanies(searchTerm, filters = {}) {
         try {
-            console.log('🔍 Searching companies:', searchTerm, filters);
-
             const params = {
                 search: searchTerm,
                 page: filters.page || 1,
@@ -279,7 +245,6 @@ class CompanyService {
             return await this.getCompanies(params);
 
         } catch (error) {
-            console.error('❌ Error searching companies:', error);
             throw error;
         }
     }
@@ -291,8 +256,6 @@ class CompanyService {
      */
     async getCompaniesByType(businessType) {
         try {
-            console.log('📊 Fetching companies by type:', businessType);
-
             if (!businessType) {
                 throw new Error('Business type is required');
             }
@@ -300,7 +263,6 @@ class CompanyService {
             return await this.getCompanies({ businessType });
 
         } catch (error) {
-            console.error('❌ Error fetching companies by type:', error);
             throw error;
         }
     }
@@ -313,8 +275,6 @@ class CompanyService {
      */
     async getCompaniesByLocation(state, city = '') {
         try {
-            console.log('📍 Fetching companies by location:', state, city);
-
             if (!state) {
                 throw new Error('State is required');
             }
@@ -322,7 +282,6 @@ class CompanyService {
             return await this.getCompanies({ state, city });
 
         } catch (error) {
-            console.error('❌ Error fetching companies by location:', error);
             throw error;
         }
     }
@@ -335,12 +294,9 @@ class CompanyService {
      */
     async toggleCompanyStatus(id, isActive) {
         try {
-            console.log('🔄 Toggling company status:', id, isActive);
-
             return await this.updateCompany(id, { isActive });
 
         } catch (error) {
-            console.error('❌ Error toggling company status:', error);
             throw error;
         }
     }
@@ -351,17 +307,11 @@ class CompanyService {
      */
     async getCompanyStats() {
         try {
-            console.log('📈 Fetching company statistics');
-
             // This would be a separate endpoint in your backend
             const response = await apiClient.get('/api/companies/stats');
-
-            console.log('✅ Company stats fetched:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching company stats:', error);
-
             // Return default stats if endpoint doesn't exist
             return {
                 total: 0,
@@ -381,8 +331,6 @@ class CompanyService {
      */
     async bulkOperation(companyIds, operation) {
         try {
-            console.log('🔄 Performing bulk operation:', operation, companyIds);
-
             if (!companyIds || companyIds.length === 0) {
                 throw new Error('No companies selected');
             }
@@ -406,11 +354,9 @@ class CompanyService {
                 operation
             });
 
-            console.log('✅ Bulk operation completed:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error performing bulk operation:', error);
             throw error;
         }
     }
@@ -423,8 +369,6 @@ class CompanyService {
      */
     async exportCompanies(format = 'csv', filters = {}) {
         try {
-            console.log('📤 Exporting companies:', format, filters);
-
             const response = await apiClient.get('/api/companies/export', {
                 params: {
                     format,
@@ -433,12 +377,105 @@ class CompanyService {
                 responseType: 'blob'
             });
 
-            console.log('✅ Companies exported successfully');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error exporting companies:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Validate company data before sending to backend
+     * @param {Object} companyData - Company data to validate
+     * @returns {Object} Validation result
+     */
+    validateCompanyData(companyData) {
+        const errors = [];
+
+        // Business name validation
+        if (!companyData.businessName || companyData.businessName.trim().length < 2) {
+            errors.push('Business name must be at least 2 characters long');
+        }
+
+        if (companyData.businessName && companyData.businessName.trim().length > 100) {
+            errors.push('Business name cannot exceed 100 characters');
+        }
+
+        // Phone number validation
+        if (!companyData.phoneNumber || !/^[6-9]\d{9}$/.test(companyData.phoneNumber.trim())) {
+            errors.push('Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9');
+        }
+
+        // Email validation
+        if (companyData.email && companyData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyData.email.trim())) {
+            errors.push('Email format is invalid');
+        }
+
+        // GSTIN validation
+        if (companyData.gstin && companyData.gstin.trim()) {
+            const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+            if (!gstRegex.test(companyData.gstin.trim().toUpperCase())) {
+                errors.push('Please provide a valid GSTIN format (e.g., 22AAAAA0000A1Z5)');
+            }
+        }
+
+        // Pincode validation
+        if (companyData.pincode && companyData.pincode.trim() && !/^[0-9]{6}$/.test(companyData.pincode.trim())) {
+            errors.push('Pincode must be exactly 6 digits');
+        }
+
+        return {
+            isValid: errors.length === 0,
+            errors
+        };
+    }
+
+    /**
+     * Check if company service is available (health check)
+     * @returns {Promise<boolean>} Service availability
+     */
+    async checkServiceHealth() {
+        try {
+            const response = await apiClient.get('/api/companies/health');
+            return response.status === 200;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
+     * Get current company from localStorage
+     * @returns {Object|null} Current company data
+     */
+    getCurrentCompany() {
+        try {
+            const currentCompany = localStorage.getItem('currentCompany');
+            return currentCompany ? JSON.parse(currentCompany) : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Set current company in localStorage
+     * @param {Object} company - Company data to set as current
+     */
+    setCurrentCompany(company) {
+        try {
+            localStorage.setItem('currentCompany', JSON.stringify(company));
+        } catch (error) {
+            // Silent error handling
+        }
+    }
+
+    /**
+     * Clear current company from localStorage
+     */
+    clearCurrentCompany() {
+        try {
+            localStorage.removeItem('currentCompany');
+        } catch (error) {
+            // Silent error handling
         }
     }
 }

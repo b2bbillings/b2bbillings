@@ -897,7 +897,7 @@ const ItemsTableWithTotals = ({
                         </h6>
 
                         <div className="d-flex gap-3 align-items-center">
-                           // FIXED: Global tax mode buttons in header
+
                             {gstEnabled && (
                                 <div className="d-flex align-items-center gap-2">
                                     <small className="text-muted">Global Mode:</small>

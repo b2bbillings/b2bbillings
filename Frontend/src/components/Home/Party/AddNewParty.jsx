@@ -30,7 +30,7 @@ function AddNewParty({
     const [showAdditionalPhones, setShowAdditionalPhones] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [activeAddressTab, setActiveAddressTab] = useState('home');
-    
+
     // Loading and error states
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -196,7 +196,7 @@ function AddNewParty({
         if (show) {
             setError('');
             setSuccess('');
-            
+
             if (!editingParty) {
                 if (isQuickAdd) {
                     setQuickFormData({ name: '', phone: '' });
@@ -418,11 +418,11 @@ function AddNewParty({
 
                 if (response.success) {
                     setSuccess('Quick customer added successfully!');
-                    
+
                     // Handle different response structures safely
                     const backendParty = response.data?.party || response.party || response.data || {};
                     const partyId = backendParty._id || backendParty.id || Date.now().toString();
-                    
+
                     const savedParty = {
                         ...newRunningCustomer,
                         id: partyId,
@@ -436,7 +436,7 @@ function AddNewParty({
 
                     // Call parent callback
                     onSaveParty(savedParty, true);
-                    
+
                     // Close modal after short delay
                     setTimeout(() => {
                         onHide();
@@ -447,12 +447,12 @@ function AddNewParty({
 
             } catch (error) {
                 console.error('❌ Error creating quick customer:', error);
-                
+
                 // Handle specific duplicate phone error from backend
-                if (error.message?.toLowerCase().includes('phone') && 
-                    (error.message?.toLowerCase().includes('exists') || 
-                     error.message?.toLowerCase().includes('duplicate') ||
-                     error.message?.toLowerCase().includes('already'))) {
+                if (error.message?.toLowerCase().includes('phone') &&
+                    (error.message?.toLowerCase().includes('exists') ||
+                        error.message?.toLowerCase().includes('duplicate') ||
+                        error.message?.toLowerCase().includes('already'))) {
                     setError(`A customer with phone number ${quickFormData.phone.trim()} already exists. Please use a different phone number or edit the existing customer.`);
                 } else {
                     setError(error.message || 'Failed to create customer. Please try again.');
@@ -546,16 +546,16 @@ function AddNewParty({
                     // Update existing party
                     const partyId = editingParty._id || editingParty.id;
                     console.log('✏️ Updating party with ID:', partyId);
-                    
+
                     response = await partyService.updateParty(partyId, partyData);
                     console.log('📥 Update response:', response);
-                    
+
                     if (response.success || response.data) {
                         setSuccess('Party updated successfully!');
-                        
+
                         // Handle different response structures safely
                         const backendParty = response.data?.party || response.party || response.data || {};
-                        
+
                         savedParty = {
                             ...partyData,
                             id: partyId,
@@ -575,17 +575,17 @@ function AddNewParty({
                 } else {
                     // Create new party
                     console.log('➕ Creating new party');
-                    
+
                     response = await partyService.createParty(partyData);
                     console.log('📥 Create response:', response);
-                    
+
                     if (response.success || response.data) {
                         setSuccess('Party created successfully!');
-                        
+
                         // Handle different response structures safely
                         const backendParty = response.data?.party || response.party || response.data || {};
                         const partyId = backendParty._id || backendParty.id || Date.now().toString();
-                        
+
                         savedParty = {
                             ...partyData,
                             id: partyId,
@@ -611,10 +611,10 @@ function AddNewParty({
 
             } catch (error) {
                 console.error('❌ Error saving party:', error);
-                
+
                 // Enhanced error handling with specific duplicate phone error
                 let errorMessage = 'Failed to save party. Please try again.';
-                
+
                 if (error.response?.data?.message) {
                     errorMessage = error.response.data.message;
                 } else if (error.response?.data?.error) {
@@ -624,13 +624,13 @@ function AddNewParty({
                 }
 
                 // Handle specific duplicate phone error
-                if (errorMessage.toLowerCase().includes('phone') && 
-                    (errorMessage.toLowerCase().includes('exists') || 
-                     errorMessage.toLowerCase().includes('duplicate') ||
-                     errorMessage.toLowerCase().includes('already'))) {
+                if (errorMessage.toLowerCase().includes('phone') &&
+                    (errorMessage.toLowerCase().includes('exists') ||
+                        errorMessage.toLowerCase().includes('duplicate') ||
+                        errorMessage.toLowerCase().includes('already'))) {
                     setError(`A party with phone number ${formData.phoneNumber.trim()} already exists. Please use a different phone number or edit the existing party.`);
-                } else if (errorMessage.toLowerCase().includes('email') && 
-                          errorMessage.toLowerCase().includes('exists')) {
+                } else if (errorMessage.toLowerCase().includes('email') &&
+                    errorMessage.toLowerCase().includes('exists')) {
                     setError(`A party with email ${formData.email.trim()} already exists. Please use a different email or edit the existing party.`);
                 } else {
                     setError(errorMessage);
@@ -835,6 +835,7 @@ function AddNewParty({
                             </div>
                         </div>
 
+
                         {/* Basic Information */}
                         <div className="mb-4 p-3 bg-light rounded">
                             <h6 className="text-muted mb-3 small">Basic Information</h6>
@@ -887,6 +888,23 @@ function AddNewParty({
                                                 disabled={isLoading}
                                             />
                                         </InputGroup>
+
+                                        {/* Add Additional Phone Numbers Button - Moved to right side below phone number */}
+                                        {!showAdditionalPhones && (
+                                            <div className="d-flex justify-content-end mt-2">
+                                                <Button
+                                                    variant="outline-secondary"
+                                                    size="sm"
+                                                    onClick={() => setShowAdditionalPhones(true)}
+                                                    type="button"
+                                                    disabled={isLoading}
+                                                    className="d-flex align-items-center"
+                                                >
+                                                    <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
+                                                    <small>Add More Numbers</small>
+                                                </Button>
+                                            </div>
+                                        )}
                                     </Form.Group>
                                 </Col>
                             </Row>
@@ -943,22 +961,6 @@ function AddNewParty({
                                             </Col>
                                         </Row>
                                     ))}
-                                </div>
-                            )}
-
-                            {/* Toggle Additional Phones */}
-                            {!showAdditionalPhones && (
-                                <div className="text-center mt-3">
-                                    <Button
-                                        variant="outline-secondary"
-                                        size="sm"
-                                        onClick={() => setShowAdditionalPhones(true)}
-                                        type="button"
-                                        disabled={isLoading}
-                                    >
-                                        <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                        Add Additional Phone Numbers
-                                    </Button>
                                 </div>
                             )}
                         </div>
@@ -1032,7 +1034,7 @@ function AddNewParty({
                                 <Col md={6}>
                                     <Form.Group className="mb-3">
                                         <Form.Label className="text-muted small">
-                                            Credit Limit 
+                                            Credit Limit
                                             <small className="text-muted ms-1">(₹0 = No Limit)</small>
                                         </Form.Label>
                                         <InputGroup>

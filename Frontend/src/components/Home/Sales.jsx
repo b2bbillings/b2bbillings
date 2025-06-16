@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Alert } from 'react-bootstrap';
 import SalesInvoices from './Sales/SalesInvoices';
 
-function Sales({ 
-    view = 'allSales', 
-    onNavigate, 
-    currentCompany, 
-    isOnline = true, 
+function Sales({
+    view = 'allSales',
+    onNavigate,
+    currentCompany,
+    isOnline = true,
     addToast,
-    companyId: propCompanyId 
+    companyId: propCompanyId
 }) {
     const { companyId: urlCompanyId } = useParams();
     const navigate = useNavigate();
@@ -18,27 +18,36 @@ function Sales({
     // Use companyId from props or URL
     const companyId = propCompanyId || urlCompanyId;
 
-    // Handle view mapping for the new system
+    // Handle view mapping for the new system - ✅ FIXED: Added quotations mapping
     const mapViewToSubView = (viewName) => {
+
         const viewMap = {
             'allSales': 'invoices',
             'invoices': 'invoices',
+            'quotations': 'quotations', // ✅ ADDED: quotations mapping
             'creditNotes': 'credit-notes',
             'salesReturns': 'returns',
             'estimates': 'estimates'
         };
-        return viewMap[viewName] || 'invoices';
+
+        const mappedView = viewMap[viewName] || 'invoices';
+
+        return mappedView;
     };
 
-    // Handle navigation to forms
+    // Handle navigation to forms - ✅ UPDATED: Better handling for quotations
     const handleAddSale = () => {
         if (!companyId) {
             addToast?.('Please select a company first', 'warning');
             return;
         }
-        
-        console.log('🧾 Navigating to Add Sale form');
-        navigate(`/companies/${companyId}/sales/add`);
+
+        // ✅ UPDATED: Navigate based on current view
+        if (view === 'quotations') {
+            navigate(`/companies/${companyId}/quotations/add`);
+        } else {
+            navigate(`/companies/${companyId}/sales/add`);
+        }
     };
 
     const handleEditSale = (saleId) => {
@@ -46,12 +55,16 @@ function Sales({
             addToast?.('Please select a company first', 'warning');
             return;
         }
-        
-        console.log('✏️ Navigating to Edit Sale form:', saleId);
-        navigate(`/companies/${companyId}/sales/${saleId}/edit`);
+
+        // ✅ UPDATED: Navigate based on current view
+        if (view === 'quotations') {
+            navigate(`/companies/${companyId}/quotations/${saleId}/edit`);
+        } else {
+            navigate(`/companies/${companyId}/sales/${saleId}/edit`);
+        }
     };
 
-    // Handle navigation to different views within sales
+    // Handle navigation to different views within sales - ✅ UPDATED
     const handleViewChange = (newView) => {
         if (!companyId) {
             addToast?.('Please select a company first', 'warning');
@@ -60,13 +73,14 @@ function Sales({
 
         const viewPaths = {
             'invoices': 'sales',
+            'quotations': 'quotations', // ✅ ADDED: quotations path
             'credit-notes': 'credit-notes',
             'returns': 'sales-returns',
             'estimates': 'estimates'
         };
 
         const path = viewPaths[newView] || 'sales';
-        
+
         if (onNavigate) {
             onNavigate(newView);
         } else {
@@ -78,9 +92,8 @@ function Sales({
     useEffect(() => {
         // Handle legacy view redirects
         const legacyViews = ['oldSales', 'salesTable', 'legacySales'];
-        
+
         if (legacyViews.includes(view)) {
-            console.log('🔄 Redirecting from legacy sales view to new invoice system');
             setIsRedirecting(true);
 
             // Add toast notification for better UX
@@ -119,7 +132,7 @@ function Sales({
                     <Alert variant="warning" className="text-center">
                         <h5>⚠️ No Company Selected</h5>
                         <p className="mb-0">
-                            Please select a company to view and manage sales invoices.
+                            Please select a company to view and manage {view === 'quotations' ? 'quotations' : 'sales invoices'}.
                         </p>
                         <small className="text-muted d-block mt-2">
                             You can select a company from the header dropdown.
@@ -138,7 +151,7 @@ function Sales({
                     <Alert variant="warning" className="text-center">
                         <h5>📡 No Internet Connection</h5>
                         <p className="mb-0">
-                            Sales data requires an internet connection. Please check your network and try again.
+                            {view === 'quotations' ? 'Quotations' : 'Sales'} data requires an internet connection. Please check your network and try again.
                         </p>
                     </Alert>
                 </div>
@@ -149,19 +162,23 @@ function Sales({
     // Map current view to sub-view for SalesInvoices
     const subView = mapViewToSubView(view);
 
-    // Render the SalesInvoices component with enhanced props
+    // Render the SalesInvoices component with enhanced props - ✅ UPDATED
     return (
         <div className="sales-container">
-            <SalesInvoices 
+            <SalesInvoices
                 companyId={companyId}
                 currentCompany={currentCompany}
-                view={subView}
+                view={subView} // ✅ This should be 'quotations' when view='quotations'
                 onAddSale={handleAddSale}
                 onEditSale={handleEditSale}
                 onViewChange={handleViewChange}
                 onNavigate={onNavigate}
                 isOnline={isOnline}
                 addToast={addToast}
+                // ✅ ADDED: Pass additional props to help SalesInvoices differentiate
+                mode={view === 'quotations' ? 'quotations' : 'invoices'}
+                pageTitle={view === 'quotations' ? 'Quotations' : 'Sales Invoices'}
+                documentType={view === 'quotations' ? 'quotation' : 'invoice'}
             />
 
             {/* Enhanced Styles for seamless integration */}

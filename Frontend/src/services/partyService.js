@@ -19,12 +19,9 @@ apiClient.interceptors.request.use(
         const token = localStorage.getItem('token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
-            console.log('🔐 Adding auth header to party request');
-        } else {
-            console.warn('⚠️ No auth token found for party request');
         }
 
-        // Add current company context - IMPROVED
+        // Add current company context
         const currentCompany = localStorage.getItem('currentCompany');
         if (currentCompany) {
             try {
@@ -33,50 +30,15 @@ apiClient.interceptors.request.use(
 
                 if (companyId) {
                     config.headers['X-Company-ID'] = companyId;
-                    console.log('🏢 Adding company context to party request:', {
-                        companyName: company.name || 'Unknown',
-                        companyId: companyId
-                    });
-                } else {
-                    console.warn('⚠️ Company object exists but no ID found:', company);
                 }
             } catch (e) {
-                console.warn('⚠️ Failed to parse current company for party request:', e);
+                // Silent error handling
             }
-        } else {
-            console.warn('⚠️ No company context found in localStorage');
-        }
-
-        // Debug current localStorage state
-        console.log('🔍 localStorage Debug:', {
-            hasToken: !!localStorage.getItem('token'),
-            hasUser: !!localStorage.getItem('user'),
-            hasCurrentCompany: !!localStorage.getItem('currentCompany'),
-            currentCompanyRaw: localStorage.getItem('currentCompany')
-        });
-
-        // Additional debug info
-        console.log('🔍 Request Headers Debug:', {
-            url: config.url,
-            method: config.method?.toUpperCase(),
-            hasAuth: !!config.headers.Authorization,
-            hasCompany: !!config.headers['X-Company-ID'],
-            companyId: config.headers['X-Company-ID']
-        });
-
-        // Log request details for debugging
-        console.log(`🌐 Party API Request: ${config.method?.toUpperCase()} ${config.url}`);
-        if (config.data && Object.keys(config.data).length > 0) {
-            console.log('📤 Request Data keys:', Object.keys(config.data));
-        }
-        if (config.params && Object.keys(config.params).length > 0) {
-            console.log('📤 Request Params:', config.params);
         }
 
         return config;
     },
     (error) => {
-        console.error('❌ Party Request Interceptor Error:', error);
         return Promise.reject(error);
     }
 );
@@ -84,38 +46,9 @@ apiClient.interceptors.request.use(
 // Response interceptor for global error handling
 apiClient.interceptors.response.use(
     (response) => {
-        // Log successful responses
-        console.log(`✅ Party API Response: ${response.status} ${response.config.url}`);
-
-        // Log response data structure for debugging
-        if (response.data) {
-            console.log('📥 Response structure:', {
-                success: response.data.success,
-                message: response.data.message,
-                dataType: typeof response.data.data,
-                hasData: !!response.data.data
-            });
-        }
-
         return response;
     },
     (error) => {
-        // Enhanced error logging
-        console.error('❌ Party API Error Details:', {
-            url: error.config?.url,
-            method: error.config?.method,
-            status: error.response?.status,
-            message: error.message,
-            code: error.response?.data?.code,
-            serverMessage: error.response?.data?.message,
-            debug: error.response?.data?.debug,
-            requestHeaders: {
-                hasAuth: !!error.config?.headers?.Authorization,
-                hasCompany: !!error.config?.headers['X-Company-ID'],
-                companyId: error.config?.headers['X-Company-ID']
-            }
-        });
-
         // Handle common errors
         if (error.response) {
             // Server responded with error status
@@ -123,7 +56,6 @@ apiClient.interceptors.response.use(
 
             switch (status) {
                 case 401:
-                    console.log('🔐 Authentication failed - clearing session data');
                     // Clear all authentication data
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
@@ -131,27 +63,9 @@ apiClient.interceptors.response.use(
 
                     // Only redirect if not already on login page
                     if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/auth')) {
-                        console.log('🔄 Redirecting to login due to 401 error');
                         window.location.href = '/login';
                     }
                     break;
-                case 400:
-                    if (data.code === 'COMPANY_REQUIRED') {
-                        console.error('🏢 Company selection required for party operation');
-                        console.error('🔍 Debug Info:', data.debug);
-                    }
-                    break;
-                case 403:
-                    console.error('🚫 Access forbidden for party operation:', data.message);
-                    break;
-                case 404:
-                    console.error('📭 Party resource not found:', data.message);
-                    break;
-                case 500:
-                    console.error('🔥 Server error in party operation:', data.message);
-                    break;
-                default:
-                    console.error('❓ Unhandled party API error:', data.message || error.message);
             }
 
             // Throw error with server message and code
@@ -163,13 +77,11 @@ apiClient.interceptors.response.use(
             throw apiError;
         } else if (error.request) {
             // Network error
-            console.error('🌐 Network Error in party request:', error.message);
             const networkError = new Error('Unable to connect to server. Please check your internet connection.');
             networkError.code = 'NETWORK_ERROR';
             throw networkError;
         } else {
             // Other error
-            console.error('❓ Unknown Party Service Error:', error.message);
             throw new Error(error.message || 'An unexpected error occurred.');
         }
     }
@@ -183,11 +95,6 @@ class PartyService {
     validateCompanyContext() {
         const currentCompany = localStorage.getItem('currentCompany');
 
-        console.log('🔍 Validating company context:', {
-            hasCurrentCompany: !!currentCompany,
-            currentCompanyValue: currentCompany
-        });
-
         if (!currentCompany) {
             return {
                 isValid: false,
@@ -199,12 +106,6 @@ class PartyService {
         try {
             const company = JSON.parse(currentCompany);
             const companyId = company.id || company._id || company.companyId;
-
-            console.log('🔍 Parsed company data:', {
-                company: company,
-                companyId: companyId,
-                hasId: !!companyId
-            });
 
             if (!companyId) {
                 return {
@@ -221,7 +122,6 @@ class PartyService {
                 companyId: companyId
             };
         } catch (e) {
-            console.error('❌ Error parsing company data:', e);
             return {
                 isValid: false,
                 error: 'Invalid company data. Please reselect your company.',
@@ -237,8 +137,6 @@ class PartyService {
      */
     async createParty(partyData) {
         try {
-            console.log('📝 Creating party:', partyData);
-
             // Validate required fields
             if (!partyData.name || !partyData.phoneNumber) {
                 throw new Error('Name and phone number are required');
@@ -258,11 +156,11 @@ class PartyService {
                 phoneNumber: partyData.phoneNumber?.trim(),
                 companyName: partyData.companyName?.trim() || '',
 
-                // NEW FIELDS: GST Information
+                // GST Information
                 gstNumber: partyData.gstNumber?.trim()?.toUpperCase() || '',
                 gstType: partyData.gstType || 'unregistered',
 
-                // NEW FIELDS: Financial Information
+                // Financial Information
                 creditLimit: parseFloat(partyData.creditLimit) || 0,
                 openingBalance: parseFloat(partyData.openingBalance) || 0,
 
@@ -302,21 +200,10 @@ class PartyService {
                 }];
             }
 
-            console.log('📤 Sending party data to backend:', {
-                keys: Object.keys(backendData),
-                gstType: backendData.gstType,
-                creditLimit: backendData.creditLimit,
-                hasGSTNumber: !!backendData.gstNumber
-            });
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             const response = await apiClient.post('/api/parties', backendData);
-
-            console.log('✅ Party created successfully:', response.data?.data?.name || 'Unknown');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error creating party:', error.message);
             throw error;
         }
     }
@@ -328,8 +215,6 @@ class PartyService {
      */
     async createQuickParty(quickData) {
         try {
-            console.log('⚡ Creating quick party:', quickData);
-
             // Validate required fields
             if (!quickData.name || !quickData.phone) {
                 throw new Error('Name and phone are required for quick party');
@@ -347,15 +232,10 @@ class PartyService {
                 type: quickData.type || 'customer'
             };
 
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             const response = await apiClient.post('/api/parties/quick', backendData);
-
-            console.log('✅ Quick party created successfully:', response.data?.data?.name || 'Unknown');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error creating quick party:', error.message);
             throw error;
         }
     }
@@ -367,8 +247,6 @@ class PartyService {
      */
     async checkPhoneExists(phoneNumber) {
         try {
-            console.log('🔍 Checking phone existence:', phoneNumber);
-
             if (!phoneNumber?.trim()) {
                 return { success: true, exists: false, party: null };
             }
@@ -380,79 +258,133 @@ class PartyService {
             }
 
             const response = await apiClient.get(`/api/parties/check-phone/${phoneNumber.trim()}`);
-
-            console.log('✅ Phone check result:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error checking phone existence:', error.message);
-
             // If service is not available, return false to not block creation
             if (error.response?.status === 404) {
                 return { success: true, exists: false, party: null };
             }
-
             throw error;
         }
     }
 
     /**
-     * Get all parties with pagination and filtering
-     * @param {Object} filters - Filter options
-     * @returns {Promise<Object>} Parties data with pagination
-     */
-    async getParties(filters = {}) {
+   * Get all parties with pagination and filtering
+   * @param {string|Object} companyIdOrFilters - Company ID or filters object (for backward compatibility)
+   * @param {Object} filters - Filter options (when companyId is provided as first param)
+   * @returns {Promise<Object>} Parties data with pagination
+   */
+    async getParties(companyIdOrFilters = {}, filters = {}) {
         try {
+            let actualFilters = {};
+            let companyId = null;
+
+            // Handle different parameter formats for backward compatibility
+            if (typeof companyIdOrFilters === 'string') {
+                // New format: getParties(companyId, filters)
+                companyId = companyIdOrFilters;
+                actualFilters = filters || {};
+            } else {
+                // Old format: getParties(filters)
+                actualFilters = companyIdOrFilters || {};
+            }
+
+            // Extract filter parameters with defaults
             const {
                 page = 1,
                 limit = 10,
                 search = '',
-                type = 'all', // Changed from partyType to type for consistency
+                partyType = null,
+                type = null, // Handle both partyType and type for compatibility
                 sortBy = 'createdAt',
                 sortOrder = 'desc'
-            } = filters;
+            } = actualFilters;
 
-            console.log('📋 Fetching parties with filters:', { page, limit, search, type, sortBy, sortOrder });
-
-            // Validate company context first
-            const companyValidation = this.validateCompanyContext();
-            if (!companyValidation.isValid) {
-                console.error('🏢 Company validation failed:', companyValidation.error);
-                throw new Error(companyValidation.error);
+            // Validate company context if companyId not provided
+            let companyValidation;
+            if (!companyId) {
+                companyValidation = this.validateCompanyContext();
+                if (!companyValidation.isValid) {
+                    throw new Error(companyValidation.error);
+                }
+                companyId = companyValidation.companyId;
             }
 
-            console.log('🏢 Using company for party fetch:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
+            // Build request parameters
             const params = {
-                page,
-                limit,
-                type,
-                sortBy,
-                sortOrder
+                page: parseInt(page, 10),
+                limit: parseInt(limit, 10),
+                type: partyType || type || 'all',
+                sortBy: String(sortBy),
+                sortOrder: String(sortOrder),
+                companyId: companyId
             };
 
-            // Only add search if it's not empty
-            if (search && search.trim() !== '') {
+            // Only add search if it's not empty and is a string
+            if (search && typeof search === 'string' && search.trim() !== '') {
                 params.search = search.trim();
+            } else if (search && typeof search !== 'string') {
+                // Convert non-string search to string and check if it's meaningful
+                const searchString = String(search).trim();
+                if (searchString !== '' && searchString !== 'undefined' && searchString !== 'null') {
+                    params.search = searchString;
+                }
             }
-
-            // Add company ID as query param as fallback
-            params.companyId = companyValidation.companyId;
-
-            console.log('📤 Request params:', params);
-
             const response = await apiClient.get('/api/parties', { params });
-
-            console.log('✅ Parties fetched successfully:', {
-                count: response.data?.data?.parties?.length || 0,
-                total: response.data?.data?.pagination?.totalItems || 0,
-                page: response.data?.data?.pagination?.current || page
-            });
-
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching parties:', error.message);
+            console.error('❌ PartyService.getParties error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete party
+     * @param {string} companyIdOrPartyId - Company ID or Party ID (for backward compatibility)
+     * @param {string} partyId - Party ID (when companyId is provided as first param)
+     * @returns {Promise<Object>} Deletion confirmation
+     */
+    async deleteParty(companyIdOrPartyId, partyId = null) {
+        try {
+            let actualPartyId;
+            let companyId = null;
+
+            // Handle different parameter formats for backward compatibility
+            if (partyId) {
+                // New format: deleteParty(companyId, partyId)
+                companyId = companyIdOrPartyId;
+                actualPartyId = partyId;
+            } else {
+                // Old format: deleteParty(partyId)
+                actualPartyId = companyIdOrPartyId;
+            }
+
+            if (!actualPartyId) {
+                throw new Error('Party ID is required');
+            }
+
+            // Validate company context if companyId not provided
+            let companyValidation;
+            if (!companyId) {
+                companyValidation = this.validateCompanyContext();
+                if (!companyValidation.isValid) {
+                    throw new Error(companyValidation.error);
+                }
+                companyId = companyValidation.companyId;
+            }
+
+            // Add company ID as query param
+            const params = {
+                companyId: companyId
+            };
+
+            const response = await apiClient.delete(`/api/parties/${actualPartyId}`, { params });
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ PartyService.deleteParty error:', error);
             throw error;
         }
     }
@@ -464,8 +396,6 @@ class PartyService {
      */
     async getPartyById(partyId) {
         try {
-            console.log('🔍 Fetching party by ID:', partyId);
-
             if (!partyId) {
                 throw new Error('Party ID is required');
             }
@@ -476,20 +406,15 @@ class PartyService {
                 throw new Error(companyValidation.error);
             }
 
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             // Add company ID as query param as fallback
             const params = {
                 companyId: companyValidation.companyId
             };
 
             const response = await apiClient.get(`/api/parties/${partyId}`, { params });
-
-            console.log('✅ Party fetched successfully:', response.data?.data?.name || 'Unknown');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching party:', error.message);
             throw error;
         }
     }
@@ -502,8 +427,6 @@ class PartyService {
      */
     async updateParty(partyId, partyData) {
         try {
-            console.log('📝 Updating party:', partyId, Object.keys(partyData));
-
             if (!partyId) {
                 throw new Error('Party ID is required');
             }
@@ -522,11 +445,11 @@ class PartyService {
                 phoneNumber: partyData.phoneNumber?.trim(),
                 companyName: partyData.companyName?.trim() || '',
 
-                // NEW FIELDS: GST Information
+                // GST Information
                 gstNumber: partyData.gstNumber?.trim()?.toUpperCase() || '',
                 gstType: partyData.gstType || 'unregistered',
 
-                // NEW FIELDS: Financial Information
+                // Financial Information
                 creditLimit: parseFloat(partyData.creditLimit) || 0,
                 openingBalance: parseFloat(partyData.openingBalance) || 0,
 
@@ -558,21 +481,10 @@ class PartyService {
                 }
             });
 
-            console.log('📤 Sending party update data:', {
-                keys: Object.keys(backendData),
-                gstType: backendData.gstType,
-                creditLimit: backendData.creditLimit,
-                hasGSTNumber: !!backendData.gstNumber
-            });
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             const response = await apiClient.put(`/api/parties/${partyId}`, backendData);
-
-            console.log('✅ Party updated successfully:', response.data?.data?.name || 'Unknown');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error updating party:', error.message);
             throw error;
         }
     }
@@ -584,8 +496,6 @@ class PartyService {
      */
     async deleteParty(partyId) {
         try {
-            console.log('🗑️ Deleting party:', partyId);
-
             if (!partyId) {
                 throw new Error('Party ID is required');
             }
@@ -596,20 +506,15 @@ class PartyService {
                 throw new Error(companyValidation.error);
             }
 
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             // Add company ID as query param as fallback
             const params = {
                 companyId: companyValidation.companyId
             };
 
             const response = await apiClient.delete(`/api/parties/${partyId}`, { params });
-
-            console.log('✅ Party deleted successfully');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error deleting party:', error.message);
             throw error;
         }
     }
@@ -623,10 +528,7 @@ class PartyService {
      */
     async searchParties(query, type = null, limit = 10) {
         try {
-            console.log('🔍 Searching parties:', { query, type, limit });
-
             if (!query || query.length < 2) {
-                console.log('🔍 Search query too short, returning empty results');
                 return {
                     success: true,
                     data: []
@@ -648,15 +550,10 @@ class PartyService {
                 params.type = type;
             }
 
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
-
             const response = await apiClient.get(`/api/parties/search/${encodeURIComponent(query.trim())}`, { params });
-
-            console.log('✅ Parties search completed:', response.data?.data?.length || 0, 'results');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error searching parties:', error.message);
             throw error;
         }
     }
@@ -667,15 +564,11 @@ class PartyService {
      */
     async getPartyStats() {
         try {
-            console.log('📊 Fetching party statistics');
-
             // Validate company context
             const companyValidation = this.validateCompanyContext();
             if (!companyValidation.isValid) {
                 throw new Error(companyValidation.error);
             }
-
-            console.log('🏢 Using company:', companyValidation.company.name, 'ID:', companyValidation.companyId);
 
             // Add company ID as query param as fallback
             const params = {
@@ -683,12 +576,9 @@ class PartyService {
             };
 
             const response = await apiClient.get('/api/parties/stats', { params });
-
-            console.log('✅ Party statistics fetched successfully');
             return response.data;
 
         } catch (error) {
-            console.error('❌ Error fetching party statistics:', error.message);
             throw error;
         }
     }
@@ -702,7 +592,6 @@ class PartyService {
             // For health check, just try to get stats with company validation
             const companyValidation = this.validateCompanyContext();
             if (!companyValidation.isValid) {
-                console.warn('⚠️ Health check failed - no company context');
                 return false;
             }
 
@@ -711,7 +600,6 @@ class PartyService {
             });
             return response.status === 200;
         } catch (error) {
-            console.warn('⚠️ Party service health check failed:', error.message);
             return false;
         }
     }
@@ -791,34 +679,6 @@ class PartyService {
         return {
             isValid: errors.length === 0,
             errors
-        };
-    }
-
-    /**
-     * Debug current state
-     */
-    debugState() {
-        const validation = this.validateCompanyContext();
-        const token = localStorage.getItem('token');
-
-        console.log('🔍 Party Service Debug State:', {
-            hasToken: !!token,
-            tokenLength: token?.length || 0,
-            companyValidation: validation,
-            localStorage: {
-                token: !!localStorage.getItem('token'),
-                user: !!localStorage.getItem('user'),
-                currentCompany: !!localStorage.getItem('currentCompany'),
-                currentCompanyRaw: localStorage.getItem('currentCompany')
-            }
-        });
-
-        return {
-            hasToken: !!token,
-            companyValid: validation.isValid,
-            companyId: validation.companyId,
-            companyName: validation.company?.name,
-            error: validation.error
         };
     }
 }

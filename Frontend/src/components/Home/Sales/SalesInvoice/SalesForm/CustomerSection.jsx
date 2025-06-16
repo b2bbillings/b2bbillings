@@ -69,18 +69,15 @@ function CustomerSection({
             return;
         }
 
-        console.log(`🔍 Starting ${entityType} search for:`, query, 'with companyId:', companyId);
         setSearchLoading(true);
         setError(null);
 
         try {
             const response = await partyService.searchParties(query, entityType, 8, companyId);
-            console.log(`🔍 ${EntityTypeCapitalized} search response:`, response);
 
             if (response && response.success && response.data && Array.isArray(response.data)) {
                 // Transform the response data to match our expected format
                 const entities = response.data.map(party => {
-                    console.log(`🔄 Transforming ${entityType}:`, party);
                     return {
                         id: party._id || party.id,
                         _id: party._id || party.id,
@@ -102,7 +99,6 @@ function CustomerSection({
                     };
                 });
 
-                console.log(`✅ Transformed ${entityType}s:`, entities);
                 setFilteredCustomers(entities);
                 setShowSuggestions(true);
                 setHasSearched(true);
@@ -115,7 +111,6 @@ function CustomerSection({
                 }, 50);
 
             } else {
-                console.log(`❌ No ${entityType} data in response or response not successful`);
                 setFilteredCustomers([]);
                 setShowSuggestions(searchQuery.trim().length >= 2);
                 setHasSearched(true);
@@ -150,7 +145,6 @@ function CustomerSection({
         } else {
             // Clear error when companyId is provided
             setError(null);
-            console.log('✅ CustomerSection: companyId provided:', companyId);
         }
     }, [companyId, entityType]);
 
@@ -180,8 +174,6 @@ function CustomerSection({
     // Handle new customer save
     const handleSaveNewCustomer = async (newEntityData) => {
         try {
-            console.log(`💾 Creating new ${entityType}:`, newEntityData);
-
             if (!companyId) {
                 throw new Error('Company ID is required to create a new party');
             }
@@ -234,8 +226,6 @@ function CustomerSection({
                 // Select the new entity immediately
                 handleCustomerSelect(normalizedEntity);
                 setShowAddCustomerModal(false);
-
-                console.log(`✅ ${EntityTypeCapitalized} created and selected successfully`);
             } else {
                 throw new Error(`Failed to create ${entityType}`);
             }
@@ -248,7 +238,6 @@ function CustomerSection({
     // Handle search input change
     const handleSearchChange = (e) => {
         const value = e.target.value;
-        console.log(`📝 ${EntityTypeCapitalized} search input changed:`, value);
 
         setSearchQuery(value);
         setError(null);
@@ -266,7 +255,6 @@ function CustomerSection({
 
     // Handle customer selection
     const handleCustomerSelect = (selectedEntity) => {
-        console.log(`🎯 Selecting ${entityType}:`, selectedEntity);
 
         isUserTyping.current = false;
         setSearchQuery(selectedEntity.name);
@@ -285,7 +273,6 @@ function CustomerSection({
 
     // Handle customer removal
     const handleRemoveCustomer = () => {
-        console.log(`🗑️ Removing ${entityType}`);
 
         setSearchQuery('');
         onCustomerChange(null);
@@ -310,7 +297,6 @@ function CustomerSection({
 
     // Handle add new customer
     const handleAddNewCustomer = () => {
-        console.log(`➕ Opening add ${entityType} modal`);
 
         isUserTyping.current = false;
         setShowSuggestions(false);
@@ -330,7 +316,6 @@ function CustomerSection({
 
     // Handle input focus
     const handleInputFocus = () => {
-        console.log(`🎯 ${EntityTypeCapitalized} input focused`);
         isUserTyping.current = true;
 
         if (searchQuery.trim().length >= 2 && !customer && filteredCustomers.length > 0) {

@@ -21,6 +21,7 @@ import {
     faCheckCircle,
     faPlus
 } from '@fortawesome/free-solid-svg-icons';
+import { useParams } from 'react-router-dom';
 import './Parties.css';
 import PartyHeader from './Party/PartyHeader';
 import AddNewParty from './Party/AddNewParty';
@@ -31,6 +32,9 @@ import PayOut from './Party/PayOut';
 import TransactionTable from './Party/TransactionTable';
 
 function Parties() {
+    // Get company ID from URL params
+    const { companyId } = useParams();
+
     // State for managing parties
     const [parties, setParties] = useState([]);
     const [selectedParty, setSelectedParty] = useState(null);
@@ -46,7 +50,7 @@ function Parties() {
     const [editingParty, setEditingParty] = useState(null);
     const [showPayIn, setShowPayIn] = useState(false);
     const [showPayOut, setShowPayOut] = useState(false);
-    
+
     // Search states
     const [searchQuery, setSearchQuery] = useState('');
     const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
@@ -78,13 +82,23 @@ function Parties() {
     // Transaction refresh trigger
     const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0);
 
-    // Current company state (you might get this from a context or prop)
+    // Current company state - updated with actual company ID from URL
     const [currentCompany, setCurrentCompany] = useState({
-        id: '507f1f77bcf86cd799439012',
-        _id: '507f1f77bcf86cd799439012',
+        id: companyId,
+        _id: companyId,
         name: 'Your Company Name',
-        // Add other company details as needed
     });
+
+    // Update currentCompany when companyId changes
+    useEffect(() => {
+        if (companyId) {
+            setCurrentCompany(prev => ({
+                ...prev,
+                id: companyId,
+                _id: companyId
+            }));
+        }
+    }, [companyId]);
 
     // Helper function to format currency safely
     const formatCurrency = (amount) => {
@@ -113,21 +127,21 @@ function Parties() {
             companyName: party.companyName || '',
             gstNumber: party.gstNumber || '',
             country: party.country || 'INDIA',
-            
+
             // Address fields
             homeAddressLine: party.homeAddress?.addressLine || party.homeAddressLine || '',
             homePincode: party.homeAddress?.pincode || party.homePincode || '',
             homeState: party.homeAddress?.state || party.homeState || '',
             homeDistrict: party.homeAddress?.district || party.homeDistrict || '',
             homeTaluka: party.homeAddress?.taluka || party.homeTaluka || '',
-            
+
             deliveryAddressLine: party.deliveryAddress?.addressLine || party.deliveryAddressLine || '',
             deliveryPincode: party.deliveryAddress?.pincode || party.deliveryPincode || '',
             deliveryState: party.deliveryAddress?.state || party.deliveryState || '',
             deliveryDistrict: party.deliveryAddress?.district || party.deliveryDistrict || '',
             deliveryTaluka: party.deliveryAddress?.taluka || party.deliveryTaluka || '',
             sameAsHomeAddress: party.sameAsHomeAddress || false,
-            
+
             phoneNumbers: party.phoneNumbers || [],
             isActive: party.isActive !== false,
             createdAt: party.createdAt,
@@ -135,9 +149,27 @@ function Parties() {
         };
     };
 
-    // Load transactions for selected party - for TransactionTable component
+    // Helper function to get transaction type based on payment data
+    const getTransactionType = (paymentType, paymentMethod) => {
+        if (paymentType === 'payment_in') {
+            return 'Receipt Voucher';
+        } else if (paymentType === 'payment_out') {
+            return 'Payment Voucher';
+        }
+        return paymentMethod === 'cash' ? 'Cash Transaction' : 'Bank Transaction';
+    };
+
+    // Load transactions for selected party - FIXED VERSION
     const loadTransactions = async (partyId, options = {}) => {
         if (!partyId) {
+            setTransactions([]);
+            return;
+        }
+
+        // Check if company ID is available
+        if (!companyId) {
+            console.error('❌ Company ID is required for loading transactions');
+            setError('Company ID is required. Please select a company.');
             setTransactions([]);
             return;
         }
@@ -146,29 +178,34 @@ function Parties() {
             setIsLoadingTransactions(true);
             setError('');
 
+            // Ensure search is always a string
+            const searchValue = transactionSearchQuery || '';
+            const searchString = typeof searchValue === 'string' ? searchValue : String(searchValue);
+
             const filters = {
                 partyId: partyId,
                 page: options.page || 1,
                 limit: 20,
-                search: transactionSearchQuery,
+                search: searchString.trim(),
                 sortBy: options.sortBy || 'paymentDate',
                 sortOrder: options.sortOrder || 'desc'
             };
 
             console.log('🔄 Loading transactions for party:', partyId, filters);
 
-            const response = await paymentService.getPayments(filters);
+            // Pass companyId as first parameter to paymentService.getPaymentHistory
+            const response = await paymentService.getPaymentHistory(companyId, filters);
 
             if (response.success) {
                 // Transform payment data to transaction format
-                const transformedTransactions = response.data.payments.map(payment => ({
+                const transformedTransactions = (response.data || response.payments || []).map(payment => ({
                     id: payment._id || payment.id,
-                    type: getTransactionType(payment.type, payment.paymentMethod),
-                    number: payment.paymentNumber,
+                    type: getTransactionType(payment.type || payment.paymentType, payment.paymentMethod),
+                    number: payment.paymentNumber || payment.transactionId,
                     date: new Date(payment.paymentDate).toLocaleDateString('en-GB'),
-                    total: payment.amount,
-                    amount: payment.amount,
-                    balance: payment.partyBalanceAfter,
+                    total: payment.amount || payment.paymentAmount,
+                    amount: payment.amount || payment.paymentAmount,
+                    balance: payment.partyBalanceAfter || payment.balanceAfter,
                     paymentMethod: payment.paymentMethod,
                     reference: payment.reference,
                     notes: payment.notes,
@@ -186,12 +223,12 @@ function Parties() {
                 });
 
                 setTransactions(sortedTransactions);
-                
-                if (response.data.pagination) {
+
+                if (response.pagination) {
                     setTransactionsPagination({
-                        currentPage: response.data.pagination.currentPage,
-                        totalPages: response.data.pagination.totalPages,
-                        totalRecords: response.data.pagination.totalRecords
+                        currentPage: response.pagination.currentPage || 1,
+                        totalPages: response.pagination.totalPages || 1,
+                        totalRecords: response.pagination.totalRecords || sortedTransactions.length
                     });
                 }
 
@@ -208,44 +245,60 @@ function Parties() {
         }
     };
 
-    // Helper function to get transaction type based on payment data
-    const getTransactionType = (paymentType, paymentMethod) => {
-        if (paymentType === 'payment_in') {
-            return 'Receipt Voucher';
-        } else if (paymentType === 'payment_out') {
-            return 'Payment Voucher';
-        }
-        return paymentMethod === 'cash' ? 'Cash Transaction' : 'Bank Transaction';
-    };
-
-    // Load parties from backend
+    // Load parties from backend - FIXED VERSION
     const loadParties = async (options = {}) => {
+        // Check if company ID is available
+        if (!companyId) {
+            console.error('❌ Company ID is required for loading parties');
+            setError('Company ID is required. Please select a company.');
+            setIsLoadingParties(false);
+            return;
+        }
+
         try {
             setIsLoadingParties(true);
             setError('');
 
+            // Ensure search is always a string - ENHANCED FIX
+            let searchValue = options.search;
+            if (searchValue === undefined || searchValue === null) {
+                searchValue = searchQuery || '';
+            }
+
+            // Convert to string and trim, handle all edge cases
+            const searchString = String(searchValue).trim();
+
+            // Construct filters object with proper data types
             const filters = {
-                page: options.page || currentPage,
-                limit: partiesPerPage,
-                search: options.search || searchQuery,
-                partyType: options.partyType || (partyTypeFilter === 'all' ? undefined : partyTypeFilter),
-                sortBy: sortConfig.key,
-                sortOrder: sortConfig.direction
+                page: parseInt(options.page || currentPage, 10),
+                limit: parseInt(partiesPerPage, 10),
+                search: searchString, // Guaranteed to be a trimmed string
+                partyType: options.partyType || (partyTypeFilter === 'all' ? null : partyTypeFilter),
+                sortBy: String(sortConfig.key || 'createdAt'),
+                sortOrder: String(sortConfig.direction || 'desc')
             };
+
+            // Remove undefined values to avoid issues
+            Object.keys(filters).forEach(key => {
+                if (filters[key] === undefined) {
+                    delete filters[key];
+                }
+            });
 
             console.log('🔄 Loading parties with filters:', filters);
 
-            const response = await partyService.getParties(filters);
+            // Pass companyId as first parameter
+            const response = await partyService.getParties(companyId, filters);
 
             if (response.success) {
                 const normalizedParties = response.data.parties.map(normalizeParty);
                 setParties(normalizedParties);
-                
+
                 // Update pagination info
                 if (response.data.pagination) {
-                    setTotalPages(response.data.pagination.total);
-                    setTotalParties(response.data.pagination.totalItems);
-                    setCurrentPage(response.data.pagination.current);
+                    setTotalPages(response.data.pagination.total || 1);
+                    setTotalParties(response.data.pagination.totalItems || normalizedParties.length);
+                    setCurrentPage(response.data.pagination.current || 1);
                 }
 
                 // Select first party if none selected
@@ -267,44 +320,107 @@ function Parties() {
         }
     };
 
-    // Search parties with debouncing
+    // Also update the search useEffect to handle edge cases
     useEffect(() => {
-        const searchTimeout = setTimeout(() => {
-            setCurrentPage(1); // Reset to first page on search
-            loadParties({ search: searchQuery, page: 1 });
-        }, 500);
+        if (companyId) {
+            const searchTimeout = setTimeout(() => {
+                setCurrentPage(1); // Reset to first page on search
 
-        return () => clearTimeout(searchTimeout);
-    }, [searchQuery]);
+                // Ensure searchQuery is properly handled
+                let searchValue = searchQuery;
+                if (searchValue === undefined || searchValue === null) {
+                    searchValue = '';
+                }
+                const searchString = String(searchValue).trim();
 
-    // Reload when filters or sorting change
+                loadParties({
+                    search: searchString,
+                    page: 1
+                });
+            }, 500);
+
+            return () => clearTimeout(searchTimeout);
+        }
+    }, [searchQuery, companyId]);
+
+    // Update the filter/sort useEffect as well
     useEffect(() => {
-        setCurrentPage(1);
-        loadParties({ page: 1 });
-    }, [partyTypeFilter, sortConfig]);
+        if (companyId) {
+            setCurrentPage(1);
+            loadParties({
+                page: 1,
+                partyType: partyTypeFilter === 'all' ? null : partyTypeFilter
+            });
+        }
+    }, [partyTypeFilter, sortConfig, companyId]);
 
-    // Initial load
-    useEffect(() => {
-        loadParties();
-    }, []);
+    // Handle delete party - FIXED VERSION
+    const handleDeleteParty = async (party) => {
+        if (!window.confirm(`Are you sure you want to delete "${party.name}"?`)) {
+            return;
+        }
 
-    // Reload transactions when search query changes
+        if (!companyId) {
+            setError('Company ID is required. Please select a company.');
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            console.log('🗑️ Deleting party:', party.id || party._id);
+
+            // Pass companyId as first parameter
+            const response = await partyService.deleteParty(companyId, party.id || party._id);
+
+            if (response.success) {
+                // Remove from local state
+                setParties(prevParties =>
+                    prevParties.filter(p => p.id !== party.id && p._id !== party._id)
+                );
+                setTotalParties(prev => prev - 1);
+
+                // Clear selection if deleted party was selected
+                if (selectedParty && (selectedParty.id === party.id || selectedParty._id === party._id)) {
+                    setSelectedParty(null);
+                    setTransactions([]);
+                }
+
+                setSuccess('Party deleted successfully!');
+            } else {
+                throw new Error(response.message || 'Failed to delete party');
+            }
+        } catch (error) {
+            console.error('❌ Error deleting party:', error);
+            setError('Failed to delete party: ' + error.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Initial load - FIXED VERSION
     useEffect(() => {
-        if (selectedParty && transactionSearchQuery !== undefined) {
+        if (companyId) {
+            loadParties();
+        }
+    }, [companyId]);
+
+    // Reload transactions when search query changes - FIXED VERSION
+    useEffect(() => {
+        if (selectedParty && companyId && transactionSearchQuery !== undefined) {
             const searchTimeout = setTimeout(() => {
                 loadTransactions(selectedParty._id || selectedParty.id, { page: 1 });
             }, 500);
 
             return () => clearTimeout(searchTimeout);
         }
-    }, [transactionSearchQuery]);
+    }, [transactionSearchQuery, companyId]);
 
-    // Reload transactions when refresh trigger changes
+    // Reload transactions when refresh trigger changes - FIXED VERSION
     useEffect(() => {
-        if (selectedParty && transactionRefreshTrigger > 0) {
+        if (selectedParty && companyId && transactionRefreshTrigger > 0) {
             loadTransactions(selectedParty._id || selectedParty.id);
         }
-    }, [transactionRefreshTrigger]);
+    }, [transactionRefreshTrigger, companyId]);
 
     // Clear alerts after 5 seconds
     useEffect(() => {
@@ -332,7 +448,9 @@ function Parties() {
         setSelectedParty(normalizedParty);
 
         // Load actual transactions from backend
-        loadTransactions(normalizedParty._id || normalizedParty.id);
+        if (companyId) {
+            loadTransactions(normalizedParty._id || normalizedParty.id);
+        }
     };
 
     // Get sort icon for a specific column
@@ -404,47 +522,12 @@ function Parties() {
         }
     };
 
-    // Handle delete party
-    const handleDeleteParty = async (party) => {
-        if (!window.confirm(`Are you sure you want to delete "${party.name}"?`)) {
-            return;
-        }
-
-        try {
-            setIsLoading(true);
-            console.log('🗑️ Deleting party:', party.id || party._id);
-
-            const response = await partyService.deleteParty(party.id || party._id);
-
-            if (response.success) {
-                // Remove from local state
-                setParties(prevParties => 
-                    prevParties.filter(p => p.id !== party.id && p._id !== party._id)
-                );
-                setTotalParties(prev => prev - 1);
-
-                // Clear selection if deleted party was selected
-                if (selectedParty && (selectedParty.id === party.id || selectedParty._id === party._id)) {
-                    setSelectedParty(null);
-                    setTransactions([]);
-                }
-
-                setSuccess('Party deleted successfully!');
-            } else {
-                throw new Error(response.message || 'Failed to delete party');
-            }
-        } catch (error) {
-            console.error('❌ Error deleting party:', error);
-            setError('Failed to delete party: ' + error.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     // Handle refresh parties
     const handleRefreshParties = () => {
-        setCurrentPage(1);
-        loadParties({ page: 1 });
+        if (companyId) {
+            setCurrentPage(1);
+            loadParties({ page: 1 });
+        }
     };
 
     // Handle payment actions
@@ -463,15 +546,15 @@ function Parties() {
     // Handle payment recorded callback
     const handlePaymentRecorded = (paymentData, updatedParty) => {
         console.log('💰 Payment recorded:', paymentData);
-        
+
         // Update party in local state
         if (updatedParty) {
             const normalizedUpdatedParty = normalizeParty(updatedParty);
-            
+
             setParties(prevParties =>
                 prevParties.map(party =>
-                    (party.id === normalizedUpdatedParty.id || party._id === normalizedUpdatedParty._id) 
-                        ? normalizedUpdatedParty 
+                    (party.id === normalizedUpdatedParty.id || party._id === normalizedUpdatedParty._id)
+                        ? normalizedUpdatedParty
                         : party
                 )
             );
@@ -497,7 +580,9 @@ function Parties() {
     // Handle pagination
     const handlePageChange = (newPage) => {
         setCurrentPage(newPage);
-        loadParties({ page: newPage });
+        if (companyId) {
+            loadParties({ page: newPage });
+        }
     };
 
     // PartyHeader event handlers
@@ -525,6 +610,23 @@ function Parties() {
         console.log('Export parties clicked');
         // TODO: Implement export functionality
     };
+
+    // Early return if no company ID
+    if (!companyId) {
+        return (
+            <div className="parties-layout bg-light min-vh-100 d-flex align-items-center justify-content-center">
+                <Card className="border-0 bg-white text-center shadow-sm">
+                    <Card.Body className="p-4">
+                        <FontAwesomeIcon icon={faExclamationTriangle} size="2x" className="text-warning mb-3" />
+                        <h6 className="text-muted" style={{ fontSize: '14px' }}>Company Required</h6>
+                        <p className="text-muted mb-0" style={{ fontSize: '12px' }}>
+                            Please select a company to view parties and transactions
+                        </p>
+                    </Card.Body>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="parties-layout bg-light min-vh-100" style={{ fontSize: '13px' }}>
@@ -617,131 +719,166 @@ function Parties() {
                                 </Row>
                             </div>
 
-                            {/* Parties List */}
-                            <div className="flex-grow-1 parties-list-container">
+                            {/* Parties List with Scroll */}
+                            <div
+                                className="flex-grow-1 overflow-auto"
+                                style={{
+                                    maxHeight: 'calc(100vh - 350px)',
+                                    scrollbarWidth: 'thin',
+                                    scrollbarColor: 'rgba(0,0,0,0.3) transparent'
+                                }}
+                            >
                                 {isLoadingParties ? (
-                                    <div className="d-flex justify-content-center align-items-center h-100">
-                                        <Spinner animation="border" size="sm" />
-                                        <span className="ms-2">Loading parties...</span>
+                                    <div className="d-flex justify-content-center align-items-center py-5">
+                                        <div className="text-center">
+                                            <Spinner animation="border" size="sm" variant="primary" />
+                                            <div className="mt-2 text-muted small">Loading parties...</div>
+                                        </div>
                                     </div>
                                 ) : parties.length === 0 ? (
-                                    <div className="d-flex flex-column justify-content-center align-items-center h-100 p-3">
-                                        <FontAwesomeIcon icon={faUser} size="2x" className="text-muted mb-2" />
-                                        <p className="text-muted text-center" style={{ fontSize: '13px' }}>
-                                            {searchQuery ? 'No parties found matching your search' : 'No parties found'}
+                                    <div className="d-flex flex-column justify-content-center align-items-center py-5 px-3">
+                                        <FontAwesomeIcon icon={faUser} size="2x" className="text-muted mb-3" />
+                                        <h6 className="text-muted text-center mb-2" style={{ fontSize: '14px' }}>
+                                            {searchQuery ? 'No parties found' : 'No parties yet'}
+                                        </h6>
+                                        <p className="text-muted text-center mb-3" style={{ fontSize: '12px' }}>
+                                            {searchQuery
+                                                ? 'Try adjusting your search terms'
+                                                : 'Get started by adding your first party'
+                                            }
                                         </p>
                                         <Button
-                                            variant="outline-primary"
+                                            variant="primary"
                                             size="sm"
                                             onClick={handleOpenModal}
+                                            className="px-3"
                                             style={{ fontSize: '12px' }}
                                         >
                                             <FontAwesomeIcon icon={faPlus} className="me-1" />
-                                            Add First Party
+                                            Add Party
                                         </Button>
                                     </div>
                                 ) : (
-                                    <div className="border-0">
+                                    <div className="list-group list-group-flush">
                                         {parties.map((party) => {
                                             const isSelected = selectedParty && (selectedParty.id === party.id || selectedParty._id === party._id);
                                             return (
                                                 <div
                                                     key={party.id || party._id}
-                                                    className={`border-0 border-bottom party-item p-2 position-relative ${
-                                                        isSelected
-                                                            ? 'bg-primary bg-opacity-75 text-white'
+                                                    className={`list-group-item list-group-item-action border-0 border-bottom px-3 py-2 ${isSelected
+                                                            ? 'bg-primary text-white'
                                                             : 'bg-white'
-                                                    }`}
+                                                        }`}
                                                     style={{
                                                         cursor: 'pointer',
-                                                        transition: 'background-color 0.2s ease'
+                                                        transition: 'all 0.2s ease',
+                                                        minHeight: '70px'
                                                     }}
                                                     onClick={() => handlePartySelect(party)}
+                                                    onMouseEnter={(e) => {
+                                                        if (!isSelected) {
+                                                            e.target.classList.add('bg-light');
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (!isSelected) {
+                                                            e.target.classList.remove('bg-light');
+                                                        }
+                                                    }}
                                                 >
-                                                    <Row className="align-items-center">
-                                                        <Col>
-                                                            <div className="d-flex justify-content-between align-items-start">
-                                                                <div className="flex-grow-1">
+                                                    <Row className="align-items-center g-0">
+                                                        <Col className="pe-2">
+                                                            <div className="d-flex justify-content-between align-items-start mb-1">
+                                                                <div className="flex-grow-1 me-2">
                                                                     <div
-                                                                        className={`fw-bold mb-1 ${
-                                                                            isSelected ? 'text-white' : 'text-dark'
-                                                                        }`}
-                                                                        style={{ fontSize: '13px' }}
+                                                                        className={`fw-semibold mb-1 ${isSelected ? 'text-white' : 'text-dark'
+                                                                            }`}
+                                                                        style={{
+                                                                            fontSize: '13px',
+                                                                            lineHeight: '1.2',
+                                                                            wordBreak: 'break-word'
+                                                                        }}
                                                                     >
                                                                         {party.name}
-                                                                        <Badge 
-                                                                            bg={party.partyType === 'customer' ? 'success' : party.partyType === 'vendor' ? 'warning' : 'info'} 
-                                                                            className="ms-2" 
-                                                                            style={{ fontSize: '10px' }}
+                                                                        <Badge
+                                                                            bg={
+                                                                                party.partyType === 'customer'
+                                                                                    ? 'success'
+                                                                                    : party.partyType === 'vendor'
+                                                                                        ? 'warning'
+                                                                                        : 'info'
+                                                                            }
+                                                                            className="ms-2"
+                                                                            style={{ fontSize: '9px' }}
                                                                         >
                                                                             {party.partyType}
                                                                         </Badge>
                                                                     </div>
-                                                                    <small
-                                                                        className={
-                                                                            isSelected ? 'text-white text-opacity-75' : 'text-muted'
-                                                                        }
+                                                                    <div
+                                                                        className={`small ${isSelected ? 'text-white-50' : 'text-muted'
+                                                                            }`}
                                                                         style={{ fontSize: '11px' }}
                                                                     >
                                                                         <FontAwesomeIcon icon={faPhone} className="me-1" />
                                                                         {party.phone}
-                                                                    </small>
+                                                                    </div>
                                                                 </div>
-                                                                
-                                                                {/* Party Actions */}
+
+                                                                {/* Party Actions Dropdown */}
                                                                 <div onClick={(e) => e.stopPropagation()}>
                                                                     <Dropdown align="end">
                                                                         <Dropdown.Toggle
                                                                             variant="link"
-                                                                            className="p-0 border-0 shadow-none bg-transparent"
+                                                                            className="p-0 border-0 shadow-none text-decoration-none"
                                                                             style={{ fontSize: '12px' }}
                                                                         >
-                                                                            <FontAwesomeIcon 
-                                                                                icon={faEllipsisV} 
-                                                                                className={isSelected ? 'text-white' : 'text-muted'} 
-                                                                                size="sm" 
+                                                                            <FontAwesomeIcon
+                                                                                icon={faEllipsisV}
+                                                                                className={isSelected ? 'text-white' : 'text-muted'}
+                                                                                size="sm"
                                                                             />
                                                                         </Dropdown.Toggle>
-                                                                        <Dropdown.Menu>
-                                                                            <Dropdown.Item 
+                                                                        <Dropdown.Menu className="shadow-sm">
+                                                                            <Dropdown.Item
                                                                                 onClick={() => handleEditParty(party)}
+                                                                                className="small"
                                                                                 style={{ fontSize: '12px' }}
                                                                             >
-                                                                                <FontAwesomeIcon icon={faEdit} className="me-2" />
-                                                                                Edit
+                                                                                <FontAwesomeIcon icon={faEdit} className="me-2 text-primary" />
+                                                                                Edit Party
                                                                             </Dropdown.Item>
                                                                             <Dropdown.Divider />
-                                                                            <Dropdown.Item 
+                                                                            <Dropdown.Item
                                                                                 onClick={() => handleDeleteParty(party)}
-                                                                                className="text-danger"
+                                                                                className="text-danger small"
                                                                                 style={{ fontSize: '12px' }}
                                                                             >
                                                                                 <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                                                                Delete
+                                                                                Delete Party
                                                                             </Dropdown.Item>
                                                                         </Dropdown.Menu>
                                                                     </Dropdown>
                                                                 </div>
                                                             </div>
-                                                            
+
+                                                            {/* Balance Amount */}
                                                             <div className="mt-1">
-                                                                <div
-                                                                    className={`fw-bold ${
-                                                                        isSelected
+                                                                <span
+                                                                    className={`fw-bold small ${isSelected
                                                                             ? 'text-white'
                                                                             : party.balance > 0
-                                                                            ? 'text-success'
-                                                                            : party.balance < 0
-                                                                            ? 'text-danger'
-                                                                            : 'text-secondary'
-                                                                    }`}
+                                                                                ? 'text-success'
+                                                                                : party.balance < 0
+                                                                                    ? 'text-danger'
+                                                                                    : 'text-secondary'
+                                                                        }`}
                                                                     style={{ fontSize: '12px' }}
                                                                 >
-                                                                    ₹{formatCurrency(party.balance)}
-                                                                    <small className="ms-1 opacity-75">
+                                                                    ₹{formatCurrency(Math.abs(party.balance))}
+                                                                    <small className={`ms-1 ${isSelected ? 'text-white-50' : 'text-muted'}`}>
                                                                         ({party.openingBalanceType})
                                                                     </small>
-                                                                </div>
+                                                                </span>
                                                             </div>
                                                         </Col>
                                                     </Row>
@@ -755,38 +892,44 @@ function Parties() {
                             {/* Pagination */}
                             {totalPages > 1 && (
                                 <div className="p-2 border-top bg-light">
-                                    <div className="d-flex justify-content-between align-items-center">
-                                        <Button
-                                            variant="outline-secondary"
-                                            size="sm"
-                                            disabled={currentPage <= 1}
-                                            onClick={() => handlePageChange(currentPage - 1)}
-                                            style={{ fontSize: '11px' }}
-                                        >
-                                            Previous
-                                        </Button>
-                                        <small className="text-muted" style={{ fontSize: '11px' }}>
-                                            Page {currentPage} of {totalPages}
-                                        </small>
-                                        <Button
-                                            variant="outline-secondary"
-                                            size="sm"
-                                            disabled={currentPage >= totalPages}
-                                            onClick={() => handlePageChange(currentPage + 1)}
-                                            style={{ fontSize: '11px' }}
-                                        >
-                                            Next
-                                        </Button>
-                                    </div>
+                                    <Row className="align-items-center g-2">
+                                        <Col>
+                                            <Button
+                                                variant="outline-secondary"
+                                                size="sm"
+                                                disabled={currentPage <= 1}
+                                                onClick={() => handlePageChange(currentPage - 1)}
+                                                style={{ fontSize: '11px' }}
+                                            >
+                                                Previous
+                                            </Button>
+                                        </Col>
+                                        <Col xs="auto">
+                                            <small className="text-muted" style={{ fontSize: '11px' }}>
+                                                Page {currentPage} of {totalPages}
+                                            </small>
+                                        </Col>
+                                        <Col xs="auto">
+                                            <Button
+                                                variant="outline-secondary"
+                                                size="sm"
+                                                disabled={currentPage >= totalPages}
+                                                onClick={() => handlePageChange(currentPage + 1)}
+                                                style={{ fontSize: '11px' }}
+                                            >
+                                                Next
+                                            </Button>
+                                        </Col>
+                                    </Row>
                                 </div>
                             )}
 
                             {/* Bottom Contact Info */}
                             <div className="p-2 border-top bg-light">
-                                <Card className="border-0 bg-success bg-opacity-10 text-center">
-                                    <Card.Body className="p-2">
+                                <Card className="border-0 bg-success bg-opacity-10">
+                                    <Card.Body className="p-2 text-center">
                                         <FontAwesomeIcon icon={faPhone} className="text-success mb-1" />
-                                        <div className="small text-muted" style={{ fontSize: '11px' }}>
+                                        <div className="small text-muted" style={{ fontSize: '11px', lineHeight: '1.3' }}>
                                             Use contacts from your Phone or Gmail to{' '}
                                             <strong className="text-dark">quickly create parties.</strong>
                                         </div>
@@ -805,12 +948,12 @@ function Parties() {
                                     <Row className="align-items-center">
                                         <Col>
                                             <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                                <div>
+                                                <div className="flex-grow-1">
                                                     <h5 className="mb-1 fw-bold d-flex align-items-center" style={{ fontSize: '16px' }}>
                                                         {selectedParty.name}
-                                                        <Badge 
-                                                            bg={selectedParty.partyType === 'customer' ? 'success' : selectedParty.partyType === 'vendor' ? 'warning' : 'info'} 
-                                                            className="ms-2" 
+                                                        <Badge
+                                                            bg={selectedParty.partyType === 'customer' ? 'success' : selectedParty.partyType === 'vendor' ? 'warning' : 'info'}
+                                                            className="ms-2"
                                                             style={{ fontSize: '11px' }}
                                                         >
                                                             {selectedParty.partyType}
@@ -820,6 +963,7 @@ function Parties() {
                                                             size="sm"
                                                             className="p-1 ms-2 text-primary"
                                                             onClick={() => handleEditParty(selectedParty)}
+                                                            title="Edit Party"
                                                         >
                                                             <FontAwesomeIcon icon={faEdit} size="sm" />
                                                         </Button>
@@ -852,12 +996,12 @@ function Parties() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="d-flex gap-2">
+                                                <div className="d-flex gap-2 flex-shrink-0">
                                                     <Button
                                                         variant="outline-success"
                                                         size="sm"
                                                         onClick={handlePayIn}
-                                                        className="px-2 border-2"
+                                                        className="px-3"
                                                         style={{ fontSize: '12px' }}
                                                     >
                                                         <FontAwesomeIcon icon={faArrowDown} className="me-1" />
@@ -867,7 +1011,7 @@ function Parties() {
                                                         variant="outline-danger"
                                                         size="sm"
                                                         onClick={handlePayOut}
-                                                        className="px-2 border-2"
+                                                        className="px-3"
                                                         style={{ fontSize: '12px' }}
                                                     >
                                                         <FontAwesomeIcon icon={faArrowUp} className="me-1" />
@@ -880,7 +1024,7 @@ function Parties() {
                                 </div>
 
                                 {/* TransactionTable Component */}
-                                <div className="p-3 h-100">
+                                <div className="p-3 h-100 overflow-hidden">
                                     <TransactionTable
                                         selectedParty={selectedParty}
                                         transactions={transactions}
@@ -893,16 +1037,19 @@ function Parties() {
                                         onPayOut={handlePayOut}
                                         formatCurrency={formatCurrency}
                                         refreshTrigger={transactionRefreshTrigger}
+                                        companyId={companyId}
                                     />
                                 </div>
                             </div>
                         ) : (
                             <div className="h-100 d-flex align-items-center justify-content-center bg-light">
                                 <Card className="border-0 bg-white text-center shadow-sm">
-                                    <Card.Body className="p-4">
-                                        <FontAwesomeIcon icon={faUser} size="2x" className="text-muted mb-3" />
-                                        <h6 className="text-muted" style={{ fontSize: '14px' }}>Select a party to view details</h6>
-                                        <p className="text-muted mb-0" style={{ fontSize: '12px' }}>Choose a party from the list to see their information and transactions</p>
+                                    <Card.Body className="p-5">
+                                        <FontAwesomeIcon icon={faUser} size="3x" className="text-muted mb-3" />
+                                        <h5 className="text-muted mb-2" style={{ fontSize: '16px' }}>Select a party to get started</h5>
+                                        <p className="text-muted mb-0" style={{ fontSize: '14px' }}>
+                                            Choose a party from the list to view their details and transaction history
+                                        </p>
                                     </Card.Body>
                                 </Card>
                             </div>
@@ -918,6 +1065,7 @@ function Parties() {
                 editingParty={editingParty}
                 onSaveParty={handleSaveParty}
                 isQuickAdd={false}
+                companyId={companyId}
             />
 
             {/* Payment Modals */}
@@ -927,6 +1075,8 @@ function Parties() {
                 party={selectedParty}
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
+                companyId={companyId}
+                currentUser={currentCompany} // Pass current user if available
             />
 
             <PayOut
@@ -935,18 +1085,25 @@ function Parties() {
                 party={selectedParty}
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
+                companyId={companyId}
+                currentUser={currentCompany} // Pass current user if available
             />
 
             {/* Loading Overlay */}
             {isLoading && (
-                <div 
-                    className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" 
-                    style={{ zIndex: 9999 }}
+                <div
+                    className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+                    style={{
+                        zIndex: 9999,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)'
+                    }}
                 >
-                    <div className="bg-white rounded p-3 text-center">
-                        <Spinner animation="border" className="mb-2" />
-                        <div>Processing...</div>
-                    </div>
+                    <Card className="border-0 shadow-lg">
+                        <Card.Body className="p-4 text-center">
+                            <Spinner animation="border" variant="primary" className="mb-3" />
+                            <h6 className="text-muted mb-0">Processing...</h6>
+                        </Card.Body>
+                    </Card>
                 </div>
             )}
         </div>

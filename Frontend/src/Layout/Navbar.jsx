@@ -68,17 +68,6 @@ function Navbar({
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
 
-    // Debug logging
-    useEffect(() => {
-        console.log('🧭 Navbar: Route info:', {
-            urlCompanyId,
-            companyId,
-            effectiveCompanyId,
-            currentCompany: currentCompany?.businessName || currentCompany?.name,
-            pathname: location.pathname
-        });
-    }, [urlCompanyId, companyId, effectiveCompanyId, currentCompany, location.pathname]);
-
     // Generate initials from company name
     const generateInitials = (name) => {
         if (!name) return 'NA';
@@ -166,17 +155,13 @@ function Navbar({
 
     // Handle company selection with navigation
     const handleCompanySelect = (company) => {
-        console.log('🏢 Navbar: Company selected:', company?.businessName || company?.name);
-
         try {
             if (!company) {
-                console.warn('⚠️ No company provided to select');
                 return;
             }
 
             const newCompanyId = company.id || company._id;
             if (!newCompanyId) {
-                console.error('❌ Selected company has no ID');
                 return;
             }
 
@@ -186,8 +171,6 @@ function Navbar({
 
             // Navigate to the same view but with new company
             const newPath = `/companies/${newCompanyId}/${currentView}`;
-            console.log('🧭 Navigating to new company path:', newPath);
-
             navigate(newPath);
 
             // Notify parent component
@@ -196,7 +179,7 @@ function Navbar({
             }
 
         } catch (error) {
-            console.error('❌ Error selecting company:', error);
+            // Silent error handling
         } finally {
             setShowBusinessDropdown(false);
         }
@@ -205,7 +188,6 @@ function Navbar({
     // Handle opening create company modal
     const handleAddNewBusiness = () => {
         if (!isOnline) {
-            console.warn('⚠️ Cannot create company while offline');
             return;
         }
 
@@ -220,8 +202,6 @@ function Navbar({
 
     // Handle company creation success
     const handleCompanyCreated = (newCompany) => {
-        console.log('🆕 Navbar: Company created:', newCompany);
-
         try {
             // Notify parent component first
             if (onCompanyCreated) {
@@ -233,7 +213,6 @@ function Navbar({
                 const newCompanyId = newCompany.id || newCompany._id;
                 if (newCompanyId) {
                     const newPath = `/companies/${newCompanyId}/dashboard`;
-                    console.log('🧭 Navigating to new company dashboard:', newPath);
 
                     // Small delay to ensure state updates are processed
                     setTimeout(() => {
@@ -242,7 +221,7 @@ function Navbar({
                 }
             }
         } catch (error) {
-            console.error('❌ Error handling company creation:', error);
+            // Silent error handling
         } finally {
             setShowCreateCompany(false);
         }
@@ -452,15 +431,6 @@ function Navbar({
                                             </div>
                                         )}
 
-                                        {/* Company ID Debug Info (Development Only) */}
-                                        {process.env.NODE_ENV === 'development' && effectiveCompanyId && (
-                                            <div className="px-3 py-1">
-                                                <small className="text-muted">
-                                                    Current ID: {effectiveCompanyId}
-                                                </small>
-                                            </div>
-                                        )}
-
                                         {isLoadingCompanies ? (
                                             <div className="px-3 py-2 text-center">
                                                 <Spinner animation="border" size="sm" className="me-2" />
@@ -497,11 +467,6 @@ function Navbar({
                                                                     )}
                                                                     {company.email && (
                                                                         <small className="text-muted d-block">{company.email}</small>
-                                                                    )}
-                                                                    {process.env.NODE_ENV === 'development' && (
-                                                                        <small className="text-muted d-block">
-                                                                            ID: {companyId}
-                                                                        </small>
                                                                     )}
                                                                 </div>
                                                                 {isCurrentCompany && (

@@ -8,14 +8,27 @@ import InvoiceDetails from './SalesForm/InvoiceDetails';
 import ItemsTableWithTotals from './SalesForm/itemsTableWithTotals';
 import './SalesForm.css';
 
-
-
-function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories = [], onAddItem }) {
+function SalesForm({
+    onSave,
+    onCancel,
+    onExit,
+    inventoryItems = [],
+    categories = [],
+    onAddItem,
+    // ✅ NEW: Added mode and document type props
+    mode = 'invoices',
+    documentType = 'invoice',
+    formType = 'sales',
+    pageTitle
+}) {
     // Get companyId from URL params
     const { companyId } = useParams();
 
     // Alternative: Get companyId from localStorage if not in URL
     const [localCompanyId, setLocalCompanyId] = useState(null);
+
+    // ✅ NEW: Dynamic content based on document type
+    const isQuotationsMode = mode === 'quotations' || documentType === 'quotation';
 
     useEffect(() => {
         if (!companyId) {
@@ -24,28 +37,65 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 localStorage.getItem('companyId') ||
                 sessionStorage.getItem('companyId');
 
-            console.log('🏢 SalesForm - CompanyId from storage:', storedCompanyId);
+            console.log(`🏢 ${isQuotationsMode ? 'QuotationForm' : 'SalesForm'} - CompanyId from storage:`, storedCompanyId);
             setLocalCompanyId(storedCompanyId);
         }
-    }, [companyId]);
+    }, [companyId, isQuotationsMode]);
 
     // Use companyId from params, fallback to localStorage
     const effectiveCompanyId = companyId || localCompanyId;
 
-    // Generate invoice number function
-    const generateInvoiceNumber = (invoiceType = 'non-gst') => {
+    // ✅ UPDATED: Generate document number function based on mode
+    const generateDocumentNumber = (invoiceType = 'non-gst') => {
         const date = new Date();
         const year = date.getFullYear();
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const day = date.getDate().toString().padStart(2, '0');
         const random = Math.floor(1000 + Math.random() * 9000);
 
-        if (invoiceType === 'gst') {
-            return `GST-${year}${month}${day}-${random}`;
+        if (isQuotationsMode) {
+            // Quotation numbering
+            if (invoiceType === 'gst') {
+                return `QUO-GST-${year}${month}${day}-${random}`;
+            } else {
+                return `QUO-${year}${month}${day}-${random}`;
+            }
         } else {
-            return `INV-${year}${month}${day}-${random}`;
+            // Invoice numbering
+            if (invoiceType === 'gst') {
+                return `GST-${year}${month}${day}-${random}`;
+            } else {
+                return `INV-${year}${month}${day}-${random}`;
+            }
         }
     };
+
+    // ✅ UPDATED: Dynamic field labels based on mode
+    const getFieldLabels = () => {
+        return isQuotationsMode
+            ? {
+                documentName: 'Quotation',
+                documentNumber: 'Quotation Number',
+                documentDate: 'Quote Date',
+                documentAction: 'Create Quotation',
+                shareAction: 'Share Quotation',
+                saveAction: 'Save Quotation',
+                customerLabel: 'Quote For',
+                notesPlaceholder: 'Add quotation notes, terms & conditions...'
+            }
+            : {
+                documentName: 'Invoice',
+                documentNumber: 'Invoice Number',
+                documentDate: 'Invoice Date',
+                documentAction: 'Create Invoice',
+                shareAction: 'Share Invoice',
+                saveAction: 'Save Invoice',
+                customerLabel: 'Bill To',
+                notesPlaceholder: 'Add invoice notes, payment terms...'
+            };
+    };
+
+    const labels = getFieldLabels();
 
     // Initialize form data state
     const [formData, setFormData] = useState({
@@ -53,14 +103,17 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         invoiceType: 'gst',
         customer: null,
         mobileNumber: '',
-        invoiceNumber: generateInvoiceNumber('gst'),
+        invoiceNumber: generateDocumentNumber('gst'),
         invoiceDate: new Date().toISOString().split('T')[0],
         items: [],
         paymentMethod: 'cash',
-        notes: ''
+        notes: '',
+        // ✅ NEW: Add quotation-specific fields
+        quotationValidity: isQuotationsMode ? 30 : undefined, // 30 days validity for quotations
+        quotationStatus: isQuotationsMode ? 'draft' : undefined,
+        convertedToInvoice: isQuotationsMode ? false : undefined,
+        documentMode: isQuotationsMode ? 'quotation' : 'invoice'
     });
-
-    // ✅ REMOVED: No longer need separate itemsTableTotals state - handled by ItemsTableWithTotals
 
     // Create empty item function - now has access to formData
     const createEmptyItem = () => {
@@ -75,8 +128,8 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             pricePerUnit: '',
             discountPercent: 0,
             discountAmount: 0,
-            cgstAmount: 0, // ✅ FIXED: Use cgstAmount instead of cgst
-            sgstAmount: 0, // ✅ FIXED: Use sgstAmount instead of sgst
+            cgstAmount: 0,
+            sgstAmount: 0,
             igst: 0,
             taxRate: formData.gstEnabled ? 18 : 0,
             amount: 0,
@@ -95,21 +148,21 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 items: [createEmptyItem()]
             }));
         }
-    }, [formData.gstEnabled]); // Re-run when GST status changes
+    }, [formData.gstEnabled]);
 
-    // Handle invoice type change
+    // ✅ UPDATED: Handle invoice type change with mode awareness
     const handleInvoiceTypeChange = (newType) => {
-        console.log('📋 Changing invoice type to:', newType);
+        console.log(`📋 Changing ${labels.documentName.toLowerCase()} type to:`, newType);
 
         const gstEnabled = newType === 'gst';
-        const newInvoiceNumber = generateInvoiceNumber(newType);
+        const newDocumentNumber = generateDocumentNumber(newType);
 
         setFormData(prev => {
             const updatedItems = prev.items.map(item => ({
                 ...item,
                 taxRate: gstEnabled ? (item.taxRate || 18) : 0,
-                cgstAmount: gstEnabled ? item.cgstAmount : 0, // ✅ FIXED
-                sgstAmount: gstEnabled ? item.sgstAmount : 0, // ✅ FIXED
+                cgstAmount: gstEnabled ? item.cgstAmount : 0,
+                sgstAmount: gstEnabled ? item.sgstAmount : 0,
                 igst: gstEnabled ? item.igst : 0,
                 taxAmount: gstEnabled ? item.taxAmount : 0
             }));
@@ -118,25 +171,25 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 ...prev,
                 invoiceType: newType,
                 gstEnabled,
-                invoiceNumber: newInvoiceNumber,
+                invoiceNumber: newDocumentNumber,
                 items: updatedItems
             };
         });
     };
 
-    // Handle GST toggle change
+    // ✅ UPDATED: Handle GST toggle change with mode awareness
     const handleGSTToggleChange = (enabled) => {
-        console.log('🔄 GST Toggle changed to:', enabled);
+        console.log(`🔄 GST Toggle changed to:`, enabled, `for ${labels.documentName.toLowerCase()}`);
 
         const newInvoiceType = enabled ? 'gst' : 'non-gst';
-        const newInvoiceNumber = generateInvoiceNumber(newInvoiceType);
+        const newDocumentNumber = generateDocumentNumber(newInvoiceType);
 
         setFormData(prev => {
             const updatedItems = prev.items.map(item => ({
                 ...item,
                 taxRate: enabled ? (item.taxRate || 18) : 0,
-                cgstAmount: enabled ? item.cgstAmount : 0, // ✅ FIXED
-                sgstAmount: enabled ? item.sgstAmount : 0, // ✅ FIXED
+                cgstAmount: enabled ? item.cgstAmount : 0,
+                sgstAmount: enabled ? item.sgstAmount : 0,
                 igst: enabled ? item.igst : 0,
                 taxAmount: enabled ? item.taxAmount : 0
             }));
@@ -145,15 +198,11 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 ...prev,
                 gstEnabled: enabled,
                 invoiceType: newInvoiceType,
-                invoiceNumber: newInvoiceNumber,
+                invoiceNumber: newDocumentNumber,
                 items: updatedItems
             };
         });
     };
-
-    // ✅ REMOVED: handleTotalsChange - no longer needed as ItemsTableWithTotals handles everything
-
-    // ✅ REMOVED: totals calculation - handled internally by ItemsTableWithTotals
 
     // Update form data helper
     const updateFormData = (field, value) => {
@@ -165,13 +214,11 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
 
     // Handle items change with proper validation
     const handleItemsChange = (newItems) => {
-        console.log('🔄 Items updated:', newItems.length);
+        console.log(`🔄 ${labels.documentName} items updated:`, newItems.length);
         updateFormData('items', newItems);
     };
 
-    // ✅ REMOVED: Round off handlers - handled by ItemsTableWithTotals
-
-    // ✅ UPDATED: Enhanced validation function with better error handling
+    // ✅ UPDATED: Enhanced validation function with mode awareness
     const validateForm = () => {
         const errors = [];
 
@@ -182,40 +229,72 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
 
         // Customer validation - more flexible for different scenarios
         if (!formData.customer && !formData.mobileNumber) {
-            errors.push('Please select a customer or enter mobile number');
+            errors.push(`Please select a customer or enter mobile number for ${labels.documentName.toLowerCase()}`);
         }
 
-        // Invoice number validation
+        // Document number validation with mode-specific patterns
         if (!formData.invoiceNumber) {
-            errors.push('Invoice number is required');
+            errors.push(`${labels.documentNumber} is required`);
         } else {
-            const gstPattern = /^GST-\d{8}-\d{4}$/;
-            const nonGstPattern = /^INV-\d{8}-\d{4}$/;
+            let validPattern = false;
 
-            if (formData.invoiceType === 'gst' && !gstPattern.test(formData.invoiceNumber)) {
-                errors.push('GST invoice number must follow format: GST-YYYYMMDD-XXXX');
-            }
+            if (isQuotationsMode) {
+                // Quotation patterns
+                const gstQuotationPattern = /^QUO-GST-\d{8}-\d{4}$/;
+                const nonGstQuotationPattern = /^QUO-\d{8}-\d{4}$/;
 
-            if (formData.invoiceType === 'non-gst' && !nonGstPattern.test(formData.invoiceNumber)) {
-                errors.push('Invoice number must follow format: INV-YYYYMMDD-XXXX');
+                if (formData.invoiceType === 'gst') {
+                    validPattern = gstQuotationPattern.test(formData.invoiceNumber);
+                    if (!validPattern) {
+                        errors.push('GST quotation number must follow format: QUO-GST-YYYYMMDD-XXXX');
+                    }
+                } else {
+                    validPattern = nonGstQuotationPattern.test(formData.invoiceNumber);
+                    if (!validPattern) {
+                        errors.push('Quotation number must follow format: QUO-YYYYMMDD-XXXX');
+                    }
+                }
+            } else {
+                // Invoice patterns
+                const gstInvoicePattern = /^GST-\d{8}-\d{4}$/;
+                const nonGstInvoicePattern = /^INV-\d{8}-\d{4}$/;
+
+                if (formData.invoiceType === 'gst') {
+                    validPattern = gstInvoicePattern.test(formData.invoiceNumber);
+                    if (!validPattern) {
+                        errors.push('GST invoice number must follow format: GST-YYYYMMDD-XXXX');
+                    }
+                } else {
+                    validPattern = nonGstInvoicePattern.test(formData.invoiceNumber);
+                    if (!validPattern) {
+                        errors.push('Invoice number must follow format: INV-YYYYMMDD-XXXX');
+                    }
+                }
             }
         }
 
-        // Invoice date validation
+        // Document date validation
         if (!formData.invoiceDate) {
-            errors.push('Invoice date is required');
+            errors.push(`${labels.documentDate} is required`);
         } else {
-            const invoiceDate = new Date(formData.invoiceDate);
+            const documentDate = new Date(formData.invoiceDate);
             const today = new Date();
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(today.getFullYear() - 1);
 
-            if (invoiceDate > today) {
-                errors.push('Invoice date cannot be in the future');
+            if (documentDate > today) {
+                errors.push(`${labels.documentDate} cannot be in the future`);
             }
 
-            if (invoiceDate < oneYearAgo) {
-                errors.push('Invoice date cannot be more than one year old');
+            if (documentDate < oneYearAgo) {
+                errors.push(`${labels.documentDate} cannot be more than one year old`);
+            }
+        }
+
+        // ✅ NEW: Quotation-specific validations
+        if (isQuotationsMode) {
+            if (formData.quotationValidity && (formData.quotationValidity < 1 || formData.quotationValidity > 365)) {
+                errors.push('Quotation validity must be between 1 and 365 days');
             }
         }
 
@@ -227,7 +306,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         );
 
         if (validItems.length === 0) {
-            errors.push('Please add at least one valid item with name, quantity, and price');
+            errors.push(`Please add at least one valid item with name, quantity, and price for ${labels.documentName.toLowerCase()}`);
         }
 
         // Check for items with invalid data
@@ -252,13 +331,13 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         if (formData.invoiceType === 'gst' && formData.gstEnabled) {
             const itemsWithoutHSN = validItems.filter(item => !item.hsnCode || item.hsnCode.trim() === '');
             if (itemsWithoutHSN.length > 0) {
-                errors.push(`${itemsWithoutHSN.length} item(s) are missing HSN codes. HSN codes are required for GST invoices.`);
+                errors.push(`${itemsWithoutHSN.length} item(s) are missing HSN codes. HSN codes are required for GST ${labels.documentName.toLowerCase()}s.`);
             }
 
             // Validate tax rates for GST items
             const itemsWithInvalidTax = validItems.filter(item => {
                 const taxRate = parseFloat(item.taxRate) || 0;
-                return taxRate < 0 || taxRate > 28; // GST rates typically range from 0% to 28%
+                return taxRate < 0 || taxRate > 28;
             });
 
             if (itemsWithInvalidTax.length > 0) {
@@ -275,26 +354,25 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         }, 0);
 
         if (totalAmount <= 0) {
-            errors.push('Invoice total must be greater than zero');
+            errors.push(`${labels.documentName} total must be greater than zero`);
         }
 
         // Large amount validation (optional business rule)
-        if (totalAmount > 1000000) { // 10 lakh
-            console.warn('⚠️ Large invoice amount detected:', totalAmount);
-            // Could add to errors if business rules require approval for large amounts
+        if (totalAmount > 1000000) {
+            console.warn(`⚠️ Large ${labels.documentName.toLowerCase()} amount detected:`, totalAmount);
         }
 
         return errors;
     };
 
-    // ✅ FIXED: Enhanced save handler with proper return values
+    // ✅ UPDATED: Enhanced save handler with mode awareness
     const handleSave = (invoiceDataFromTable) => {
-        console.log('📥 SalesForm received invoice data:', invoiceDataFromTable);
+        console.log(`📥 ${labels.documentName}Form received data:`, invoiceDataFromTable);
 
         const errors = validateForm();
 
         if (errors.length > 0) {
-            alert('Please fix the following errors:\n\n' + errors.join('\n'));
+            alert(`Please fix the following errors in your ${labels.documentName.toLowerCase()}:\n\n` + errors.join('\n'));
             return Promise.resolve({
                 success: false,
                 error: 'Validation failed',
@@ -302,20 +380,24 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             });
         }
 
-        // ✅ FIXED: Use data from ItemsTableWithTotals if provided, otherwise use form data
         const itemsToSave = invoiceDataFromTable?.items || formData.items.filter(item =>
             item.itemName &&
             parseFloat(item.quantity) > 0 &&
             parseFloat(item.pricePerUnit) > 0
         );
 
-        // ✅ FIXED: Include totals from ItemsTableWithTotals
+        // ✅ UPDATED: Include mode-specific data
         const saleData = {
             ...formData,
             companyId: effectiveCompanyId,
             items: itemsToSave,
 
-            // ✅ CRITICAL: Include totals from ItemsTableWithTotals
+            // Document type information
+            documentType: isQuotationsMode ? 'quotation' : 'invoice',
+            documentMode: isQuotationsMode ? 'quotation' : 'invoice',
+            formType: isQuotationsMode ? 'quotation' : 'sales',
+
+            // Include totals from ItemsTableWithTotals
             totals: invoiceDataFromTable?.totals || {
                 finalTotal: 0,
                 subtotal: 0,
@@ -331,82 +413,94 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 roundOffEnabled: false
             },
 
-            // ✅ Include payment information if any
+            // Include payment information if any
             paymentInfo: invoiceDataFromTable?.paymentInfo || null,
 
-            // ✅ Include round-off information
+            // Include round-off information
             roundOff: invoiceDataFromTable?.roundOff || {
                 enabled: false,
                 value: 0
             },
 
-            // ✅ Additional metadata
+            // Additional metadata
             gstCalculationMode: invoiceDataFromTable?.gstEnabled !== undefined
                 ? (invoiceDataFromTable.gstEnabled ? 'enabled' : 'disabled')
                 : (formData.gstEnabled ? 'enabled' : 'disabled'),
 
             invoiceMetadata: {
-                formType: invoiceDataFromTable?.formType || 'sales',
+                formType: isQuotationsMode ? 'quotation' : 'sales',
+                documentType: isQuotationsMode ? 'quotation' : 'invoice',
                 createdFrom: 'ItemsTableWithTotals',
                 hasPayment: !!(invoiceDataFromTable?.paymentInfo?.amount),
                 paymentAmount: invoiceDataFromTable?.paymentInfo?.amount || 0,
                 enhancedDataProvided: !!invoiceDataFromTable,
-                calculationMethod: 'ItemsTableWithTotals'
+                calculationMethod: 'ItemsTableWithTotals',
+                mode: mode,
+                isQuotation: isQuotationsMode
             },
+
+            // ✅ NEW: Quotation-specific fields
+            ...(isQuotationsMode && {
+                quotationValidity: formData.quotationValidity || 30,
+                quotationStatus: formData.quotationStatus || 'draft',
+                validUntil: formData.quotationValidity ?
+                    new Date(Date.now() + (formData.quotationValidity * 24 * 60 * 60 * 1000)).toISOString() :
+                    new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(),
+                convertedToInvoice: false,
+                quotationNotes: formData.notes
+            }),
 
             // Timestamps
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString()
         };
 
-        console.log('💾 Saving invoice data with totals:', {
-            invoiceNumber: saleData.invoiceNumber,
+        console.log(`💾 Saving ${labels.documentName.toLowerCase()} data with totals:`, {
+            documentNumber: saleData.invoiceNumber,
+            documentType: saleData.documentType,
             itemCount: saleData.items.length,
             totalsFinalTotal: saleData.totals.finalTotal,
             hasPayment: !!saleData.paymentInfo,
             gstEnabled: saleData.gstEnabled,
-            companyId: saleData.companyId
+            companyId: saleData.companyId,
+            isQuotation: isQuotationsMode
         });
 
-        // ✅ FIXED: Proper async handling with explicit return
+        // Handle async/sync onSave functions
         if (onSave) {
             try {
                 const result = onSave(saleData);
                 console.log('📨 onSave returned:', result);
 
-                // ✅ FIXED: Handle both sync and async onSave functions properly
                 if (result && typeof result.then === 'function') {
-                    // onSave returns a promise
                     return result.then(successResult => {
-                        console.log('✅ Async save completed:', successResult);
+                        console.log(`✅ Async ${labels.documentName.toLowerCase()} save completed:`, successResult);
 
-                        // ✅ CRITICAL FIX: Return the actual result instead of undefined
                         if (successResult && successResult.success) {
-                            // Return the successful result properly
                             return {
                                 success: true,
                                 data: successResult.data || successResult,
-                                message: successResult.message || 'Invoice saved successfully',
+                                message: successResult.message || `${labels.documentName} saved successfully`,
                                 totals: saleData.totals,
                                 paymentInfo: saleData.paymentInfo,
                                 invoiceNumber: saleData.invoiceNumber,
+                                documentType: saleData.documentType,
                                 originalResult: successResult
                             };
                         } else {
-                            // Handle case where success result doesn't have success flag
                             return {
                                 success: true,
                                 data: successResult || saleData,
-                                message: 'Invoice saved successfully',
+                                message: `${labels.documentName} saved successfully`,
                                 totals: saleData.totals,
                                 paymentInfo: saleData.paymentInfo,
                                 invoiceNumber: saleData.invoiceNumber,
+                                documentType: saleData.documentType,
                                 originalResult: successResult
                             };
                         }
-
                     }).catch(error => {
-                        console.error('❌ Error in async onSave:', error);
+                        console.error(`❌ Error in async ${labels.documentName.toLowerCase()} onSave:`, error);
                         return {
                             success: false,
                             error: error.message || 'Save operation failed',
@@ -415,35 +509,34 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                         };
                     });
                 } else {
-                    // onSave returns synchronously
-                    console.log('✅ Sync save completed:', result);
+                    console.log(`✅ Sync ${labels.documentName.toLowerCase()} save completed:`, result);
 
-                    // ✅ FIXED: Return proper success result for sync operations
                     if (result && result.success) {
                         return Promise.resolve({
                             success: true,
                             data: result.data || result,
-                            message: result.message || 'Invoice saved successfully',
+                            message: result.message || `${labels.documentName} saved successfully`,
                             totals: saleData.totals,
                             paymentInfo: saleData.paymentInfo,
                             invoiceNumber: saleData.invoiceNumber,
+                            documentType: saleData.documentType,
                             originalResult: result
                         });
                     } else {
-                        // Handle case where sync result doesn't have success flag
                         return Promise.resolve({
                             success: true,
                             data: result || saleData,
-                            message: 'Invoice saved successfully',
+                            message: `${labels.documentName} saved successfully`,
                             totals: saleData.totals,
                             paymentInfo: saleData.paymentInfo,
                             invoiceNumber: saleData.invoiceNumber,
+                            documentType: saleData.documentType,
                             originalResult: result
                         });
                     }
                 }
             } catch (error) {
-                console.error('❌ Error in onSave:', error);
+                console.error(`❌ Error in ${labels.documentName.toLowerCase()} onSave:`, error);
                 return Promise.resolve({
                     success: false,
                     error: error.message || 'Save operation failed',
@@ -452,7 +545,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 });
             }
         } else {
-            console.warn('⚠️ No onSave handler provided');
+            console.warn(`⚠️ No onSave handler provided for ${labels.documentName.toLowerCase()}`);
             return Promise.resolve({
                 success: false,
                 error: 'No save handler provided',
@@ -462,31 +555,35 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         }
     };
 
-    // Handle share
+    // ✅ UPDATED: Handle share with mode awareness
     const handleShare = () => {
         const errors = validateForm();
 
         if (errors.length > 0) {
-            alert('Please complete the invoice before sharing:\n\n' + errors.join('\n'));
+            alert(`Please complete the ${labels.documentName.toLowerCase()} before sharing:\n\n` + errors.join('\n'));
             return;
         }
 
         const shareData = {
             companyId: effectiveCompanyId,
+            documentNumber: formData.invoiceNumber,
+            documentType: isQuotationsMode ? 'quotation' : 'invoice',
             invoiceNumber: formData.invoiceNumber,
             invoiceType: formData.invoiceType,
             customer: formData.customer || { name: 'Cash Customer', phone: formData.mobileNumber },
-            itemCount: formData.items.filter(item => item.itemName).length
+            itemCount: formData.items.filter(item => item.itemName).length,
+            mode: mode,
+            isQuotation: isQuotationsMode
         };
 
-        console.log('📤 Sharing invoice:', shareData);
-        alert(`Invoice ${formData.invoiceNumber} ready to share!`);
+        console.log(`📤 Sharing ${labels.documentName.toLowerCase()}:`, shareData);
+        alert(`${labels.documentName} ${formData.invoiceNumber} ready to share!`);
     };
 
     // Handle adding new item from ItemsTable
     const handleAddItem = async (productData) => {
         try {
-            console.log('📦 Adding new product:', productData);
+            console.log(`📦 Adding new product for ${labels.documentName.toLowerCase()}:`, productData);
 
             if (onAddItem) {
                 const result = await onAddItem(productData);
@@ -495,7 +592,6 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                     return result;
                 }
             } else {
-                // Simulate successful addition if no handler provided
                 console.log('✅ Product added (simulated):', productData.name);
                 return { id: Date.now(), ...productData };
             }
@@ -505,17 +601,17 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
         }
     };
 
-    // ✅ SIMPLIFIED: Auto-save draft functionality
+    // ✅ UPDATED: Auto-save draft functionality with mode awareness
     useEffect(() => {
         if (formData.invoiceNumber && effectiveCompanyId) {
-            const draftKey = `invoice_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
+            const draftKey = `${isQuotationsMode ? 'quotation' : 'invoice'}_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
             const draftData = {
                 ...formData,
                 companyId: effectiveCompanyId,
+                documentType: isQuotationsMode ? 'quotation' : 'invoice',
                 lastSaved: new Date().toISOString()
             };
 
-            // Save to localStorage
             try {
                 localStorage.setItem(draftKey, JSON.stringify(draftData));
             } catch (error) {
@@ -523,10 +619,10 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
             }
         }
 
-        // Cleanup old drafts
         return () => {
             try {
-                const keys = Object.keys(localStorage).filter(key => key.startsWith('invoice_draft_'));
+                const keyPrefix = isQuotationsMode ? 'quotation_draft_' : 'invoice_draft_';
+                const keys = Object.keys(localStorage).filter(key => key.startsWith(keyPrefix));
                 if (keys.length > 10) {
                     keys.slice(0, -10).forEach(key => localStorage.removeItem(key));
                 }
@@ -534,7 +630,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                 console.warn('Could not cleanup drafts:', error);
             }
         };
-    }, [formData, effectiveCompanyId]);
+    }, [formData, effectiveCompanyId, isQuotationsMode]);
 
     // Show loading state if no companyId is available
     if (!effectiveCompanyId) {
@@ -548,14 +644,15 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                             </div>
                             <h5 className="text-warning">Company Not Selected</h5>
                             <p className="text-muted">
-                                Please select a company to create sales invoices.
+                                Please select a company to create {isQuotationsMode ? 'quotations' : 'sales invoices'}.
                             </p>
                             <div className="mt-3">
                                 <small className="text-muted">
                                     Debug Info:<br />
                                     URL CompanyId: {companyId || 'Not found'}<br />
                                     Storage CompanyId: {localCompanyId || 'Not found'}<br />
-                                    Current URL: {window.location.pathname}
+                                    Current URL: {window.location.pathname}<br />
+                                    Mode: {mode}, Document Type: {documentType}
                                 </small>
                             </div>
                         </Card.Body>
@@ -566,7 +663,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
     }
 
     return (
-        <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+        <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }} data-mode={mode}>
             <Container fluid className="py-3 px-4">
                 {/* Compact Header Section */}
                 <div className="mb-3">
@@ -574,10 +671,14 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                         gstEnabled={formData.gstEnabled}
                         invoiceType={formData.invoiceType}
                         onChange={handleGSTToggleChange}
+                        // ✅ NEW: Pass mode information
+                        mode={mode}
+                        documentType={documentType}
+                        documentName={labels.documentName}
                     />
                 </div>
 
-                {/* Customer and Invoice Details Row */}
+                {/* Customer and Document Details Row */}
                 <Row className="g-3 mb-3">
                     <Col lg={6}>
                         <Card className="h-100 border-0 shadow-sm">
@@ -587,8 +688,12 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                                     mobileNumber={formData.mobileNumber}
                                     onCustomerChange={(customer) => updateFormData('customer', customer)}
                                     onMobileChange={(mobile) => updateFormData('mobileNumber', mobile)}
-                                    isSupplierMode={false} // ✅ This keeps customer mode
+                                    isSupplierMode={false}
                                     companyId={effectiveCompanyId}
+                                    // ✅ NEW: Pass mode information
+                                    mode={mode}
+                                    documentType={documentType}
+                                    customerLabel={labels.customerLabel}
                                 />
                             </Card.Body>
                         </Card>
@@ -602,6 +707,14 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                                     invoiceType={formData.invoiceType}
                                     onInvoiceNumberChange={(number) => updateFormData('invoiceNumber', number)}
                                     onInvoiceDateChange={(date) => updateFormData('invoiceDate', date)}
+                                    // ✅ NEW: Pass mode information and labels
+                                    mode={mode}
+                                    documentType={documentType}
+                                    documentNumberLabel={labels.documentNumber}
+                                    documentDateLabel={labels.documentDate}
+                                    // ✅ NEW: Pass quotation-specific fields
+                                    quotationValidity={formData.quotationValidity}
+                                    onQuotationValidityChange={(validity) => updateFormData('quotationValidity', validity)}
                                 />
                             </Card.Body>
                         </Card>
@@ -616,7 +729,7 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                         inventoryItems={inventoryItems}
                         companyId={effectiveCompanyId}
                         gstEnabled={formData.gstEnabled}
-                        formType="sales"
+                        formType={isQuotationsMode ? "quotation" : "sales"}
                         onSave={handleSave}
                         onShare={handleShare}
                         onCancel={onCancel}
@@ -625,34 +738,55 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                         invoiceNumber={formData.invoiceNumber}
                         invoiceDate={formData.invoiceDate}
                         userId={null}
+                        // ✅ NEW: Pass mode information
+                        mode={mode}
+                        documentType={documentType}
+                        documentLabels={labels}
                     />
                 </div>
 
-                {/* ✅ SIMPLIFIED: Debug section for development */}
+                {/* ✅ UPDATED: Debug section with mode information */}
                 {process.env.NODE_ENV === 'development' && (
                     <div className="mb-3">
-                        <Card className="bg-info bg-opacity-10 border-info">
+                        <Card className={`border-${isQuotationsMode ? 'warning' : 'info'} bg-opacity-10`}
+                            style={{ backgroundColor: isQuotationsMode ? 'rgba(255, 193, 7, 0.1)' : 'rgba(13, 202, 240, 0.1)' }}>
                             <Card.Body className="p-3">
-                                <h6 className="text-info mb-2">🔧 Debug - SalesForm State</h6>
+                                <h6 className={`text-${isQuotationsMode ? 'warning' : 'info'} mb-2`}>
+                                    🔧 Debug - {labels.documentName}Form State
+                                </h6>
                                 <Row className="small text-muted">
-                                    <Col md={4}>
+                                    <Col md={3}>
                                         <div><strong>Form Data:</strong></div>
+                                        <div>Mode: {mode}</div>
+                                        <div>Document Type: {documentType}</div>
                                         <div>GST Enabled: {formData.gstEnabled ? 'Yes' : 'No'}</div>
                                         <div>Invoice Type: {formData.invoiceType}</div>
-                                        <div>Invoice Number: {formData.invoiceNumber}</div>
                                         <div>Company ID: {effectiveCompanyId}</div>
                                     </Col>
-                                    <Col md={4}>
+                                    <Col md={3}>
+                                        <div><strong>Document Info:</strong></div>
+                                        <div>Number: {formData.invoiceNumber}</div>
+                                        <div>Date: {formData.invoiceDate}</div>
+                                        <div>Document Mode: {formData.documentMode}</div>
+                                        {isQuotationsMode && (
+                                            <>
+                                                <div>Validity: {formData.quotationValidity} days</div>
+                                                <div>Status: {formData.quotationStatus}</div>
+                                            </>
+                                        )}
+                                    </Col>
+                                    <Col md={3}>
                                         <div><strong>Customer Info:</strong></div>
                                         <div>Customer: {formData.customer?.name || 'None'}</div>
                                         <div>Mobile: {formData.mobileNumber || 'None'}</div>
-                                        <div>Date: {formData.invoiceDate}</div>
+                                        <div>Label: {labels.customerLabel}</div>
                                     </Col>
-                                    <Col md={4}>
+                                    <Col md={3}>
                                         <div><strong>Items:</strong></div>
                                         <div>Total Items: {formData.items.length}</div>
                                         <div>Valid Items: {formData.items.filter(item => item.itemName).length}</div>
                                         <div>Component: ItemsTableWithTotals</div>
+                                        <div>Form Type: {isQuotationsMode ? 'quotation' : 'sales'}</div>
                                     </Col>
                                 </Row>
                             </Card.Body>
@@ -660,6 +794,29 @@ function SalesForm({ onSave, onCancel, onExit, inventoryItems = [], categories =
                     </div>
                 )}
             </Container>
+
+            {/* ✅ NEW: Mode-specific styles */}
+            <style jsx>{`
+                .sales-form-wrapper[data-mode="quotations"] {
+                    --primary-color: #ff6b35;
+                    --primary-rgb: 255, 107, 53;
+                    --secondary-color: #ff8c42;
+                }
+
+                .sales-form-wrapper[data-mode="invoices"] {
+                    --primary-color: #6c63ff;
+                    --primary-rgb: 108, 99, 255;
+                    --secondary-color: #9c88ff;
+                }
+
+                .sales-form-wrapper[data-mode="quotations"] .card {
+                    border-left: 4px solid var(--primary-color) !important;
+                }
+
+                .sales-form-wrapper[data-mode="quotations"] .card-header {
+                    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.1) 0%, rgba(var(--primary-rgb), 0.05) 100%);
+                }
+            `}</style>
         </div>
     );
 }

@@ -15,7 +15,10 @@ import {
     faShare,
     faShoppingCart,
     faTruck,
-    faCheck
+    faCheck,
+    faClipboardList,
+    faPaperPlane,
+    faInbox
 } from '@fortawesome/free-solid-svg-icons';
 
 function PurchaseBillsTable({
@@ -28,17 +31,55 @@ function PurchaseBillsTable({
     onMarkAsOrdered,
     onMarkAsReceived,
     onCompletePurchase,
-    isLoading = false
+    isLoading = false,
+    // ✅ NEW: Purchase Order mode support
+    isPurchaseOrderView = false,
+    title,
+    searchPlaceholder
 }) {
     const [searchQuery, setSearchQuery] = useState('');
 
-    // ✅ FIXED: Filter purchases based on search query with correct property names
+    // ✅ SMART: Auto-detect view configuration
+    const getViewConfig = () => {
+        if (isPurchaseOrderView) {
+            return {
+                defaultTitle: "Purchase Orders",
+                defaultSearchPlaceholder: "Search orders, suppliers, items...",
+                numberLabel: "Order No",
+                actionLabels: {
+                    markOrdered: "Send Order",
+                    markReceived: "Mark Received",
+                    complete: "Complete Order"
+                }
+            };
+        } else {
+            return {
+                defaultTitle: "Purchase Bills",
+                defaultSearchPlaceholder: "Search bills, suppliers, items...",
+                numberLabel: "Bill No",
+                actionLabels: {
+                    markOrdered: "Mark Ordered",
+                    markReceived: "Mark Received",
+                    complete: "Complete Purchase"
+                }
+            };
+        }
+    };
+
+    const config = getViewConfig();
+    const displayTitle = title || config.defaultTitle;
+    const displaySearchPlaceholder = searchPlaceholder || config.defaultSearchPlaceholder;
+
+    // ✅ ENHANCED: Filter purchases with better search logic for both views
     const filteredPurchases = purchases.filter(purchase =>
         purchase.supplierName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.purchaseNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.purchaseNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        purchase.billNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        purchase.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.purchaseStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+        purchase.purchaseStatus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        purchase.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     // ✅ ENHANCED: Better currency formatting
@@ -76,80 +117,217 @@ function PurchaseBillsTable({
         }
     };
 
-    // ✅ FIXED: Extract correct values from purchase data including fullObject
+    // ✅ ENHANCED: Extract values for both Purchase Bills and Orders
     const extractPurchaseValues = (purchase) => {
         // Try to get values from fullObject first, then fall back to direct properties
         const fullObj = purchase.fullObject || purchase;
 
+        // ✅ ENHANCED: More comprehensive amount extraction with nested totals
         const totalAmount = parseFloat(
+            fullObj.totals?.finalTotal ||
             fullObj.finalTotal ||
-            fullObj.amount ||
+            fullObj.grandTotal ||
             fullObj.totalAmount ||
-            purchase.amount ||
+            fullObj.amount ||
+            fullObj.total ||
+            fullObj.netAmount ||
+            fullObj.invoiceAmount ||
+            fullObj.billAmount ||
+            fullObj.orderAmount ||
+            purchase.totals?.finalTotal ||
             purchase.finalTotal ||
+            purchase.grandTotal ||
+            purchase.totalAmount ||
+            purchase.amount ||
+            purchase.total ||
+            purchase.netAmount ||
+            purchase.invoiceAmount ||
+            purchase.billAmount ||
+            purchase.orderAmount ||
             0
         );
 
+        // ✅ ENHANCED: Better balance amount extraction with nested payment object
         const balanceAmount = parseFloat(
+            fullObj.payment?.pendingAmount ||
+            fullObj.payment?.balanceAmount ||
+            fullObj.balanceAmount ||
             fullObj.pendingAmount ||
             fullObj.balance ||
             fullObj.payableAmount ||
             fullObj.outstandingAmount ||
-            purchase.balance ||
+            fullObj.dueAmount ||
+            fullObj.remainingAmount ||
+            purchase.payment?.pendingAmount ||
+            purchase.payment?.balanceAmount ||
+            purchase.balanceAmount ||
             purchase.pendingAmount ||
+            purchase.balance ||
+            purchase.payableAmount ||
+            purchase.outstandingAmount ||
+            purchase.dueAmount ||
+            purchase.remainingAmount ||
             0
         );
 
+        // ✅ ENHANCED: Better paid amount extraction with nested payment object
         const paidAmount = parseFloat(
+            fullObj.payment?.paidAmount ||
+            fullObj.payment?.amountPaid ||
             fullObj.paidAmount ||
             fullObj.amountPaid ||
+            fullObj.paymentReceived ||
+            fullObj.receivedAmount ||
+            purchase.payment?.paidAmount ||
+            purchase.payment?.amountPaid ||
             purchase.paidAmount ||
+            purchase.amountPaid ||
+            purchase.paymentReceived ||
+            purchase.receivedAmount ||
             0
         );
 
-        // If balance is 0 but totalAmount > 0 and no paidAmount, balance should equal totalAmount
-        const actualBalance = (balanceAmount === 0 && totalAmount > 0 && paidAmount === 0) ? totalAmount : balanceAmount;
+        // LOGIC: Calculate actual balance if not provided
+        let actualBalance = balanceAmount;
 
+        // If balance is not set but we have total and paid amounts
+        if (balanceAmount === 0 && totalAmount > 0) {
+            actualBalance = Math.max(0, totalAmount - paidAmount);
+        }
+
+        // If balance equals total and no payment received, it's unpaid
+        if (balanceAmount === totalAmount && paidAmount === 0) {
+            actualBalance = totalAmount;
+        }
+
+        // If we still don't have amounts, try to calculate from items
+        let calculatedTotal = totalAmount;
+        if (totalAmount === 0) {
+            const items = fullObj.items || purchase.items || [];
+            if (items.length > 0) {
+                calculatedTotal = items.reduce((sum, item) => {
+                    const itemTotal = parseFloat(
+                        item.total ||
+                        item.amount ||
+                        item.itemAmount || // ✅ NEW: From your data structure
+                        item.lineTotal ||
+                        (item.quantity * item.pricePerUnit) || // ✅ NEW: From your data structure
+                        (item.quantity * item.rate) ||
+                        0
+                    );
+                    return sum + itemTotal;
+                }, 0);
+            }
+        }
+
+        // ✅ ENHANCED: Date extraction for both bills and orders
         const purchaseDate = fullObj.purchaseDate ||
+            fullObj.billDate ||
+            fullObj.orderDate ||
+            fullObj.quotationDate ||
+            fullObj.invoiceDate ||
             fullObj.date ||
-            purchase.date ||
+            fullObj.createdAt ||
             purchase.purchaseDate ||
+            purchase.billDate ||
+            purchase.orderDate ||
+            purchase.quotationDate ||
+            purchase.invoiceDate ||
+            purchase.date ||
             purchase.createdAt;
 
+        // ✅ ENHANCED: Number extraction for both bills and orders
         const purchaseNumber = fullObj.purchaseNumber ||
             fullObj.purchaseNo ||
+            fullObj.billNumber ||
+            fullObj.billNo ||
+            fullObj.orderNumber ||
+            fullObj.orderNo ||
+            fullObj.quotationNumber ||
+            fullObj.quotationNo ||
+            fullObj.invoiceNumber ||
+            fullObj.invoiceNo ||
+            purchase.purchaseNumber ||
             purchase.purchaseNo ||
-            purchase.purchaseNumber;
+            purchase.billNumber ||
+            purchase.billNo ||
+            purchase.orderNumber ||
+            purchase.orderNo ||
+            purchase.quotationNumber ||
+            purchase.quotationNo ||
+            purchase.invoiceNumber ||
+            purchase.invoiceNo;
 
+        // ✅ ENHANCED: Status extraction for both bills and orders
         const currentStatus = fullObj.status ||
             fullObj.purchaseStatus ||
-            purchase.purchaseStatus ||
+            fullObj.billStatus ||
+            fullObj.orderStatus ||
+            fullObj.quotationStatus ||
             purchase.status ||
+            purchase.purchaseStatus ||
+            purchase.billStatus ||
+            purchase.orderStatus ||
+            purchase.quotationStatus ||
             'draft';
 
         const supplierName = fullObj.supplierName ||
             fullObj.supplier?.name ||
+            fullObj.supplier?.businessName ||
+            fullObj.supplier?.companyName ||
+            fullObj.partyName ||
             purchase.supplierName ||
+            purchase.supplier?.name ||
+            purchase.supplier?.businessName ||
+            purchase.supplier?.companyName ||
+            purchase.partyName ||
             'Unknown Supplier';
 
         const supplierMobile = fullObj.supplierMobile ||
             fullObj.supplier?.mobile ||
+            fullObj.supplier?.phone ||
+            fullObj.partyMobile ||
             purchase.supplierMobile ||
+            purchase.supplier?.mobile ||
+            purchase.supplier?.phone ||
+            purchase.partyMobile ||
             '';
 
         const gstEnabled = fullObj.gstEnabled ||
             fullObj.purchaseType === 'gst' ||
+            fullObj.taxType === 'gst' ||
+            fullObj.taxMode === 'gst' ||
+            fullObj.isGstBill ||
             purchase.gstEnabled ||
+            purchase.purchaseType === 'gst' ||
+            purchase.taxType === 'gst' ||
+            purchase.taxMode === 'gst' ||
+            purchase.isGstBill ||
             false;
 
-        const paymentMethod = fullObj.paymentMethod ||
+        // ✅ FIXED: Enhanced payment method extraction to handle nested payment object
+        const paymentMethod = fullObj.payment?.method ||        // ✅ PRIORITY: Check nested payment.method first
+            fullObj.paymentType ||
+            fullObj.paymentMethod ||
+            fullObj.paymentMode ||
+            fullObj.paymentMethodType ||
+            purchase.payment?.method ||                          // ✅ PRIORITY: Check nested payment.method in purchase
+            purchase.paymentType ||
             purchase.paymentMethod ||
-            'credit';
+            purchase.paymentMode ||
+            purchase.paymentMethodType ||
+            'cash'; // Default to 'cash' instead of calculating
 
-        const items = fullObj.items || purchase.items || [];
+        const items = fullObj.items ||
+            fullObj.purchaseItems ||
+            fullObj.orderItems ||
+            purchase.items ||
+            purchase.purchaseItems ||
+            purchase.orderItems ||
+            [];
 
-        return {
-            totalAmount,
+        const finalValues = {
+            totalAmount: calculatedTotal || totalAmount,
             balanceAmount: actualBalance,
             paidAmount,
             purchaseDate,
@@ -158,82 +336,250 @@ function PurchaseBillsTable({
             supplierName,
             supplierMobile,
             gstEnabled,
-            paymentMethod,
+            paymentMethod, // This will now have the actual payment type from nested payment.method
             items
         };
+
+        return finalValues;
     };
 
-    // ✅ FIXED: Get transaction type from purchase data
-    const getTransactionType = (purchase) => {
+    // ✅ ENHANCED: Better tax calculation with more fallbacks
+    const calculateTaxAmounts = (purchase) => {
         const values = extractPurchaseValues(purchase);
-        if (values.gstEnabled) {
-            return 'GST Purchase';
+        const items = values.items;
+        let totalCGST = 0;
+        let totalSGST = 0;
+        let totalIGST = 0;
+
+        const fullObj = purchase.fullObject || purchase;
+
+        // ENHANCED: Try multiple ways to get tax amounts
+        if (fullObj.totalCGST !== undefined || fullObj.totalSGST !== undefined || fullObj.totalIGST !== undefined) {
+            totalCGST = parseFloat(fullObj.totalCGST || fullObj.cgstAmount || 0);
+            totalSGST = parseFloat(fullObj.totalSGST || fullObj.sgstAmount || 0);
+            totalIGST = parseFloat(fullObj.totalIGST || fullObj.igstAmount || 0);
+        } else if (fullObj.taxBreakup) {
+            // Check if tax breakup is available
+            totalCGST = parseFloat(fullObj.taxBreakup.cgst || 0);
+            totalSGST = parseFloat(fullObj.taxBreakup.sgst || 0);
+            totalIGST = parseFloat(fullObj.taxBreakup.igst || 0);
+        } else if (fullObj.totals) {
+            // Check if totals object has tax information
+            totalCGST = parseFloat(fullObj.totals.totalCGST || fullObj.totals.cgst || 0);
+            totalSGST = parseFloat(fullObj.totals.totalSGST || fullObj.totals.sgst || 0);
+            totalIGST = parseFloat(fullObj.totals.totalIGST || fullObj.totals.igst || 0);
+        } else if (items && items.length > 0) {
+            // Calculate from items
+            items.forEach(item => {
+                totalCGST += parseFloat(
+                    item.cgstAmount ||
+                    item.cgst ||
+                    item.cgstValue ||
+                    item.cgstTotal ||
+                    0
+                );
+                totalSGST += parseFloat(
+                    item.sgstAmount ||
+                    item.sgst ||
+                    item.sgstValue ||
+                    item.sgstTotal ||
+                    0
+                );
+                totalIGST += parseFloat(
+                    item.igstAmount ||
+                    item.igst ||
+                    item.igstValue ||
+                    item.igstTotal ||
+                    0
+                );
+            });
         }
-        return 'Purchase';
+
+        return { totalCGST, totalSGST, totalIGST };
+    };
+
+    // ✅ ENHANCED: Transaction type for both bills and orders
+    const getTransactionType = (purchase) => {
+        if (isPurchaseOrderView) {
+            const orderType = purchase.orderType || purchase.fullObject?.orderType;
+            if (orderType === 'purchase_quotation') return 'Quotation';
+            if (orderType === 'proforma_purchase') return 'Proforma';
+            return 'Order';
+        } else {
+            const values = extractPurchaseValues(purchase);
+            if (values.gstEnabled) {
+                return 'GST Purchase';
+            }
+            return 'Purchase';
+        }
     };
 
     const getTransactionIcon = (purchase) => {
-        const type = getTransactionType(purchase);
-        switch (type?.toLowerCase()) {
-            case 'purchase': return '🛒';
-            case 'gst purchase': return '📋';
-            case 'purchase order': return '📋';
-            case 'return': return '↩️';
-            case 'payment': return '💳';
-            default: return '📄';
+        if (isPurchaseOrderView) {
+            const orderType = purchase.orderType || purchase.fullObject?.orderType;
+            if (orderType === 'purchase_quotation') return '💰';
+            if (orderType === 'proforma_purchase') return '📄';
+            return '📋';
+        } else {
+            const type = getTransactionType(purchase);
+            switch (type?.toLowerCase()) {
+                case 'purchase': return '🛒';
+                case 'gst purchase': return '📋';
+                case 'purchase order': return '📋';
+                case 'return': return '↩️';
+                case 'payment': return '💳';
+                default: return '📄';
+            }
         }
     };
 
-    // ✅ FIXED: Get payment type from purchase data
+    // ✅ ENHANCED: Updated payment method mapping to handle underscores
     const getPaymentType = (purchase) => {
         const values = extractPurchaseValues(purchase);
 
-        if (values.paymentMethod && values.paymentMethod !== 'credit') {
-            return values.paymentMethod;
+        // Get the direct payment method from data
+        let paymentType = values.paymentMethod;
+
+        // If no payment method is found, determine based on balance/status
+        if (!paymentType || paymentType === 'credit' || paymentType === 'unpaid') {
+            // ✅ NEW: Check payment status from nested object
+            const paymentStatus = purchase.payment?.status || purchase.fullObject?.payment?.status;
+
+            if (paymentStatus === 'partial') {
+                paymentType = 'partial';
+            } else if (values.balanceAmount <= 0 && values.totalAmount > 0) {
+                paymentType = 'cash';
+            } else if (values.paidAmount > 0 && values.balanceAmount > 0) {
+                paymentType = 'partial';
+            } else if (values.balanceAmount > 0) {
+                paymentType = 'credit';
+            } else {
+                paymentType = 'cash';
+            }
         }
 
-        // Determine payment type based on amounts
-        if (values.balanceAmount <= 0) {
-            return 'Paid';
-        } else if (values.paidAmount > 0) {
-            return 'Partial';
-        } else {
-            return 'Credit';
-        }
+        // ✅ ENHANCED: Updated payment method mapping with underscore handling
+        const paymentMethodMap = {
+            'cash': 'Cash',
+            'bank': 'Bank Transfer',
+            'banktransfer': 'Bank Transfer',
+            'bank_transfer': 'Bank Transfer',      // ✅ NEW: Handle underscore format
+            'bank transfer': 'Bank Transfer',
+            'online': 'Online',
+            'upi': 'UPI',
+            'cheque': 'Cheque',
+            'check': 'Cheque',
+            'card': 'Card',
+            'credit_card': 'Credit Card',
+            'debit_card': 'Debit Card',
+            'wallet': 'Wallet',
+            'paytm': 'Paytm',
+            'gpay': 'Google Pay',
+            'phonepe': 'PhonePe',
+            'neft': 'NEFT',
+            'rtgs': 'RTGS',
+            'imps': 'IMPS',
+            'credit': 'Credit',
+            'partial': 'Partial',
+            'paid': 'Cash'
+        };
+
+        // Convert to lowercase for mapping, then return the mapped value
+        const mappedPaymentType = paymentMethodMap[paymentType?.toLowerCase()] ||
+            paymentType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || // ✅ NEW: Handle underscores and capitalize
+            'Cash';
+        return mappedPaymentType;
     };
 
+    // ✅ ENHANCED: Better calculation function to handle different scenarios
+    const calculateDisplayAmounts = (purchase) => {
+        const values = extractPurchaseValues(purchase);
+        const taxAmounts = calculateTaxAmounts(purchase);
+
+        let displayAmount = values.totalAmount;
+        let displayBalance = values.balanceAmount;
+
+        // If we have tax amounts but no total, calculate total with tax
+        if (displayAmount === 0 && (taxAmounts.totalCGST > 0 || taxAmounts.totalSGST > 0)) {
+            const items = values.items;
+            if (items && items.length > 0) {
+                const baseAmount = items.reduce((sum, item) => {
+                    return sum + parseFloat(item.amount || item.total || item.itemAmount || (item.quantity * item.pricePerUnit) || (item.quantity * item.rate) || 0);
+                }, 0);
+                displayAmount = baseAmount + taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST;
+            }
+        }
+
+        // If balance is still 0 but we have amount, balance equals amount (unpaid)
+        if (displayBalance === 0 && displayAmount > 0 && values.paidAmount === 0) {
+            displayBalance = displayAmount;
+        }
+
+        return {
+            amount: displayAmount,
+            balance: displayBalance,
+            cgst: taxAmounts.totalCGST,
+            sgst: taxAmounts.totalSGST,
+            totalTax: taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST,
+            baseAmount: displayAmount - (taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST)
+        };
+    };
+
+    // ✅ ENHANCED: Updated payment type variant mapping
     const getPaymentTypeVariant = (purchase) => {
         const paymentType = getPaymentType(purchase);
         switch (paymentType?.toLowerCase()) {
-            case 'cash':
-            case 'paid': return 'success';
-            case 'credit': return 'warning';
-            case 'partial': return 'info';
-            case 'online': return 'info';
-            case 'cheque': return 'secondary';
-            default: return 'light';
+            case 'cash': return 'success';           // Green
+            case 'bank transfer':
+            case 'online':
+            case 'upi':
+            case 'neft':
+            case 'rtgs':
+            case 'imps': return 'info';              // Blue
+            case 'credit': return 'warning';         // Orange
+            case 'partial': return 'secondary';      // Gray
+            case 'cheque':
+            case 'check': return 'primary';          // Purple
+            case 'card':
+            case 'credit card':
+            case 'debit card': return 'info';        // Blue
+            case 'wallet':
+            case 'paytm':
+            case 'google pay':
+            case 'phonepe': return 'success';        // Green
+            default: return 'light';                 // Light gray
         }
     };
 
     const getTransactionVariant = (purchase) => {
-        const type = getTransactionType(purchase);
-        switch (type?.toLowerCase()) {
-            case 'purchase': return 'primary';
-            case 'gst purchase': return 'info';
-            case 'purchase order': return 'info';
-            case 'return': return 'danger';
-            case 'payment': return 'success';
-            default: return 'light';
+        if (isPurchaseOrderView) {
+            const orderType = purchase.orderType || purchase.fullObject?.orderType;
+            if (orderType === 'purchase_quotation') return 'warning';
+            if (orderType === 'proforma_purchase') return 'info';
+            return 'primary';
+        } else {
+            const type = getTransactionType(purchase);
+            switch (type?.toLowerCase()) {
+                case 'purchase': return 'primary';
+                case 'gst purchase': return 'info';
+                case 'purchase order': return 'info';
+                case 'return': return 'danger';
+                case 'payment': return 'success';
+                default: return 'light';
+            }
         }
     };
 
     const getPurchaseStatusVariant = (status) => {
         switch (status?.toLowerCase()) {
             case 'draft': return 'secondary';
+            case 'sent':
             case 'ordered': return 'primary';
+            case 'confirmed': return 'info';
             case 'received': return 'warning';
             case 'completed': return 'success';
             case 'cancelled': return 'danger';
+            case 'expired': return 'dark';
             default: return 'light';
         }
     };
@@ -248,44 +594,15 @@ function PurchaseBillsTable({
         }
     };
 
-    // ✅ FIXED: Calculate GST amounts from purchase data
-    const calculateTaxAmounts = (purchase) => {
-        const values = extractPurchaseValues(purchase);
-        const items = values.items;
-        let totalCGST = 0;
-        let totalSGST = 0;
-        let totalIGST = 0;
-
-        const fullObj = purchase.fullObject || purchase;
-
-        // If tax amounts are directly available
-        if (fullObj.totalCGST !== undefined || fullObj.totalSGST !== undefined) {
-            totalCGST = parseFloat(fullObj.totalCGST || 0);
-            totalSGST = parseFloat(fullObj.totalSGST || 0);
-            totalIGST = parseFloat(fullObj.totalIGST || 0);
-        } else {
-            // Calculate from items
-            items.forEach(item => {
-                totalCGST += parseFloat(item.cgstAmount || item.cgst || 0);
-                totalSGST += parseFloat(item.sgstAmount || item.sgst || 0);
-                totalIGST += parseFloat(item.igstAmount || item.igst || 0);
-            });
-        }
-
-        return { totalCGST, totalSGST, totalIGST };
-    };
-
-
-
     return (
         <>
             <div className="purchase-bills-table-container">
                 <div className="purchase-table-card border-0">
-                    {/* Ultra Compact Header with Purple Theme */}
+                    {/* ✅ UPDATED: Dynamic header based on view type */}
                     <div className="purchase-table-header bg-gradient-purple border-0 pb-0">
                         <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap">
                             <div className="header-info">
-                                <h6 className="fw-bold mb-1 text-white">Purchase Bills</h6>
+                                <h6 className="fw-bold mb-1 text-white">{displayTitle}</h6>
                                 <small className="text-white-50" style={{ fontSize: '0.65rem' }}>
                                     {filteredPurchases.length} records
                                     {isLoading && ' (Loading...)'}
@@ -298,7 +615,7 @@ function PurchaseBillsTable({
                                     </InputGroup.Text>
                                     <Form.Control
                                         type="text"
-                                        placeholder="Search bills..."
+                                        placeholder={displaySearchPlaceholder}
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
                                         className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50 search-input"
@@ -330,9 +647,10 @@ function PurchaseBillsTable({
                                                 <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
                                             </div>
                                         </th>
+                                        {/* ✅ UPDATED: Dynamic column header */}
                                         <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
                                             <div className="d-flex align-items-center">
-                                                <span>Bill No</span>
+                                                <span>{config.numberLabel}</span>
                                                 <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
                                             </div>
                                         </th>
@@ -395,17 +713,17 @@ function PurchaseBillsTable({
                                             <td colSpan={11} className="text-center text-muted py-4 border-0">
                                                 <div className="empty-state">
                                                     <div className="empty-icon mb-2">
-                                                        {isLoading ? '⏳' : '🛒'}
+                                                        {isLoading ? '⏳' : isPurchaseOrderView ? '📋' : '🛒'}
                                                     </div>
                                                     <h6 className="fw-semibold mb-1 text-purple" style={{ fontSize: '0.9rem' }}>
-                                                        {isLoading ? 'Loading purchase bills...' : 'No purchase bills found'}
+                                                        {isLoading ? `Loading ${displayTitle.toLowerCase()}...` : `No ${displayTitle.toLowerCase()} found`}
                                                     </h6>
                                                     <p className="text-muted mb-0" style={{ fontSize: '0.75rem' }}>
                                                         {isLoading
                                                             ? 'Please wait while we fetch your data'
                                                             : searchQuery
                                                                 ? 'Try adjusting your search terms'
-                                                                : 'Create your first purchase bill'
+                                                                : `Create your first ${isPurchaseOrderView ? 'purchase order' : 'purchase bill'}`
                                                         }
                                                     </p>
                                                 </div>
@@ -413,18 +731,16 @@ function PurchaseBillsTable({
                                         </tr>
                                     ) : (
                                         filteredPurchases.map((purchase, index) => {
-
-
-                                            // ✅ FIXED: Extract values properly
+                                            // ✅ FIXED: Extract values properly with enhanced logic
                                             const values = extractPurchaseValues(purchase);
 
-                                            // ✅ FIXED: Calculate tax amounts properly
-                                            const taxAmounts = calculateTaxAmounts(purchase);
+                                            // ✅ FIXED: Calculate display amounts
+                                            const displayAmounts = calculateDisplayAmounts(purchase);
 
                                             return (
-                                                <tr key={purchase.id || index} className="purchase-transaction-row">
+                                                <tr key={purchase.id || purchase._id || index} className="purchase-transaction-row">
                                                     {/* Date - Ultra Compact */}
-                                                    <td className="border-0 py-2">
+                                                    <td className="border-0 pys-2">
                                                         <div className="date-info">
                                                             <span className="text-dark fw-medium" style={{ fontSize: '0.75rem' }}>
                                                                 {formatDate(values.purchaseDate)}
@@ -436,7 +752,7 @@ function PurchaseBillsTable({
                                                     <td className="border-0 py-2">
                                                         <div className="bill-number">
                                                             <span className="fw-bold text-primary" style={{ fontSize: '0.75rem' }}>
-                                                                {values.purchaseNumber || `PUR-${index + 1}`}
+                                                                {values.purchaseNumber || `${isPurchaseOrderView ? 'ORD' : 'PUR'}-${index + 1}`}
                                                             </span>
                                                         </div>
                                                     </td>
@@ -475,15 +791,19 @@ function PurchaseBillsTable({
                                                         </div>
                                                     </td>
 
-                                                    {/* Payment Type - Small Badge */}
+                                                    {/* Payment Type - Enhanced Badge */}
                                                     <td className="border-0 py-2">
                                                         <Badge
                                                             bg={getPaymentTypeVariant(purchase)}
                                                             className="px-1 py-1 payment-badge"
-                                                            style={{ fontSize: '0.6rem' }}
+                                                            style={{ fontSize: '0.55rem' }} // Slightly smaller font to fit longer names
                                                             text={getPaymentTypeVariant(purchase) === 'light' ? 'dark' : 'white'}
+                                                            title={getPaymentType(purchase)} // Tooltip for full name
                                                         >
-                                                            {getPaymentType(purchase)?.substring(0, 4)}
+                                                            {getPaymentType(purchase).length > 8
+                                                                ? getPaymentType(purchase).substring(0, 8) + '...'
+                                                                : getPaymentType(purchase)
+                                                            }
                                                         </Badge>
                                                     </td>
 
@@ -515,7 +835,7 @@ function PurchaseBillsTable({
                                                     <td className="border-0 py-2 text-center">
                                                         <div className="tax-info">
                                                             <span className="fw-semibold text-info" style={{ fontSize: '0.7rem' }}>
-                                                                {formatCurrency(taxAmounts.totalCGST)}
+                                                                {formatCurrency(displayAmounts.cgst)}
                                                             </span>
                                                         </div>
                                                     </td>
@@ -524,30 +844,40 @@ function PurchaseBillsTable({
                                                     <td className="border-0 py-2 text-center">
                                                         <div className="tax-info">
                                                             <span className="fw-semibold text-warning" style={{ fontSize: '0.7rem' }}>
-                                                                {formatCurrency(taxAmounts.totalSGST)}
+                                                                {formatCurrency(displayAmounts.sgst)}
                                                             </span>
                                                         </div>
                                                     </td>
 
-                                                    {/* Total Amount - Prominent but Compact */}
+                                                    {/* Total Amount - Use calculated display amount */}
                                                     <td className="border-0 py-2 text-end">
                                                         <div className="amount-info">
                                                             <span className="fw-bold text-primary" style={{ fontSize: '0.8rem' }}>
-                                                                {formatCurrency(values.totalAmount)}
+                                                                {formatCurrency(displayAmounts.amount)}
                                                             </span>
+                                                            {displayAmounts.totalTax > 0 && (
+                                                                <small className="text-muted d-block" style={{ fontSize: '0.55rem' }}>
+                                                                    +₹{Math.round(displayAmounts.totalTax)} tax
+                                                                </small>
+                                                            )}
                                                         </div>
                                                     </td>
 
-                                                    {/* Balance - Compact */}
+                                                    {/* Balance - Use calculated display balance */}
                                                     <td className="border-0 py-2 text-end">
                                                         <div className="balance-info">
-                                                            <span className={`fw-bold ${values.balanceAmount > 0 ? 'text-danger' : 'text-success'}`}
+                                                            <span className={`fw-bold ${displayAmounts.balance > 0 ? 'text-danger' : 'text-success'}`}
                                                                 style={{ fontSize: '0.75rem' }}>
-                                                                {formatCurrency(values.balanceAmount)}
+                                                                {formatCurrency(displayAmounts.balance)}
                                                             </span>
-                                                            {values.balanceAmount > 0 && (
+                                                            {displayAmounts.balance > 0 && (
                                                                 <small className="text-danger d-block" style={{ fontSize: '0.55rem' }}>
                                                                     Due
+                                                                </small>
+                                                            )}
+                                                            {displayAmounts.balance === 0 && displayAmounts.amount > 0 && (
+                                                                <small className="text-success d-block" style={{ fontSize: '0.55rem' }}>
+                                                                    Paid
                                                                 </small>
                                                             )}
                                                         </div>
@@ -596,17 +926,23 @@ function PurchaseBillsTable({
                                                                             onClick={() => onMarkAsOrdered(purchase)}
                                                                             className="dropdown-item-enhanced"
                                                                         >
-                                                                            <FontAwesomeIcon icon={faShoppingCart} className="me-2 text-info" />
-                                                                            Mark Ordered
+                                                                            <FontAwesomeIcon
+                                                                                icon={isPurchaseOrderView ? faPaperPlane : faShoppingCart}
+                                                                                className="me-2 text-info"
+                                                                            />
+                                                                            {config.actionLabels.markOrdered}
                                                                         </Dropdown.Item>
                                                                     )}
-                                                                    {values.currentStatus === 'ordered' && (
+                                                                    {(values.currentStatus === 'ordered' || values.currentStatus === 'sent') && (
                                                                         <Dropdown.Item
                                                                             onClick={() => onMarkAsReceived(purchase)}
                                                                             className="dropdown-item-enhanced"
                                                                         >
-                                                                            <FontAwesomeIcon icon={faTruck} className="me-2 text-warning" />
-                                                                            Mark Received
+                                                                            <FontAwesomeIcon
+                                                                                icon={isPurchaseOrderView ? faInbox : faTruck}
+                                                                                className="me-2 text-warning"
+                                                                            />
+                                                                            {config.actionLabels.markReceived}
                                                                         </Dropdown.Item>
                                                                     )}
                                                                     {values.currentStatus === 'received' && (
@@ -615,7 +951,7 @@ function PurchaseBillsTable({
                                                                             className="dropdown-item-enhanced"
                                                                         >
                                                                             <FontAwesomeIcon icon={faCheck} className="me-2 text-success" />
-                                                                            Complete
+                                                                            {config.actionLabels.complete}
                                                                         </Dropdown.Item>
                                                                     )}
                                                                     <Dropdown.Item
@@ -666,7 +1002,6 @@ function PurchaseBillsTable({
                     </div>
                 </div>
             </div>
-
             {/* Ultra Compact Table Styles - Purple Theme */}
             <style>
                 {`
@@ -1079,111 +1414,16 @@ function PurchaseBillsTable({
                         max-width: 70px;
                     }
                 }
-
+                /* Responsive design */
                 @media (max-width: 768px) {
-                    .bg-gradient-purple {
-                        padding: 0.4rem 0.5rem 0.2rem;
-                    }
-
-                    .purchase-bills-table th,
-                    .purchase-bills-table td {
-                        padding: 0.2rem 0.1rem;
-                        font-size: 0.5rem;
-                    }
-
-                    .purchase-bills-table th {
-                        font-size: 0.4rem;
-                    }
-
-                    .action-btn {
-                        width: 20px;
-                        height: 20px;
-                    }
-
-                    .supplier-info {
-                        max-width: 60px;
-                    }
-
-                    .sort-icon {
-                        font-size: 0.4rem !important;
-                    }
-
-                    /* Horizontal scroll for mobile to maintain all columns */
                     .table-responsive {
                         overflow-x: auto;
                         -webkit-overflow-scrolling: touch;
                     }
-
+                    
                     .purchase-bills-table {
-                        min-width: 900px; /* Force horizontal scroll instead of hiding columns */
+                        min-width: 900px;
                     }
-                }
-
-                /* Smooth Animations */
-                @keyframes slideInUp {
-                    from { opacity: 0; transform: translateY(10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-
-                .purchase-transaction-row {
-                    animation: slideInUp 0.3s ease-out;
-                }
-
-                /* Table Scroll Enhancement */
-                .table-responsive::-webkit-scrollbar {
-                    height: 4px;
-                }
-
-                .table-responsive::-webkit-scrollbar-track {
-                    background: rgba(108, 99, 255, 0.05);
-                    border-radius: 2px;
-                }
-
-                .table-responsive::-webkit-scrollbar-thumb {
-                    background: rgba(108, 99, 255, 0.2);
-                    border-radius: 2px;
-                }
-
-                .table-responsive::-webkit-scrollbar-thumb:hover {
-                    background: rgba(108, 99, 255, 0.3);
-                }
-
-                /* Purple theme enhancements */
-                .purchase-table-header::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 2px;
-                    background: linear-gradient(90deg, transparent 0%, #6c63ff 50%, transparent 100%);
-                    opacity: 0.6;
-                }
-
-                /* Status-specific workflows */
-                .dropdown-item-enhanced[data-status="ordered"] {
-                    border-left: 3px solid #6c63ff;
-                }
-
-                .dropdown-item-enhanced[data-status="received"] {
-                    border-left: 3px solid #f59e0b;
-                }
-
-                .dropdown-item-enhanced[data-status="completed"] {
-                    border-left: 3px solid #10b981;
-                }
-
-                /* Enhanced sort icon interactions */
-                .sort-icon:active {
-                    transform: scale(0.9);
-                    color: #5a52d5;
-                }
-
-                /* Focus states */
-                .purchase-bills-table th:focus-within .sort-icon,
-                .purchase-bills-table th:hover .sort-icon {
-                    opacity: 0.8;
-                    color: #6c63ff;
                 }
                 `}
             </style>

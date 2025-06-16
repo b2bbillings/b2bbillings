@@ -26,7 +26,6 @@ const itemController = {
                 sortOrder = 'asc'
             } = req.query;
 
-            console.log(`📋 Fetching items for company: ${companyId}`);
 
             // Build filter object with proper ObjectId
             const filter = { companyId: new mongoose.Types.ObjectId(companyId) };
@@ -60,7 +59,6 @@ const itemController = {
             // Get total count for pagination
             const total = await Item.countDocuments(filter);
 
-            console.log(`✅ Found ${items.length} items for company ${companyId}`);
 
             res.json({
                 success: true,
@@ -800,10 +798,10 @@ const itemController = {
                     ]
                 }
             })
-            .select('name itemCode category currentStock minStockLevel unit salePrice')
-            .limit(parseInt(limit))
-            .sort({ currentStock: 1 })
-            .lean();
+                .select('name itemCode category currentStock minStockLevel unit salePrice')
+                .limit(parseInt(limit))
+                .sort({ currentStock: 1 })
+                .lean();
 
             console.log(`⚠️ Found ${lowStockItems.length} low stock items`);
 
@@ -902,7 +900,6 @@ const itemController = {
                 lowStockItems: 0
             };
 
-            console.log(`📊 Stock summary generated:`, summary);
 
             res.json({
                 success: true,

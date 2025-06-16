@@ -14,6 +14,7 @@ import purchaseService from './services/purchaseService';
 // Import form components
 import SalesForm from './components/Home/Sales/SalesInvoice/SalesForm';
 import PurchaseForm from './components/Home/Purchases/PurchaseForm';
+import SalesOrderForm from './components/Home/Sales/SalesOrder/SalesOrderForm'; // ✅ Add this import
 
 function App() {
   // Authentication state
@@ -327,6 +328,29 @@ function App() {
     }
   };
 
+  // ✅ Add quotation and sales order handlers
+  const handleQuotationSave = async (orderData) => {
+    try {
+      alert('Quotation saved successfully!');
+      navigateToListView('quotations');
+      return { success: true };
+    } catch (error) {
+      alert('Error saving quotation: ' + error.message);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleSalesOrderSave = async (orderData) => {
+    try {
+      alert('Sales order saved successfully!');
+      navigateToListView('sales-orders');
+      return { success: true };
+    } catch (error) {
+      alert('Error saving sales order: ' + error.message);
+      return { success: false, error: error.message };
+    }
+  };
+
   // Protected Route Component
   const ProtectedRoute = ({ children }) => {
     if (!isLoggedIn) {
@@ -426,79 +450,140 @@ function App() {
             element={
               <ProtectedRoute>
                 <Routes>
+                  {/* ✅ Dedicated Form Routes - Updated with quotations and sales orders */}
+                  <Route
+                    path="purchases/add"
+                    element={
+                      <PurchaseForm
+                        onSave={handlePurchaseFormSave}
+                        onCancel={() => navigateToListView('purchase-bills')}
+                        onExit={() => navigateToListView('purchase-bills')}
+                        inventoryItems={[]}
+                        categories={[]}
+                        bankAccounts={[]}
+                        addToast={showToast}
+                      />
+                    }
+                  />
+
+                  <Route
+                    path="purchases/:id/edit"
+                    element={
+                      <PurchaseForm
+                        onSave={handlePurchaseFormUpdate}
+                        onCancel={() => navigateToListView('purchase-bills')}
+                        onExit={() => navigateToListView('purchase-bills')}
+                        inventoryItems={[]}
+                        categories={[]}
+                        bankAccounts={[]}
+                        addToast={showToast}
+                        isEdit={true}
+                      />
+                    }
+                  />
+
+                  <Route
+                    path="sales/add"
+                    element={
+                      <SalesForm
+                        onSave={handleSalesFormSave}
+                        onCancel={() => navigateToListView('sales')}
+                        currentCompany={currentCompany}
+                        isEdit={false}
+                      />
+                    }
+                  />
+
+                  <Route
+                    path="sales/:id/edit"
+                    element={
+                      <SalesForm
+                        onSave={handleSalesFormUpdate}
+                        onCancel={() => navigateToListView('sales')}
+                        currentCompany={currentCompany}
+                        isEdit={true}
+                      />
+                    }
+                  />
+
+                  {/* ✅ Add Quotation Routes */}
+                  <Route
+                    path="quotations/add"
+                    element={
+                      <SalesOrderForm
+                        show={true}
+                        onHide={() => navigateToListView('quotations')}
+                        onSaveOrder={handleQuotationSave}
+                        orderType="quotation"
+                        currentCompany={currentCompany}
+                        companyId={getCompanyId()}
+                        addToast={showToast}
+                        onNavigate={navigateToListView}
+                      />
+                    }
+                  />
+
+                  <Route
+                    path="quotations/:id/edit"
+                    element={
+                      <SalesOrderForm
+                        show={true}
+                        onHide={() => navigateToListView('quotations')}
+                        onSaveOrder={handleQuotationSave}
+                        orderType="quotation"
+                        currentCompany={currentCompany}
+                        companyId={getCompanyId()}
+                        addToast={showToast}
+                        onNavigate={navigateToListView}
+                        isEdit={true}
+                      />
+                    }
+                  />
+
+                  {/* ✅ Add Sales Order Routes */}
+                  <Route
+                    path="sales-orders/add"
+                    element={
+                      <SalesOrderForm
+                        show={true}
+                        onHide={() => navigateToListView('sales-orders')}
+                        onSaveOrder={handleSalesOrderSave}
+                        orderType="sales_order"
+                        currentCompany={currentCompany}
+                        companyId={getCompanyId()}
+                        addToast={showToast}
+                        onNavigate={navigateToListView}
+                      />
+                    }
+                  />
+
+                  <Route
+                    path="sales-orders/:id/edit"
+                    element={
+                      <SalesOrderForm
+                        show={true}
+                        onHide={() => navigateToListView('sales-orders')}
+                        onSaveOrder={handleSalesOrderSave}
+                        orderType="sales_order"
+                        currentCompany={currentCompany}
+                        companyId={getCompanyId()}
+                        addToast={showToast}
+                        onNavigate={navigateToListView}
+                        isEdit={true}
+                      />
+                    }
+                  />
+
+                  {/* All other routes handled by HomePage */}
                   <Route
                     path="*"
                     element={
-                      <Routes>
-                        {/* Dedicated Form Routes */}
-                        <Route
-                          path="purchases/add"
-                          element={
-                            <PurchaseForm
-                              onSave={handlePurchaseFormSave}
-                              onCancel={() => navigateToListView('purchase-bills')}
-                              onExit={() => navigateToListView('purchase-bills')}
-                              inventoryItems={[]}
-                              categories={[]}
-                              bankAccounts={[]}
-                              addToast={showToast}
-                            />
-                          }
-                        />
-
-                        <Route
-                          path="purchases/:id/edit"
-                          element={
-                            <PurchaseForm
-                              onSave={handlePurchaseFormUpdate}
-                              onCancel={() => navigateToListView('purchase-bills')}
-                              onExit={() => navigateToListView('purchase-bills')}
-                              inventoryItems={[]}
-                              categories={[]}
-                              bankAccounts={[]}
-                              addToast={showToast}
-                              isEdit={true}
-                            />
-                          }
-                        />
-
-                        <Route
-                          path="sales/add"
-                          element={
-                            <SalesForm
-                              onSave={handleSalesFormSave}
-                              onCancel={() => navigateToListView('sales')}
-                              currentCompany={currentCompany}
-                              isEdit={false}
-                            />
-                          }
-                        />
-
-                        <Route
-                          path="sales/:id/edit"
-                          element={
-                            <SalesForm
-                              onSave={handleSalesFormUpdate}
-                              onCancel={() => navigateToListView('sales')}
-                              currentCompany={currentCompany}
-                              isEdit={true}
-                            />
-                          }
-                        />
-
-                        {/* All other routes handled by HomePage */}
-                        <Route
-                          path="*"
-                          element={
-                            <HomePage
-                              currentCompany={currentCompany}
-                              onCompanyChange={handleCompanyChange}
-                              companies={companies}
-                              currentUser={currentUser}
-                            />
-                          }
-                        />
-                      </Routes>
+                      <HomePage
+                        currentCompany={currentCompany}
+                        onCompanyChange={handleCompanyChange}
+                        companies={companies}
+                        currentUser={currentUser}
+                      />
                     }
                   />
                 </Routes>

@@ -18,7 +18,7 @@ class SalesService {
             'Content-Type': 'application/json',
             ...(token && {
                 'Authorization': `Bearer ${token}`,
-                'x-auth-token': token  // Add x-auth-token for backend compatibility
+                'x-auth-token': token
             })
         };
     }
@@ -30,8 +30,6 @@ class SalesService {
             headers: this.getAuthHeaders(),
             ...options
         };
-
-        console.log('🔗 Sales API Call:', url);
 
         try {
             const response = await fetch(url, config);
@@ -45,12 +43,6 @@ class SalesService {
             }
 
             if (!response.ok) {
-                console.error('❌ Sales API Error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    data: data
-                });
-
                 let errorMessage = data.message || `HTTP error! status: ${response.status}`;
 
                 if (response.status === 400) {
@@ -68,11 +60,9 @@ class SalesService {
                 throw new Error(errorMessage);
             }
 
-            console.log('✅ Sales API Success:', data);
             return data;
 
         } catch (error) {
-            console.error('❌ Sales API Error:', error);
             throw error;
         }
     }
@@ -85,8 +75,6 @@ class SalesService {
      * @returns {Promise<Object>} Created invoice with transaction
      */
     async createInvoiceWithTransaction(invoiceData) {
-        console.log('📄 Creating invoice with transaction:', invoiceData);
-
         try {
             // Validate required fields for transaction
             if (!invoiceData.companyId) {
@@ -101,14 +89,11 @@ class SalesService {
             }
 
             const createdInvoice = invoiceResponse.data;
-            console.log('✅ Invoice created successfully:', createdInvoice._id || createdInvoice.id);
 
             // Check if payment was received and create transaction
             const paymentReceived = parseFloat(invoiceData.paymentReceived || invoiceData.payment?.paidAmount || 0);
 
             if (paymentReceived > 0 && invoiceData.bankAccountId) {
-                console.log('💰 Creating sales transaction for payment received:', paymentReceived);
-
                 try {
                     const transactionData = {
                         bankAccountId: invoiceData.bankAccountId,
@@ -124,7 +109,6 @@ class SalesService {
                         chequeDate: invoiceData.chequeDate || null,
                         upiTransactionId: invoiceData.upiTransactionId || '',
                         bankTransactionId: invoiceData.bankTransactionId || '',
-                        // NEW: Due date fields
                         dueDate: invoiceData.dueDate || invoiceData.payment?.dueDate || null,
                         creditDays: invoiceData.creditDays || invoiceData.payment?.creditDays || 0
                     };
@@ -134,20 +118,16 @@ class SalesService {
                         transactionData
                     );
 
-                    console.log('✅ Sales transaction created:', transactionResponse.data);
-
                     // Add transaction info to invoice response
                     createdInvoice.transaction = transactionResponse.data;
                     createdInvoice.transactionId = transactionResponse.data.transactionId;
 
                 } catch (transactionError) {
-                    console.warn('⚠️ Invoice created but transaction failed:', transactionError);
                     // Don't fail the whole operation, just add warning
                     createdInvoice.transactionError = transactionError.message;
                     createdInvoice.transactionWarning = 'Invoice created successfully, but payment transaction could not be recorded. You can add payment manually later.';
                 }
             } else if (paymentReceived > 0 && !invoiceData.bankAccountId) {
-                console.warn('⚠️ Payment received but no bank account specified');
                 createdInvoice.transactionWarning = 'Payment amount specified but no bank account selected. Transaction not created.';
             }
 
@@ -160,7 +140,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error creating invoice with transaction:', error);
             throw error;
         }
     }
@@ -173,8 +152,6 @@ class SalesService {
      * @returns {Promise<Object>} Updated sale with transaction
      */
     async addPaymentWithTransaction(companyId, saleId, paymentData) {
-        console.log('💰 Adding payment with transaction:', { companyId, saleId, paymentData });
-
         try {
             // Validate required fields
             if (!companyId) {
@@ -212,8 +189,6 @@ class SalesService {
             // Create transaction for the payment
             const paymentAmount = parseFloat(paymentData.amount);
 
-            console.log('💰 Creating payment transaction for amount:', paymentAmount);
-
             try {
                 const transactionData = {
                     bankAccountId: paymentData.bankAccountId,
@@ -229,7 +204,6 @@ class SalesService {
                     chequeDate: paymentData.chequeDate || null,
                     upiTransactionId: paymentData.upiTransactionId || '',
                     bankTransactionId: paymentData.bankTransactionId || '',
-                    // NEW: Due date fields
                     dueDate: paymentData.dueDate || null,
                     creditDays: paymentData.creditDays || 0
                 };
@@ -239,14 +213,11 @@ class SalesService {
                     transactionData
                 );
 
-                console.log('✅ Payment transaction created:', transactionResponse.data);
-
                 // Add transaction info to payment response
                 paymentResponse.data.transaction = transactionResponse.data;
                 paymentResponse.data.transactionId = transactionResponse.data.transactionId;
 
             } catch (transactionError) {
-                console.warn('⚠️ Payment added but transaction failed:', transactionError);
                 paymentResponse.data.transactionError = transactionError.message;
                 paymentResponse.data.transactionWarning = 'Payment recorded successfully, but bank transaction could not be created. Please check your bank account settings.';
             }
@@ -260,7 +231,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error adding payment with transaction:', error);
             throw error;
         }
     }
@@ -271,8 +241,6 @@ class SalesService {
      * @returns {Promise<Object>} Created sale with transaction
      */
     async createQuickSaleWithTransaction(saleData) {
-        console.log('⚡ Creating quick sale with transaction:', saleData);
-
         try {
             // Validate required fields
             if (!saleData.companyId) {
@@ -290,7 +258,7 @@ class SalesService {
                 companyId: saleData.companyId,
                 customerName: saleData.customerName || 'Cash Customer',
                 customerMobile: saleData.customerMobile || '',
-                invoiceType: 'non-gst', // Quick sales are usually non-GST
+                invoiceType: 'non-gst',
                 gstEnabled: false,
                 paymentMethod: saleData.paymentMethod || 'cash',
                 paymentReceived: saleData.amount,
@@ -310,12 +278,10 @@ class SalesService {
                 },
                 notes: saleData.notes || 'Quick cash sale',
                 status: 'completed',
-                // Transaction fields
                 chequeNumber: saleData.chequeNumber,
                 chequeDate: saleData.chequeDate,
                 upiTransactionId: saleData.upiTransactionId,
                 bankTransactionId: saleData.bankTransactionId,
-                // NEW: Due date fields
                 dueDate: saleData.dueDate || null,
                 creditDays: saleData.creditDays || 0
             };
@@ -330,17 +296,14 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error creating quick sale with transaction:', error);
             throw error;
         }
     }
 
-    // ==================== EXISTING METHODS (Keep all your existing methods) ====================
+    // ==================== EXISTING METHODS ====================
 
     // Create new sale/invoice
     async createInvoice(invoiceData) {
-        console.log('📄 Creating invoice:', invoiceData);
-
         // Transform frontend data to backend format
         const backendData = this.transformToBackendFormat(invoiceData);
 
@@ -382,17 +345,17 @@ class SalesService {
         });
     }
 
-    // UPDATED: Add payment to sale with due date support
+    // Add payment to sale with due date support
     async addPayment(saleId, paymentData) {
-        return await this.apiCall(`/sales/${saleId}/payments`, { // Changed from /payment to /payments
+        return await this.apiCall(`/sales/${saleId}/payments`, {
             method: 'POST',
             body: JSON.stringify({
                 amount: paymentData.amount,
                 method: paymentData.method || paymentData.paymentMethod || 'cash',
                 reference: paymentData.reference || '',
                 paymentDate: paymentData.paymentDate || null,
-                dueDate: paymentData.dueDate || null, // NEW
-                creditDays: paymentData.creditDays || null, // NEW
+                dueDate: paymentData.dueDate || null,
+                creditDays: paymentData.creditDays || null,
                 notes: paymentData.notes || ''
             })
         });
@@ -456,14 +419,12 @@ class SalesService {
         return response.blob();
     }
 
-    // UPDATED: Get overdue sales with fallback to client-side filtering
+    // Get overdue sales with fallback to client-side filtering
     async getOverdueSales(companyId) {
         try {
             // Try the dedicated endpoint first
             return await this.apiCall(`/sales/overdue?companyId=${companyId}`);
         } catch (error) {
-            console.warn('⚠️ Overdue endpoint not available, using fallback method');
-
             // Fallback: Get all sales and filter client-side for overdue
             try {
                 const salesResponse = await this.getInvoices(companyId);
@@ -493,11 +454,10 @@ class SalesService {
                 return {
                     success: true,
                     data: overdueSales,
-                    message: `Found ${overdueSales.length} overdue sales (client-side filtered)`
+                    message: `Found ${overdueSales.length} overdue sales`
                 };
 
             } catch (fallbackError) {
-                console.error('❌ Fallback method also failed:', fallbackError);
                 return {
                     success: false,
                     message: 'Unable to fetch overdue sales',
@@ -507,14 +467,12 @@ class SalesService {
         }
     }
 
-    // UPDATED: Get sales due today with fallback to client-side filtering
+    // Get sales due today with fallback to client-side filtering
     async getSalesDueToday(companyId) {
         try {
             // Try the dedicated endpoint first
             return await this.apiCall(`/sales/due-today?companyId=${companyId}`);
         } catch (error) {
-            console.warn('⚠️ Due today endpoint not available, using fallback method');
-
             // Fallback: Get all sales and filter client-side for due today
             try {
                 const salesResponse = await this.getInvoices(companyId);
@@ -545,11 +503,10 @@ class SalesService {
                 return {
                     success: true,
                     data: salesDueToday,
-                    message: `Found ${salesDueToday.length} sales due today (client-side filtered)`
+                    message: `Found ${salesDueToday.length} sales due today`
                 };
 
             } catch (fallbackError) {
-                console.error('❌ Fallback method also failed:', fallbackError);
                 return {
                     success: false,
                     message: 'Unable to fetch sales due today',
@@ -559,7 +516,7 @@ class SalesService {
         }
     }
 
-    // NEW: Get payment summary with overdue info
+    // Get payment summary with overdue info
     async getPaymentSummaryWithOverdue(companyId, dateFrom, dateTo) {
         const queryParams = new URLSearchParams({
             companyId,
@@ -570,8 +527,6 @@ class SalesService {
         try {
             return await this.apiCall(`/sales/payment-summary-overdue?${queryParams}`);
         } catch (error) {
-            console.warn('⚠️ Payment summary overdue endpoint not available, using fallback');
-
             // Fallback to enhanced payment summary
             return await this.getEnhancedPaymentSummary(companyId, {
                 dateFrom: dateFrom,
@@ -580,7 +535,7 @@ class SalesService {
         }
     }
 
-    // NEW: Update payment due date
+    // Update payment due date
     async updatePaymentDueDate(saleId, dueDate, creditDays) {
         return await this.apiCall(`/sales/${saleId}/due-date`, {
             method: 'PUT',
@@ -591,11 +546,8 @@ class SalesService {
         });
     }
 
-
-    // FIXED: Enhanced due date extraction with smart date parsing
+    // Transform frontend data to backend format
     transformToBackendFormat(invoiceData) {
-        console.log('🔄 Transforming data for backend:', invoiceData);
-
         // Extract customer information
         const customerName = invoiceData.customer?.name ||
             invoiceData.customerData?.name ||
@@ -608,21 +560,13 @@ class SalesService {
             invoiceData.mobileNumber ||
             '';
 
-        // FIXED: Extract tax mode information with proper priority
+        // Extract tax mode information
         const globalTaxMode = invoiceData.globalTaxMode ||
             invoiceData.taxMode ||
             (invoiceData.priceIncludesTax ? 'with-tax' : 'without-tax') ||
-            'without-tax'; // DEFAULT to without-tax
+            'without-tax';
 
         const priceIncludesTax = globalTaxMode === 'with-tax';
-
-        console.log('🏷️ FIXED Tax Mode Mapping:', {
-            originalGlobalTaxMode: invoiceData.globalTaxMode,
-            originalPriceIncludesTax: invoiceData.priceIncludesTax,
-            finalGlobalTaxMode: globalTaxMode,
-            finalPriceIncludesTax: priceIncludesTax,
-            invoiceDataKeys: Object.keys(invoiceData)
-        });
 
         // Enhanced payment information extraction
         const paymentInfo = invoiceData.paymentInfo || {};
@@ -639,20 +583,12 @@ class SalesService {
         const finalTotal = parseFloat(invoiceData.totals?.finalTotal || 0);
         const pendingAmount = Math.max(0, finalTotal - paymentReceived);
 
-        // FIXED: Extract payment method with CORRECT PRIORITY ORDER
+        // Extract payment method
         const paymentMethod = paymentInfo.method ||
             paymentInfo.paymentMethod ||
             invoiceData.payment?.method ||
             invoiceData.paymentMethod ||
             'cash';
-
-        console.log('💳 FIXED Payment Method Extraction:', {
-            selectedMethod: paymentMethod,
-            paymentInfoMethod: paymentInfo.method,
-            paymentInfoPaymentMethod: paymentInfo.paymentMethod,
-            invoiceDataPaymentMethod: invoiceData.paymentMethod,
-            paymentObjectMethod: invoiceData.payment?.method
-        });
 
         // Extract bank account ID
         const bankAccountId = invoiceData.bankAccountId ||
@@ -660,20 +596,17 @@ class SalesService {
             invoiceData.payment?.bankAccountId ||
             null;
 
-        // FIXED: Enhanced due date extraction with IMPROVED smart date parsing
+        // Enhanced due date extraction
         let dueDate = null;
         let creditDays = 0;
 
         // First, try to get explicit due date
         if (invoiceData.dueDate) {
             dueDate = new Date(invoiceData.dueDate).toISOString();
-            console.log('📅 Using explicit due date from invoiceData:', dueDate);
         } else if (paymentInfo.dueDate) {
             dueDate = new Date(paymentInfo.dueDate).toISOString();
-            console.log('📅 Using explicit due date from paymentInfo:', dueDate);
         } else if (invoiceData.payment?.dueDate) {
             dueDate = new Date(invoiceData.payment.dueDate).toISOString();
-            console.log('📅 Using explicit due date from payment object:', dueDate);
         }
 
         // Second, try to get credit days and calculate due date
@@ -687,38 +620,27 @@ class SalesService {
         if (explicitCreditDays > 0) {
             creditDays = explicitCreditDays;
             if (!dueDate) {
-                // Calculate due date from credit days
                 const calculatedDueDate = new Date();
                 calculatedDueDate.setDate(calculatedDueDate.getDate() + creditDays);
                 dueDate = calculatedDueDate.toISOString();
-                console.log('📅 Calculated due date from credit days:', { creditDays, dueDate });
             }
         }
 
-        // ENHANCED: Smart date parsing from payment notes
+        // Smart date parsing from payment notes
         if (!dueDate && paymentInfo.notes) {
-            console.log('📅 Attempting smart date parsing from notes:', paymentInfo.notes);
-
             const notesText = paymentInfo.notes.toLowerCase();
 
-            // Enhanced patterns for date extraction
             const datePatterns = [
-                // "will be paid on 14", "payment on 20", "due on 15"
                 /(?:paid|due|payment|pay).*?(?:on|by)\s*(?:the\s*)?(\d{1,2})(?:th|st|nd|rd)?/i,
-                // "14th date", "15th day", "20 date"
                 /(\d{1,2})(?:th|st|nd|rd)?\s*(?:date|day|of)/i,
-                // "14 december", "15 jan", etc.
                 /(\d{1,2})\s*(?:december|january|february|march|april|may|june|july|august|september|october|november|dec|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov)/i,
-                // Simple numbers with context
                 /(?:remaining|balance|rest).*?(\d{1,2})/i
             ];
 
-            let foundDate = false;
-            for (const [index, pattern] of datePatterns.entries()) {
+            for (const pattern of datePatterns) {
                 const match = paymentInfo.notes.match(pattern);
                 if (match) {
                     const dayNumber = parseInt(match[1]);
-                    console.log(`📅 Pattern ${index + 1} matched:`, { match: match[0], dayNumber });
 
                     if (dayNumber >= 1 && dayNumber <= 31) {
                         const today = new Date();
@@ -726,44 +648,26 @@ class SalesService {
                         const currentYear = today.getFullYear();
                         const currentDay = today.getDate();
 
-                        // Create due date for this month or next month
                         let calculatedDueDate = new Date(currentYear, currentMonth, dayNumber);
 
-                        // If the date has passed this month, set it for next month
                         if (dayNumber <= currentDay) {
                             calculatedDueDate = new Date(currentYear, currentMonth + 1, dayNumber);
                         }
 
                         dueDate = calculatedDueDate.toISOString();
                         creditDays = Math.max(1, Math.ceil((calculatedDueDate - today) / (1000 * 60 * 60 * 24)));
-
-                        console.log('📅 ✅ SMART Due Date Parsing SUCCESS:', {
-                            originalNotes: paymentInfo.notes,
-                            patternUsed: pattern.toString(),
-                            extractedDay: dayNumber,
-                            calculatedDueDate: dueDate,
-                            calculatedCreditDays: creditDays,
-                            currentDay: currentDay
-                        });
-
-                        foundDate = true;
                         break;
                     }
                 }
-            }
-
-            if (!foundDate) {
-                console.log('📅 ❌ Smart date parsing failed - no valid date found in notes');
             }
         }
 
         // Final fallback: if partial payment and no due date, set 30 days default
         if (!dueDate && pendingAmount > 0 && paymentReceived > 0) {
-            creditDays = 30; // Default 30 days credit
+            creditDays = 30;
             const calculatedDueDate = new Date();
             calculatedDueDate.setDate(calculatedDueDate.getDate() + creditDays);
             dueDate = calculatedDueDate.toISOString();
-            console.log('📅 Applied default 30-day credit for partial payment:', { dueDate, creditDays });
         }
 
         // Additional payment details extraction
@@ -789,25 +693,7 @@ class SalesService {
             invoiceData.payment?.notes ||
             '';
 
-        console.log('💳 Enhanced Payment Information Extraction:', {
-            paymentReceived,
-            paymentMethod,
-            bankAccountId,
-            dueDate,
-            creditDays,
-            finalTotal,
-            pendingAmount,
-            paymentNotes,
-            dueDateSource: dueDate ? (
-                invoiceData.dueDate ? 'invoiceData.dueDate' :
-                    paymentInfo.dueDate ? 'paymentInfo.dueDate' :
-                        explicitCreditDays ? 'calculated from creditDays' :
-                            paymentInfo.notes ? 'smart parsed from notes' :
-                                'default fallback'
-            ) : 'none'
-        });
-
-        // FIXED: Process items with CORRECT tax mode mapping
+        // Process items with correct tax mode mapping
         const processedItems = (invoiceData.items || [])
             .filter(item =>
                 item.itemName &&
@@ -815,23 +701,11 @@ class SalesService {
                 parseFloat(item.pricePerUnit) >= 0
             )
             .map((item, index) => {
-                // FIXED: Use individual item tax mode or fall back to global
                 const itemTaxMode = item.taxMode ||
                     item.itemTaxMode ||
                     globalTaxMode;
 
                 const itemPriceIncludesTax = itemTaxMode === 'with-tax';
-
-                console.log(`🔧 Processing Item ${index + 1}:`, {
-                    itemName: item.itemName,
-                    originalItemTaxMode: item.taxMode,
-                    originalItemItemTaxMode: item.itemTaxMode,
-                    globalTaxMode: globalTaxMode,
-                    finalItemTaxMode: itemTaxMode,
-                    finalItemPriceIncludesTax: itemPriceIncludesTax,
-                    pricePerUnit: item.pricePerUnit,
-                    quantity: item.quantity
-                });
 
                 return {
                     itemRef: item.itemRef || item._id || item.id || null,
@@ -842,7 +716,7 @@ class SalesService {
                     pricePerUnit: parseFloat(item.pricePerUnit) || 0,
                     taxRate: parseFloat(item.taxRate || item.gstRate) || (itemPriceIncludesTax ? 18 : 0),
                     priceIncludesTax: itemPriceIncludesTax,
-                    taxMode: itemTaxMode, // FIXED: Use correct tax mode
+                    taxMode: itemTaxMode,
                     discountPercent: parseFloat(item.discountPercent) || 0,
                     discountAmount: parseFloat(item.discountAmount) || 0,
                     cgst: parseFloat(item.cgstAmount || item.cgst) || 0,
@@ -853,21 +727,13 @@ class SalesService {
                 };
             });
 
-        console.log('📦 FIXED Processed Items for Backend:', processedItems.map(item => ({
-            name: item.itemName,
-            taxMode: item.taxMode,
-            priceIncludesTax: item.priceIncludesTax,
-            pricePerUnit: item.pricePerUnit,
-            taxRate: item.taxRate
-        })));
-
         const transformedData = {
             // Invoice basic info
             invoiceNumber: invoiceData.invoiceNumber,
             invoiceDate: invoiceData.invoiceDate || new Date().toISOString(),
             invoiceType: invoiceData.gstEnabled ? 'gst' : 'non-gst',
             gstEnabled: invoiceData.gstEnabled || false,
-            priceIncludesTax: priceIncludesTax, // FIXED: Use correct value
+            priceIncludesTax: priceIncludesTax,
             companyId: invoiceData.companyId,
 
             // Customer information
@@ -878,7 +744,7 @@ class SalesService {
             // Items array with proper tax mode mapping
             items: processedItems,
 
-            // FIXED: Enhanced payment object with CORRECT values
+            // Enhanced payment object
             payment: {
                 method: paymentMethod,
                 status: this.calculatePaymentStatus(paymentReceived, finalTotal),
@@ -888,8 +754,8 @@ class SalesService {
                     invoiceData.paymentDate ||
                     invoiceData.payment?.paymentDate ||
                     new Date().toISOString(),
-                dueDate: dueDate, // FIXED: Now properly parsed
-                creditDays: creditDays, // FIXED: Now properly calculated
+                dueDate: dueDate,
+                creditDays: creditDays,
                 reference: paymentInfo.reference ||
                     invoiceData.paymentReference ||
                     invoiceData.payment?.reference ||
@@ -897,7 +763,6 @@ class SalesService {
                     chequeNumber ||
                     '',
                 notes: paymentNotes,
-                // Additional payment details
                 chequeNumber: chequeNumber,
                 chequeDate: chequeDate,
                 bankTransactionId: transactionId,
@@ -931,83 +796,17 @@ class SalesService {
             upiTransactionId: transactionId,
             bankTransactionId: transactionId,
 
-            // FIXED: Enhanced tax mode info
+            // Tax mode info
             globalTaxMode: globalTaxMode,
-            taxModeInfo: {
-                globalTaxMode,
-                priceIncludesTax,
-                itemCount: processedItems.length,
-                itemTaxModes: processedItems.map(item => ({
-                    itemName: item.itemName,
-                    taxMode: item.taxMode,
-                    priceIncludesTax: item.priceIncludesTax,
-                    pricePerUnit: item.pricePerUnit,
-                    taxRate: item.taxRate
-                }))
-            },
-
-            // FIXED: Include CORRECTED values at root level
             paymentMethod: paymentMethod,
             dueDate: dueDate,
-            creditDays: creditDays,
-
-            // Enhanced debugging
-            debugPaymentData: {
-                originalPaymentReceived: invoiceData.paymentReceived,
-                originalPaymentMethod: invoiceData.paymentMethod,
-                originalBankAccountId: invoiceData.bankAccountId,
-                originalDueDate: invoiceData.dueDate,
-                originalCreditDays: invoiceData.creditDays,
-                paymentInfoObject: paymentInfo,
-                methodSelectionDebug: {
-                    paymentInfoMethod: paymentInfo.method,
-                    paymentInfoPaymentMethod: paymentInfo.paymentMethod,
-                    invoiceDataPaymentMethod: invoiceData.paymentMethod,
-                    paymentObjectMethod: invoiceData.payment?.method,
-                    finalSelectedMethod: paymentMethod
-                },
-                dueDateParsingDebug: {
-                    originalDueDate: invoiceData.dueDate,
-                    paymentInfoDueDate: paymentInfo.dueDate,
-                    originalCreditDays: invoiceData.creditDays,
-                    paymentInfoCreditDays: paymentInfo.creditDays,
-                    paymentNotes: paymentInfo.notes,
-                    finalDueDate: dueDate,
-                    finalCreditDays: creditDays,
-                    smartParsed: !!(dueDate && paymentInfo.notes && !invoiceData.dueDate && !paymentInfo.dueDate && !explicitCreditDays)
-                },
-                taxModeDebug: {
-                    originalGlobalTaxMode: invoiceData.globalTaxMode,
-                    originalPriceIncludesTax: invoiceData.priceIncludesTax,
-                    finalGlobalTaxMode: globalTaxMode,
-                    finalPriceIncludesTax: priceIncludesTax
-                }
-            }
+            creditDays: creditDays
         };
-
-        console.log('🚀 FIXED Final Transformed Data for Backend:', {
-            invoiceNumber: transformedData.invoiceNumber,
-            globalTaxMode: transformedData.globalTaxMode,
-            priceIncludesTax: transformedData.priceIncludesTax,
-            payment: {
-                method: transformedData.payment.method,
-                paidAmount: transformedData.payment.paidAmount,
-                pendingAmount: transformedData.payment.pendingAmount,
-                dueDate: transformedData.payment.dueDate,
-                creditDays: transformedData.payment.creditDays
-            },
-            itemsPreview: transformedData.items.map(item => ({
-                name: item.itemName,
-                taxMode: item.taxMode,
-                priceIncludesTax: item.priceIncludesTax
-            }))
-        });
 
         return transformedData;
     }
 
-
-    // UPDATED: Transform backend data to frontend format with due date support
+    // Transform backend data to frontend format with due date support
     transformToFrontendFormat(backendData) {
         const sale = backendData.data || backendData;
 
@@ -1036,7 +835,7 @@ class SalesService {
             status: this.mapPaymentStatus(sale.payment?.status),
             saleStatus: this.capitalizeFirst(sale.status),
 
-            // NEW: Due date information
+            // Due date information
             dueDate: sale.payment?.dueDate,
             creditDays: sale.payment?.creditDays || 0,
             isOverdue: sale.isOverdue || false,
@@ -1045,7 +844,7 @@ class SalesService {
             // Additional data
             items: sale.items || [],
             gstEnabled: sale.gstEnabled || false,
-            priceIncludesTax: sale.priceIncludesTax || false, // NEW
+            priceIncludesTax: sale.priceIncludesTax || false,
             roundOff: sale.roundOff || 0,
             notes: sale.notes || '',
             terms: sale.termsAndConditions || '',
@@ -1053,13 +852,13 @@ class SalesService {
             // Keep original sale data for editing
             originalSale: sale,
 
-            // UPDATED: Payment details with due date
+            // Payment details with due date
             paymentReceived: sale.payment?.paidAmount || 0,
             paymentMethod: sale.payment?.method || 'cash',
             paymentDate: sale.payment?.paymentDate,
             paymentReference: sale.payment?.reference || '',
-            paymentDueDate: sale.payment?.dueDate, // NEW
-            paymentCreditDays: sale.payment?.creditDays || 0, // NEW
+            paymentDueDate: sale.payment?.dueDate,
+            paymentCreditDays: sale.payment?.creditDays || 0,
 
             // Customer details for editing
             customer: {
@@ -1093,7 +892,7 @@ class SalesService {
             'paid': 'Paid',
             'partial': 'Partial',
             'pending': 'Pending',
-            'overdue': 'Overdue', // NEW
+            'overdue': 'Overdue',
             'cancelled': 'Cancelled'
         };
         return statusMap[backendStatus] || 'Pending';
@@ -1121,7 +920,7 @@ class SalesService {
         return date.toISOString().split('T')[0];
     }
 
-    // NEW: Format due date for display
+    // Format due date for display
     formatDueDate(dueDate) {
         if (!dueDate) return 'No due date';
         const date = new Date(dueDate);
@@ -1137,7 +936,7 @@ class SalesService {
         return date.toLocaleDateString('en-GB');
     }
 
-    // NEW: Get overdue status
+    // Get overdue status
     getOverdueStatus(dueDate, pendingAmount) {
         if (!dueDate || pendingAmount <= 0) return { isOverdue: false, daysOverdue: 0 };
 
@@ -1234,8 +1033,6 @@ class SalesService {
      */
     async getSalesWithTransactions(companyId, filters = {}) {
         try {
-            console.log('📊 Getting sales with transaction details:', { companyId, filters });
-
             // Get sales data
             const salesResponse = await this.getInvoices(companyId, filters);
 
@@ -1259,7 +1056,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error getting sales with transactions:', error);
             return {
                 success: false,
                 message: error.message,
@@ -1276,8 +1072,6 @@ class SalesService {
      */
     async getSaleTransactionStatus(companyId, saleId) {
         try {
-            console.log('🔍 Checking transaction status for sale:', { companyId, saleId });
-
             // Get transactions for this sale
             const transactions = await transactionService.getTransactions(companyId, {
                 referenceId: saleId,
@@ -1300,7 +1094,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error checking sale transaction status:', error);
             return {
                 success: false,
                 message: error.message,
@@ -1308,8 +1101,6 @@ class SalesService {
             };
         }
     }
-
-    // NEW: Enhanced methods for due date management
 
     /**
      * Get comprehensive payment summary with overdue analysis
@@ -1319,8 +1110,6 @@ class SalesService {
      */
     async getEnhancedPaymentSummary(companyId, filters = {}) {
         try {
-            console.log('📊 Getting enhanced payment summary:', { companyId, filters });
-
             // Get regular sales data
             const salesResponse = await this.getInvoices(companyId, filters);
 
@@ -1349,7 +1138,7 @@ class SalesService {
             };
 
             const today = new Date();
-            today.setHours(23, 59, 59, 999); // End of today
+            today.setHours(23, 59, 59, 999);
 
             sales.forEach(sale => {
                 const amount = sale.totals?.finalTotal || 0;
@@ -1386,7 +1175,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error getting enhanced payment summary:', error);
             return {
                 success: false,
                 message: error.message,
@@ -1402,8 +1190,6 @@ class SalesService {
      */
     async getSalesGroupedByStatus(companyId) {
         try {
-            console.log('📊 Getting sales grouped by payment status:', companyId);
-
             const salesResponse = await this.getInvoices(companyId);
 
             if (!salesResponse.success) {
@@ -1452,7 +1238,6 @@ class SalesService {
             };
 
         } catch (error) {
-            console.error('❌ Error grouping sales by status:', error);
             return {
                 success: false,
                 message: error.message,

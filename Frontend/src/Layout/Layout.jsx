@@ -33,19 +33,20 @@ function Layout({
   // Company error state
   const [companyError, setCompanyError] = useState(null);
 
-  // Get current view from URL path
+  // Get current view from URL path - ✅ UPDATED: Fixed purchase-orders mapping
   const getCurrentViewFromPath = () => {
     const pathParts = location.pathname.split('/');
     const lastPart = pathParts[pathParts.length - 1];
 
-    // Map URL paths to views
+    // Map URL paths to views - ✅ UPDATED: Fixed purchase-orders to purchaseOrder
     const pathViewMap = {
       'dashboard': 'dailySummary',
       'daybook': 'dailySummary',
       'transactions': 'transactions',
       'cash-bank': 'cashAndBank',
       'parties': 'parties',
-      'sales': 'allSales',
+      'sales': 'invoices',
+      'quotations': 'quotations',
       'invoices': 'invoices',
       'create-invoice': 'createInvoice',
       'credit-notes': 'creditNotes',
@@ -54,7 +55,7 @@ function Layout({
       'purchases': 'allPurchases',
       'purchase-bills': 'purchaseBills',
       'create-purchase': 'createPurchase',
-      'purchase-orders': 'purchaseOrders',
+      'purchase-orders': 'purchaseOrder', // ✅ UPDATED: Map to purchaseOrder (not purchaseOrders)
       'create-purchase-order': 'createPurchaseOrder',
       'inventory': 'inventory',
       'products': 'allProducts',
@@ -76,16 +77,6 @@ function Layout({
 
   // Current page derived from URL
   const currentPage = getCurrentViewFromPath();
-
-  // Debug current routing info
-  useEffect(() => {
-    console.log('🧭 Layout: Route info:', {
-      companyId,
-      currentPage,
-      pathname: location.pathname,
-      currentCompany: currentCompany?.businessName || currentCompany?.name
-    });
-  }, [companyId, currentPage, location.pathname, currentCompany]);
 
   // Check screen size on mount and resize
   useEffect(() => {
@@ -110,12 +101,10 @@ function Layout({
   // Monitor network status
   useEffect(() => {
     const handleOnline = () => {
-      console.log('🌐 Network: Back online');
       setIsOnline(true);
     };
 
     const handleOffline = () => {
-      console.log('📵 Network: Gone offline');
       setIsOnline(false);
     };
 
@@ -139,9 +128,9 @@ function Layout({
     setSidebarOpen(!sidebarOpen);
   };
 
-  // Handle navigation - now uses React Router navigation
+  // Handle navigation - ✅ UPDATED: Fixed purchaseOrder mapping
   const handleNavigation = (page) => {
-    console.log('🧭 Layout: Navigation request for:', page);
+    console.log('🚀 Layout handleNavigation called with:', page);
 
     // Clear any company errors when navigating
     setCompanyError(null);
@@ -150,28 +139,31 @@ function Layout({
     const effectiveCompanyId = companyId || currentCompany?.id || currentCompany?._id;
 
     if (!effectiveCompanyId) {
-      console.warn('⚠️ No company ID available for navigation');
+      console.warn('⚠️ No company ID available for navigation:', page);
       setCompanyError('Please select a company to access this feature');
       return;
     }
 
-    // Map views to URL paths
+    // Map views to URL paths - ✅ UPDATED: Fixed purchaseOrder to purchase-orders
     const viewPathMap = {
       'dailySummary': 'dashboard',
       'transactions': 'transactions',
       'cashAndBank': 'cash-bank',
       'parties': 'parties',
-      'allSales': 'sales',
       'invoices': 'invoices',
-      'createInvoice': 'create-invoice',
+      'allSales': 'sales',
+      'quotations': 'quotations',
+      'createQuotation': 'quotations/add',
+      'createInvoice': 'invoices/add',
       'creditNotes': 'credit-notes',
       'salesOrders': 'sales-orders',
-      'createSalesOrder': 'create-sales-order',
+      'createSalesOrder': 'sales-orders/add',
       'allPurchases': 'purchases',
       'purchaseBills': 'purchase-bills',
-      'createPurchase': 'create-purchase',
-      'purchaseOrders': 'purchase-orders',
-      'createPurchaseOrder': 'create-purchase-order',
+      'createPurchase': 'purchases/add',
+      'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
+      'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+      'createPurchaseOrder': 'purchase-orders/add',
       'inventory': 'inventory',
       'allProducts': 'products',
       'lowStock': 'low-stock',
@@ -190,13 +182,12 @@ function Layout({
     const urlPath = viewPathMap[page] || 'dashboard';
     const newPath = `/companies/${effectiveCompanyId}/${urlPath}`;
 
-    console.log('🧭 Navigating to:', newPath);
+    console.log('✅ Layout navigating to:', newPath);
     navigate(newPath);
   };
 
-  // Handle company change with error handling and navigation
+  // Handle company change with error handling and navigation - ✅ UPDATED: Fixed purchaseOrder mapping
   const handleCompanyChange = (company) => {
-    console.log('🏢 Layout: Company change request:', company?.businessName || company?.name || 'None');
     setCompanyError(null);
 
     try {
@@ -204,22 +195,27 @@ function Layout({
         // Navigate to new company's dashboard
         const newCompanyId = company.id || company._id;
         const currentView = getCurrentViewFromPath();
+
+        // ✅ UPDATED: Fixed purchaseOrder mapping
         const viewPathMap = {
           'dailySummary': 'dashboard',
           'transactions': 'transactions',
           'cashAndBank': 'cash-bank',
           'parties': 'parties',
-          'allSales': 'sales',
           'invoices': 'invoices',
-          'createInvoice': 'create-invoice',
+          'allSales': 'sales',
+          'quotations': 'quotations',
+          'createQuotation': 'quotations/add',
+          'createInvoice': 'invoices/add',
           'creditNotes': 'credit-notes',
           'salesOrders': 'sales-orders',
-          'createSalesOrder': 'create-sales-order',
+          'createSalesOrder': 'sales-orders/add',
           'allPurchases': 'purchases',
           'purchaseBills': 'purchase-bills',
-          'createPurchase': 'create-purchase',
-          'purchaseOrders': 'purchase-orders',
-          'createPurchaseOrder': 'create-purchase-order',
+          'createPurchase': 'purchases/add',
+          'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
+          'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+          'createPurchaseOrder': 'purchase-orders/add',
           'inventory': 'inventory',
           'allProducts': 'products',
           'lowStock': 'low-stock',
@@ -238,7 +234,6 @@ function Layout({
         const urlPath = viewPathMap[currentView] || 'dashboard';
         const newPath = `/companies/${newCompanyId}/${urlPath}`;
 
-        console.log('🧭 Navigating to new company:', newPath);
         navigate(newPath);
       }
 
@@ -247,14 +242,12 @@ function Layout({
         onCompanyChange(company);
       }
     } catch (error) {
-      console.error('❌ Error changing company:', error);
       setCompanyError(`Failed to switch company: ${error.message}`);
     }
   };
 
   // Handle company creation
   const handleCompanyCreated = (newCompany) => {
-    console.log('🆕 Layout: New company created:', newCompany);
     setCompanyError(null);
 
     try {
@@ -267,20 +260,17 @@ function Layout({
         const newCompanyId = newCompany.id || newCompany._id;
         const newPath = `/companies/${newCompanyId}/dashboard`;
 
-        console.log('🧭 Navigating to new company dashboard:', newPath);
         setTimeout(() => {
           navigate(newPath);
         }, 100); // Small delay to ensure state is updated
       }
     } catch (error) {
-      console.error('❌ Error handling new company:', error);
       setCompanyError(`Failed to create company: ${error.message}`);
     }
   };
 
   // Handle company updates
   const handleCompanyUpdated = (updatedCompany) => {
-    console.log('📝 Layout: Company updated:', updatedCompany);
     setCompanyError(null);
 
     try {
@@ -288,7 +278,6 @@ function Layout({
         onCompanyUpdated(updatedCompany);
       }
     } catch (error) {
-      console.error('❌ Error handling company update:', error);
       setCompanyError(`Failed to update company: ${error.message}`);
     }
   };
@@ -400,22 +389,27 @@ function Layout({
                     onClick={() => {
                       const correctId = currentCompany.id || currentCompany._id;
                       const currentView = getCurrentViewFromPath();
+
+                      // ✅ UPDATED: Fixed purchaseOrder mapping here too
                       const viewPathMap = {
                         'dailySummary': 'dashboard',
                         'transactions': 'transactions',
                         'cashAndBank': 'cash-bank',
                         'parties': 'parties',
-                        'allSales': 'sales',
                         'invoices': 'invoices',
-                        'createInvoice': 'create-invoice',
+                        'allSales': 'sales',
+                        'quotations': 'quotations',
+                        'createQuotation': 'quotations/add',
+                        'createInvoice': 'invoices/add',
                         'creditNotes': 'credit-notes',
                         'salesOrders': 'sales-orders',
-                        'createSalesOrder': 'create-sales-order',
+                        'createSalesOrder': 'sales-orders/add',
                         'allPurchases': 'purchases',
                         'purchaseBills': 'purchase-bills',
-                        'createPurchase': 'create-purchase',
-                        'purchaseOrders': 'purchase-orders',
-                        'createPurchaseOrder': 'create-purchase-order',
+                        'createPurchase': 'purchases/add',
+                        'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
+                        'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+                        'createPurchaseOrder': 'purchase-orders/add',
                         'inventory': 'inventory',
                         'allProducts': 'products',
                         'lowStock': 'low-stock',
