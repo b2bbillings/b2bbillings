@@ -89,11 +89,16 @@ const purchaseOrderSchema = new mongoose.Schema({
         trim: true
     },
 
-    // GST and Tax Settings (same as Sale/SalesOrder model)
+    // ✅ ADDED: Complete GST and Tax Settings (aligned with SalesOrder model)
     gstEnabled: {
         type: Boolean,
         required: true,
         default: true
+    },
+    gstType: {
+        type: String,
+        enum: ['gst', 'non-gst'],
+        default: 'gst'
     },
     taxMode: {
         type: String,
@@ -113,7 +118,7 @@ const purchaseOrderSchema = new mongoose.Schema({
         index: true
     },
 
-    // Purchase Items Array (similar to Sale/SalesOrder model)
+    // ✅ ENHANCED: Purchase Items Array with all frontend-compatible fields
     items: [{
         // Item Reference
         itemRef: {
@@ -121,11 +126,19 @@ const purchaseOrderSchema = new mongoose.Schema({
             ref: 'Item',
             sparse: true
         },
+        selectedProduct: {
+            type: String,
+            default: ''
+        },
 
-        // Item Details
+        // ✅ ADDED: Item Details (both naming conventions for compatibility)
         itemName: {
             type: String,
             required: true,
+            trim: true
+        },
+        productName: {
+            type: String,
             trim: true
         },
         itemCode: {
@@ -133,7 +146,22 @@ const purchaseOrderSchema = new mongoose.Schema({
             trim: true,
             default: ''
         },
+        productCode: {
+            type: String,
+            trim: true,
+            default: ''
+        },
+        description: {
+            type: String,
+            trim: true,
+            default: ''
+        },
         hsnCode: {
+            type: String,
+            trim: true,
+            default: '0000'
+        },
+        hsnNumber: {
             type: String,
             trim: true,
             default: '0000'
@@ -152,14 +180,26 @@ const purchaseOrderSchema = new mongoose.Schema({
         },
         unit: {
             type: String,
-            enum: ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM', 'BAG', 'BTL', 'BUN', 'CAN', 'CTN', 'DOZ', 'DRM', 'FEW', 'GMS', 'GRS', 'KGS', 'KME', 'MLS', 'MTR', 'NOS', 'PAC', 'QTL', 'ROL', 'SET', 'SQF', 'SQM', 'TBS', 'TGM', 'THD', 'TON', 'TUB', 'UGS', 'UNT', 'YDS', 'OTH'],
+            enum: ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM', 'BAG', 'BTL', 'BUN', 'CAN', 'CTN', 'DOZ', 'DRM', 'FEW', 'GMS', 'GRS', 'KGS', 'KME', 'MLS', 'MTR', 'NOS', 'PAC', 'QTL', 'ROL', 'SET', 'SQF', 'SQM', 'TBS', 'TGM', 'THD', 'TON', 'TUB', 'UGS', 'UNT', 'YDS', 'OTH', 'pcs'],
             default: 'PCS'
         },
 
-        // Pricing Details
+        // ✅ ADDED: Enhanced Pricing Details (multiple naming conventions)
         pricePerUnit: {
             type: Number,
             required: true,
+            min: 0
+        },
+        price: {
+            type: Number,
+            min: 0
+        },
+        purchasePrice: {
+            type: Number,
+            min: 0
+        },
+        sellingPrice: {
+            type: Number,
             min: 0
         },
         taxRate: {
@@ -168,14 +208,31 @@ const purchaseOrderSchema = new mongoose.Schema({
             min: 0,
             max: 100
         },
+        gstRate: {
+            type: Number,
+            default: 18,
+            min: 0,
+            max: 100
+        },
         taxMode: {
             type: String,
-            enum: ['with-tax', 'without-tax'],
+            enum: ['with-tax', 'without-tax', 'include', 'exclude'],
             default: 'without-tax'
+        },
+        gstMode: {
+            type: String,
+            enum: ['include', 'exclude'],
+            default: 'exclude'
         },
         priceIncludesTax: {
             type: Boolean,
             default: false
+        },
+
+        // ✅ ADDED: Stock Info
+        availableStock: {
+            type: Number,
+            default: 0
         },
 
         // Discount Fields
@@ -199,13 +256,16 @@ const purchaseOrderSchema = new mongoose.Schema({
         sgstAmount: { type: Number, default: 0, min: 0 },
         igstAmount: { type: Number, default: 0, min: 0 },
 
-        // Calculated amounts
+        // ✅ ADDED: Calculated amounts (multiple naming conventions)
+        subtotal: { type: Number, default: 0, min: 0 },
         taxableAmount: { type: Number, default: 0, min: 0 },
         totalTaxAmount: { type: Number, default: 0, min: 0 },
+        gstAmount: { type: Number, default: 0, min: 0 },
 
-        // Final amounts
+        // ✅ ADDED: Final amounts (multiple naming conventions)
         amount: { type: Number, default: 0, min: 0 },
         itemAmount: { type: Number, required: true, min: 0 },
+        totalAmount: { type: Number, default: 0, min: 0 },
 
         // Line ordering
         lineNumber: { type: Number, required: true, min: 1 }
@@ -368,7 +428,7 @@ purchaseOrderSchema.virtual('isRequiredDatePassed').get(function () {
     return new Date() > this.requiredBy;
 });
 
-// PRE-SAVE MIDDLEWARE
+// ✅ ENHANCED: PRE-SAVE MIDDLEWARE with field synchronization
 purchaseOrderSchema.pre('save', function (next) {
     // Auto-generate order number if not provided
     if (this.isNew && !this.orderNumber) {
@@ -383,24 +443,83 @@ purchaseOrderSchema.pre('save', function (next) {
         this.orderNumber = `${prefix}-${year}${month}${day}-${Date.now().toString().slice(-4)}`;
     }
 
-    // Sync tax mode fields
+    // ✅ ADDED: Sync GST type and tax mode fields
+    if (this.gstType) {
+        this.gstEnabled = this.gstType === 'gst';
+    }
+
     if (this.taxMode) {
         this.priceIncludesTax = this.taxMode === 'with-tax';
     }
 
-    // Process items
+    // ✅ ENHANCED: Process items with field synchronization
     this.items.forEach((item, index) => {
         if (!item.lineNumber) item.lineNumber = index + 1;
 
-        // Sync item tax mode
+        // Sync product/item names
+        if (item.productName && !item.itemName) {
+            item.itemName = item.productName;
+        }
+        if (item.itemName && !item.productName) {
+            item.productName = item.itemName;
+        }
+
+        // Sync product/item codes
+        if (item.productCode && !item.itemCode) {
+            item.itemCode = item.productCode;
+        }
+        if (item.itemCode && !item.productCode) {
+            item.productCode = item.itemCode;
+        }
+
+        // Sync HSN numbers
+        if (item.hsnNumber && !item.hsnCode) {
+            item.hsnCode = item.hsnNumber;
+        }
+        if (item.hsnCode && !item.hsnNumber) {
+            item.hsnNumber = item.hsnCode;
+        }
+
+        // Sync prices
+        if (item.price && !item.pricePerUnit) {
+            item.pricePerUnit = item.price;
+        }
+        if (item.pricePerUnit && !item.price) {
+            item.price = item.pricePerUnit;
+        }
+
+        // Sync GST rates
+        if (item.gstRate && !item.taxRate) {
+            item.taxRate = item.gstRate;
+        }
+        if (item.taxRate && !item.gstRate) {
+            item.gstRate = item.taxRate;
+        }
+
+        // Sync GST modes
+        if (item.gstMode) {
+            item.taxMode = item.gstMode === 'include' ? 'with-tax' : 'without-tax';
+            item.priceIncludesTax = item.gstMode === 'include';
+        }
+        if (item.taxMode && !item.gstMode) {
+            item.gstMode = item.taxMode === 'with-tax' ? 'include' : 'exclude';
+        }
+
+        // Sync item tax mode with parent
         if (!item.taxMode) {
             item.taxMode = this.taxMode || 'without-tax';
             item.priceIncludesTax = item.taxMode === 'with-tax';
         }
 
         // Sync amounts
+        if (item.totalAmount && !item.amount) item.amount = item.totalAmount;
+        if (item.amount && !item.totalAmount) item.totalAmount = item.amount;
         if (item.itemAmount && !item.amount) item.amount = item.itemAmount;
         if (item.amount && !item.itemAmount) item.itemAmount = item.amount;
+
+        // Sync tax amounts
+        if (item.gstAmount && !item.totalTaxAmount) item.totalTaxAmount = item.gstAmount;
+        if (item.totalTaxAmount && !item.gstAmount) item.gstAmount = item.totalTaxAmount;
     });
 
     // Update payment status
@@ -496,6 +615,7 @@ purchaseOrderSchema.methods.convertToPurchaseInvoice = async function () {
 
             // Tax settings
             gstEnabled: this.gstEnabled,
+            gstType: this.gstType,
             taxMode: this.taxMode,
             priceIncludesTax: this.priceIncludesTax,
             companyId: this.companyId,

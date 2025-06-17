@@ -1,164 +1,193 @@
 const PurchaseOrder = require('../models/PurchaseOrder');
+const Purchase = require('../models/Purchase');
 const Item = require('../models/Item');
 const Party = require('../models/Party');
 const Payment = require('../models/Payment');
 const mongoose = require('mongoose');
 
-// Helper function to find or create supplier - ENHANCED VERSION
+// Enhanced findOrCreateSupplier function with better duplicate handling
 const findOrCreateSupplier = async (supplierName, supplierMobile, supplierId, companyId, userId) => {
     try {
         let supplierRecord;
 
-        console.log('🔍 Finding or creating supplier:', {
-            supplierName,
-            supplierMobile,
-            supplierId,
-            companyId
-        });
-
-        // If supplier ID is provided and valid, try to find by ID
+        // 1. If supplier ID is provided, use it directly
         if (supplierId && mongoose.Types.ObjectId.isValid(supplierId)) {
-            supplierRecord = await Party.findById(supplierId);
-            if (!supplierRecord) {
-                throw new Error('Supplier not found with provided ID');
+            const foundSupplier = await Party.findById(supplierId);
+            if (foundSupplier && foundSupplier.companyId.toString() === companyId.toString()) {
+                return foundSupplier;
             }
-            console.log('✅ Found supplier by ID:', supplierRecord.name);
-            return supplierRecord;
         }
 
-        // Search by mobile number first (check both mobile and phoneNumber fields)
+        // 2. Enhanced mobile search with exact matching
         if (supplierMobile) {
-            supplierRecord = await Party.findOne({
-                $or: [
-                    { mobile: supplierMobile },
-                    { phoneNumber: supplierMobile }
-                ],
-                type: 'supplier',
-                companyId
-            });
+            const cleanMobile = supplierMobile.toString().replace(/[\s\-\(\)]/g, '');
+            const mobileVariations = [cleanMobile, supplierMobile, supplierMobile.toString()];
 
-            if (supplierRecord) {
-                console.log('✅ Found existing supplier by mobile:', {
-                    name: supplierRecord.name,
-                    mobile: supplierRecord.mobile || supplierRecord.phoneNumber
-                });
-                return supplierRecord;
-            }
-        }
-
-        // Search by name if mobile search didn't work
-        if (supplierName && !supplierRecord) {
-            supplierRecord = await Party.findOne({
-                name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') },
-                type: 'supplier',
-                companyId
-            });
-
-            if (supplierRecord) {
-                console.log('✅ Found existing supplier by name:', {
-                    name: supplierRecord.name,
-                    mobile: supplierRecord.mobile || supplierRecord.phoneNumber
-                });
-                return supplierRecord;
-            }
-        }
-
-        // If no existing supplier found, create new one
-        if (!supplierRecord) {
-            if (!supplierName) {
-                throw new Error('Supplier name is required to create new supplier');
-            }
-
-            console.log('🆕 Creating new supplier:', {
-                name: supplierName,
-                mobile: supplierMobile
-            });
-
-            const newSupplierData = {
-                name: supplierName.trim(),
-                type: 'supplier',
-                companyId: companyId,
-                createdBy: userId || companyId,
-                lastModifiedBy: userId || companyId,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                email: '',
-                address: {
-                    street: '',
-                    city: '',
-                    state: '',
-                    pincode: '',
-                    country: 'India'
+            // Use aggregation pipeline for better search
+            const supplierByMobile = await Party.aggregate([
+                {
+                    $match: {
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        $or: [
+                            { type: 'supplier' },
+                            { type: { $exists: false } },
+                            { type: null }
+                        ],
+                        $or: [
+                            { mobile: { $in: mobileVariations } },
+                            { phoneNumber: { $in: mobileVariations } },
+                            { phone: { $in: mobileVariations } },
+                            { contactNumber: { $in: mobileVariations } }
+                        ]
+                    }
                 },
-                gstNumber: '',
-                panNumber: '',
-                status: 'active',
-                creditLimit: 0,
-                creditDays: 0
-            };
+                { $limit: 1 }
+            ]);
 
-            // ✅ FIXED: Only add mobile/phoneNumber if provided to avoid duplicate key error
-            if (supplierMobile && supplierMobile.trim()) {
-                // Check which field the Party model uses for mobile
-                const existingParty = await Party.findOne({ companyId }).select('mobile phoneNumber');
+            if (supplierByMobile && supplierByMobile.length > 0) {
+                const foundSupplier = await Party.findById(supplierByMobile[0]._id);
 
-                if (existingParty && existingParty.mobile !== undefined) {
-                    // Model uses 'mobile' field
-                    newSupplierData.mobile = supplierMobile.trim();
-                } else {
-                    // Model uses 'phoneNumber' field
-                    newSupplierData.phoneNumber = supplierMobile.trim();
+                // Update name if provided and different
+                if (supplierName && supplierName.trim() !== foundSupplier.name) {
+                    foundSupplier.name = supplierName.trim();
+                    await foundSupplier.save();
                 }
+                return foundSupplier;
             }
 
+            // Fallback: Try raw MongoDB query
             try {
-                supplierRecord = new Party(newSupplierData);
-                await supplierRecord.save();
+                const db = mongoose.connection.db;
+                const collection = db.collection('parties');
 
-                console.log('✅ New supplier created:', {
-                    id: supplierRecord._id,
-                    name: supplierRecord.name,
-                    mobile: supplierRecord.mobile || supplierRecord.phoneNumber
+                const rawSupplier = await collection.findOne({
+                    companyId: new mongoose.Types.ObjectId(companyId),
+                    $or: [
+                        { mobile: { $in: mobileVariations } },
+                        { phoneNumber: { $in: mobileVariations } },
+                        { phone: { $in: mobileVariations } },
+                        { contactNumber: { $in: mobileVariations } }
+                    ]
                 });
-            } catch (saveError) {
-                console.error('❌ Error saving new supplier:', saveError);
 
-                // If it's a duplicate key error, try to find the existing record
-                if (saveError.code === 11000) {
-                    console.log('🔄 Duplicate key error, searching for existing supplier...');
+                if (rawSupplier) {
+                    const foundSupplier = await Party.findById(rawSupplier._id);
 
-                    // Try to find by mobile again (maybe it was just created)
-                    if (supplierMobile) {
-                        supplierRecord = await Party.findOne({
-                            $or: [
-                                { mobile: supplierMobile },
-                                { phoneNumber: supplierMobile }
-                            ],
-                            type: 'supplier',
-                            companyId
-                        });
+                    // Update name if provided and different
+                    if (supplierName && supplierName.trim() !== foundSupplier.name) {
+                        foundSupplier.name = supplierName.trim();
+                        await foundSupplier.save();
                     }
+                    return foundSupplier;
+                }
+            } catch (rawQueryError) {
+                // Continue to name search
+            }
+        }
 
-                    // Try to find by name if mobile search failed
-                    if (!supplierRecord && supplierName) {
-                        supplierRecord = await Party.findOne({
-                            name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') },
-                            type: 'supplier',
-                            companyId
-                        });
-                    }
+        // 3. Enhanced search by name with better regex
+        if (supplierName) {
+            const nameVariations = [
+                supplierName.trim(),
+                supplierName.trim().toLowerCase(),
+                supplierName.trim().toUpperCase()
+            ];
 
-                    if (supplierRecord) {
-                        console.log('✅ Found existing supplier after duplicate error:', {
-                            name: supplierRecord.name,
-                            mobile: supplierRecord.mobile || supplierRecord.phoneNumber
-                        });
-                        return supplierRecord;
-                    }
+            const supplierByName = await Party.findOne({
+                companyId: companyId,
+                $or: [
+                    { type: 'supplier' },
+                    { type: { $exists: false } },
+                    { type: null }
+                ],
+                $or: nameVariations.map(name => ({
+                    name: { $regex: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+                }))
+            });
+
+            if (supplierByName) {
+                // Update mobile if provided
+                if (supplierMobile && !supplierByName.mobile && !supplierByName.phoneNumber) {
+                    supplierByName.mobile = supplierMobile;
+                    supplierByName.phoneNumber = supplierMobile;
+                    await supplierByName.save();
+                }
+                return supplierByName;
+            }
+        }
+
+        // 4. Create new supplier with better validation
+        if (!supplierName || !supplierName.trim()) {
+            throw new Error('Supplier name is required to create new supplier');
+        }
+
+        // Clean and prepare data before creation
+        const cleanSupplierData = {
+            name: supplierName.trim(),
+            mobile: supplierMobile ? supplierMobile.toString() : '',
+            phoneNumber: supplierMobile ? supplierMobile.toString() : '',
+            type: 'supplier',
+            partyType: 'supplier',
+            email: '',
+            companyId: companyId,
+            userId: userId,
+            createdBy: userId,
+            homeAddressLine: '',
+            address: '',
+            gstNumber: '',
+            panNumber: '',
+            status: 'active',
+            creditLimit: 0,
+            creditDays: 0,
+            currentBalance: 0,
+            openingBalance: 0
+        };
+
+        // Only add mobile/phoneNumber if provided to avoid duplicate key error
+        if (supplierMobile && supplierMobile.trim()) {
+            const existingParty = await Party.findOne({ companyId }).select('mobile phoneNumber');
+
+            if (existingParty && existingParty.mobile !== undefined) {
+                cleanSupplierData.mobile = supplierMobile.trim();
+            } else {
+                cleanSupplierData.phoneNumber = supplierMobile.trim();
+            }
+        }
+
+        try {
+            supplierRecord = new Party(cleanSupplierData);
+            await supplierRecord.save();
+            return supplierRecord;
+        } catch (saveError) {
+            // If it's a duplicate key error, try to find the existing record
+            if (saveError.code === 11000) {
+                // Try to find by mobile again
+                if (supplierMobile) {
+                    supplierRecord = await Party.findOne({
+                        $or: [
+                            { mobile: supplierMobile },
+                            { phoneNumber: supplierMobile }
+                        ],
+                        type: 'supplier',
+                        companyId
+                    });
                 }
 
-                throw new Error(`Failed to create supplier: ${saveError.message}`);
+                // Try to find by name if mobile search failed
+                if (!supplierRecord && supplierName) {
+                    supplierRecord = await Party.findOne({
+                        name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') },
+                        type: 'supplier',
+                        companyId
+                    });
+                }
+
+                if (supplierRecord) {
+                    return supplierRecord;
+                }
             }
+
+            throw new Error(`Failed to create supplier: ${saveError.message}`);
         }
 
         if (!supplierRecord) {
@@ -168,71 +197,169 @@ const findOrCreateSupplier = async (supplierName, supplierMobile, supplierId, co
         return supplierRecord;
 
     } catch (error) {
-        console.error('❌ Error in findOrCreateSupplier:', error);
-        throw new Error(`Failed to find or create supplier: ${error.message}`);
-    }
-};
+        // Enhanced error messages for different error types
+        if (error.name === 'ValidationError') {
+            const validationErrors = Object.values(error.errors).map(err => err.message);
+            throw new Error(`Supplier validation failed: ${validationErrors.join(', ')}`);
+        }
 
-// Add this helper function to check Party model schema
-const checkPartySchema = async () => {
-    try {
-        const sampleParty = await Party.findOne().select('mobile phoneNumber').lean();
-        console.log('📋 Party model schema check:', {
-            hasMobile: sampleParty?.mobile !== undefined,
-            hasPhoneNumber: sampleParty?.phoneNumber !== undefined,
-            sample: sampleParty
-        });
-    } catch (error) {
-        console.log('📋 Party schema check failed:', error.message);
+        if (error.name === 'CastError') {
+            throw new Error(`Invalid data format for supplier: ${error.message}`);
+        }
+
+        // Handle duplicate key error with comprehensive recovery
+        if (error.code === 11000 || error.message.includes('E11000') || error.message.includes('duplicate key')) {
+            try {
+                // Comprehensive recovery: Try all possible search methods
+                const recoverySearches = [];
+
+                // Search by mobile with all possible field combinations
+                if (supplierMobile) {
+                    const cleanMobile = supplierMobile.toString().replace(/[\s\-\(\)]/g, '');
+
+                    recoverySearches.push(
+                        Party.findOne({ companyId: companyId, mobile: supplierMobile }),
+                        Party.findOne({ companyId: companyId, phoneNumber: supplierMobile }),
+                        Party.findOne({ companyId: companyId, phone: supplierMobile }),
+                        Party.findOne({ companyId: companyId, contactNumber: supplierMobile }),
+                        Party.findOne({ companyId: companyId, mobile: cleanMobile }),
+                        Party.findOne({ companyId: companyId, phoneNumber: cleanMobile })
+                    );
+                }
+
+                // Search by name
+                if (supplierName) {
+                    recoverySearches.push(
+                        Party.findOne({ companyId: companyId, name: supplierName.trim() }),
+                        Party.findOne({ companyId: companyId, name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') } })
+                    );
+                }
+
+                // Execute all searches in parallel
+                const searchResults = await Promise.allSettled(recoverySearches);
+
+                // Find the first successful result
+                for (const result of searchResults) {
+                    if (result.status === 'fulfilled' && result.value) {
+                        // Update any missing fields
+                        let needsUpdate = false;
+
+                        if (supplierName && result.value.name !== supplierName.trim()) {
+                            result.value.name = supplierName.trim();
+                            needsUpdate = true;
+                        }
+
+                        if (supplierMobile && !result.value.mobile) {
+                            result.value.mobile = supplierMobile;
+                            needsUpdate = true;
+                        }
+
+                        if (supplierMobile && !result.value.phoneNumber) {
+                            result.value.phoneNumber = supplierMobile;
+                            needsUpdate = true;
+                        }
+
+                        if (!result.value.type) {
+                            result.value.type = 'supplier';
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            try {
+                                await result.value.save();
+                            } catch (updateError) {
+                                // Continue if update fails
+                            }
+                        }
+
+                        return result.value;
+                    }
+                }
+
+                // Last resort: Use raw MongoDB aggregation
+                const db = mongoose.connection.db;
+                const collection = db.collection('parties');
+
+                let rawResult = null;
+
+                if (supplierMobile) {
+                    rawResult = await collection.findOne({
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        $or: [
+                            { mobile: supplierMobile },
+                            { phoneNumber: supplierMobile },
+                            { phone: supplierMobile },
+                            { contactNumber: supplierMobile }
+                        ]
+                    });
+                }
+
+                if (!rawResult && supplierName) {
+                    rawResult = await collection.findOne({
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') }
+                    });
+                }
+
+                if (rawResult) {
+                    const recoveredSupplier = await Party.findById(rawResult._id);
+                    return recoveredSupplier;
+                }
+
+                // If all recovery attempts fail, provide detailed error
+                const errorDetails = {
+                    supplierName,
+                    supplierMobile,
+                    companyId,
+                    searchAttempts: recoverySearches.length,
+                    duplicateKeyError: error.keyValue || {},
+                    suggestion: 'Check database directly for data inconsistency'
+                };
+
+                throw new Error(`Supplier already exists but cannot be found. This indicates a database inconsistency. Details: ${JSON.stringify(errorDetails)}`);
+
+            } catch (recoveryError) {
+                throw new Error(`Database error: Unable to resolve supplier conflict. Original error: ${error.message}. Recovery error: ${recoveryError.message}`);
+            }
+        }
+
+        // Re-throw other errors with additional context
+        throw new Error(`Supplier operation failed: ${error.message}`);
     }
 };
 
 const purchaseOrderController = {
 
-    // Create a new purchase order/quotation - ENHANCED WITH ORDER NUMBER VALIDATION
     createPurchaseOrder: async (req, res) => {
         try {
-            // Check Party schema at the beginning (only in development)
-            if (process.env.NODE_ENV === 'development') {
-                await checkPartySchema();
-            }
-
             const {
-                supplierName,           // Supplier name (will find or create)
-                supplierMobile,         // Supplier mobile
-                supplier,               // Supplier ID (if provided directly)
-                orderNumber,            // Order number (optional - auto-generated)
-                orderDate,             // Order date
-                orderType = 'purchase_order', // purchase_order, purchase_quotation, proforma_purchase
-                validUntil,            // Valid until date
-                expectedDeliveryDate,  // Expected delivery date
-                requiredBy,            // Required by date
-                gstEnabled = true,     // GST enabled flag
-                companyId,             // Company ID
-                items,                 // Items array
-                payment,               // Payment details
-                notes,                 // Notes
-                termsAndConditions,    // Terms and conditions
-                supplierNotes,         // Supplier specific notes
-                internalNotes,         // Internal notes
-                roundOff = 0,          // Round off amount
-                roundOffEnabled = false, // Round off enabled flag
-                status = 'draft',      // Order status
-                priority = 'normal',   // Priority level
-                departmentRef,         // Department reference
-                shippingAddress,       // Shipping address
-                // Tax mode fields
-                taxMode = 'without-tax',         // Tax mode (with-tax/without-tax)
-                priceIncludesTax = false        // Whether the price includes tax
-            } = req.body;
-
-            console.log('📥 Creating purchase order with data:', {
-                orderType,
                 supplierName,
                 supplierMobile,
+                supplier,
+                orderNumber,
+                orderDate,
+                orderType = 'purchase_order',
+                validUntil,
+                expectedDeliveryDate,
+                requiredBy,
+                gstEnabled = true,
+                gstType = 'gst',
                 companyId,
-                itemCount: items?.length || 0
-            });
+                items,
+                payment,
+                notes,
+                termsAndConditions,
+                supplierNotes,
+                internalNotes,
+                roundOff = 0,
+                roundOffEnabled = false,
+                status = 'draft',
+                priority = 'normal',
+                departmentRef,
+                shippingAddress,
+                taxMode = 'without-tax',
+                priceIncludesTax = false
+            } = req.body;
 
             // Validate required fields
             if ((!supplierName && !supplier) || !companyId || !items || items.length === 0) {
@@ -250,7 +377,7 @@ const purchaseOrderController = {
                 });
             }
 
-            // ✅ CHECK IF ORDER NUMBER ALREADY EXISTS (if provided)
+            // Check if order number already exists (if provided)
             if (orderNumber) {
                 const existingOrder = await PurchaseOrder.findOne({
                     orderNumber: orderNumber,
@@ -317,55 +444,49 @@ const purchaseOrderController = {
 
                 finalOrderNumber = `${prefix}-${year}${month}${day}-${String(sequence).padStart(4, '0')}`;
 
-                console.log('✅ Generated purchase order number:', {
-                    orderType,
-                    prefix,
-                    date: `${year}${month}${day}`,
-                    sequence,
-                    finalOrderNumber
-                });
-
-                // ✅ DOUBLE-CHECK GENERATED NUMBER DOESN'T EXIST
+                // Double-check generated number doesn't exist
                 const duplicateCheck = await PurchaseOrder.findOne({
                     orderNumber: finalOrderNumber,
                     companyId: companyId
                 });
 
                 if (duplicateCheck) {
-                    // If duplicate found, increment sequence and try again
                     sequence += 1;
                     finalOrderNumber = `${prefix}-${year}${month}${day}-${String(sequence).padStart(4, '0')}`;
-
-                    console.log('⚠️ Duplicate order number found, using:', finalOrderNumber);
                 }
             }
 
             // Sync tax mode fields
+            const finalGstType = gstType || (gstEnabled ? 'gst' : 'non-gst');
             const finalTaxMode = taxMode || (priceIncludesTax ? 'with-tax' : 'without-tax');
             const finalPriceIncludesTax = finalTaxMode === 'with-tax';
+            const finalGstEnabled = finalGstType === 'gst';
 
-            console.log('🔄 Tax mode synchronization:', {
-                originalTaxMode: taxMode,
-                originalPriceIncludesTax: priceIncludesTax,
-                finalTaxMode,
-                finalPriceIncludesTax
-            });
-
-            // ✅ FIND OR CREATE SUPPLIER USING ENHANCED FUNCTION
-            console.log('🔄 Starting supplier lookup/creation...');
-            const supplierRecord = await findOrCreateSupplier(
-                supplierName,
-                supplierMobile,
-                supplier,
-                companyId,
-                req.user?.id || companyId
-            );
-
-            console.log('🏭 Using supplier for order:', {
-                supplierId: supplierRecord._id,
-                supplierName: supplierRecord.name,
-                supplierMobile: supplierRecord.mobile || supplierRecord.phoneNumber
-            });
+            // Find or create supplier
+            let supplierRecord;
+            try {
+                supplierRecord = await findOrCreateSupplier(
+                    supplierName,
+                    supplierMobile,
+                    supplier,
+                    companyId,
+                    req.user?.id || companyId
+                );
+            } catch (supplierError) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Supplier resolution failed',
+                    error: supplierError.message,
+                    details: {
+                        supplierName,
+                        supplierMobile,
+                        companyId,
+                        suggestion: supplierMobile ?
+                            `Try searching for existing supplier with mobile ${supplierMobile} in your supplier list` :
+                            'Ensure supplier name is provided for new supplier creation'
+                    }
+                });
+            }
 
             // Process items with proper tax mode handling
             const processedItems = [];
@@ -377,30 +498,30 @@ const purchaseOrderController = {
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
 
-                console.log(`🔄 Processing item ${i + 1}:`, {
-                    itemName: item.itemName,
-                    itemTaxMode: item.taxMode,
-                    itemPriceIncludesTax: item.priceIncludesTax,
-                    globalTaxMode: finalTaxMode,
-                    globalPriceIncludesTax: finalPriceIncludesTax
-                });
+                // Frontend field mapping
+                const itemName = item.productName || item.itemName;
+                const itemCode = item.productCode || item.itemCode || '';
+                const pricePerUnit = parseFloat(item.price || item.pricePerUnit || 0);
+                const quantity = parseFloat(item.quantity);
+                const description = item.description || '';
+                const gstRate = parseFloat(item.gstRate || item.taxRate || 18);
+                const unit = item.unit === 'pcs' ? 'PCS' : (item.unit || 'PCS');
+                const hsnNumber = item.hsnNumber || item.hsnCode || '0000';
+
+                // Frontend GST mode mapping
+                const itemGstMode = item.gstMode || item.taxMode || finalTaxMode;
+                const itemPriceIncludesTax = itemGstMode === 'include' ||
+                    (itemGstMode === 'with-tax') ||
+                    (item.priceIncludesTax === true);
 
                 // Basic validation
-                if (!item.itemName || !item.quantity || !item.pricePerUnit) {
+                if (!itemName || !quantity || !pricePerUnit) {
                     return res.status(400).json({
                         success: false,
                         message: `Item ${i + 1}: Name, quantity, and price are required`
                     });
                 }
 
-                // Parse item values
-                const quantity = parseFloat(item.quantity);
-                const pricePerUnit = parseFloat(item.pricePerUnit);
-                const discountPercent = parseFloat(item.discountPercent || 0);
-                const discountAmount = parseFloat(item.discountAmount || 0);
-                const taxRate = parseFloat(item.taxRate || 18);
-
-                // Validate numeric values
                 if (isNaN(quantity) || isNaN(pricePerUnit) || quantity <= 0 || pricePerUnit < 0) {
                     return res.status(400).json({
                         success: false,
@@ -408,15 +529,17 @@ const purchaseOrderController = {
                     });
                 }
 
-                // Determine item-level tax mode
-                const itemTaxMode = item.taxMode || finalTaxMode;
-                const itemPriceIncludesTax = itemTaxMode === 'with-tax';
+                // Calculate base amount
+                const baseAmount = quantity * pricePerUnit;
 
-                console.log(`📋 Item ${i + 1} tax mode determined:`, {
-                    itemTaxMode,
-                    itemPriceIncludesTax,
-                    taxRate
-                });
+                // Calculate discount
+                const discountPercent = parseFloat(item.discountPercent || 0);
+                const discountAmount = parseFloat(item.discountAmount || 0);
+                let itemDiscountAmount = discountAmount;
+                if (discountAmount === 0 && discountPercent > 0) {
+                    itemDiscountAmount = (baseAmount * discountPercent) / 100;
+                }
+                const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
                 // Get tax rates
                 let itemCgstRate = 0;
@@ -431,7 +554,7 @@ const purchaseOrderController = {
                         itemIgstRate = parseFloat(itemDetails.igst || 0);
 
                         if (itemCgstRate === 0 && itemSgstRate === 0 && itemIgstRate === 0) {
-                            const itemTaxRate = parseFloat(itemDetails.taxRate || taxRate || 0);
+                            const itemTaxRate = parseFloat(itemDetails.taxRate || gstRate || 0);
                             if (itemTaxRate > 0) {
                                 itemCgstRate = itemTaxRate / 2;
                                 itemSgstRate = itemTaxRate / 2;
@@ -439,22 +562,11 @@ const purchaseOrderController = {
                             }
                         }
                     }
-                } else if (taxRate > 0) {
-                    itemCgstRate = taxRate / 2;
-                    itemSgstRate = taxRate / 2;
+                } else if (gstRate > 0) {
+                    itemCgstRate = gstRate / 2;
+                    itemSgstRate = gstRate / 2;
                     itemIgstRate = 0;
                 }
-
-                // Calculate base amount
-                const baseAmount = quantity * pricePerUnit;
-
-                // Calculate discount
-                let itemDiscountAmount = discountAmount;
-                if (discountAmount === 0 && discountPercent > 0) {
-                    itemDiscountAmount = (baseAmount * discountPercent) / 100;
-                }
-
-                const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
                 // Calculate taxes based on item tax mode
                 let cgst = 0;
@@ -463,13 +575,11 @@ const purchaseOrderController = {
                 let itemAmount = 0;
                 let itemTaxableAmount = 0;
 
-                if (gstEnabled && (itemCgstRate > 0 || itemSgstRate > 0 || itemIgstRate > 0)) {
+                if (finalGstEnabled && (itemCgstRate > 0 || itemSgstRate > 0 || itemIgstRate > 0)) {
                     const totalTaxRate = itemCgstRate + itemSgstRate + itemIgstRate;
 
                     if (itemPriceIncludesTax) {
                         // WITH TAX MODE - Extract tax from amount
-                        console.log(`🟢 Item ${i + 1}: WITH TAX calculation`);
-
                         const taxMultiplier = 1 + (totalTaxRate / 100);
                         itemTaxableAmount = amountAfterDiscount / taxMultiplier;
 
@@ -478,35 +588,19 @@ const purchaseOrderController = {
                         igst = (itemTaxableAmount * itemIgstRate) / 100;
 
                         itemAmount = amountAfterDiscount; // Amount stays same (tax included)
-
-                        console.log(`✅ Item ${i + 1} WITH TAX result:`, {
-                            amountAfterDiscount,
-                            itemTaxableAmount,
-                            cgst, sgst, igst,
-                            itemAmount
-                        });
                     } else {
                         // WITHOUT TAX MODE - Add tax to amount
-                        console.log(`🔵 Item ${i + 1}: WITHOUT TAX calculation`);
-
                         itemTaxableAmount = amountAfterDiscount;
                         cgst = (itemTaxableAmount * itemCgstRate) / 100;
                         sgst = (itemTaxableAmount * itemSgstRate) / 100;
                         igst = (itemTaxableAmount * itemIgstRate) / 100;
 
                         itemAmount = itemTaxableAmount + cgst + sgst + igst; // Add tax
-
-                        console.log(`✅ Item ${i + 1} WITHOUT TAX result:`, {
-                            itemTaxableAmount,
-                            cgst, sgst, igst,
-                            itemAmount
-                        });
                     }
                 } else {
                     // No GST
                     itemTaxableAmount = amountAfterDiscount;
                     itemAmount = amountAfterDiscount;
-                    console.log(`❌ Item ${i + 1}: No GST`);
                 }
 
                 // Update totals
@@ -516,26 +610,47 @@ const purchaseOrderController = {
                 const itemTotalTax = cgst + sgst + igst;
                 totalTax += itemTotalTax;
 
-                // Create processed item
+                // Create processed item with both frontend and backend fields
                 const processedItem = {
-                    itemRef: item.itemRef || null,
-                    itemName: item.itemName.trim(),
-                    itemCode: item.itemCode || '',
-                    hsnCode: item.hsnCode || '0000',
-                    category: item.category || '',
-                    quantity,
-                    unit: item.unit || 'PCS',
-                    pricePerUnit,
-                    taxRate: itemCgstRate + itemSgstRate + itemIgstRate,
+                    // Item reference
+                    itemRef: item.selectedProduct && mongoose.Types.ObjectId.isValid(item.selectedProduct)
+                        ? item.selectedProduct : null,
+                    selectedProduct: item.selectedProduct || '',
 
-                    // Include both tax mode fields for compatibility
-                    taxMode: itemTaxMode,
+                    // Item details - dual field mapping
+                    itemName: itemName,
+                    productName: itemName,
+                    itemCode: itemCode,
+                    productCode: itemCode,
+                    description: description,
+                    hsnCode: hsnNumber,
+                    hsnNumber: hsnNumber,
+                    category: item.category || '',
+
+                    // Quantity and unit
+                    quantity,
+                    unit: unit,
+
+                    // Pricing - dual field mapping
+                    pricePerUnit: pricePerUnit,
+                    price: pricePerUnit,
+                    purchasePrice: pricePerUnit,
+                    taxRate: itemCgstRate + itemSgstRate + itemIgstRate,
+                    gstRate: itemCgstRate + itemSgstRate + itemIgstRate,
+
+                    // Tax modes - dual field mapping
+                    taxMode: itemPriceIncludesTax ? 'with-tax' : 'without-tax',
+                    gstMode: itemPriceIncludesTax ? 'include' : 'exclude',
                     priceIncludesTax: itemPriceIncludesTax,
 
+                    // Stock info
+                    availableStock: item.availableStock || 0,
+
+                    // Discount
                     discountPercent,
                     discountAmount: parseFloat(itemDiscountAmount.toFixed(2)),
 
-                    // Tax amounts
+                    // Tax amounts - dual field mapping
                     cgst: parseFloat(cgst.toFixed(2)),
                     sgst: parseFloat(sgst.toFixed(2)),
                     igst: parseFloat(igst.toFixed(2)),
@@ -543,27 +658,22 @@ const purchaseOrderController = {
                     sgstAmount: parseFloat(sgst.toFixed(2)),
                     igstAmount: parseFloat(igst.toFixed(2)),
 
-                    // Calculated amounts
+                    // Calculated amounts - dual field mapping
+                    subtotal: parseFloat((baseAmount - itemDiscountAmount).toFixed(2)),
                     taxableAmount: parseFloat(itemTaxableAmount.toFixed(2)),
                     totalTaxAmount: parseFloat(itemTotalTax.toFixed(2)),
+                    gstAmount: parseFloat(itemTotalTax.toFixed(2)),
 
-                    // Final amounts
+                    // Final amounts - dual field mapping
                     amount: parseFloat(itemAmount.toFixed(2)),
                     itemAmount: parseFloat(itemAmount.toFixed(2)),
+                    totalAmount: parseFloat(itemAmount.toFixed(2)),
 
+                    // Line number
                     lineNumber: i + 1
                 };
 
                 processedItems.push(processedItem);
-
-                console.log(`✅ Item ${i + 1} processed:`, {
-                    itemName: processedItem.itemName,
-                    taxMode: processedItem.taxMode,
-                    priceIncludesTax: processedItem.priceIncludesTax,
-                    taxableAmount: processedItem.taxableAmount,
-                    totalTax: processedItem.totalTaxAmount,
-                    finalAmount: processedItem.amount
-                });
             }
 
             // Calculate final totals
@@ -593,8 +703,6 @@ const purchaseOrderController = {
                 withTaxTotal: finalPriceIncludesTax ? parseFloat(adjustedFinalTotal.toFixed(2)) : parseFloat((totalTaxableAmount + totalTax + appliedRoundOff).toFixed(2)),
                 withoutTaxTotal: finalPriceIncludesTax ? parseFloat(totalTaxableAmount.toFixed(2)) : parseFloat(adjustedFinalTotal.toFixed(2))
             };
-
-            console.log('💰 Final totals calculated:', totals);
 
             // Payment details (Purchase-specific: Default to credit payment with longer credit days)
             const paymentDetails = {
@@ -658,24 +766,27 @@ const purchaseOrderController = {
             // Set validity date for quotations
             let orderValidUntil = validUntil ? new Date(validUntil) : null;
             if (!orderValidUntil && orderType === 'purchase_quotation') {
-                // Default validity: 30 days for quotations
                 orderValidUntil = new Date();
                 orderValidUntil.setDate(orderValidUntil.getDate() + 30);
             }
 
             // Create purchase order object
             const purchaseOrderData = {
+                orderNumber: finalOrderNumber,
                 orderDate: orderDate ? new Date(orderDate) : new Date(),
                 orderType,
                 validUntil: orderValidUntil,
                 expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : null,
                 requiredBy: requiredBy ? new Date(requiredBy) : null,
                 supplier: supplierRecord._id,
-                orderNumber: finalOrderNumber,
                 supplierMobile: supplierMobile || supplierRecord.mobile || supplierRecord.phoneNumber,
-                gstEnabled,
+
+                // GST and tax settings with dual fields
+                gstEnabled: finalGstEnabled,
+                gstType: finalGstType,
                 taxMode: finalTaxMode,
                 priceIncludesTax: finalPriceIncludesTax,
+
                 companyId,
                 items: processedItems,
                 totals,
@@ -699,31 +810,12 @@ const purchaseOrderController = {
                 lastModifiedBy: req.user?.id || 'system'
             };
 
-            console.log('💾 Creating purchase order with data:', {
-                orderNumber: finalOrderNumber,
-                orderType: purchaseOrderData.orderType,
-                taxMode: purchaseOrderData.taxMode,
-                priceIncludesTax: purchaseOrderData.priceIncludesTax,
-                itemCount: purchaseOrderData.items.length,
-                finalTotal: purchaseOrderData.totals.finalTotal,
-                supplierName: supplierRecord.name
-            });
-
             // Create the purchase order
             const purchaseOrder = new PurchaseOrder(purchaseOrderData);
             await purchaseOrder.save();
 
             // Populate supplier details for response
             await purchaseOrder.populate('supplier', 'name mobile phoneNumber email address type');
-
-            console.log('✅ Purchase order created successfully:', {
-                id: purchaseOrder._id,
-                orderNumber: purchaseOrder.orderNumber,
-                orderType: purchaseOrder.orderType,
-                taxMode: purchaseOrder.taxMode,
-                priceIncludesTax: purchaseOrder.priceIncludesTax,
-                supplierName: supplierRecord.name
-            });
 
             res.status(201).json({
                 success: true,
@@ -746,9 +838,10 @@ const purchaseOrderController = {
                             creditDays: purchaseOrder.payment.creditDays,
                             isOverdue: purchaseOrder.isOverdue
                         },
+                        gstType: purchaseOrder.gstType,
+                        gstEnabled: purchaseOrder.gstEnabled,
                         taxMode: purchaseOrder.taxMode,
                         priceIncludesTax: purchaseOrder.priceIncludesTax,
-                        gstEnabled: purchaseOrder.gstEnabled,
                         status: purchaseOrder.status,
                         priority: purchaseOrder.priority
                     }
@@ -756,7 +849,6 @@ const purchaseOrderController = {
             });
 
         } catch (error) {
-            console.error('❌ Error creating purchase order:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to create purchase order',
@@ -766,7 +858,6 @@ const purchaseOrderController = {
         }
     },
 
-    // Generate next order number
     generateOrderNumber: async (req, res) => {
         try {
             const { companyId, orderType = 'purchase_order' } = req.query;
@@ -778,7 +869,6 @@ const purchaseOrderController = {
                 });
             }
 
-            // Validate order type
             if (!['purchase_order', 'purchase_quotation', 'proforma_purchase'].includes(orderType)) {
                 return res.status(400).json({
                     success: false,
@@ -791,7 +881,6 @@ const purchaseOrderController = {
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
 
-            // Get prefix based on order type
             let prefix;
             switch (orderType) {
                 case 'purchase_quotation':
@@ -807,7 +896,6 @@ const purchaseOrderController = {
                     prefix = 'PO';
             }
 
-            // Find the last order number for today
             const todayStart = new Date(year, date.getMonth(), date.getDate());
             const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
 
@@ -840,7 +928,6 @@ const purchaseOrderController = {
             });
 
         } catch (error) {
-            console.error('❌ Error generating order number:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to generate order number',
@@ -849,7 +936,6 @@ const purchaseOrderController = {
         }
     },
 
-    // Get all purchase orders with filtering
     getAllPurchaseOrders: async (req, res) => {
         try {
             const { companyId } = req.query;
@@ -957,7 +1043,6 @@ const purchaseOrderController = {
             });
 
         } catch (error) {
-            console.error('❌ Error getting purchase orders:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to retrieve purchase orders',
@@ -966,7 +1051,6 @@ const purchaseOrderController = {
         }
     },
 
-    // Get purchase order by ID
     getPurchaseOrderById: async (req, res) => {
         try {
             const { id } = req.params;
@@ -989,14 +1073,45 @@ const purchaseOrderController = {
                 });
             }
 
+            // Ensure full frontend compatibility
+            const compatibleOrder = {
+                ...order.toObject(),
+                // GST type compatibility
+                gstType: order.gstType || (order.gstEnabled ? 'gst' : 'non-gst'),
+                gstEnabled: order.gstEnabled ?? (order.gstType === 'gst'),
+                // Tax mode compatibility
+                taxMode: order.taxMode || (order.priceIncludesTax ? 'with-tax' : 'without-tax'),
+                priceIncludesTax: order.priceIncludesTax ?? (order.taxMode === 'with-tax'),
+                items: order.items.map(item => ({
+                    ...item,
+                    // Frontend field mapping
+                    selectedProduct: item.selectedProduct || item.itemRef || '',
+                    productName: item.productName || item.itemName,
+                    productCode: item.productCode || item.itemCode,
+                    price: item.price || item.pricePerUnit,
+                    gstRate: item.gstRate || item.taxRate,
+                    gstMode: item.gstMode || (item.priceIncludesTax ? 'include' : 'exclude'),
+                    totalAmount: item.totalAmount || item.itemAmount || item.amount,
+                    gstAmount: item.gstAmount || item.totalTaxAmount,
+                    subtotal: item.subtotal || (item.taxableAmount || item.amount),
+                    hsnNumber: item.hsnNumber || item.hsnCode,
+                    // Backend compatibility
+                    taxMode: item.taxMode || order.taxMode || 'without-tax',
+                    priceIncludesTax: item.priceIncludesTax ?? (item.taxMode === 'with-tax'),
+                    cgstAmount: item.cgstAmount || item.cgst || 0,
+                    sgstAmount: item.sgstAmount || item.sgst || 0,
+                    igstAmount: item.igstAmount || item.igst || 0,
+                    amount: item.amount || item.itemAmount || 0
+                }))
+            };
+
             res.json({
                 success: true,
-                data: { order },
+                data: { order: compatibleOrder },
                 message: 'Purchase order retrieved successfully'
             });
 
         } catch (error) {
-            console.error('❌ Error getting purchase order:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to retrieve purchase order',
@@ -1005,7 +1120,6 @@ const purchaseOrderController = {
         }
     },
 
-    // Add payment to purchase order - ENHANCED WITH PAYMENT MODEL INTEGRATION
     addPayment: async (req, res) => {
         try {
             const { id } = req.params;
@@ -1058,7 +1172,7 @@ const purchaseOrderController = {
                 amount: parseFloat(amount),
                 paymentMethod: method,
                 paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-                type: 'payment_out', // Payment made to supplier
+                type: 'payment_out',
                 reference,
                 notes: notes || `Payment for ${purchaseOrder.orderType} ${purchaseOrder.orderNumber}`,
                 internalNotes: `Purchase Order: ${purchaseOrder.orderNumber} (${purchaseOrder.orderType})`,
@@ -1066,7 +1180,6 @@ const purchaseOrderController = {
                 company: purchaseOrder.companyId,
                 createdBy: req.user?.id || 'system',
                 status: 'completed',
-                // Link to the purchase order document
                 linkedDocuments: [{
                     documentType: 'purchase_order',
                     documentId: purchaseOrder._id,
@@ -1081,7 +1194,6 @@ const purchaseOrderController = {
                 }]
             });
 
-            // Save the payment record
             await paymentRecord.save();
 
             // Add payment using purchase order model method (if available)
@@ -1098,7 +1210,6 @@ const purchaseOrderController = {
                     purchaseOrder.payment.status = 'partial';
                 }
 
-                // Add to payment history
                 purchaseOrder.paymentHistory.push({
                     amount: parseFloat(amount),
                     method,
@@ -1112,7 +1223,6 @@ const purchaseOrderController = {
                 await purchaseOrder.save();
             }
 
-            // If this is an advance payment, update the advance amount
             if (isAdvancePayment) {
                 purchaseOrder.payment.advanceAmount = (purchaseOrder.payment.advanceAmount || 0) + parseFloat(amount);
                 await purchaseOrder.save();
@@ -1149,7 +1259,6 @@ const purchaseOrderController = {
             });
 
         } catch (error) {
-            console.error('❌ Error adding payment:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to add payment',
@@ -1158,11 +1267,10 @@ const purchaseOrderController = {
         }
     },
 
-    // Convert purchase order to purchase invoice
     convertToPurchaseInvoice: async (req, res) => {
         try {
             const { id } = req.params;
-            const { invoiceDate, transferAdvancePayment = true } = req.body;
+            const { invoiceDate, transferAdvancePayment = true, convertedBy } = req.body;
 
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
@@ -1182,11 +1290,28 @@ const purchaseOrderController = {
             if (purchaseOrder.convertedToPurchaseInvoice) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Purchase order already converted to invoice'
+                    message: 'Purchase order already converted to invoice',
+                    data: {
+                        invoiceNumber: purchaseOrder.purchaseInvoiceNumber,
+                        invoiceRef: purchaseOrder.purchaseInvoiceRef,
+                        convertedAt: purchaseOrder.convertedAt
+                    }
                 });
             }
 
-            // Convert using model method (if available)
+            if (purchaseOrder.status === 'cancelled') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Cannot convert cancelled orders'
+                });
+            }
+
+            // Set convertedBy if provided
+            if (convertedBy) {
+                purchaseOrder.convertedBy = convertedBy;
+            }
+
+            // Convert using the model method
             let purchaseInvoice;
             if (typeof purchaseOrder.convertToPurchaseInvoice === 'function') {
                 purchaseInvoice = await purchaseOrder.convertToPurchaseInvoice();
@@ -1206,6 +1331,52 @@ const purchaseOrderController = {
                 };
             }
 
+            // Update invoice date if provided
+            if (invoiceDate && purchaseInvoice.invoiceDate) {
+                purchaseInvoice.invoiceDate = new Date(invoiceDate);
+                if (typeof purchaseInvoice.save === 'function') {
+                    await purchaseInvoice.save();
+                }
+            }
+
+            // Transfer advance payments to invoice
+            if (transferAdvancePayment && purchaseOrder.payment.advanceAmount > 0) {
+                try {
+                    const advancePayments = await Payment.find({
+                        party: purchaseOrder.supplier,
+                        company: purchaseOrder.companyId,
+                        'linkedDocuments.documentId': purchaseOrder._id,
+                        status: 'completed'
+                    });
+
+                    for (const payment of advancePayments) {
+                        const originalNotes = payment.notes || '';
+                        payment.notes = `${originalNotes} - Transferred to Invoice ${purchaseInvoice.invoiceNumber}`;
+                        payment.internalNotes = `${payment.internalNotes || ''} | Transferred from PO ${purchaseOrder.orderNumber} to INV ${purchaseInvoice.invoiceNumber}`;
+
+                        payment.linkedDocuments.push({
+                            documentType: 'purchase',
+                            documentId: purchaseInvoice._id,
+                            documentModel: 'Purchase',
+                            documentNumber: purchaseInvoice.invoiceNumber,
+                            documentDate: purchaseInvoice.invoiceDate,
+                            documentTotal: purchaseInvoice.totals.finalTotal,
+                            allocatedAmount: payment.amount,
+                            remainingAmount: Math.max(0, purchaseInvoice.totals.finalTotal - payment.amount),
+                            allocationDate: new Date(),
+                            isFullyPaid: purchaseInvoice.totals.finalTotal <= payment.amount
+                        });
+
+                        await payment.save();
+                    }
+                } catch (paymentTransferError) {
+                    // Don't fail the conversion, just log the warning
+                }
+            }
+
+            // Populate data for response
+            await purchaseOrder.populate('supplier', 'name mobile phoneNumber email');
+
             res.status(200).json({
                 success: true,
                 message: 'Purchase order converted to invoice successfully',
@@ -1213,10 +1384,12 @@ const purchaseOrderController = {
                     purchaseOrder: {
                         id: purchaseOrder._id,
                         orderNumber: purchaseOrder.orderNumber,
+                        orderType: purchaseOrder.orderType,
                         status: purchaseOrder.status,
                         convertedToPurchaseInvoice: purchaseOrder.convertedToPurchaseInvoice,
                         purchaseInvoiceNumber: purchaseOrder.purchaseInvoiceNumber,
-                        convertedAt: purchaseOrder.convertedAt
+                        convertedAt: purchaseOrder.convertedAt,
+                        convertedBy: purchaseOrder.convertedBy
                     },
                     purchaseInvoice: {
                         id: purchaseInvoice._id,
@@ -1224,12 +1397,19 @@ const purchaseOrderController = {
                         invoiceDate: purchaseInvoice.invoiceDate,
                         totalAmount: purchaseInvoice.totals.finalTotal,
                         status: purchaseInvoice.status
+                    },
+                    conversion: {
+                        orderNumber: purchaseOrder.orderNumber,
+                        invoiceNumber: purchaseInvoice.invoiceNumber,
+                        convertedAt: purchaseOrder.convertedAt,
+                        convertedBy: purchaseOrder.convertedBy,
+                        advanceTransferred: transferAdvancePayment ? purchaseOrder.payment.advanceAmount : 0,
+                        transferredAmount: transferAdvancePayment ? purchaseOrder.payment.advanceAmount : 0
                     }
                 }
             });
 
         } catch (error) {
-            console.error('❌ Error converting purchase order:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to convert purchase order to invoice',
@@ -1238,11 +1418,10 @@ const purchaseOrderController = {
         }
     },
 
-    // Update purchase order status
     updateStatus: async (req, res) => {
         try {
             const { id } = req.params;
-            const { status, approvedBy } = req.body;
+            const { status, approvedBy, reason = '' } = req.body;
 
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
@@ -1266,6 +1445,8 @@ const purchaseOrderController = {
                     message: 'Purchase order not found'
                 });
             }
+
+            const previousStatus = purchaseOrder.status;
 
             // Handle approval workflow
             if (status === 'confirmed' && approvedBy) {
@@ -1293,6 +1474,12 @@ const purchaseOrderController = {
                 purchaseOrder.status = status;
             }
 
+            // Add reason to notes if provided
+            if (reason) {
+                const statusNote = `Status changed from ${previousStatus} to ${status}. Reason: ${reason}`;
+                purchaseOrder.notes = purchaseOrder.notes ? `${purchaseOrder.notes}\n${statusNote}` : statusNote;
+            }
+
             purchaseOrder.lastModifiedBy = req.user?.id || 'system';
             await purchaseOrder.save();
 
@@ -1302,14 +1489,16 @@ const purchaseOrderController = {
                 data: {
                     id: purchaseOrder._id,
                     orderNumber: purchaseOrder.orderNumber,
-                    status: purchaseOrder.status,
+                    previousStatus,
+                    currentStatus: purchaseOrder.status,
                     approvedBy: purchaseOrder.approvedBy,
-                    approvedAt: purchaseOrder.approvedAt
+                    approvedAt: purchaseOrder.approvedAt,
+                    reason,
+                    updatedAt: purchaseOrder.updatedAt
                 }
             });
 
         } catch (error) {
-            console.error('❌ Error updating status:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to update purchase order status',
@@ -1318,7 +1507,6 @@ const purchaseOrderController = {
         }
     },
 
-    // Update purchase order
     updatePurchaseOrder: async (req, res) => {
         try {
             const { id } = req.params;
@@ -1346,6 +1534,13 @@ const purchaseOrderController = {
                 });
             }
 
+            if (purchaseOrder.status === 'cancelled') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Cannot update cancelled purchase orders'
+                });
+            }
+
             updateData.lastModifiedBy = req.user?.id || 'system';
 
             const updatedPurchaseOrder = await PurchaseOrder.findByIdAndUpdate(
@@ -1361,7 +1556,6 @@ const purchaseOrderController = {
             });
 
         } catch (error) {
-            console.error('❌ Error updating purchase order:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to update purchase order',

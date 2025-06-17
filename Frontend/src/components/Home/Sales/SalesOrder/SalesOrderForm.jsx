@@ -173,19 +173,27 @@ function SimpleQuotationForm({
         }
     }, [propCurrentUser]);
 
-    // ✅ Enhanced form data handler with cleaner GST calculation
+    // ✅ FIXED: Enhanced form data handler with proper GST recalculation
     const handleFormDataChange = (field, value) => {
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
 
-            // Handle GST type change - recalculate all item totals
-            if (field === 'gstType' || field === '_gstTypeChanged') {
-                newData.items = (newData.items || []).map(item => {
+            // ✅ FIXED: Handle GST type change - trigger recalculation
+            if (field === 'gstType') {
+                console.log('GST Type changed to:', value);
+
+                // Recalculate all items with new GST type
+                newData.items = (newData.items || []).map((item, index) => {
                     if (item.quantity && item.price) {
-                        return calculateItemTotals(item, newData.gstType);
+                        const recalculatedItem = calculateItemTotals(item, value);
+                        console.log(`Recalculated item ${index}:`, recalculatedItem);
+                        return recalculatedItem;
                     }
                     return item;
                 });
+
+                // Set flag to trigger recalculation in ProductSection component
+                newData._gstTypeChanged = true;
             }
 
             return newData;
@@ -200,11 +208,19 @@ function SimpleQuotationForm({
         }
     };
 
-    // ✅ Extracted calculation logic for better maintainability
-    const calculateItemTotals = (item, gstType) => {
+    // ✅ FIXED: Enhanced calculation logic with proper GST handling
+    const calculateItemTotals = (item, gstType = formData.gstType) => {
         const quantity = parseFloat(item.quantity) || 0;
         const price = parseFloat(item.price) || 0;
-        const gstRate = parseFloat(item.gstRate) || 0;
+        const gstRate = parseFloat(item.gstRate) || 18;
+
+        console.log('Calculating totals for item:', {
+            quantity,
+            price,
+            gstRate,
+            gstType,
+            gstMode: item.gstMode
+        });
 
         let subtotal = quantity * price;
         let gstAmount = 0;
@@ -212,24 +228,30 @@ function SimpleQuotationForm({
 
         if (gstType === 'gst') {
             if (item.gstMode === 'include') {
+                // Price includes GST
                 totalAmount = subtotal;
                 gstAmount = (subtotal * gstRate) / (100 + gstRate);
                 subtotal = totalAmount - gstAmount;
             } else {
+                // Price excludes GST
                 gstAmount = (subtotal * gstRate) / 100;
                 totalAmount = subtotal + gstAmount;
             }
         } else {
+            // Non-GST calculation
             totalAmount = subtotal;
             gstAmount = 0;
         }
 
-        return {
+        const result = {
             ...item,
             subtotal: Math.round(subtotal * 100) / 100,
             gstAmount: Math.round(gstAmount * 100) / 100,
             totalAmount: Math.round(totalAmount * 100) / 100
         };
+
+        console.log('Calculated result:', result);
+        return result;
     };
 
     // ✅ Enhanced validation with better error messages
@@ -393,6 +415,8 @@ function SimpleQuotationForm({
                 status: 'draft'
             };
 
+            console.log('Saving quotation data:', quotationData);
+
             const response = await saleOrderService.createSalesOrder(quotationData);
 
             if (response.success) {
@@ -412,6 +436,7 @@ function SimpleQuotationForm({
             }
 
         } catch (error) {
+            console.error('Save error:', error);
             setError(error.message);
             addToast?.(error.message, 'error');
         } finally {
@@ -493,6 +518,17 @@ function SimpleQuotationForm({
                 </Alert>
             )}
 
+            {/* Debug Info */}
+            {process.env.NODE_ENV === 'development' && (
+                <Alert variant="info" className="mb-3">
+                    <small>
+                        Debug: GST Type = {formData.gstType},
+                        Items Count = {formData.items?.length || 0},
+                        Total = ₹{totals.grandTotal.toFixed(2)}
+                    </small>
+                </Alert>
+            )}
+
             {/* Main Form Card - Reduced max width */}
             <Card className="mx-auto shadow-lg" style={{ maxWidth: '850px' }}>
                 <Card.Body className="p-4">
@@ -518,32 +554,6 @@ function SimpleQuotationForm({
                         errors={errors}
                         disabled={saving}
                     />
-
-                    {/* Description Section - Compact */}
-                    <Row className="mb-3">
-                        <Col md={12}>
-                            <Form.Group>
-                                <Form.Label className="fw-bold text-danger small mb-1">
-                                    Description
-                                </Form.Label>
-                                <Form.Control
-                                    as="textarea"
-                                    rows={2}
-                                    value={formData.description || ''}
-                                    onChange={(e) => handleFormDataChange('description', e.target.value)}
-                                    className="border-2"
-                                    style={{
-                                        borderColor: '#000',
-                                        fontSize: '12px',
-                                        padding: '6px 8px',
-                                        resize: 'none'
-                                    }}
-                                    placeholder="Enter description..."
-                                    disabled={saving}
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
 
                     {/* Totals and Actions Section - Compact Layout */}
                     <Row className="mb-2">

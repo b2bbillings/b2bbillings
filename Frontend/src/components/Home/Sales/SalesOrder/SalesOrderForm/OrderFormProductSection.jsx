@@ -634,7 +634,6 @@ function OrderFormProductSection({
     }, []);
 
     const items = formData.items || [];
-
     const dropdownStyles = `
         .order-form-product-section .position-relative {
             overflow: visible !important;
@@ -695,23 +694,87 @@ function OrderFormProductSection({
             line-height: 1.2;
         }
 
-        /* ✅ Perfect alignment styles */
+        /* ✅ FIXED: Perfect alignment styles */
         .form-group-aligned {
             margin-bottom: 0 !important;
+            height: auto !important;
         }
 
         .label-aligned {
-            font-size: 14px !important;
-            font-weight: bold !important;
-            margin-bottom: 8px !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            margin-bottom: 6px !important;
             display: block !important;
+            line-height: 1.2 !important;
+            min-height: 16px !important;
         }
 
         .input-aligned {
             height: 42px !important;
             border: 2px solid #000 !important;
             font-size: 13px !important;
-            padding: 10px 14px !important;
+            padding: 8px 12px !important;
+            line-height: 1.5 !important;
+            box-sizing: border-box !important;
+        }
+
+        /* ✅ FIXED: Input group alignment */
+        .input-group .input-group-text {
+            height: 42px !important;
+            border: 2px solid #000 !important;
+            font-size: 13px !important;
+            padding: 8px 12px !important;
+            line-height: 1.5 !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        .input-group .form-control {
+            height: 42px !important;
+            border-left: 0 !important;
+            border-top: 2px solid #000 !important;
+            border-right: 2px solid #000 !important;
+            border-bottom: 2px solid #000 !important;
+        }
+
+        /* ✅ FIXED: Form select alignment */
+        .form-select.input-aligned {
+            height: 42px !important;
+            padding: 8px 12px !important;
+            line-height: 1.5 !important;
+        }
+
+        /* ✅ FIXED: Form text alignment */
+        .form-text {
+            margin-top: 4px !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
+        }
+
+        /* ✅ FIXED: Button alignment */
+        .btn.input-aligned {
+            height: 42px !important;
+            padding: 8px 12px !important;
+            line-height: 1.5 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        /* ✅ FIXED: Total display alignment */
+        .total-display {
+            height: 42px !important;
+            border: 2px solid #28a745 !important;
+            color: #28a745 !important;
+            font-size: 13px !important;
+            padding: 8px 12px !important;
+            line-height: 1.5 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-weight: 600 !important;
+            box-sizing: border-box !important;
         }
     `;
 
@@ -724,7 +787,7 @@ function OrderFormProductSection({
                         <Card key={item.id || index} className="mb-3 border-2" style={{ borderColor: '#000', overflow: 'visible' }}>
                             <Card.Body className="p-4" style={{ overflow: 'visible' }}>
                                 {/* ✅ PERFECTLY ALIGNED: First Row - Product + Quantity + Delete */}
-                                <Row className="mb-4 align-items-end">
+                                <Row className="mb-3 align-items-end">
                                     {/* Product Selection - 5 columns */}
                                     <Col md={5} style={{ overflow: 'visible' }}>
                                         <Form.Group className="form-group-aligned position-relative" style={{ overflow: 'visible' }}>
@@ -741,7 +804,7 @@ function OrderFormProductSection({
                                                         variant="link"
                                                         size="sm"
                                                         className="p-0 ms-2 text-decoration-none"
-                                                        style={{ fontSize: '12px' }}
+                                                        style={{ fontSize: '11px' }}
                                                         onClick={() => handleEditDescription(index)}
                                                         title="Edit description"
                                                     >
@@ -864,7 +927,7 @@ function OrderFormProductSection({
                                             )}
 
                                             {errors[`items.${index}.productName`] && (
-                                                <div className="invalid-feedback d-block" style={{ fontSize: '12px' }}>
+                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
                                                     {errors[`items.${index}.productName`]}
                                                 </div>
                                             )}
@@ -894,9 +957,14 @@ function OrderFormProductSection({
                                                 data-quantity-input={index}
                                             />
                                             {item.unit && (
-                                                <Form.Text className="text-muted" style={{ fontSize: '12px', marginTop: '2px' }}>
+                                                <Form.Text className="text-muted form-text">
                                                     Unit: {item.unit}
                                                 </Form.Text>
+                                            )}
+                                            {errors[`items.${index}.quantity`] && (
+                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
+                                                    {errors[`items.${index}.quantity`]}
+                                                </div>
                                             )}
                                         </Form.Group>
                                     </Col>
@@ -913,11 +981,9 @@ function OrderFormProductSection({
                                                 onClick={() => removeProductRow(index)}
                                                 disabled={disabled || items.length === 1}
                                                 title="Remove product"
-                                                className="input-aligned w-100 d-flex align-items-center justify-content-center"
+                                                className="input-aligned w-100"
                                                 style={{
-                                                    borderColor: '#000',
-                                                    fontSize: '12px',
-                                                    padding: '10px'
+                                                    borderColor: '#000'
                                                 }}
                                             >
                                                 <FontAwesomeIcon icon={faTrash} />
@@ -927,7 +993,7 @@ function OrderFormProductSection({
                                 </Row>
 
                                 {/* ✅ PERFECTLY ALIGNED: Second Row - Price + GST Mode + Total */}
-                                <Row className="mb-2">
+                                <Row className="mb-3">
                                     {/* Price - 4 columns */}
                                     <Col md={4}>
                                         <Form.Group className="form-group-aligned">
@@ -935,12 +1001,7 @@ function OrderFormProductSection({
                                                 Price *
                                             </Form.Label>
                                             <div className="input-group">
-                                                <span className="input-group-text" style={{
-                                                    borderColor: '#000',
-                                                    borderWidth: '2px',
-                                                    fontSize: '12px',
-                                                    padding: '10px 12px'
-                                                }}>
+                                                <span className="input-group-text">
                                                     <FontAwesomeIcon icon={faRupeeSign} />
                                                 </span>
                                                 <Form.Control
@@ -948,10 +1009,12 @@ function OrderFormProductSection({
                                                     value={item.price || ''}
                                                     onChange={(e) => handleItemChange(index, 'price', e.target.value)}
                                                     onKeyDown={(e) => handleFieldKeyDown(e, index, 'price')}
-                                                    className="input-aligned"
+                                                    className="form-control"
                                                     style={{
                                                         borderColor: errors[`items.${index}.price`] ? '#dc3545' : '#000',
-                                                        borderLeftWidth: '0'
+                                                        height: '42px',
+                                                        fontSize: '13px',
+                                                        padding: '8px 12px'
                                                     }}
                                                     placeholder="0.00"
                                                     min="0"
@@ -961,6 +1024,11 @@ function OrderFormProductSection({
                                                     data-price-input={index}
                                                 />
                                             </div>
+                                            {errors[`items.${index}.price`] && (
+                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
+                                                    {errors[`items.${index}.price`]}
+                                                </div>
+                                            )}
                                         </Form.Group>
                                     </Col>
 
@@ -978,7 +1046,8 @@ function OrderFormProductSection({
                                                 style={{
                                                     backgroundColor: formData.gstType === 'gst' ? '#FFD700' : '#f8f9fa',
                                                     fontWeight: 'bold',
-                                                    opacity: formData.gstType === 'non-gst' ? 0.6 : 1
+                                                    opacity: formData.gstType === 'non-gst' ? 0.6 : 1,
+                                                    borderColor: '#000'
                                                 }}
                                                 disabled={disabled || formData.gstType === 'non-gst'}
                                                 data-gstmode-input={index}
@@ -986,7 +1055,7 @@ function OrderFormProductSection({
                                                 <option value="include">GST Include</option>
                                                 <option value="exclude">GST Exclude</option>
                                             </Form.Select>
-                                            <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
+                                            <Form.Text className="text-muted form-text">
                                                 Rate: {formData.gstType === 'gst' ? `${item.gstRate || 18}%` : 'No GST'}
                                             </Form.Text>
                                         </Form.Group>
@@ -999,11 +1068,7 @@ function OrderFormProductSection({
                                                 Total
                                             </Form.Label>
                                             <div
-                                                className="input-aligned form-control bg-light text-center fw-bold d-flex align-items-center justify-content-center"
-                                                style={{
-                                                    borderColor: '#28a745',
-                                                    color: '#28a745'
-                                                }}
+                                                className="form-control bg-light text-center fw-bold total-display"
                                                 data-total-input={index}
                                             >
                                                 ₹{(item.totalAmount || 0).toFixed(2)}
@@ -1038,21 +1103,45 @@ function OrderFormProductSection({
                     ))}
                 </div>
 
-                <Row className="mb-3">
-                    <Col md={12}>
+                {/* Invoice Description Section + Add New Product Button */}
+                <Row className="mb-3 align-items-end">
+                    <Col md={8}>
+                        {/* Invoice Description Section */}
+                        <div className="p-3 bg-light border border-2 rounded" style={{ borderColor: '#000' }}>
+                            <Form.Group className="form-group-aligned">
+                                <Form.Label className="fw-bold label-aligned">
+                                    Invoice Description
+                                </Form.Label>
+                                <Form.Control
+                                    as="textarea"
+                                    rows={1}
+                                    value={formData.invoiceDescription || ''}
+                                    onChange={(e) => onFormDataChange('invoiceDescription', e.target.value)}
+                                    className="input-aligned"
+                                    style={{
+                                        resize: 'none'
+                                    }}
+                                    placeholder="Enter invoice description or terms & conditions..."
+                                    disabled={disabled}
+                                />
+                                <Form.Text className="text-muted form-text">
+                                    This description will appear on the invoice
+                                </Form.Text>
+                            </Form.Group>
+                        </div>
+                    </Col>
+                    <Col md={4}>
                         <Button
                             style={{
                                 backgroundColor: '#FFD700',
                                 borderColor: '#000',
                                 color: '#000',
                                 fontSize: '14px',
-                                padding: '10px 20px',
-                                fontWeight: 'bold',
-                                height: '42px'
+                                fontWeight: 'bold'
                             }}
                             onClick={addNewProductRow}
                             disabled={disabled}
-                            className="border-2"
+                            className="border-2 w-100 input-aligned"
                         >
                             <FontAwesomeIcon icon={faPlus} className="me-2" />
                             Add New Product
@@ -1060,7 +1149,7 @@ function OrderFormProductSection({
                     </Col>
                 </Row>
 
-                {/* ✅ FIXED: Description Modals with proper focus management */}
+                {/* Product Description Modals */}
                 {Object.entries(showDescriptionModal).map(([itemIndex, show]) => {
                     return show && (
                         <Modal
@@ -1070,7 +1159,6 @@ function OrderFormProductSection({
                             centered
                             backdrop="static"
                             onEntered={() => {
-                                // ✅ FIXED: Focus on textarea when modal is fully shown
                                 const textarea = descriptionTextareaRef.current[itemIndex];
                                 if (textarea) {
                                     textarea.focus();

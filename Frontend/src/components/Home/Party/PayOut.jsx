@@ -17,6 +17,7 @@ import {
 
 // Service imports
 import paymentService from '../../../services/paymentService';
+import purchaseOrderService from '../../../services/purchaseOrderService';
 import bankAccountService from '../../../services/bankAccountService';
 import authService from '../../../services/authService';
 
@@ -65,67 +66,6 @@ function PayOut({
         { value: 'card', label: 'Card' }
     ];
 
-    // Fake data for testing - pending bills
-    const generateFakeBills = () => {
-        return [
-            {
-                _id: 'bill_001',
-                billNumber: 'PUR-2024-001',
-                purchaseNumber: 'PUR-2024-001',
-                billDate: '2024-01-15',
-                totalAmount: 25000,
-                paidAmount: 15000,
-                amountPaid: 15000,
-                dueDate: '2024-02-15',
-                items: ['Raw Materials', 'Office Supplies']
-            },
-            {
-                _id: 'bill_002',
-                billNumber: 'PUR-2024-002',
-                purchaseNumber: 'PUR-2024-002',
-                billDate: '2024-01-20',
-                totalAmount: 18000,
-                paidAmount: 8000,
-                amountPaid: 8000,
-                dueDate: '2024-02-20',
-                items: ['Equipment', 'Tools']
-            },
-            {
-                _id: 'bill_003',
-                billNumber: 'PUR-2024-003',
-                purchaseNumber: 'PUR-2024-003',
-                billDate: '2024-01-25',
-                totalAmount: 35000,
-                paidAmount: 0,
-                amountPaid: 0,
-                dueDate: '2024-02-25',
-                items: ['Machinery Parts', 'Maintenance']
-            },
-            {
-                _id: 'bill_004',
-                billNumber: 'PUR-2024-004',
-                purchaseNumber: 'PUR-2024-004',
-                billDate: '2024-02-01',
-                totalAmount: 12000,
-                paidAmount: 5000,
-                amountPaid: 5000,
-                dueDate: '2024-03-01',
-                items: ['Software License', 'Support']
-            },
-            {
-                _id: 'bill_005',
-                billNumber: 'PUR-2024-005',
-                purchaseNumber: 'PUR-2024-005',
-                billDate: '2024-02-05',
-                totalAmount: 28000,
-                paidAmount: 0,
-                amountPaid: 0,
-                dueDate: '2024-03-05',
-                items: ['Construction Materials', 'Labor']
-            }
-        ];
-    };
-
     // Load pending bills with due amounts
     const loadPendingBills = async () => {
         if (!party || !companyId) return;
@@ -133,44 +73,45 @@ function PayOut({
         try {
             setIsLoadingBills(true);
 
-            // Simulate API call with fake data
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate loading delay
-
-            const fakeBills = generateFakeBills();
-            const billsWithDue = fakeBills.filter(bill => {
-                const totalAmount = parseFloat(bill.totalAmount || 0);
-                const paidAmount = parseFloat(bill.paidAmount || bill.amountPaid || 0);
-                const dueAmount = totalAmount - paidAmount;
-                return dueAmount > 0;
-            });
-
-            setPendingBills(billsWithDue);
-
-            // Auto-set payment type to 'pending' if bills found
-            if (billsWithDue.length > 0) {
-                setFormData(prev => ({ ...prev, paymentType: 'pending' }));
-            }
-
-            /* 
-            // Real API call would look like this:
-            const response = await paymentService.getPendingBillsForPayment(
+            const response = await purchaseOrderService.getPendingPurchasesForPayment(
                 companyId,
-                party._id || party.id
+                party._id || party.id,
+                party.name
             );
 
             if (response.success) {
-                const bills = response.data.bills || response.data.purchases || response.data.orders || [];
+                const bills = response.data.purchaseOrders ||
+                    response.data.orders ||
+                    response.data.data ||
+                    [];
+
                 const billsWithDue = bills.filter(bill => {
-                    const totalAmount = parseFloat(bill.totalAmount || bill.amount || bill.finalTotal || 0);
-                    const paidAmount = parseFloat(bill.paidAmount || bill.amountPaid || 0);
+                    const totalAmount = parseFloat(
+                        bill.totals?.finalTotal ||
+                        bill.totalAmount ||
+                        bill.amount ||
+                        bill.finalTotal ||
+                        0
+                    );
+                    const paidAmount = parseFloat(
+                        bill.payment?.paidAmount ||
+                        bill.paidAmount ||
+                        bill.amountPaid ||
+                        0
+                    );
                     const dueAmount = totalAmount - paidAmount;
-                    return dueAmount > 0;
+                    return dueAmount > 0.01; // At least 1 paisa pending
                 });
+
                 setPendingBills(billsWithDue);
+
+                // Auto-set payment type to 'pending' if bills found
+                if (billsWithDue.length > 0) {
+                    setFormData(prev => ({ ...prev, paymentType: 'pending' }));
+                }
             } else {
                 setPendingBills([]);
             }
-            */
         } catch (error) {
             setPendingBills([]);
         } finally {
@@ -202,16 +143,27 @@ function PayOut({
         }
     };
 
-    // Auto-fill employee information
+    // Auto-fill employee information with better fallbacks
     const autoFillEmployeeData = () => {
         try {
             const user = currentUser || authService.getCurrentUser();
             if (user) {
-                const employeeName = user.name || user.username || user.displayName || '';
-                setFormData(prev => ({ ...prev, employeeName }));
+                const employeeName =
+                    user.fullName ||
+                    user.name ||
+                    user.username ||
+                    user.displayName ||
+                    (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : '') ||
+                    user.email?.split('@')[0] ||
+                    '';
+
+                setFormData(prev => ({
+                    ...prev,
+                    employeeName: employeeName.trim()
+                }));
             }
         } catch (error) {
-            // Silently fail
+            // Silent fail
         }
     };
 
@@ -282,8 +234,19 @@ function PayOut({
         }));
 
         // Auto-fill amount with due amount
-        const totalAmount = parseFloat(bill.totalAmount || bill.amount || bill.finalTotal || 0);
-        const paidAmount = parseFloat(bill.paidAmount || bill.amountPaid || 0);
+        const totalAmount = parseFloat(
+            bill.totals?.finalTotal ||
+            bill.totalAmount ||
+            bill.amount ||
+            bill.finalTotal ||
+            0
+        );
+        const paidAmount = parseFloat(
+            bill.payment?.paidAmount ||
+            bill.paidAmount ||
+            bill.amountPaid ||
+            0
+        );
         const dueAmount = totalAmount - paidAmount;
 
         if (dueAmount > 0) {
@@ -570,12 +533,12 @@ function PayOut({
                                                             <div className="d-flex justify-content-between align-items-center">
                                                                 <div>
                                                                     <h6 className="mb-1 fw-bold text-primary">
-                                                                        {selectedBill.billNumber || selectedBill.purchaseNumber}
+                                                                        {selectedBill.orderNumber || selectedBill.purchaseNumber || selectedBill.quotationNumber}
                                                                     </h6>
                                                                     <small className="text-muted">
                                                                         Due: ₹{(
-                                                                            parseFloat(selectedBill.totalAmount || selectedBill.amount || 0) -
-                                                                            parseFloat(selectedBill.paidAmount || selectedBill.amountPaid || 0)
+                                                                            parseFloat(selectedBill.totals?.finalTotal || selectedBill.totalAmount || selectedBill.amount || 0) -
+                                                                            parseFloat(selectedBill.payment?.paidAmount || selectedBill.paidAmount || selectedBill.amountPaid || 0)
                                                                         ).toFixed(2)}
                                                                     </small>
                                                                 </div>
@@ -790,6 +753,9 @@ function PayOut({
                             <h5 className="mb-0 d-flex align-items-center">
                                 <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                                 Pending Bills
+                                {pendingBills.length > 0 && (
+                                    <Badge bg="light" text="dark" className="ms-2">{pendingBills.length}</Badge>
+                                )}
                             </h5>
                         </Card.Header>
                         <Card.Body className="p-0" style={{ height: '500px', overflow: 'hidden' }}>
@@ -811,20 +777,23 @@ function PayOut({
                                         </thead>
                                         <tbody>
                                             {pendingBills.map((bill, index) => {
-                                                const totalAmount = parseFloat(bill.totalAmount || bill.amount || bill.finalTotal || 0);
-                                                const paidAmount = parseFloat(bill.paidAmount || bill.amountPaid || 0);
+                                                const totalAmount = parseFloat(bill.totals?.finalTotal || bill.totalAmount || bill.amount || bill.finalTotal || 0);
+                                                const paidAmount = parseFloat(bill.payment?.paidAmount || bill.paidAmount || bill.amountPaid || 0);
                                                 const dueAmount = totalAmount - paidAmount;
                                                 const isSelected = selectedBill && (selectedBill._id || selectedBill.id) === (bill._id || bill.id);
 
                                                 return (
                                                     <tr key={bill._id || bill.id || index} className={isSelected ? 'table-danger' : ''}>
                                                         <td className="fw-semibold small">
-                                                            {bill.billNumber || bill.purchaseNumber || `BILL-${index + 1}`}
+                                                            {bill.orderNumber || bill.purchaseNumber || bill.quotationNumber || `BILL-${index + 1}`}
                                                             {isSelected && <Badge bg="success" className="ms-2 small">Selected</Badge>}
                                                         </td>
                                                         <td className="small">
                                                             <FontAwesomeIcon icon={faCalendar} className="me-1 text-muted" />
-                                                            {bill.billDate ? new Date(bill.billDate).toLocaleDateString('en-IN') : 'N/A'}
+                                                            {bill.orderDate || bill.purchaseDate || bill.quotationDate ?
+                                                                new Date(bill.orderDate || bill.purchaseDate || bill.quotationDate).toLocaleDateString('en-IN') :
+                                                                'N/A'
+                                                            }
                                                         </td>
                                                         <td className="text-end fw-bold text-danger small">
                                                             <FontAwesomeIcon icon={faRupeeSign} className="me-1" />

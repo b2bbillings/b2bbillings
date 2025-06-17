@@ -62,7 +62,7 @@ class PurchaseOrderService {
     }
 
     /**
-     * Get all purchase orders with advanced filtering
+     * Get all purchase orders with advanced filtering - Enhanced for PayOut compatibility
      */
     async getPurchaseOrders(companyId, filters = {}) {
         try {
@@ -73,16 +73,238 @@ class PurchaseOrderService {
                 ...filters
             };
 
+            // Add supplier filtering for PayOut
+            if (filters.supplierId) {
+                params.supplierId = filters.supplierId;
+            }
+            if (filters.supplierName) {
+                params.supplierName = filters.supplierName;
+            }
+
+            // Add status filtering for pending orders
+            if (filters.status) {
+                params.status = filters.status;
+            }
+
+            // Add order type filtering
+            if (filters.orderType) {
+                params.orderType = filters.orderType;
+            }
+
+            // Add date range filtering
+            if (filters.dateFrom) {
+                params.dateFrom = filters.dateFrom;
+            }
+            if (filters.dateTo) {
+                params.dateTo = filters.dateTo;
+            }
+
+            console.log('📡 Fetching purchase orders with params:', params);
+
             const response = await apiClient.get('/api/purchase-orders', { params });
+
+            // Handle different response structures
+            const rawData = response.data;
+            let purchaseOrders = [];
+
+            if (rawData.data && rawData.data.orders && Array.isArray(rawData.data.orders)) {
+                purchaseOrders = rawData.data.orders;
+            } else if (rawData.data && Array.isArray(rawData.data)) {
+                purchaseOrders = rawData.data;
+            } else if (rawData.purchaseOrders && Array.isArray(rawData.purchaseOrders)) {
+                purchaseOrders = rawData.purchaseOrders;
+            } else if (rawData.orders && Array.isArray(rawData.orders)) {
+                purchaseOrders = rawData.orders;
+            } else if (Array.isArray(rawData)) {
+                purchaseOrders = rawData;
+            }
+
+            console.log('✅ Processed purchase orders:', purchaseOrders.length);
+
             return {
                 success: true,
-                data: response.data,
+                data: {
+                    purchaseOrders: purchaseOrders,
+                    orders: purchaseOrders,
+                    data: purchaseOrders,
+                    pagination: rawData.data?.pagination || rawData.pagination || {},
+                    summary: rawData.data?.summary || rawData.summary || {}
+                },
                 message: 'Purchase orders fetched successfully'
             };
         } catch (error) {
+            console.error('❌ Error fetching purchase orders:', error);
             return {
                 success: false,
-                message: error.response?.data?.message || error.message || 'Failed to fetch purchase orders'
+                message: error.response?.data?.message || error.message || 'Failed to fetch purchase orders',
+                data: {
+                    purchaseOrders: [],
+                    orders: [],
+                    data: []
+                }
+            };
+        }
+    }
+
+    /**
+     * ✅ NEW: Get purchases (alias for getPurchaseOrders for backward compatibility with PayOut)
+     */
+    async getPurchases(companyId, filters = {}) {
+        console.log('🔄 getPurchases called - redirecting to getPurchaseOrders');
+        return this.getPurchaseOrders(companyId, filters);
+    }
+
+    /**
+     * ✅ NEW: Get pending purchase orders for payment (specific for PayOut component)
+     */
+    async getPendingPurchasesForPayment(companyId, supplierId, supplierName = null) {
+        try {
+            console.log('💰 Loading pending purchases for payment:', { companyId, supplierId, supplierName });
+
+            const filters = {
+                supplierId: supplierId,
+                supplierName: supplierName,
+                status: 'sent,confirmed,received,pending', // Orders that can make payments
+                orderType: 'purchase_order,purchase_quotation', // Orders and quotations
+                limit: 100,
+                page: 1,
+                // Add date range to limit results (last 2 years)
+                dateFrom: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                dateTo: new Date().toISOString().split('T')[0]
+            };
+
+            const response = await this.getPurchaseOrders(companyId, filters);
+
+            if (response.success) {
+                const allOrders = response.data.purchaseOrders || response.data.orders || response.data.data || [];
+                console.log('📋 Total orders fetched:', allOrders.length);
+
+                // Filter orders with pending amounts on client side
+                const ordersWithPending = allOrders.filter(order => {
+                    if (!order) return false;
+
+                    // Verify supplier match (more flexible matching)
+                    const orderSupplierId = order.supplierId || order.supplier?._id || order.supplier?.id;
+                    const orderSupplierName = order.supplierName || order.supplier?.name || order.supplier?.businessName;
+                    const orderSupplierPhone = order.supplierPhone || order.supplierMobile || order.supplier?.mobile || order.supplier?.phone;
+
+                    const partyId = supplierId;
+                    const partyName = supplierName;
+
+                    const isSupplierMatch = orderSupplierId === partyId ||
+                        orderSupplierName === partyName ||
+                        (orderSupplierPhone && orderSupplierPhone === partyName); // Phone match as fallback
+
+                    if (!isSupplierMatch) {
+                        console.log('❌ Supplier mismatch for order:', order.orderNumber, {
+                            orderSupplierId,
+                            orderSupplierName,
+                            orderSupplierPhone,
+                            partyId,
+                            partyName
+                        });
+                        return false;
+                    }
+
+                    // Check pending amount
+                    const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || order.grandTotal || 0);
+                    const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+                    const pendingAmount = totalAmount - paidAmount;
+
+                    console.log(`💸 Order ${order.orderNumber || order._id} payment status:`, {
+                        totalAmount,
+                        paidAmount,
+                        pendingAmount,
+                        hasPending: pendingAmount > 0.01
+                    });
+
+                    return pendingAmount > 0.01; // At least 1 paisa pending
+                });
+
+                console.log('✅ Orders with pending amounts:', ordersWithPending.length);
+
+                // Sort by order date (newest first)
+                ordersWithPending.sort((a, b) => {
+                    const dateA = new Date(a.orderDate || a.purchaseDate || a.quotationDate || a.createdAt);
+                    const dateB = new Date(b.orderDate || b.purchaseDate || b.quotationDate || b.createdAt);
+                    return dateB - dateA;
+                });
+
+                return {
+                    success: true,
+                    data: {
+                        purchaseOrders: ordersWithPending,
+                        orders: ordersWithPending,
+                        data: ordersWithPending,
+                        count: ordersWithPending.length,
+                        totalPending: ordersWithPending.reduce((sum, order) => {
+                            const total = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || 0);
+                            const paid = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+                            return sum + (total - paid);
+                        }, 0)
+                    },
+                    message: `Found ${ordersWithPending.length} pending purchase orders`
+                };
+            }
+
+            return response;
+
+        } catch (error) {
+            console.error('❌ Error in getPendingPurchasesForPayment:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || error.message || 'Failed to fetch pending purchase orders',
+                data: {
+                    purchaseOrders: [],
+                    orders: [],
+                    data: [],
+                    count: 0,
+                    totalPending: 0
+                }
+            };
+        }
+    }
+
+    /**
+     * ✅ NEW: Get supplier's purchase order summary for payment
+     */
+    async getSupplierOrderSummary(companyId, supplierId, supplierName = null) {
+        try {
+            const response = await this.getPendingPurchasesForPayment(companyId, supplierId, supplierName);
+
+            if (response.success) {
+                const orders = response.data.purchaseOrders || [];
+
+                const summary = {
+                    totalOrders: orders.length,
+                    totalPendingAmount: response.data.totalPending || 0,
+                    oldestPendingOrder: orders.length > 0 ? orders[orders.length - 1] : null,
+                    newestOrder: orders.length > 0 ? orders[0] : null,
+                    ordersByStatus: {}
+                };
+
+                // Group by status
+                orders.forEach(order => {
+                    const status = order.status || 'pending';
+                    if (!summary.ordersByStatus[status]) {
+                        summary.ordersByStatus[status] = 0;
+                    }
+                    summary.ordersByStatus[status]++;
+                });
+
+                return {
+                    success: true,
+                    data: summary,
+                    message: 'Supplier order summary fetched successfully'
+                };
+            }
+
+            return response;
+        } catch (error) {
+            return {
+                success: false,
+                message: error.message || 'Failed to fetch supplier order summary',
+                data: null
             };
         }
     }
@@ -286,6 +508,7 @@ class PurchaseOrderService {
                 data: {
                     quotations: finalArray,
                     orders: finalArray,
+                    purchaseOrders: finalArray,
                     pagination: rawData.pagination || {},
                     summary: rawData.summary || {}
                 },
@@ -298,7 +521,8 @@ class PurchaseOrderService {
                     success: true,
                     data: {
                         quotations: [],
-                        orders: []
+                        orders: [],
+                        purchaseOrders: []
                     },
                     message: 'No purchase quotations found'
                 };
@@ -309,7 +533,8 @@ class PurchaseOrderService {
                 error: error.response?.data?.message || error.message || 'Failed to fetch purchase quotations',
                 data: {
                     quotations: [],
-                    orders: []
+                    orders: [],
+                    purchaseOrders: []
                 }
             };
         }
@@ -1235,6 +1460,59 @@ class PurchaseOrderService {
             isAdvancePayment: paymentData.isAdvancePayment || false,
             paymentDetails: paymentData.paymentDetails || {}
         };
+    }
+
+    // ==================== ✅ PAYOUT SPECIFIC HELPER METHODS ====================
+
+    /**
+     * ✅ Calculate pending amount for an order
+     */
+    calculatePendingAmount(order) {
+        const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || order.grandTotal || 0);
+        const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+        return Math.max(0, totalAmount - paidAmount);
+    }
+
+    /**
+     * ✅ Format order for PayOut dropdown display
+     */
+    formatOrderForPayment(order) {
+        const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || 0);
+        const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+        const pendingAmount = totalAmount - paidAmount;
+        const orderNumber = order.orderNumber || order.purchaseNumber || order.quotationNumber || order._id;
+        const orderDate = order.orderDate || order.purchaseDate || order.quotationDate || order.createdAt;
+
+        return {
+            id: order._id || order.id,
+            orderNumber,
+            orderDate,
+            totalAmount,
+            paidAmount,
+            pendingAmount,
+            displayText: `#${orderNumber} - ₹${totalAmount.toLocaleString('en-IN')} (Pending: ₹${pendingAmount.toLocaleString('en-IN')}) - ${new Date(orderDate).toLocaleDateString('en-IN')}`,
+            order: order
+        };
+    }
+
+    /**
+     * ✅ Get payment types for PayOut (only 2 options as requested)
+     */
+    getPaymentTypes() {
+        return [
+            {
+                value: 'advance',
+                label: 'Advance Payment',
+                description: 'Payment made in advance without specific order',
+                icon: 'faMoneyBillWave'
+            },
+            {
+                value: 'pending',
+                label: 'Order Payment',
+                description: 'Payment against a specific purchase order',
+                icon: 'faFileInvoice'
+            }
+        ];
     }
 }
 
