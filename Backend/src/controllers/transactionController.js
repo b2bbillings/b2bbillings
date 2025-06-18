@@ -430,8 +430,18 @@ const transactionController = {
                 referenceId,
                 referenceNumber,
                 referenceType,
-                transactionDate
+                transactionDate,
+                // ✅ NEW: Cash payment specific fields
+                isCashTransaction,
+                cashAmount,
+                cashTransactionType
             } = req.body;
+
+            // ✅ CRITICAL FIX: Detect cash payments
+            const isCashPayment = paymentMethod === 'cash' ||
+                isCashTransaction === true ||
+                cashAmount !== undefined ||
+                cashTransactionType !== undefined;
 
             console.log('🏦 Creating transaction:', {
                 companyId,
@@ -439,14 +449,20 @@ const transactionController = {
                 amount: parseFloat(amount),
                 direction,
                 transactionType,
-                paymentMethod
+                paymentMethod,
+                isCashPayment
             });
 
-            // ✅ ENHANCED: Comprehensive validation
+            // ✅ ENHANCED: Comprehensive validation with cash payment exemption
             const validationErrors = [];
 
             if (!companyId) validationErrors.push('Company ID is required');
-            if (!bankAccountId) validationErrors.push('Bank account ID is required');
+
+            // ✅ FIXED: Only require bank account for non-cash payments
+            if (!isCashPayment && !bankAccountId) {
+                validationErrors.push('Bank account ID is required for non-cash payments');
+            }
+
             if (!amount) validationErrors.push('Amount is required');
             if (!direction) validationErrors.push('Direction is required');
             if (!transactionType) validationErrors.push('Transaction type is required');
@@ -463,7 +479,9 @@ const transactionController = {
                         amount: !!amount,
                         direction: !!direction,
                         transactionType: !!transactionType,
-                        description: !!description?.trim()
+                        description: !!description?.trim(),
+                        paymentMethod: paymentMethod,
+                        isCashPayment: isCashPayment
                     }
                 });
             }
@@ -476,11 +494,14 @@ const transactionController = {
                 });
             }
 
-            if (!mongoose.Types.ObjectId.isValid(bankAccountId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid bank account ID format'
-                });
+            // ✅ FIXED: Only validate bank account ID for non-cash payments
+            if (!isCashPayment && bankAccountId) {
+                if (!mongoose.Types.ObjectId.isValid(bankAccountId)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Invalid bank account ID format'
+                    });
+                }
             }
 
             // Parse and validate amount
@@ -505,27 +526,40 @@ const transactionController = {
 
             console.log('📝 Creating transaction...');
 
-            // ✅ FIXED: Use atomic operations to prevent race conditions
+            // ✅ FIXED: Handle cash vs bank account transactions differently
             let transaction, updatedBankAccount, finalBalance;
 
             try {
-                // ✅ STEP 1: Create transaction first with temporary balance
+                // ✅ STEP 1: Create transaction with appropriate structure
                 const transactionId = `TXN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                // ✅ FIXED: Map referenceType to valid enum values
+                let validReferenceType = 'payment'; // Default fallback
+                if (referenceType) {
+                    const referenceTypeMap = {
+                        'payment_in': 'payment',
+                        'payment_out': 'payment',
+                        'sale': 'sale',
+                        'purchase': 'purchase',
+                        'invoice': 'invoice',
+                        'expense': 'expense',
+                        'transfer': 'transfer',
+                        'adjustment': 'adjustment'
+                    };
+                    validReferenceType = referenceTypeMap[referenceType] || referenceType || 'payment';
+                }
 
                 const transactionData = {
                     transactionId,
                     companyId: new mongoose.Types.ObjectId(companyId),
-                    bankAccountId: new mongoose.Types.ObjectId(bankAccountId),
                     amount: transactionAmount,
                     direction,
                     transactionType: transactionType.trim(),
-                    referenceType: referenceType || transactionType,
+                    referenceType: validReferenceType, // ✅ FIXED: Use valid enum value
                     paymentMethod: paymentMethod.trim(),
                     description: description.trim(),
                     notes: notes?.trim() || '',
-                    balanceBefore: 0, // Will be updated after bank account operation
-                    balanceAfter: 0,  // Will be updated after bank account operation
-                    status: 'pending', // Start as pending
+                    status: 'completed',
                     createdFrom: 'manual',
                     createdBy: req.user?.id || 'system',
                     transactionDate: transactionDate ? new Date(transactionDate) : new Date(),
@@ -535,6 +569,29 @@ const transactionController = {
                         timestamp: new Date().toISOString()
                     }
                 };
+
+                // ✅ CRITICAL FIX: Handle schema fields based on payment type
+                if (isCashPayment) {
+                    // ✅ CASH PAYMENT: Don't include bank account fields, use default/null values for required fields
+                    transactionData.isCashTransaction = true;
+                    transactionData.cashAmount = transactionAmount;
+                    transactionData.cashTransactionType = cashTransactionType || (direction === 'in' ? 'cash_in' : 'cash_out');
+
+                    // ✅ SCHEMA FIX: Provide default values for required fields that don't apply to cash
+                    // Don't include bankAccountId at all for cash payments
+                    // Set balance fields to 0 instead of null if they're required by schema
+                    transactionData.balanceBefore = 0;
+                    transactionData.balanceAfter = 0;
+                } else {
+                    // ✅ BANK PAYMENT: Include all bank-related fields
+                    if (!bankAccountId) {
+                        throw new Error('Bank account ID is required for non-cash payments');
+                    }
+
+                    transactionData.bankAccountId = new mongoose.Types.ObjectId(bankAccountId);
+                    transactionData.balanceBefore = 0; // Will be updated after bank account operation
+                    transactionData.balanceAfter = 0;  // Will be updated after bank account operation
+                }
 
                 // Add party information if provided
                 if (partyId && mongoose.Types.ObjectId.isValid(partyId)) {
@@ -555,117 +612,145 @@ const transactionController = {
                 if (upiTransactionId?.trim()) transactionData.upiTransactionId = upiTransactionId.trim();
                 if (bankTransactionId?.trim()) transactionData.bankTransactionId = bankTransactionId.trim();
 
+                console.log('📤 Transaction data prepared:', {
+                    isCashPayment,
+                    hasBankAccountId: !!transactionData.bankAccountId,
+                    referenceType: transactionData.referenceType,
+                    balanceBefore: transactionData.balanceBefore,
+                    balanceAfter: transactionData.balanceAfter
+                });
+
                 transaction = new Transaction(transactionData);
                 await transaction.save();
 
-                console.log('✅ Transaction created with pending status');
+                console.log(`✅ ${isCashPayment ? 'Cash' : 'Bank'} transaction created`);
 
-                // ✅ STEP 2: Update bank account balance atomically
-                const bankUpdateOperation = direction === 'in'
-                    ? { $inc: { currentBalance: transactionAmount, totalTransactions: 1, totalCredits: transactionAmount } }
-                    : { $inc: { currentBalance: -transactionAmount, totalTransactions: 1, totalDebits: transactionAmount } };
+                // ✅ STEP 2: Update bank account balance only for non-cash payments
+                if (!isCashPayment && bankAccountId) {
+                    const bankUpdateOperation = direction === 'in'
+                        ? { $inc: { currentBalance: transactionAmount, totalTransactions: 1, totalCredits: transactionAmount } }
+                        : { $inc: { currentBalance: -transactionAmount, totalTransactions: 1, totalDebits: transactionAmount } };
 
-                bankUpdateOperation.$set = { lastTransactionDate: new Date() };
+                    bankUpdateOperation.$set = { lastTransactionDate: new Date() };
 
-                // Use findOneAndUpdate with returnDocument: 'after' to get updated balance
-                updatedBankAccount = await BankAccount.findOneAndUpdate(
-                    {
-                        _id: new mongoose.Types.ObjectId(bankAccountId),
-                        companyId: new mongoose.Types.ObjectId(companyId)
-                    },
-                    bankUpdateOperation,
-                    {
-                        new: true,
-                        runValidators: true,
-                        upsert: false
+                    // Use findOneAndUpdate with returnDocument: 'after' to get updated balance
+                    updatedBankAccount = await BankAccount.findOneAndUpdate(
+                        {
+                            _id: new mongoose.Types.ObjectId(bankAccountId),
+                            companyId: new mongoose.Types.ObjectId(companyId)
+                        },
+                        bankUpdateOperation,
+                        {
+                            new: true,
+                            runValidators: true,
+                            upsert: false
+                        }
+                    );
+
+                    if (!updatedBankAccount) {
+                        throw new Error('Bank account not found or access denied');
                     }
-                );
 
-                if (!updatedBankAccount) {
-                    throw new Error('Bank account not found or access denied');
+                    finalBalance = parseFloat(updatedBankAccount.currentBalance);
+                    const balanceBefore = direction === 'in'
+                        ? finalBalance - transactionAmount
+                        : finalBalance + transactionAmount;
+
+                    console.log('🏦 Bank account updated:', {
+                        balanceBefore,
+                        transactionAmount,
+                        direction,
+                        finalBalance,
+                        accountName: updatedBankAccount.accountName
+                    });
+
+                    // ✅ STEP 3: Update transaction with actual balance information
+                    await Transaction.findByIdAndUpdate(
+                        transaction._id,
+                        {
+                            balanceBefore,
+                            balanceAfter: finalBalance
+                        }
+                    );
+
+                    transaction.balanceBefore = balanceBefore;
+                    transaction.balanceAfter = finalBalance;
+                } else {
+                    console.log('💰 Cash transaction completed - no bank account update needed');
                 }
 
-                finalBalance = parseFloat(updatedBankAccount.currentBalance);
-                const balanceBefore = direction === 'in'
-                    ? finalBalance - transactionAmount
-                    : finalBalance + transactionAmount;
+                // Populate transaction for response (conditionally populate bankAccountId)
+                const populateOptions = [
+                    { path: 'partyId', select: 'name mobile email businessName companyName' },
+                    { path: 'referenceId' }
+                ];
 
-                console.log('🏦 Bank account updated:', {
-                    balanceBefore,
-                    transactionAmount,
-                    direction,
-                    finalBalance,
-                    accountName: updatedBankAccount.accountName
-                });
-
-                // ✅ STEP 3: Update transaction with actual balance information
-                const updatedTransaction = await Transaction.findByIdAndUpdate(
-                    transaction._id,
-                    {
-                        balanceBefore,
-                        balanceAfter: finalBalance,
-                        status: 'completed'
-                    },
-                    { new: true }
-                );
-
-                console.log('✅ Transaction completed with accurate balances:', {
-                    transactionId: updatedTransaction.transactionId,
-                    balanceBefore,
-                    balanceAfter: finalBalance,
-                    bankCurrentBalance: updatedBankAccount.currentBalance
-                });
-
-                // ✅ VERIFICATION: Ensure balances match
-                if (Math.abs(finalBalance - updatedTransaction.balanceAfter) > 0.01) {
-                    console.error('❌ BALANCE MISMATCH DETECTED!', {
-                        transactionBalanceAfter: updatedTransaction.balanceAfter,
-                        bankCurrentBalance: finalBalance,
-                        difference: Math.abs(finalBalance - updatedTransaction.balanceAfter)
+                if (transaction.bankAccountId) {
+                    populateOptions.push({
+                        path: 'bankAccountId',
+                        select: 'accountName bankName accountNumber accountType currentBalance'
                     });
                 }
 
-                // Populate transaction for response
-                await updatedTransaction.populate([
-                    { path: 'bankAccountId', select: 'accountName bankName accountNumber accountType currentBalance' },
-                    { path: 'partyId', select: 'name mobile email businessName companyName' },
-                    { path: 'referenceId' }
-                ]);
+                await transaction.populate(populateOptions);
 
                 console.log('🎉 Transaction completed successfully!', {
-                    transactionId: updatedTransaction.transactionId,
-                    finalBalance
+                    transactionId: transaction.transactionId,
+                    isCashPayment: isCashPayment,
+                    finalBalance: finalBalance || 'N/A (Cash)'
                 });
 
-                // ✅ FIXED: Response with synchronized balances
+                // ✅ FIXED: Response with proper structure for both cash and bank transactions
+                const responseData = {
+                    _id: transaction._id,
+                    transactionId: transaction.transactionId,
+                    amount: transaction.amount,
+                    direction: transaction.direction,
+                    transactionType: transaction.transactionType,
+                    description: transaction.description,
+                    status: transaction.status,
+                    transactionDate: transaction.transactionDate,
+                    paymentMethod: transaction.paymentMethod,
+                    notes: transaction.notes,
+                    partyId: transaction.partyId,
+                    partyName: transaction.partyName,
+                    createdAt: transaction.createdAt,
+                    // ✅ CONDITIONAL: Include bank-specific fields only for non-cash transactions
+                    ...(transaction.bankAccountId && {
+                        bankAccountId: transaction.bankAccountId,
+                        balanceBefore: transaction.balanceBefore,
+                        balanceAfter: transaction.balanceAfter
+                    }),
+                    // ✅ CASH SPECIFIC: Include cash-specific fields for cash transactions
+                    ...(isCashPayment && {
+                        isCashTransaction: transaction.isCashTransaction,
+                        cashAmount: transaction.cashAmount,
+                        cashTransactionType: transaction.cashTransactionType
+                    })
+                };
+
                 res.status(201).json({
                     success: true,
-                    message: 'Transaction created successfully',
-                    data: {
-                        _id: updatedTransaction._id,
-                        transactionId: updatedTransaction.transactionId,
-                        amount: updatedTransaction.amount,
-                        direction: updatedTransaction.direction,
-                        transactionType: updatedTransaction.transactionType,
-                        description: updatedTransaction.description,
-                        status: updatedTransaction.status,
-                        transactionDate: updatedTransaction.transactionDate,
-                        balanceBefore: updatedTransaction.balanceBefore,
-                        balanceAfter: updatedTransaction.balanceAfter,
-                        bankAccountId: updatedTransaction.bankAccountId,
-                        partyId: updatedTransaction.partyId,
-                        partyName: updatedTransaction.partyName,
-                        createdAt: updatedTransaction.createdAt,
-                        paymentMethod: updatedTransaction.paymentMethod,
-                        notes: updatedTransaction.notes
-                    },
-                    // ✅ NEW: Add balance verification info
-                    balanceInfo: {
-                        transactionBalanceAfter: updatedTransaction.balanceAfter,
-                        bankCurrentBalance: updatedBankAccount.currentBalance,
-                        balancesMatch: Math.abs(updatedTransaction.balanceAfter - updatedBankAccount.currentBalance) < 0.01,
-                        accountName: updatedBankAccount.accountName
-                    }
+                    message: `${isCashPayment ? 'Cash' : 'Bank'} transaction created successfully`,
+                    data: responseData,
+                    // ✅ CONDITIONAL: Add balance info only for bank transactions
+                    ...(updatedBankAccount && {
+                        balanceInfo: {
+                            transactionBalanceAfter: transaction.balanceAfter,
+                            bankCurrentBalance: updatedBankAccount.currentBalance,
+                            balancesMatch: Math.abs(transaction.balanceAfter - updatedBankAccount.currentBalance) < 0.01,
+                            accountName: updatedBankAccount.accountName
+                        }
+                    }),
+                    // ✅ CASH INFO: Add cash transaction info
+                    ...(isCashPayment && {
+                        cashInfo: {
+                            cashAmount: transactionAmount,
+                            cashDirection: direction,
+                            cashTransactionType: transactionData.cashTransactionType,
+                            noBankAccount: 'Cash transaction - no bank account involved'
+                        }
+                    })
                 });
 
             } catch (operationError) {

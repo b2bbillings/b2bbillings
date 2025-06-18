@@ -13,7 +13,9 @@ import {
     faExclamationTriangle,
     faSpinner,
     faHistory,
-    faInfoCircle
+    faInfoCircle,
+    faRefresh,
+    faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import itemsTableLogic from './itemsTableLogic';
 
@@ -28,15 +30,21 @@ const PaymentModal = ({
     handlePaymentTypeChange,
     handlePaymentSubmit,
     submittingPayment,
-    bankAccounts,
-    loadingBankAccounts,
-    paymentHistory,
-    totals,
-    gstEnabled,
-    roundOffEnabled,
-    roundOffValue,
-    invoiceNumber,
-    invoiceDate
+    bankAccounts = [],
+    loadingBankAccounts = false,
+    retryLoadBankAccounts,
+    paymentHistory = [],
+    totals = {},
+    gstEnabled = true,
+    roundOffEnabled = false,
+    roundOffValue = 0,
+    invoiceNumber = '',
+    invoiceDate = '',
+    handleDueDateToggle,
+    handleCreditDaysChange,
+    handleDueDateChange,
+    companyId,
+    formType = 'sales'
 }) => {
 
     // ✅ UPDATED: Clean payment submission handler
@@ -47,7 +55,8 @@ const PaymentModal = ({
             e.stopPropagation();
         }
 
-        console.log('💰 Payment details submission triggered (validation only)');
+        console.log('💰 Payment details submission triggered');
+        console.log('Payment data:', paymentData);
 
         // Call the original handler with clean parameters
         if (handlePaymentSubmit && typeof handlePaymentSubmit === 'function') {
@@ -62,14 +71,18 @@ const PaymentModal = ({
         }
     };
 
-    // ✅ FIXED: Make sure all references use consistent field names
+    // ✅ FIXED: Enhanced validation with better field checks
     const getSubmitButtonState = () => {
         const validations = {
-            hasParty: !!paymentData.partyId,
-            hasAmount: (paymentData.amount || 0) > 0, // ✅ Correct
-            hasBankAccount: ['Cash', 'UPI'].includes(paymentData.paymentType) || !!paymentData.bankAccountId,
-            hasChequeDetails: paymentData.paymentType !== 'Cheque' || (paymentData.chequeNumber && paymentData.chequeDate),
-            hasNextPaymentDate: !paymentData.isPartialPayment || (paymentData.remainingAmount || 0) <= 0 || !!paymentData.nextPaymentDate
+            hasParty: !!(paymentData.partyId && paymentData.partyName),
+            hasAmount: !!(paymentData.amount && parseFloat(paymentData.amount) > 0),
+            hasBankAccount: ['Cash', 'UPI'].includes(paymentData.paymentType) ||
+                !!(paymentData.bankAccountId && paymentData.bankAccountId !== ''),
+            hasChequeDetails: paymentData.paymentType !== 'Cheque' ||
+                !!(paymentData.chequeNumber && paymentData.chequeDate),
+            hasNextPaymentDate: !paymentData.isPartialPayment ||
+                (paymentData.remainingAmount || 0) <= 0 ||
+                !!paymentData.nextPaymentDate
         };
 
         const isValid = Object.values(validations).every(Boolean);
@@ -83,14 +96,34 @@ const PaymentModal = ({
 
     const submitState = getSubmitButtonState();
 
-    // ✅ FIXED: Add null safety
+    // ✅ ENHANCED: Better validation messages
     const getValidationMessage = () => {
-        if (!submitState.validations.hasParty) return 'Party information is missing';
-        if (!submitState.validations.hasAmount) return 'Please enter a payment amount';
-        if (!submitState.validations.hasBankAccount) return 'Please select a bank account';
-        if (!submitState.validations.hasChequeDetails) return 'Please provide cheque number and date';
-        if (!submitState.validations.hasNextPaymentDate) return 'Please set next payment date for partial payment';
+        if (!submitState.validations.hasParty) {
+            return 'Party information is missing. Please select a customer/supplier in the main form.';
+        }
+        if (!submitState.validations.hasAmount) {
+            return 'Please enter a valid payment amount greater than 0';
+        }
+        if (!submitState.validations.hasBankAccount) {
+            return `Please select a bank account for ${paymentData.paymentType} payment`;
+        }
+        if (!submitState.validations.hasChequeDetails) {
+            return 'Please provide both cheque number and cheque date';
+        }
+        if (!submitState.validations.hasNextPaymentDate) {
+            return 'Please set next payment date for partial payment';
+        }
         return '';
+    };
+
+    // ✅ NEW: Handle retry bank accounts loading
+    const handleRetryBankAccounts = () => {
+        console.log('🔄 Retrying bank accounts load from PaymentModal');
+        if (retryLoadBankAccounts && typeof retryLoadBankAccounts === 'function') {
+            retryLoadBankAccounts();
+        } else {
+            console.warn('⚠️ retryLoadBankAccounts function not provided');
+        }
     };
 
     return (
@@ -175,48 +208,102 @@ const PaymentModal = ({
                                 </Form.Select>
                             </div>
 
-                            {/* ✅ UPDATED: Bank Account Selection */}
+                            {/* ✅ ENHANCED: Bank Account Selection with retry functionality */}
                             {!['Cash', 'UPI'].includes(paymentData.paymentType) && (
                                 <div className="mb-4">
-                                    <Form.Label className="fw-bold text-secondary mb-2">
-                                        <FontAwesomeIcon icon={faUniversity} className="me-2" />
-                                        Select Bank Account *
+                                    <Form.Label className="fw-bold text-secondary mb-2 d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <FontAwesomeIcon icon={faUniversity} className="me-2" />
+                                            Select Bank Account *
+                                        </span>
+                                        {!loadingBankAccounts && (
+                                            <Button
+                                                variant="outline-secondary"
+                                                size="sm"
+                                                onClick={handleRetryBankAccounts}
+                                                className="d-flex align-items-center"
+                                            >
+                                                <FontAwesomeIcon icon={faRefresh} className="me-1" />
+                                                Refresh
+                                            </Button>
+                                        )}
                                     </Form.Label>
+
                                     {loadingBankAccounts ? (
-                                        <div className="text-center py-3 bg-light rounded-3">
-                                            <FontAwesomeIcon icon={faSpinner} className="fa-spin me-2" />
-                                            Loading bank accounts...
+                                        <div className="text-center py-3 bg-light rounded-3 border-2">
+                                            <FontAwesomeIcon icon={faSpinner} className="fa-spin me-2 text-primary" />
+                                            <span className="text-muted">Loading bank accounts...</span>
                                         </div>
                                     ) : bankAccounts.length === 0 ? (
-                                        <Alert variant="info" className="mb-2">
-                                            <FontAwesomeIcon icon={faUniversity} className="me-2" />
-                                            No bank accounts available. Please add a bank account first.
-                                        </Alert>
+                                        <div className="border-2 rounded-3 p-3">
+                                            <Alert variant="warning" className="mb-2">
+                                                <FontAwesomeIcon icon={faUniversity} className="me-2" />
+                                                <strong>No bank accounts found</strong>
+                                                <p className="mb-2 mt-2">
+                                                    Please add a bank account first to use this payment method.
+                                                </p>
+                                                <div className="d-flex gap-2">
+                                                    <Button
+                                                        variant="outline-primary"
+                                                        size="sm"
+                                                        onClick={handleRetryBankAccounts}
+                                                    >
+                                                        <FontAwesomeIcon icon={faRefresh} className="me-1" />
+                                                        Try Again
+                                                    </Button>
+                                                    <Button
+                                                        variant="primary"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            // You can add navigation to bank account creation here
+                                                            console.log('Navigate to add bank account');
+                                                        }}
+                                                    >
+                                                        <FontAwesomeIcon icon={faPlus} className="me-1" />
+                                                        Add Bank Account
+                                                    </Button>
+                                                </div>
+                                            </Alert>
+                                        </div>
                                     ) : (
-                                        <Form.Select
-                                            value={paymentData.bankAccountId || ''}
-                                            onChange={(e) => {
-                                                const value = e.target.value;
-                                                console.log('🏦 Bank account selected:', value);
-                                                setPaymentData(prev => ({ ...prev, bankAccountId: value }));
-                                            }}
-                                            className={`border-2 rounded-3 ${!paymentData.bankAccountId ? 'border-warning' : ''}`}
-                                            style={{ padding: '12px 16px', fontSize: '16px' }}
-                                            required
-                                        >
-                                            <option value="">Select Bank Account</option>
-                                            {bankAccounts.map(account => (
-                                                <option key={account._id || account.id} value={account._id || account.id}>
-                                                    {account.accountName || account.displayName ||
-                                                        `${account.bankName || 'Unknown Bank'} - ${account.accountNumber || 'N/A'} (${account.accountType || 'N/A'}) - ₹${itemsTableLogic.formatCurrency(account.currentBalance || account.balance || 0)}`}
-                                                </option>
-                                            ))}
-                                        </Form.Select>
+                                        <>
+                                            <Form.Select
+                                                value={paymentData.bankAccountId || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    console.log('🏦 Bank account selected:', value);
+                                                    const selectedAccount = bankAccounts.find(acc =>
+                                                        (acc._id || acc.id) === value
+                                                    );
+                                                    console.log('🏦 Selected account details:', selectedAccount);
+                                                    setPaymentData(prev => ({
+                                                        ...prev,
+                                                        bankAccountId: value,
+                                                        bankAccountName: selectedAccount?.accountName || selectedAccount?.name
+                                                    }));
+                                                }}
+                                                className={`border-2 rounded-3 ${!paymentData.bankAccountId ? 'border-warning' : 'border-success'}`}
+                                                style={{ padding: '12px 16px', fontSize: '16px' }}
+                                                required
+                                            >
+                                                <option value="">Select Bank Account</option>
+                                                {bankAccounts.map(account => (
+                                                    <option key={account._id || account.id} value={account._id || account.id}>
+                                                        {account.displayName ||
+                                                            `${account.accountName || account.name || 'Unknown'} - ${account.bankName || 'Unknown Bank'} (${account.accountNumber || 'N/A'}) - ₹${itemsTableLogic.formatCurrency(account.currentBalance || account.balance || 0)}`}
+                                                    </option>
+                                                ))}
+                                            </Form.Select>
+                                            <small className="text-success">
+                                                <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                                {bankAccounts.length} bank account{bankAccounts.length !== 1 ? 's' : ''} available
+                                            </small>
+                                        </>
                                     )}
                                 </div>
                             )}
 
-                            {/* Cheque Details */}
+                            {/* ✅ ENHANCED: Cheque Details with better validation */}
                             {paymentData.paymentType === 'Cheque' && (
                                 <Row className="mb-4">
                                     <Col md={6}>
@@ -233,10 +320,16 @@ const PaymentModal = ({
                                                 setPaymentData(prev => ({ ...prev, chequeNumber: value }));
                                             }}
                                             placeholder="Enter cheque number"
-                                            className={`border-2 rounded-3 ${!paymentData.chequeNumber ? 'border-warning' : ''}`}
+                                            className={`border-2 rounded-3 ${!paymentData.chequeNumber ? 'border-warning' : 'border-success'}`}
                                             style={{ padding: '12px 16px' }}
                                             required
                                         />
+                                        {!paymentData.chequeNumber && (
+                                            <small className="text-warning">
+                                                <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                                Cheque number is required
+                                            </small>
+                                        )}
                                     </Col>
                                     <Col md={6}>
                                         <Form.Label className="fw-bold text-secondary mb-2">
@@ -251,16 +344,22 @@ const PaymentModal = ({
                                                 console.log('📅 Cheque date:', value);
                                                 setPaymentData(prev => ({ ...prev, chequeDate: value }));
                                             }}
-                                            className={`border-2 rounded-3 ${!paymentData.chequeDate ? 'border-warning' : ''}`}
+                                            className={`border-2 rounded-3 ${!paymentData.chequeDate ? 'border-warning' : 'border-success'}`}
                                             style={{ padding: '12px 16px' }}
                                             max={new Date().toISOString().split('T')[0]}
                                             required
                                         />
+                                        {!paymentData.chequeDate && (
+                                            <small className="text-warning">
+                                                <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                                Cheque date is required
+                                            </small>
+                                        )}
                                     </Col>
                                 </Row>
                             )}
 
-                            {/* ✅ UPDATED: Payment Amount - using correct field name */}
+                            {/* ✅ ENHANCED: Payment Amount with better validation */}
                             <div className="mb-4">
                                 <Form.Label className="fw-bold text-secondary mb-2">
                                     <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
@@ -273,7 +372,7 @@ const PaymentModal = ({
                                     <Form.Control
                                         type="number"
                                         placeholder="Enter amount"
-                                        value={paymentData.amount || ''} // ✅ Changed from paymentAmount to amount
+                                        value={paymentData.amount || ''}
                                         onChange={(e) => {
                                             const value = e.target.value;
                                             console.log('💰 Payment amount changed:', value);
@@ -282,7 +381,7 @@ const PaymentModal = ({
                                         max={finalTotalWithRoundOff}
                                         min="0"
                                         step="0.01"
-                                        className={`fw-bold border-2 ${!paymentData.amount || paymentData.amount <= 0 ? 'border-warning' : ''}`} // ✅ Changed field name
+                                        className={`fw-bold border-2 ${!paymentData.amount || paymentData.amount <= 0 ? 'border-warning' : 'border-success'}`}
                                         style={{ fontSize: '18px' }}
                                         required
                                     />
@@ -299,6 +398,24 @@ const PaymentModal = ({
                                     </Button>
                                 </InputGroup>
 
+                                {/* ✅ ENHANCED: Better amount validation feedback */}
+                                {!paymentData.amount || paymentData.amount <= 0 ? (
+                                    <small className="text-warning">
+                                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                        Please enter a valid payment amount
+                                    </small>
+                                ) : parseFloat(paymentData.amount) > finalTotalWithRoundOff ? (
+                                    <small className="text-danger">
+                                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                        Payment amount cannot exceed invoice total
+                                    </small>
+                                ) : (
+                                    <small className="text-success">
+                                        <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                        Valid payment amount
+                                    </small>
+                                )}
+
                                 {paymentData.isPartialPayment && (
                                     <Alert variant="warning" className="mt-2 mb-0">
                                         <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -307,12 +424,12 @@ const PaymentModal = ({
                                 )}
                             </div>
 
-                            {/* Next Payment Date for partial payments */}
+                            {/* ✅ ENHANCED: Next Payment Date for partial payments */}
                             {paymentData.isPartialPayment && paymentData.remainingAmount > 0 && (
                                 <div className="mb-4">
                                     <Form.Label className="fw-bold text-secondary mb-2">
                                         <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
-                                        Next Payment Date *
+                                        Next Payment Due Date *
                                     </Form.Label>
                                     <Form.Control
                                         type="date"
@@ -322,7 +439,7 @@ const PaymentModal = ({
                                             console.log('📅 Next payment date:', value);
                                             setPaymentData(prev => ({ ...prev, nextPaymentDate: value }));
                                         }}
-                                        className={`border-2 rounded-3 ${!paymentData.nextPaymentDate ? 'border-warning' : ''}`}
+                                        className={`border-2 rounded-3 ${!paymentData.nextPaymentDate ? 'border-warning' : 'border-success'}`}
                                         style={{ padding: '12px 16px' }}
                                         min={new Date().toISOString().split('T')[0]}
                                         required
@@ -434,11 +551,11 @@ const PaymentModal = ({
                                         <span className="fw-bold text-primary">₹{itemsTableLogic.formatCurrency(finalTotalWithRoundOff || 0)}</span>
                                     </div>
 
-                                    {/* ✅ UPDATED: Payment Details with correct field names */}
+                                    {/* Payment Details */}
                                     <hr />
                                     <div className="d-flex justify-content-between mb-2">
                                         <span>Current Payment:</span>
-                                        <span className="fw-bold text-success">₹{itemsTableLogic.formatCurrency(paymentData.amount || 0)}</span> {/* ✅ Changed field name */}
+                                        <span className="fw-bold text-success">₹{itemsTableLogic.formatCurrency(paymentData.amount || 0)}</span>
                                     </div>
 
                                     {paymentData.totalPaid > 0 && (
@@ -456,7 +573,7 @@ const PaymentModal = ({
                                     </div>
                                 </div>
 
-                                {/* ✅ FIXED: Payment Status with correct field names and proper JSX syntax */}
+                                {/* Payment Status */}
                                 <div className="text-center mb-3">
                                     {(paymentData.remainingAmount || 0) === 0 && (paymentData.amount || 0) > 0 ? (
                                         <span className="badge bg-success fs-6 px-3 py-2">
@@ -519,9 +636,9 @@ const PaymentModal = ({
                     Cancel
                 </Button>
 
-                {/* ✅ UPDATED: Button text to reflect new flow */}
+                {/* ✅ ENHANCED: Better button state management */}
                 <Button
-                    variant={currentConfig.buttonVariant}
+                    variant={submitState.isValid ? currentConfig.buttonVariant : 'outline-secondary'}
                     size="lg"
                     onClick={handleCleanPaymentSubmit}
                     disabled={submitState.isDisabled}
@@ -546,7 +663,7 @@ const PaymentModal = ({
                     )}
                 </Button>
             </Modal.Footer>
-        </Modal >
+        </Modal>
     );
 };
 

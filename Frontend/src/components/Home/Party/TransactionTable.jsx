@@ -62,7 +62,7 @@ const TransactionTable = ({
         const date = new Date(dateString);
         const now = new Date();
         const diffInHours = (now - date) / (1000 * 60 * 60);
-        
+
         if (diffInHours < 24) {
             // If within 24 hours, show time
             return date.toLocaleString('en-IN', {
@@ -123,7 +123,7 @@ const TransactionTable = ({
         const paymentDate = new Date(transaction.paymentDate || transaction.createdAt);
         const isRecent = (new Date() - paymentDate) < (24 * 60 * 60 * 1000); // Within 24 hours
         const isToday = paymentDate.toDateString() === new Date().toDateString();
-        
+
         return {
             ...transaction,
             isRecent,
@@ -232,15 +232,15 @@ const TransactionTable = ({
                                 <Spinner size="sm" className="ms-2" />
                             )}
                         </h6>
-                        
+
                         {/* Quick Filters */}
                         <div className="d-flex gap-1">
                             <Button
                                 variant={filters.type === 'Receipt' ? 'success' : 'outline-success'}
                                 size="sm"
-                                onClick={() => setFilters(prev => ({ 
-                                    ...prev, 
-                                    type: prev.type === 'Receipt' ? '' : 'Receipt' 
+                                onClick={() => setFilters(prev => ({
+                                    ...prev,
+                                    type: prev.type === 'Receipt' ? '' : 'Receipt'
                                 }))}
                                 style={{ fontSize: '10px' }}
                             >
@@ -249,9 +249,9 @@ const TransactionTable = ({
                             <Button
                                 variant={filters.type === 'Payment' ? 'danger' : 'outline-danger'}
                                 size="sm"
-                                onClick={() => setFilters(prev => ({ 
-                                    ...prev, 
-                                    type: prev.type === 'Payment' ? '' : 'Payment' 
+                                onClick={() => setFilters(prev => ({
+                                    ...prev,
+                                    type: prev.type === 'Payment' ? '' : 'Payment'
                                 }))}
                                 style={{ fontSize: '10px' }}
                             >
@@ -278,18 +278,18 @@ const TransactionTable = ({
                         </InputGroup>
 
                         {/* Actions */}
-                        <Button 
-                            variant="outline-secondary" 
-                            size="sm" 
+                        <Button
+                            variant="outline-secondary"
+                            size="sm"
                             className="border-0 p-1"
                             onClick={() => selectedParty && onLoadTransactions(selectedParty._id || selectedParty.id)}
                             disabled={isLoadingTransactions}
                             title="Refresh transactions"
                         >
-                            <FontAwesomeIcon 
-                                icon={faRefresh} 
-                                size="sm" 
-                                className={isLoadingTransactions ? 'fa-spin' : ''} 
+                            <FontAwesomeIcon
+                                icon={faRefresh}
+                                size="sm"
+                                className={isLoadingTransactions ? 'fa-spin' : ''}
                             />
                         </Button>
 
@@ -458,12 +458,11 @@ const TransactionTable = ({
                     {/* Table Data with Enhanced Display */}
                     <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
                         {enhancedTransactions.map((transaction, index) => (
-                            <Row 
-                                key={transaction.id || index} 
-                                className={`align-items-center py-2 px-3 border-bottom transaction-row g-0 ${
-                                    transaction.isRecent ? 'bg-success bg-opacity-10' : ''
-                                } ${transaction.isToday ? 'border-start border-success border-3' : ''}`}
-                                style={{ 
+                            <Row
+                                key={transaction.id || index}
+                                className={`align-items-center py-2 px-3 border-bottom transaction-row g-0 ${transaction.isRecent ? 'bg-success bg-opacity-10' : ''
+                                    } ${transaction.isToday ? 'border-start border-success border-3' : ''}`}
+                                style={{
                                     cursor: 'pointer',
                                     transition: 'background-color 0.2s ease'
                                 }}
@@ -481,8 +480,8 @@ const TransactionTable = ({
                             >
                                 <Col lg={viewOptions.compactView ? 3 : 2}>
                                     <div className="d-flex align-items-center">
-                                        <Badge 
-                                            bg={transaction.displayType === 'pay-in' ? 'success' : 'danger'} 
+                                        <Badge
+                                            bg={transaction.displayType === 'pay-in' ? 'success' : 'danger'}
                                             className="me-2"
                                             style={{ fontSize: '9px' }}
                                         >
@@ -506,9 +505,9 @@ const TransactionTable = ({
                                     </div>
                                 </Col>
                                 <Col lg={viewOptions.compactView ? 2 : 2}>
-                                    <span 
-                                        style={{ 
-                                            fontSize: '13px', 
+                                    <span
+                                        style={{
+                                            fontSize: '13px',
                                             fontFamily: 'monospace',
                                             fontWeight: transaction.isRecent ? 'bold' : 'normal'
                                         }}
@@ -524,8 +523,8 @@ const TransactionTable = ({
                                 </Col>
                                 <Col lg={viewOptions.compactView ? 2 : 2}>
                                     <div>
-                                        <span 
-                                            style={{ 
+                                        <span
+                                            style={{
                                                 fontSize: '13px',
                                                 fontWeight: transaction.isRecent ? 'bold' : 'normal'
                                             }}
@@ -541,10 +540,9 @@ const TransactionTable = ({
                                 </Col>
                                 {viewOptions.showAmount && (
                                     <Col lg={2}>
-                                        <span 
-                                            className={`fw-bold ${
-                                                transaction.displayType === 'pay-in' ? 'text-success' : 'text-danger'
-                                            }`}
+                                        <span
+                                            className={`fw-bold ${transaction.displayType === 'pay-in' ? 'text-success' : 'text-danger'
+                                                }`}
                                             style={{ fontSize: '14px' }}
                                         >
                                             {transaction.displayType === 'pay-in' ? '+' : '-'}₹{transaction.formattedAmount}
@@ -555,9 +553,9 @@ const TransactionTable = ({
                                     <Col lg={2}>
                                         <div className="d-flex align-items-center">
                                             <span className="me-1">{getPaymentMethodIcon(transaction.paymentMethod)}</span>
-                                            <Badge 
-                                                bg="light" 
-                                                text="dark" 
+                                            <Badge
+                                                bg="light"
+                                                text="dark"
                                                 className="text-capitalize"
                                                 style={{ fontSize: '10px' }}
                                             >
@@ -568,20 +566,20 @@ const TransactionTable = ({
                                 )}
                                 {viewOptions.showStatus && !viewOptions.compactView && (
                                     <Col lg={2}>
-                                        <Badge 
+                                        <Badge
                                             bg={getStatusColor(transaction.status)}
                                             style={{ fontSize: '10px' }}
                                             className="text-capitalize"
                                         >
-                                            <FontAwesomeIcon 
+                                            <FontAwesomeIcon
                                                 icon={
                                                     transaction.status === 'completed' ? faCheckCircle :
-                                                    transaction.status === 'pending' ? faClock :
-                                                    transaction.status === 'failed' ? faTimesCircle :
-                                                    faExclamationTriangle
-                                                } 
-                                                className="me-1" 
-                                                size="xs" 
+                                                        transaction.status === 'pending' ? faClock :
+                                                            transaction.status === 'failed' ? faTimesCircle :
+                                                                faExclamationTriangle
+                                                }
+                                                className="me-1"
+                                                size="xs"
                                             />
                                             {transaction.status}
                                         </Badge>
@@ -589,11 +587,10 @@ const TransactionTable = ({
                                 )}
                                 {viewOptions.showBalance && (
                                     <Col lg={2}>
-                                        <span 
-                                            className={`fw-medium ${
-                                                transaction.balance > 0 ? 'text-success' : 
-                                                transaction.balance < 0 ? 'text-danger' : 'text-muted'
-                                            }`}
+                                        <span
+                                            className={`fw-medium ${transaction.balance > 0 ? 'text-success' :
+                                                    transaction.balance < 0 ? 'text-danger' : 'text-muted'
+                                                }`}
                                             style={{ fontSize: '12px' }}
                                         >
                                             ₹{formatCurrency(transaction.balance)}
@@ -610,14 +607,14 @@ const TransactionTable = ({
                                             <FontAwesomeIcon icon={faEllipsisV} size="sm" />
                                         </Dropdown.Toggle>
                                         <Dropdown.Menu>
-                                            <Dropdown.Item 
+                                            <Dropdown.Item
                                                 onClick={() => handleTransactionAction('view', transaction)}
                                                 style={{ fontSize: '12px' }}
                                             >
                                                 <FontAwesomeIcon icon={faEye} className="me-2" />
                                                 View Details
                                             </Dropdown.Item>
-                                            <Dropdown.Item 
+                                            <Dropdown.Item
                                                 onClick={() => handleTransactionAction('edit', transaction)}
                                                 style={{ fontSize: '12px' }}
                                             >
@@ -625,14 +622,14 @@ const TransactionTable = ({
                                                 Edit
                                             </Dropdown.Item>
                                             <Dropdown.Divider />
-                                            <Dropdown.Item 
+                                            <Dropdown.Item
                                                 onClick={() => handleTransactionAction('duplicate', transaction)}
                                                 style={{ fontSize: '12px' }}
                                             >
                                                 Duplicate
                                             </Dropdown.Item>
                                             <Dropdown.Divider />
-                                            <Dropdown.Item 
+                                            <Dropdown.Item
                                                 onClick={() => handleTransactionAction('delete', transaction)}
                                                 className="text-danger"
                                                 style={{ fontSize: '12px' }}

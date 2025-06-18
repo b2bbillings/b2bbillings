@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Row, Col, Form, Button, Spinner, Alert, Card, Modal } from 'react-bootstrap';
+import { Row, Col, Form, Button, Spinner, Alert, Card, Modal, Table, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash, faBox, faRupeeSign, faBoxOpen, faCheck, faEdit, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTrash, faBox, faRupeeSign, faBoxOpen, faCheck, faEdit, faTimes, faShoppingCart, faSave, faEye } from '@fortawesome/free-solid-svg-icons';
 import itemService from '../../../../../services/itemService';
 import ProductModal from '../../../Inventory/ProductModal';
 
@@ -15,16 +15,36 @@ function OrderFormProductSection({
     disabled = false
 }) {
     // Product search states
-    const [products, setProducts] = useState({});
-    const [productSearchTerms, setProductSearchTerms] = useState({});
-    const [showProductSuggestions, setShowProductSuggestions] = useState({});
-    const [isLoadingProducts, setIsLoadingProducts] = useState({});
-    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState({});
+    const [products, setProducts] = useState([]);
+    const [productSearchTerms, setProductSearchTerms] = useState('');
+    const [showProductSuggestions, setShowProductSuggestions] = useState(false);
+    const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
-    // ✅ FIXED: Description modal states with textarea ref
-    const [showDescriptionModal, setShowDescriptionModal] = useState({});
-    const [tempDescription, setTempDescription] = useState({});
-    const descriptionTextareaRef = useRef({});
+    // ✅ NEW: Main product form modal state
+    const [showProductFormModal, setShowProductFormModal] = useState(false);
+    const [currentEditingIndex, setCurrentEditingIndex] = useState(null);
+    const [tempFormData, setTempFormData] = useState({
+        selectedProduct: '',
+        productName: '',
+        productCode: '',
+        description: '',
+        quantity: '',
+        price: '',
+        unit: 'pcs',
+        gstMode: 'exclude',
+        gstRate: 18,
+        subtotal: 0,
+        gstAmount: 0,
+        totalAmount: 0,
+        availableStock: 0,
+        hsnNumber: ''
+    });
+
+    // Description modal states
+    const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+    const [tempDescription, setTempDescription] = useState('');
+    const descriptionTextareaRef = useRef(null);
 
     // Modal states for adding new items
     const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -32,33 +52,28 @@ function OrderFormProductSection({
 
     // Enhanced refs for better keyboard navigation
     const inputRefs = useRef({});
-    const isSelectingProductRef = useRef({});
-    const searchTimeoutRefs = useRef({});
+    const isSelectingProductRef = useRef(false);
+    const searchTimeoutRef = useRef(null);
 
-    // ✅ STANDARDIZED INPUT STYLES for perfect alignment
+    // ✅ STANDARDIZED INPUT STYLES
     const inputStyle = {
         borderColor: '#000',
         fontSize: '13px',
         padding: '10px 14px',
-        height: '42px', // ✅ Consistent height for all inputs
+        height: '42px',
         borderWidth: '2px'
     };
 
-    const getInputStyleWithError = (fieldName) => ({
-        ...inputStyle,
-        borderColor: errors[fieldName] ? '#dc3545' : '#000'
-    });
-
-    // Load products from backend using itemService
-    const searchProducts = async (searchTerm, itemIndex) => {
+    // Load products from backend
+    const searchProducts = async (searchTerm) => {
         if (!companyId || !searchTerm || searchTerm.length < 2) {
-            setProducts(prev => ({ ...prev, [itemIndex]: [] }));
-            setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
+            setProducts([]);
+            setShowProductSuggestions(false);
             return;
         }
 
         try {
-            setIsLoadingProducts(prev => ({ ...prev, [itemIndex]: true }));
+            setIsLoadingProducts(true);
 
             const response = await itemService.getItems(companyId, {
                 search: searchTerm,
@@ -86,439 +101,57 @@ function OrderFormProductSection({
                     type: item.type || 'product'
                 }));
 
-                setProducts(prev => ({ ...prev, [itemIndex]: formattedProducts }));
-
-                if (!isSelectingProductRef.current[itemIndex]) {
-                    setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
+                setProducts(formattedProducts);
+                if (!isSelectingProductRef.current) {
+                    setShowProductSuggestions(true);
                 }
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
+                setSelectedSuggestionIndex(-1);
             } else {
-                setProducts(prev => ({ ...prev, [itemIndex]: [] }));
-                if (!isSelectingProductRef.current[itemIndex]) {
-                    setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
+                setProducts([]);
+                if (!isSelectingProductRef.current) {
+                    setShowProductSuggestions(true);
                 }
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
+                setSelectedSuggestionIndex(-1);
             }
         } catch (error) {
-            setProducts(prev => ({ ...prev, [itemIndex]: [] }));
-            if (!isSelectingProductRef.current[itemIndex]) {
-                setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
+            setProducts([]);
+            if (!isSelectingProductRef.current) {
+                setShowProductSuggestions(true);
             }
-            setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
+            setSelectedSuggestionIndex(-1);
             if (searchTerm.length >= 2) {
                 addToast?.('Failed to search products: ' + error.message, 'error');
             }
         } finally {
-            setIsLoadingProducts(prev => ({ ...prev, [itemIndex]: false }));
+            setIsLoadingProducts(false);
         }
     };
 
-    // Alternative search method using itemService.searchItems
-    const searchProductsAlternative = async (searchTerm, itemIndex) => {
-        if (!companyId || !searchTerm || searchTerm.length < 2) {
-            setProducts(prev => ({ ...prev, [itemIndex]: [] }));
-            setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-            return;
-        }
-
-        try {
-            setIsLoadingProducts(prev => ({ ...prev, [itemIndex]: true }));
-            const response = await itemService.searchItems(companyId, searchTerm, 'product', 20);
-
-            if (response.success) {
-                const itemList = response.data?.items || response.data || [];
-                const formattedProducts = itemList.map(item => ({
-                    id: item._id || item.id,
-                    name: item.name || item.itemName || 'Unknown Product',
-                    code: item.itemCode || item.code || item.productCode || '',
-                    description: item.description || '',
-                    sellingPrice: parseFloat(item.salePrice || item.sellingPrice || item.price || 0),
-                    purchasePrice: parseFloat(item.buyPrice || item.purchasePrice || item.cost || 0),
-                    gstRate: parseFloat(item.gstRate || item.taxRate || 18),
-                    unit: item.unit || 'pcs',
-                    category: item.category || '',
-                    stock: item.currentStock || item.openingStock || item.stock || 0,
-                    minStock: item.minStockLevel || item.minStock || 0,
-                    maxStock: item.maxStock || 0,
-                    hsnNumber: item.hsnNumber || '',
-                    type: item.type || 'product'
-                }));
-
-                setProducts(prev => ({ ...prev, [itemIndex]: formattedProducts }));
-
-                if (!isSelectingProductRef.current[itemIndex]) {
-                    setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
-                }
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-            } else {
-                setProducts(prev => ({ ...prev, [itemIndex]: [] }));
-                if (!isSelectingProductRef.current[itemIndex]) {
-                    setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
-                }
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-            }
-        } catch (error) {
-            await searchProducts(searchTerm, itemIndex);
-        } finally {
-            setIsLoadingProducts(prev => ({ ...prev, [itemIndex]: false }));
-        }
-    };
-
-    // Enhanced debounced product search with better timing
+    // Debounced product search
     useEffect(() => {
-        Object.entries(productSearchTerms).forEach(([itemIndex, searchTerm]) => {
-            if (searchTimeoutRefs.current[itemIndex]) {
-                clearTimeout(searchTimeoutRefs.current[itemIndex]);
-            }
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
 
-            if (searchTerm && searchTerm.length >= 2 && !isSelectingProductRef.current[itemIndex]) {
-                searchTimeoutRefs.current[itemIndex] = setTimeout(async () => {
-                    try {
-                        await searchProductsAlternative(searchTerm, parseInt(itemIndex));
-                    } catch (error) {
-                        await searchProducts(searchTerm, parseInt(itemIndex));
-                    }
-                }, 300);
-            } else if (searchTerm.length === 0) {
-                setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-            }
-        });
+        if (productSearchTerms && productSearchTerms.length >= 2 && !isSelectingProductRef.current) {
+            searchTimeoutRef.current = setTimeout(() => {
+                searchProducts(productSearchTerms);
+            }, 300);
+        } else if (productSearchTerms.length === 0) {
+            setShowProductSuggestions(false);
+        }
 
         return () => {
-            Object.values(searchTimeoutRefs.current).forEach(timeoutId => {
-                if (timeoutId) clearTimeout(timeoutId);
-            });
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
         };
     }, [productSearchTerms, companyId]);
 
-    // Watch for GST type changes and recalculate all items
-    useEffect(() => {
-        if (formData._gstTypeChanged) {
-            const items = formData.items || [];
-            const updatedItems = items.map((item, index) => {
-                if (item.quantity && item.price) {
-                    const newItem = { ...item };
-                    calculateItemTotal([newItem], 0);
-                    return newItem;
-                }
-                return item;
-            });
-            onFormDataChange('items', updatedItems);
-            onFormDataChange('_gstTypeChanged', null);
-        }
-    }, [formData._gstTypeChanged, formData.gstType]);
-
-    // Enhanced product search input handling
-    const handleProductSearchChange = (itemIndex, value) => {
-        if (isSelectingProductRef.current[itemIndex]) {
-            return;
-        }
-
-        setProductSearchTerms(prev => ({ ...prev, [itemIndex]: value }));
-
-        const newItems = [...(formData.items || [])];
-        const currentItem = newItems[itemIndex];
-
-        if (currentItem.selectedProduct && value !== currentItem.productName) {
-            newItems[itemIndex] = {
-                ...currentItem,
-                productName: value,
-                selectedProduct: '',
-                price: '',
-                gstRate: 18,
-                description: '',
-                productCode: '',
-                unit: 'pcs',
-                availableStock: 0,
-                hsnNumber: ''
-            };
-        } else {
-            newItems[itemIndex] = {
-                ...currentItem,
-                productName: value
-            };
-        }
-
-        onFormDataChange('items', newItems);
-    };
-
-    // ✅ FIXED: Enhanced product selection with proper description modal focus
-    const handleProductSelect = (itemIndex, product) => {
-        console.log('Product selected:', product);
-        console.log('Product description:', product.description);
-
-        isSelectingProductRef.current[itemIndex] = true;
-
-        const newItems = [...(formData.items || [])];
-        newItems[itemIndex] = {
-            ...newItems[itemIndex],
-            selectedProduct: product.id,
-            productName: product.name,
-            productCode: product.code,
-            description: product.description,
-            price: product.sellingPrice.toString(),
-            gstRate: product.gstRate,
-            unit: product.unit,
-            availableStock: product.stock,
-            hsnNumber: product.hsnNumber
-        };
-
-        calculateItemTotal(newItems, itemIndex);
-        onFormDataChange('items', newItems);
-
-        setProductSearchTerms(prev => ({ ...prev, [itemIndex]: product.name }));
-        setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-        setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-
-        // ✅ FIXED: Set description and show modal with proper focus
-        setTempDescription(prev => ({ ...prev, [itemIndex]: product.description || '' }));
-
-        setTimeout(() => {
-            setShowDescriptionModal(prev => ({ ...prev, [itemIndex]: true }));
-            // ✅ FIXED: Focus on textarea after modal is rendered
-            setTimeout(() => {
-                const textarea = descriptionTextareaRef.current[itemIndex];
-                if (textarea) {
-                    textarea.focus();
-                    // Move cursor to end of text
-                    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-                }
-            }, 200); // Increased delay to ensure modal is fully rendered
-        }, 100);
-
-        setTimeout(() => {
-            isSelectingProductRef.current[itemIndex] = false;
-        }, 300);
-    };
-
-    // ✅ FIXED: Handle description modal with proper focus management
-    const handleDescriptionModalSave = (itemIndex) => {
-        console.log('Saving description for item:', itemIndex, 'Description:', tempDescription[itemIndex]);
-
-        const newItems = [...(formData.items || [])];
-        newItems[itemIndex].description = tempDescription[itemIndex] || '';
-        onFormDataChange('items', newItems);
-
-        setShowDescriptionModal(prev => ({ ...prev, [itemIndex]: false }));
-        setTempDescription(prev => ({ ...prev, [itemIndex]: '' }));
-
-        // Focus on quantity after description
-        setTimeout(() => {
-            const quantityInput = document.querySelector(`[data-quantity-input="${itemIndex}"]`);
-            if (quantityInput) {
-                quantityInput.focus();
-                quantityInput.select();
-            }
-        }, 200);
-    };
-
-    const handleDescriptionModalSkip = (itemIndex) => {
-        console.log('Skipping description for item:', itemIndex);
-
-        setShowDescriptionModal(prev => ({ ...prev, [itemIndex]: false }));
-        setTempDescription(prev => ({ ...prev, [itemIndex]: '' }));
-
-        // Focus on quantity after skipping description
-        setTimeout(() => {
-            const quantityInput = document.querySelector(`[data-quantity-input="${itemIndex}"]`);
-            if (quantityInput) {
-                quantityInput.focus();
-                quantityInput.select();
-            }
-        }, 200);
-    };
-
-    // ✅ FIXED: Handle manual description edit with proper focus
-    const handleEditDescription = (itemIndex) => {
-        const item = formData.items?.[itemIndex];
-        setTempDescription(prev => ({ ...prev, [itemIndex]: item?.description || '' }));
-        setShowDescriptionModal(prev => ({ ...prev, [itemIndex]: true }));
-
-        // ✅ Focus on textarea after modal opens
-        setTimeout(() => {
-            const textarea = descriptionTextareaRef.current[itemIndex];
-            if (textarea) {
-                textarea.focus();
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-            }
-        }, 200);
-    };
-
-    // Enhanced keyboard navigation
-    const handleKeyDown = (e, itemIndex) => {
-        if (!showProductSuggestions[itemIndex]) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const quantityInput = document.querySelector(`[data-quantity-input="${itemIndex}"]`);
-                if (quantityInput) {
-                    quantityInput.focus();
-                    quantityInput.select();
-                }
-            }
-            return;
-        }
-
-        const productList = products[itemIndex] || [];
-        const hasAddNewOption = productList.length === 0 && productSearchTerms[itemIndex]?.length >= 2;
-        const totalOptions = productList.length + (hasAddNewOption ? 1 : 0);
-
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                setSelectedSuggestionIndex(prev => ({
-                    ...prev,
-                    [itemIndex]: Math.min((prev[itemIndex] ?? -1) + 1, totalOptions - 1)
-                }));
-                break;
-
-            case 'ArrowUp':
-                e.preventDefault();
-                setSelectedSuggestionIndex(prev => ({
-                    ...prev,
-                    [itemIndex]: Math.max((prev[itemIndex] ?? 0) - 1, -1)
-                }));
-                break;
-
-            case 'Enter':
-                e.preventDefault();
-                const selectedIndex = selectedSuggestionIndex[itemIndex] ?? -1;
-
-                if (selectedIndex === -1) {
-                    const quantityInput = document.querySelector(`[data-quantity-input="${itemIndex}"]`);
-                    if (quantityInput) {
-                        setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-                        quantityInput.focus();
-                        quantityInput.select();
-                    }
-                } else if (selectedIndex < productList.length) {
-                    const selectedProduct = productList[selectedIndex];
-                    if (selectedProduct) {
-                        handleProductSelect(itemIndex, selectedProduct);
-                    }
-                } else if (hasAddNewOption && selectedIndex === productList.length) {
-                    handleAddNewItemClick(productSearchTerms[itemIndex], itemIndex);
-                }
-                break;
-
-            case 'Escape':
-                e.preventDefault();
-                setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-                break;
-
-            case 'Tab':
-                setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-                setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-                break;
-        }
-    };
-
-    // Enhanced keyboard navigation for other fields
-    const handleFieldKeyDown = (e, itemIndex, fieldType) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-
-            const fieldOrder = ['product', 'quantity', 'price', 'gstmode', 'total'];
-            const currentFieldIndex = fieldOrder.indexOf(fieldType);
-
-            if (currentFieldIndex < fieldOrder.length - 1) {
-                const nextField = fieldOrder[currentFieldIndex + 1];
-                const nextInput = document.querySelector(`[data-${nextField}-input="${itemIndex}"]`);
-                if (nextInput) {
-                    nextInput.focus();
-                    if (nextInput.select) nextInput.select();
-                }
-            } else {
-                const nextRowIndex = itemIndex + 1;
-                const nextRowInput = document.querySelector(`[data-product-input="${nextRowIndex}"]`);
-
-                if (nextRowInput) {
-                    nextRowInput.focus();
-                } else {
-                    addNewProductRow();
-                    setTimeout(() => {
-                        const newRowInput = document.querySelector(`[data-product-input="${nextRowIndex}"]`);
-                        if (newRowInput) {
-                            newRowInput.focus();
-                        }
-                    }, 100);
-                }
-            }
-        }
-    };
-
-    // Enhanced focus handling for product inputs
-    const handleProductInputFocus = (itemIndex) => {
-        if (!isSelectingProductRef.current[itemIndex] && !formData.items?.[itemIndex]?.selectedProduct) {
-            const searchTerm = productSearchTerms[itemIndex] || formData.items?.[itemIndex]?.productName;
-            if (searchTerm && searchTerm.length >= 2) {
-                setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: true }));
-            }
-        }
-    };
-
-    // Enhanced blur handling for product inputs
-    const handleProductInputBlur = (itemIndex) => {
-        if (!isSelectingProductRef.current[itemIndex]) {
-            setTimeout(() => {
-                if (!isSelectingProductRef.current[itemIndex]) {
-                    setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-                    setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
-                }
-            }, 150);
-        }
-    };
-
-    // Handle item field changes
-    const handleItemChange = (itemIndex, field, value) => {
-        const newItems = [...(formData.items || [])];
-        newItems[itemIndex] = {
-            ...newItems[itemIndex],
-            [field]: value
-        };
-
-        if (['quantity', 'price', 'gstMode', 'gstRate'].includes(field)) {
-            calculateItemTotal(newItems, itemIndex);
-        }
-
-        onFormDataChange('items', newItems);
-    };
-
-    // Calculate total for a specific item
-    const calculateItemTotal = (items, itemIndex) => {
-        const item = items[itemIndex];
-        const quantity = parseFloat(item.quantity) || 0;
-        const price = parseFloat(item.price) || 0;
-        const gstRate = parseFloat(item.gstRate) || 0;
-
-        let subtotal = quantity * price;
-        let gstAmount = 0;
-        let totalAmount = 0;
-
-        if (formData.gstType === 'gst') {
-            if (item.gstMode === 'include') {
-                totalAmount = subtotal;
-                gstAmount = (subtotal * gstRate) / (100 + gstRate);
-                subtotal = totalAmount - gstAmount;
-            } else {
-                gstAmount = (subtotal * gstRate) / 100;
-                totalAmount = subtotal + gstAmount;
-            }
-        } else {
-            totalAmount = subtotal;
-            gstAmount = 0;
-        }
-
-        items[itemIndex].subtotal = Math.round(subtotal * 100) / 100;
-        items[itemIndex].gstAmount = Math.round(gstAmount * 100) / 100;
-        items[itemIndex].totalAmount = Math.round(totalAmount * 100) / 100;
-    };
-
-    // Add new product row
-    const addNewProductRow = () => {
-        const currentItems = formData.items || [];
-        const newItem = {
-            id: Date.now(),
+    // ✅ NEW: Handle opening product form modal
+    const handleAddProductClick = () => {
+        setCurrentEditingIndex(null);
+        setTempFormData({
             selectedProduct: '',
             productName: '',
             productCode: '',
@@ -533,736 +166,907 @@ function OrderFormProductSection({
             totalAmount: 0,
             availableStock: 0,
             hsnNumber: ''
-        };
-
-        onFormDataChange('items', [...currentItems, newItem]);
+        });
+        setProductSearchTerms('');
+        setShowProductFormModal(true);
     };
 
-    // Remove product row
-    const removeProductRow = (itemIndex) => {
-        const currentItems = formData.items || [];
-        if (currentItems.length > 1) {
-            const newItems = currentItems.filter((_, index) => index !== itemIndex);
-            onFormDataChange('items', newItems);
+    // ✅ NEW: Handle editing existing product
+    const handleEditProduct = (index) => {
+        const item = formData.items[index];
+        setCurrentEditingIndex(index);
+        setTempFormData({ ...item });
+        setProductSearchTerms(item.productName || '');
+        setShowProductFormModal(true);
+    };
 
-            const cleanupStates = (stateObj) => {
-                const newState = { ...stateObj };
-                delete newState[itemIndex];
-                return newState;
-            };
+    // ✅ NEW: Handle product search in modal
+    const handleProductSearchChange = (value) => {
+        if (isSelectingProductRef.current) {
+            return;
+        }
 
-            setProductSearchTerms(cleanupStates);
-            setShowProductSuggestions(cleanupStates);
-            setProducts(cleanupStates);
-            setIsLoadingProducts(cleanupStates);
-            setSelectedSuggestionIndex(cleanupStates);
-            setShowDescriptionModal(cleanupStates);
-            setTempDescription(cleanupStates);
+        setProductSearchTerms(value);
+        setTempFormData(prev => {
+            if (prev.selectedProduct && value !== prev.productName) {
+                return {
+                    ...prev,
+                    productName: value,
+                    selectedProduct: '',
+                    price: '',
+                    gstRate: 18,
+                    description: '',
+                    productCode: '',
+                    unit: 'pcs',
+                    availableStock: 0,
+                    hsnNumber: ''
+                };
+            } else {
+                return {
+                    ...prev,
+                    productName: value
+                };
+            }
+        });
+    };
 
-            delete isSelectingProductRef.current[itemIndex];
-            delete descriptionTextareaRef.current[itemIndex];
-            if (searchTimeoutRefs.current[itemIndex]) {
-                clearTimeout(searchTimeoutRefs.current[itemIndex]);
-                delete searchTimeoutRefs.current[itemIndex];
+    // ✅ NEW: Handle product selection in modal
+    const handleProductSelect = (product) => {
+        isSelectingProductRef.current = true;
+
+        setTempFormData(prev => ({
+            ...prev,
+            selectedProduct: product.id,
+            productName: product.name,
+            productCode: product.code,
+            description: product.description,
+            price: product.sellingPrice.toString(),
+            gstRate: product.gstRate,
+            unit: product.unit,
+            availableStock: product.stock,
+            hsnNumber: product.hsnNumber
+        }));
+
+        setProductSearchTerms(product.name);
+        setShowProductSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+
+        // Show description modal if product has description
+        if (product.description) {
+            setTempDescription(product.description);
+            setTimeout(() => {
+                setShowDescriptionModal(true);
+            }, 100);
+        }
+
+        setTimeout(() => {
+            isSelectingProductRef.current = false;
+        }, 300);
+    };
+
+    // ✅ NEW: Handle form field changes in modal
+    const handleTempFormChange = (field, value) => {
+        setTempFormData(prev => {
+            const updated = { ...prev, [field]: value };
+
+            // Recalculate totals if quantity, price, or gstMode changes
+            if (['quantity', 'price', 'gstMode', 'gstRate'].includes(field)) {
+                calculateItemTotal(updated);
+            }
+
+            return updated;
+        });
+    };
+
+    // Calculate total for temp form data
+    const calculateItemTotal = (itemData) => {
+        const quantity = parseFloat(itemData.quantity) || 0;
+        const price = parseFloat(itemData.price) || 0;
+        const gstRate = parseFloat(itemData.gstRate) || 0;
+
+        let subtotal = quantity * price;
+        let gstAmount = 0;
+        let totalAmount = 0;
+
+        if (formData.gstType === 'gst') {
+            if (itemData.gstMode === 'include') {
+                totalAmount = subtotal;
+                gstAmount = (subtotal * gstRate) / (100 + gstRate);
+                subtotal = totalAmount - gstAmount;
+            } else {
+                gstAmount = (subtotal * gstRate) / 100;
+                totalAmount = subtotal + gstAmount;
             }
         } else {
-            addToast?.('At least one product row is required', 'warning');
+            totalAmount = subtotal;
+            gstAmount = 0;
+        }
+
+        itemData.subtotal = Math.round(subtotal * 100) / 100;
+        itemData.gstAmount = Math.round(gstAmount * 100) / 100;
+        itemData.totalAmount = Math.round(totalAmount * 100) / 100;
+    };
+
+    // ✅ NEW: Handle save and add another
+    const handleSaveAndAdd = () => {
+        if (!validateTempForm()) return;
+
+        const currentItems = formData.items || [];
+        const newItem = {
+            ...tempFormData,
+            id: currentEditingIndex !== null ? tempFormData.id : Date.now()
+        };
+
+        let updatedItems;
+        if (currentEditingIndex !== null) {
+            updatedItems = [...currentItems];
+            updatedItems[currentEditingIndex] = newItem;
+        } else {
+            updatedItems = [...currentItems, newItem];
+        }
+
+        onFormDataChange('items', updatedItems);
+        addToast?.('Product added successfully!', 'success');
+
+        // Reset form for next product
+        setTempFormData({
+            selectedProduct: '',
+            productName: '',
+            productCode: '',
+            description: '',
+            quantity: '',
+            price: '',
+            unit: 'pcs',
+            gstMode: 'exclude',
+            gstRate: 18,
+            subtotal: 0,
+            gstAmount: 0,
+            totalAmount: 0,
+            availableStock: 0,
+            hsnNumber: ''
+        });
+        setProductSearchTerms('');
+        setCurrentEditingIndex(null);
+    };
+
+    // ✅ NEW: Handle save and exit
+    const handleSaveAndExit = () => {
+        if (!validateTempForm()) return;
+
+        const currentItems = formData.items || [];
+        const newItem = {
+            ...tempFormData,
+            id: currentEditingIndex !== null ? tempFormData.id : Date.now()
+        };
+
+        let updatedItems;
+        if (currentEditingIndex !== null) {
+            updatedItems = [...currentItems];
+            updatedItems[currentEditingIndex] = newItem;
+            addToast?.('Product updated successfully!', 'success');
+        } else {
+            updatedItems = [...currentItems, newItem];
+            addToast?.('Product added successfully!', 'success');
+        }
+
+        onFormDataChange('items', updatedItems);
+        setShowProductFormModal(false);
+        setCurrentEditingIndex(null);
+    };
+
+    // ✅ NEW: Validate temp form
+    const validateTempForm = () => {
+        if (!tempFormData.productName?.trim()) {
+            addToast?.('Please select or enter a product name', 'error');
+            return false;
+        }
+        if (!tempFormData.quantity || parseFloat(tempFormData.quantity) <= 0) {
+            addToast?.('Please enter a valid quantity', 'error');
+            return false;
+        }
+        if (!tempFormData.price || parseFloat(tempFormData.price) <= 0) {
+            addToast?.('Please enter a valid price', 'error');
+            return false;
+        }
+        return true;
+    };
+
+    // ✅ NEW: Handle removing product from list
+    const handleRemoveProduct = (index) => {
+        const currentItems = formData.items || [];
+        if (currentItems.length > 0) {
+            const updatedItems = currentItems.filter((_, i) => i !== index);
+            onFormDataChange('items', updatedItems);
+            addToast?.('Product removed successfully!', 'success');
         }
     };
 
-    // Handle "Add New Item" click from suggestions
-    const handleAddNewItemClick = (searchTerm, itemIndex) => {
-        isSelectingProductRef.current[itemIndex] = true;
-
-        setQuickAddContext({
-            type: 'item',
-            searchTerm: searchTerm,
-            itemIndex: itemIndex
-        });
-        setShowAddItemModal(true);
-        setShowProductSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-        setSelectedSuggestionIndex(prev => ({ ...prev, [itemIndex]: -1 }));
+    // Handle description modal
+    const handleDescriptionModalSave = () => {
+        setTempFormData(prev => ({
+            ...prev,
+            description: tempDescription
+        }));
+        setShowDescriptionModal(false);
+        setTempDescription('');
     };
 
-    // Handle new item saved callback
+    const handleDescriptionModalSkip = () => {
+        setShowDescriptionModal(false);
+        setTempDescription('');
+    };
+
+    // Handle "Add New Item" from suggestions
+    const handleAddNewItemClick = (searchTerm) => {
+        isSelectingProductRef.current = true;
+        setQuickAddContext({
+            type: 'item',
+            searchTerm: searchTerm
+        });
+        setShowAddItemModal(true);
+        setShowProductSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+    };
+
+    // Handle new item saved
     const handleNewItemSaved = (newItem) => {
         addToast?.('New item created successfully!', 'success');
 
-        if (quickAddContext && quickAddContext.type === 'item') {
-            const itemIndex = quickAddContext.itemIndex;
+        const formattedProduct = {
+            id: newItem._id || newItem.id,
+            name: newItem.name || newItem.itemName || 'New Product',
+            code: newItem.itemCode || newItem.code || '',
+            description: newItem.description || '',
+            sellingPrice: parseFloat(newItem.salePrice || newItem.sellingPrice || newItem.price || 0),
+            gstRate: parseFloat(newItem.gstRate || 18),
+            unit: newItem.unit || 'pcs',
+            stock: newItem.currentStock || newItem.stock || 0,
+            hsnNumber: newItem.hsnNumber || ''
+        };
 
-            const formattedProduct = {
-                id: newItem._id || newItem.id,
-                name: newItem.name || newItem.itemName || 'New Product',
-                code: newItem.itemCode || newItem.code || '',
-                description: newItem.description || '',
-                sellingPrice: parseFloat(newItem.salePrice || newItem.sellingPrice || newItem.price || 0),
-                gstRate: parseFloat(newItem.gstRate || 18),
-                unit: newItem.unit || 'pcs',
-                stock: newItem.currentStock || newItem.stock || 0,
-                hsnNumber: newItem.hsnNumber || ''
-            };
-
-            handleProductSelect(itemIndex, formattedProduct);
-            addToast?.('New item added and selected successfully!', 'success');
-        }
-
+        handleProductSelect(formattedProduct);
         setQuickAddContext(null);
         setShowAddItemModal(false);
 
         setTimeout(() => {
-            if (quickAddContext?.itemIndex !== undefined) {
-                isSelectingProductRef.current[quickAddContext.itemIndex] = false;
-            }
+            isSelectingProductRef.current = false;
         }, 100);
     };
 
-    // Handle modal close
     const handleModalClose = () => {
-        if (quickAddContext?.itemIndex !== undefined) {
-            isSelectingProductRef.current[quickAddContext.itemIndex] = false;
-        }
+        isSelectingProductRef.current = false;
         setQuickAddContext(null);
         setShowAddItemModal(false);
     };
 
-    // Initialize with one item if empty
-    useEffect(() => {
-        if (!formData.items || formData.items.length === 0) {
-            addNewProductRow();
+    // Enhanced keyboard navigation for modal
+    const handleModalKeyDown = (e) => {
+        if (!showProductSuggestions) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const quantityInput = document.querySelector('[data-modal-quantity-input]');
+                if (quantityInput) {
+                    quantityInput.focus();
+                    quantityInput.select();
+                }
+            }
+            return;
         }
-    }, []);
+
+        const productList = products || [];
+        const hasAddNewOption = productList.length === 0 && productSearchTerms?.length >= 2;
+        const totalOptions = productList.length + (hasAddNewOption ? 1 : 0);
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                setSelectedSuggestionIndex(prev => Math.min((prev ?? -1) + 1, totalOptions - 1));
+                break;
+
+            case 'ArrowUp':
+                e.preventDefault();
+                setSelectedSuggestionIndex(prev => Math.max((prev ?? 0) - 1, -1));
+                break;
+
+            case 'Enter':
+                e.preventDefault();
+                const selectedIndex = selectedSuggestionIndex ?? -1;
+
+                if (selectedIndex === -1) {
+                    const quantityInput = document.querySelector('[data-modal-quantity-input]');
+                    if (quantityInput) {
+                        setShowProductSuggestions(false);
+                        quantityInput.focus();
+                        quantityInput.select();
+                    }
+                } else if (selectedIndex < productList.length) {
+                    const selectedProduct = productList[selectedIndex];
+                    if (selectedProduct) {
+                        handleProductSelect(selectedProduct);
+                    }
+                } else if (hasAddNewOption && selectedIndex === productList.length) {
+                    handleAddNewItemClick(productSearchTerms);
+                }
+                break;
+
+            case 'Escape':
+                e.preventDefault();
+                setShowProductSuggestions(false);
+                setSelectedSuggestionIndex(-1);
+                break;
+        }
+    };
 
     const items = formData.items || [];
-    const dropdownStyles = `
-        .order-form-product-section .position-relative {
-            overflow: visible !important;
-        }
-        
-        .order-form-product-section .card-body {
-            overflow: visible !important;
-        }
-        
-        .order-form-product-section .card {
-            overflow: visible !important;
-        }
-        
-        .order-form-product-section {
-            overflow: visible !important;
-        }
-        
-        .container, .container-fluid, .row, .col, .col-md-4, .col-md-3, .col-md-2, .col-md-1 {
-            overflow: visible !important;
-        }
-        
-        .product-suggestions-dropdown {
-            z-index: 9999 !important;
-            position: absolute !important;
-            background: white !important;
-            border: 2px solid #000 !important;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
-        }
-
-        .suggestion-item-selected {
-            background-color: #007bff !important;
-            color: white !important;
-        }
-
-        .suggestion-item-selected .text-primary {
-            color: white !important;
-        }
-
-        .suggestion-item-selected .text-muted {
-            color: #e0e0e0 !important;
-        }
-
-        .product-selected-input {
-            background-color: #e8f5e8 !important;
-            border-color: #28a745 !important;
-            color: #155724 !important;
-            font-weight: bold !important;
-        }
-
-        .product-selected-icon {
-            color: #28a745 !important;
-        }
-
-        .product-description {
-            font-style: italic;
-            color: #6c757d;
-            margin-top: 2px;
-            line-height: 1.2;
-        }
-
-        /* ✅ FIXED: Perfect alignment styles */
-        .form-group-aligned {
-            margin-bottom: 0 !important;
-            height: auto !important;
-        }
-
-        .label-aligned {
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            margin-bottom: 6px !important;
-            display: block !important;
-            line-height: 1.2 !important;
-            min-height: 16px !important;
-        }
-
-        .input-aligned {
-            height: 42px !important;
-            border: 2px solid #000 !important;
-            font-size: 13px !important;
-            padding: 8px 12px !important;
-            line-height: 1.5 !important;
-            box-sizing: border-box !important;
-        }
-
-        /* ✅ FIXED: Input group alignment */
-        .input-group .input-group-text {
-            height: 42px !important;
-            border: 2px solid #000 !important;
-            font-size: 13px !important;
-            padding: 8px 12px !important;
-            line-height: 1.5 !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            align-items: center !important;
-        }
-
-        .input-group .form-control {
-            height: 42px !important;
-            border-left: 0 !important;
-            border-top: 2px solid #000 !important;
-            border-right: 2px solid #000 !important;
-            border-bottom: 2px solid #000 !important;
-        }
-
-        /* ✅ FIXED: Form select alignment */
-        .form-select.input-aligned {
-            height: 42px !important;
-            padding: 8px 12px !important;
-            line-height: 1.5 !important;
-        }
-
-        /* ✅ FIXED: Form text alignment */
-        .form-text {
-            margin-top: 4px !important;
-            font-size: 11px !important;
-            line-height: 1.2 !important;
-        }
-
-        /* ✅ FIXED: Button alignment */
-        .btn.input-aligned {
-            height: 42px !important;
-            padding: 8px 12px !important;
-            line-height: 1.5 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-
-        /* ✅ FIXED: Total display alignment */
-        .total-display {
-            height: 42px !important;
-            border: 2px solid #28a745 !important;
-            color: #28a745 !important;
-            font-size: 13px !important;
-            padding: 8px 12px !important;
-            line-height: 1.5 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            font-weight: 600 !important;
-            box-sizing: border-box !important;
-        }
-    `;
 
     return (
         <>
-            <style>{dropdownStyles}</style>
             <div className="order-form-product-section">
+                {/* ✅ FIXED: Add Product Button - Always visible */}
                 <div className="mb-4">
-                    {items.map((item, index) => (
-                        <Card key={item.id || index} className="mb-3 border-2" style={{ borderColor: '#000', overflow: 'visible' }}>
-                            <Card.Body className="p-4" style={{ overflow: 'visible' }}>
-                                {/* ✅ PERFECTLY ALIGNED: First Row - Product + Quantity + Delete */}
-                                <Row className="mb-3 align-items-end">
-                                    {/* Product Selection - 5 columns */}
-                                    <Col md={5} style={{ overflow: 'visible' }}>
-                                        <Form.Group className="form-group-aligned position-relative" style={{ overflow: 'visible' }}>
-                                            <Form.Label className="label-aligned text-danger">
-                                                Select Product *
-                                                {item.selectedProduct && (
-                                                    <span className="ms-2 text-success">
-                                                        <FontAwesomeIcon icon={faCheck} className="me-1" />
-                                                        Selected
-                                                    </span>
-                                                )}
-                                                {item.selectedProduct && (
-                                                    <Button
-                                                        variant="link"
-                                                        size="sm"
-                                                        className="p-0 ms-2 text-decoration-none"
-                                                        style={{ fontSize: '11px' }}
-                                                        onClick={() => handleEditDescription(index)}
-                                                        title="Edit description"
-                                                    >
-                                                        <FontAwesomeIcon icon={faEdit} className="me-1" />
-                                                        {item.description ? 'Edit Description' : 'Add Description'}
-                                                    </Button>
-                                                )}
-                                            </Form.Label>
-                                            <div className="position-relative" style={{ overflow: 'visible' }}>
-                                                <Form.Control
-                                                    ref={el => inputRefs.current[`product-${index}`] = el}
-                                                    type="text"
-                                                    value={productSearchTerms[index] || item.productName || ''}
-                                                    onChange={(e) => handleProductSearchChange(index, e.target.value)}
-                                                    onKeyDown={(e) => handleKeyDown(e, index)}
-                                                    onFocus={() => handleProductInputFocus(index)}
-                                                    onBlur={() => handleProductInputBlur(index)}
-                                                    className={`input-aligned ${item.selectedProduct ? 'product-selected-input' : ''}`}
-                                                    style={{
-                                                        paddingLeft: '35px',
-                                                        backgroundColor: item.selectedProduct ? '#e8f5e8' : 'white',
-                                                        color: item.selectedProduct ? '#155724' : 'inherit',
-                                                        fontWeight: item.selectedProduct ? 'bold' : 'normal',
-                                                        borderColor: errors[`items.${index}.productName`] ? '#dc3545' : '#000'
-                                                    }}
-                                                    placeholder="Search product..."
-                                                    disabled={disabled}
-                                                    isInvalid={!!errors[`items.${index}.productName`]}
-                                                    data-product-input={index}
-                                                />
-
-                                                {isLoadingProducts[index] && (
-                                                    <div className="position-absolute top-50 end-0 translate-middle-y me-2" style={{ zIndex: 10 }}>
-                                                        <Spinner size="sm" />
-                                                    </div>
-                                                )}
-
-                                                <div className="position-absolute top-50 start-0 translate-middle-y ms-3" style={{ zIndex: 10 }}>
-                                                    <FontAwesomeIcon
-                                                        icon={item.selectedProduct ? faCheck : faBox}
-                                                        className={item.selectedProduct ? 'product-selected-icon' : 'text-muted'}
-                                                        style={{ fontSize: '14px' }}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Product Suggestions Dropdown */}
-                                            {showProductSuggestions[index] && !item.selectedProduct && (
-                                                <div
-                                                    className="product-suggestions-dropdown w-100 bg-white border border-2 rounded mt-1 shadow-lg"
-                                                    style={{
-                                                        position: 'absolute',
-                                                        zIndex: 9999,
-                                                        maxHeight: '250px',
-                                                        overflowY: 'auto',
-                                                        borderColor: '#000',
-                                                        top: '100%',
-                                                        left: 0,
-                                                        right: 0,
-                                                        backgroundColor: 'white'
-                                                    }}
-                                                >
-                                                    {products[index] && products[index].length > 0 && (
-                                                        <>
-                                                            {products[index].slice(0, 5).map((product, productIndex) => (
-                                                                <div
-                                                                    key={product.id}
-                                                                    className={`p-2 border-bottom cursor-pointer ${selectedSuggestionIndex[index] === productIndex ? 'suggestion-item-selected' : ''}`}
-                                                                    style={{
-                                                                        fontSize: '12px',
-                                                                        cursor: 'pointer',
-                                                                        transition: 'background-color 0.2s',
-                                                                        backgroundColor: selectedSuggestionIndex[index] === productIndex ? '#007bff' : 'white'
-                                                                    }}
-                                                                    onMouseDown={(e) => {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        handleProductSelect(index, product);
-                                                                    }}
-                                                                    onMouseEnter={() => setSelectedSuggestionIndex(prev => ({ ...prev, [index]: productIndex }))}
-                                                                >
-                                                                    <div className="fw-bold text-primary mb-1" style={{ fontSize: '13px' }}>{product.name}</div>
-                                                                    <div className="text-muted" style={{ fontSize: '11px' }}>
-                                                                        <span>₹{product.sellingPrice}</span>
-                                                                        <span className="ms-2">Stock: {product.stock}</span>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </>
-                                                    )}
-
-                                                    {((products[index] && products[index].length === 0) || !products[index]) &&
-                                                        productSearchTerms[index] &&
-                                                        productSearchTerms[index].length >= 2 &&
-                                                        !isLoadingProducts[index] && (
-                                                            <div
-                                                                className={`p-2 cursor-pointer bg-success bg-opacity-10 ${selectedSuggestionIndex[index] === 0 ? 'suggestion-item-selected' : ''}`}
-                                                                style={{
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '12px'
-                                                                }}
-                                                                onMouseDown={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    handleAddNewItemClick(productSearchTerms[index], index);
-                                                                }}
-                                                            >
-                                                                <FontAwesomeIcon icon={faPlus} className="text-success me-2" />
-                                                                Add "{productSearchTerms[index]}"
-                                                            </div>
-                                                        )}
-
-                                                    {isLoadingProducts[index] && (
-                                                        <div className="p-2 text-center">
-                                                            <Spinner size="sm" className="me-2" />
-                                                            <span style={{ fontSize: '12px' }}>Searching...</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {errors[`items.${index}.productName`] && (
-                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
-                                                    {errors[`items.${index}.productName`]}
-                                                </div>
-                                            )}
-                                        </Form.Group>
-                                    </Col>
-
-                                    {/* Quantity - 4 columns */}
-                                    <Col md={4}>
-                                        <Form.Group className="form-group-aligned">
-                                            <Form.Label className="label-aligned text-danger">
-                                                Quantity *
-                                            </Form.Label>
-                                            <Form.Control
-                                                type="number"
-                                                value={item.quantity || ''}
-                                                onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                                                onKeyDown={(e) => handleFieldKeyDown(e, index, 'quantity')}
-                                                className="input-aligned"
-                                                style={{
-                                                    borderColor: errors[`items.${index}.quantity`] ? '#dc3545' : '#000'
-                                                }}
-                                                placeholder="0"
-                                                min="0"
-                                                step="0.01"
-                                                disabled={disabled}
-                                                isInvalid={!!errors[`items.${index}.quantity`]}
-                                                data-quantity-input={index}
-                                            />
-                                            {item.unit && (
-                                                <Form.Text className="text-muted form-text">
-                                                    Unit: {item.unit}
-                                                </Form.Text>
-                                            )}
-                                            {errors[`items.${index}.quantity`] && (
-                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
-                                                    {errors[`items.${index}.quantity`]}
-                                                </div>
-                                            )}
-                                        </Form.Group>
-                                    </Col>
-
-                                    {/* Remove Button - 3 columns */}
-                                    <Col md={3}>
-                                        <Form.Group className="form-group-aligned">
-                                            <Form.Label className="label-aligned" style={{ color: 'transparent' }}>
-                                                Action
-                                            </Form.Label>
-                                            <Button
-                                                variant="danger"
-                                                size="sm"
-                                                onClick={() => removeProductRow(index)}
-                                                disabled={disabled || items.length === 1}
-                                                title="Remove product"
-                                                className="input-aligned w-100"
-                                                style={{
-                                                    borderColor: '#000'
-                                                }}
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} />
-                                            </Button>
-                                        </Form.Group>
-                                    </Col>
-                                </Row>
-
-                                {/* ✅ PERFECTLY ALIGNED: Second Row - Price + GST Mode + Total */}
-                                <Row className="mb-3">
-                                    {/* Price - 4 columns */}
-                                    <Col md={4}>
-                                        <Form.Group className="form-group-aligned">
-                                            <Form.Label className="label-aligned text-danger">
-                                                Price *
-                                            </Form.Label>
-                                            <div className="input-group">
-                                                <span className="input-group-text">
-                                                    <FontAwesomeIcon icon={faRupeeSign} />
-                                                </span>
-                                                <Form.Control
-                                                    type="number"
-                                                    value={item.price || ''}
-                                                    onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                                                    onKeyDown={(e) => handleFieldKeyDown(e, index, 'price')}
-                                                    className="form-control"
-                                                    style={{
-                                                        borderColor: errors[`items.${index}.price`] ? '#dc3545' : '#000',
-                                                        height: '42px',
-                                                        fontSize: '13px',
-                                                        padding: '8px 12px'
-                                                    }}
-                                                    placeholder="0.00"
-                                                    min="0"
-                                                    step="0.01"
-                                                    disabled={disabled}
-                                                    isInvalid={!!errors[`items.${index}.price`]}
-                                                    data-price-input={index}
-                                                />
-                                            </div>
-                                            {errors[`items.${index}.price`] && (
-                                                <div className="invalid-feedback d-block" style={{ fontSize: '11px' }}>
-                                                    {errors[`items.${index}.price`]}
-                                                </div>
-                                            )}
-                                        </Form.Group>
-                                    </Col>
-
-                                    {/* GST Mode - 4 columns */}
-                                    <Col md={4}>
-                                        <Form.Group className="form-group-aligned">
-                                            <Form.Label className="label-aligned text-danger">
-                                                GST Mode
-                                            </Form.Label>
-                                            <Form.Select
-                                                value={item.gstMode || 'exclude'}
-                                                onChange={(e) => handleItemChange(index, 'gstMode', e.target.value)}
-                                                onKeyDown={(e) => handleFieldKeyDown(e, index, 'gstmode')}
-                                                className="input-aligned"
-                                                style={{
-                                                    backgroundColor: formData.gstType === 'gst' ? '#FFD700' : '#f8f9fa',
-                                                    fontWeight: 'bold',
-                                                    opacity: formData.gstType === 'non-gst' ? 0.6 : 1,
-                                                    borderColor: '#000'
-                                                }}
-                                                disabled={disabled || formData.gstType === 'non-gst'}
-                                                data-gstmode-input={index}
-                                            >
-                                                <option value="include">GST Include</option>
-                                                <option value="exclude">GST Exclude</option>
-                                            </Form.Select>
-                                            <Form.Text className="text-muted form-text">
-                                                Rate: {formData.gstType === 'gst' ? `${item.gstRate || 18}%` : 'No GST'}
-                                            </Form.Text>
-                                        </Form.Group>
-                                    </Col>
-
-                                    {/* Total - 4 columns */}
-                                    <Col md={4}>
-                                        <Form.Group className="form-group-aligned">
-                                            <Form.Label className="label-aligned text-danger">
-                                                Total
-                                            </Form.Label>
-                                            <div
-                                                className="form-control bg-light text-center fw-bold total-display"
-                                                data-total-input={index}
-                                            >
-                                                ₹{(item.totalAmount || 0).toFixed(2)}
-                                            </div>
-                                        </Form.Group>
-                                    </Col>
-                                </Row>
-
-                                {/* Product Info Display */}
-                                {item.selectedProduct && item.availableStock !== undefined && (
-                                    <Row className="mb-2">
-                                        <Col md={12}>
-                                            <div className="p-2 bg-success bg-opacity-10 rounded border border-success" style={{ fontSize: '12px' }}>
-                                                <div className="d-flex justify-content-between flex-wrap gap-2">
-                                                    <span><strong>Code:</strong> {item.productCode || 'N/A'}</span>
-                                                    <span><strong>Stock:</strong> {item.availableStock} {item.unit}</span>
-                                                    <span><strong>GST:</strong> ₹{item.gstAmount?.toFixed(2) || '0.00'}</span>
-                                                    <span><strong>Subtotal:</strong> ₹{item.subtotal?.toFixed(2) || '0.00'}</span>
-                                                    {item.hsnNumber && (
-                                                        <span><strong>HSN:</strong> {item.hsnNumber}</span>
-                                                    )}
-                                                    {item.description && (
-                                                        <span><strong>Description:</strong> {item.description.substring(0, 50)}{item.description.length > 50 ? '...' : ''}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </Col>
-                                    </Row>
-                                )}
-                            </Card.Body>
-                        </Card>
-                    ))}
+                    <Row>
+                        <Col md={8}>
+                            <Button
+                                variant="primary"
+                                size="lg"
+                                onClick={handleAddProductClick}
+                                disabled={disabled}
+                                className="w-100"
+                                style={{
+                                    backgroundColor: '#007bff',
+                                    borderColor: '#000',
+                                    fontSize: '16px',
+                                    fontWeight: 'bold',
+                                    padding: '12px 24px',
+                                    borderWidth: '2px'
+                                }}
+                            >
+                                <FontAwesomeIcon icon={faPlus} className="me-2" />
+                                Add Product
+                            </Button>
+                        </Col>
+                        {/* ✅ FIXED: Only show product count if there are valid products */}
+                        {items.length > 0 && items.some(item => item.productName) && (
+                            <Col md={4}>
+                                <div className="text-center text-muted d-flex align-items-center justify-content-center h-100">
+                                    <div>
+                                        <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+                                        <strong>{items.filter(item => item.productName).length}</strong> {items.filter(item => item.productName).length === 1 ? 'Product' : 'Products'} Added
+                                    </div>
+                                </div>
+                            </Col>
+                        )}
+                    </Row>
                 </div>
 
-                {/* Invoice Description Section + Add New Product Button */}
-                <Row className="mb-3 align-items-end">
-                    <Col md={8}>
-                        {/* Invoice Description Section */}
-                        <div className="p-3 bg-light border border-2 rounded" style={{ borderColor: '#000' }}>
-                            <Form.Group className="form-group-aligned">
-                                <Form.Label className="fw-bold label-aligned">
+                {/* ✅ FIXED: Only show products table if there are valid items with product names */}
+                {items.length > 0 && items.some(item => item.productName) && (
+                    <Card className="mb-4 border-2" style={{ borderColor: '#000' }}>
+                        <Card.Header className="bg-light border-bottom-2" style={{ borderBottomColor: '#000' }}>
+                            <h5 className="mb-0">
+                                <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+                                Added Products ({items.filter(item => item.productName).length})
+                            </h5>
+                        </Card.Header>
+                        <Card.Body className="p-0">
+                            <Table responsive hover className="mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>#</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Product</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Qty</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Price</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>GST</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Total</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.filter(item => item.productName).map((item, index) => (
+                                        <tr key={item.id || index}>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                {index + 1}
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                <div>
+                                                    <strong>{item.productName}</strong>
+                                                    {item.productCode && (
+                                                        <Badge bg="secondary" className="ms-2" style={{ fontSize: '10px' }}>
+                                                            {item.productCode}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                {item.description && (
+                                                    <div className="text-muted" style={{ fontSize: '11px', marginTop: '2px' }}>
+                                                        {item.description.length > 50
+                                                            ? `${item.description.substring(0, 50)}...`
+                                                            : item.description}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                {item.quantity} {item.unit}
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                <div>
+                                                    <Badge bg="primary" text="white" style={{ fontSize: '10px' }}>
+                                                        Sale
+                                                    </Badge>
+                                                    <div className="fw-bold text-primary">
+                                                        ₹{parseFloat(item.price || 0).toFixed(2)}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                {formData.gstType === 'gst' ? (
+                                                    <div>
+                                                        <Badge
+                                                            bg={item.gstMode === 'include' ? 'success' : 'warning'}
+                                                            style={{ fontSize: '10px' }}
+                                                        >
+                                                            {item.gstMode === 'include' ? 'Inc' : 'Exc'}
+                                                        </Badge>
+                                                        <div style={{ fontSize: '11px' }}>
+                                                            ₹{(item.gstAmount || 0).toFixed(2)}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <Badge bg="secondary" style={{ fontSize: '10px' }}>
+                                                        No GST
+                                                    </Badge>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                <strong className="text-success">
+                                                    ₹{(item.totalAmount || 0).toFixed(2)}
+                                                </strong>
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                                <div className="d-flex gap-2">
+                                                    <Button
+                                                        variant="outline-primary"
+                                                        size="sm"
+                                                        onClick={() => handleEditProduct(items.indexOf(item))}
+                                                        disabled={disabled}
+                                                        title="Edit product"
+                                                    >
+                                                        <FontAwesomeIcon icon={faEdit} />
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline-danger"
+                                                        size="sm"
+                                                        onClick={() => handleRemoveProduct(items.indexOf(item))}
+                                                        disabled={disabled}
+                                                        title="Remove product"
+                                                    >
+                                                        <FontAwesomeIcon icon={faTrash} />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        </Card.Body>
+                    </Card>
+                )}
+
+                {/* ✅ FIXED: Only show description section if there are valid products */}
+                {items.length > 0 && items.some(item => item.productName) && (
+                    <Card className="mb-3 border-2" style={{ borderColor: '#000' }}>
+                        <Card.Body>
+                            <Form.Group>
+                                <Form.Label className="fw-bold" style={{ fontSize: '14px' }}>
                                     Invoice Description
                                 </Form.Label>
                                 <Form.Control
                                     as="textarea"
-                                    rows={1}
+                                    rows={2}
                                     value={formData.invoiceDescription || ''}
                                     onChange={(e) => onFormDataChange('invoiceDescription', e.target.value)}
-                                    className="input-aligned"
-                                    style={{
-                                        resize: 'none'
-                                    }}
+                                    style={inputStyle}
                                     placeholder="Enter invoice description or terms & conditions..."
                                     disabled={disabled}
                                 />
-                                <Form.Text className="text-muted form-text">
+                                <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
                                     This description will appear on the invoice
                                 </Form.Text>
                             </Form.Group>
-                        </div>
-                    </Col>
-                    <Col md={4}>
-                        <Button
-                            style={{
-                                backgroundColor: '#FFD700',
-                                borderColor: '#000',
-                                color: '#000',
-                                fontSize: '14px',
-                                fontWeight: 'bold'
-                            }}
-                            onClick={addNewProductRow}
-                            disabled={disabled}
-                            className="border-2 w-100 input-aligned"
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="me-2" />
-                            Add New Product
-                        </Button>
-                    </Col>
-                </Row>
+                        </Card.Body>
+                    </Card>
+                )}
 
-                {/* Product Description Modals */}
-                {Object.entries(showDescriptionModal).map(([itemIndex, show]) => {
-                    return show && (
-                        <Modal
-                            key={itemIndex}
-                            show={show}
-                            onHide={() => handleDescriptionModalSkip(parseInt(itemIndex))}
-                            centered
-                            backdrop="static"
-                            onEntered={() => {
-                                const textarea = descriptionTextareaRef.current[itemIndex];
-                                if (textarea) {
-                                    textarea.focus();
-                                    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-                                }
-                            }}
-                        >
-                            <Modal.Header closeButton>
-                                <Modal.Title style={{ fontSize: '16px' }}>
-                                    Product Description
-                                </Modal.Title>
-                            </Modal.Header>
-                            <Modal.Body>
-                                <Form.Group>
-                                    <Form.Label className="fw-bold" style={{ fontSize: '14px' }}>
-                                        Description for: <span className="text-primary">{formData.items?.[parseInt(itemIndex)]?.productName}</span>
-                                    </Form.Label>
-                                    <Form.Control
-                                        ref={el => descriptionTextareaRef.current[itemIndex] = el}
-                                        as="textarea"
-                                        rows={4}
-                                        value={tempDescription[itemIndex] || ''}
-                                        onChange={(e) => setTempDescription(prev => ({ ...prev, [itemIndex]: e.target.value }))}
-                                        className="border-2"
-                                        style={{
-                                            borderColor: '#000',
-                                            fontSize: '13px',
-                                            padding: '10px 14px'
-                                        }}
-                                        placeholder="Enter product description (optional)..."
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && e.ctrlKey) {
-                                                e.preventDefault();
-                                                handleDescriptionModalSave(parseInt(itemIndex));
-                                            } else if (e.key === 'Escape') {
-                                                e.preventDefault();
-                                                handleDescriptionModalSkip(parseInt(itemIndex));
-                                            }
-                                        }}
-                                    />
-                                    <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
-                                        Press Ctrl+Enter to save, Escape to skip
-                                    </Form.Text>
-                                </Form.Group>
-                            </Modal.Body>
-                            <Modal.Footer>
-                                <Button
-                                    variant="outline-secondary"
-                                    onClick={() => handleDescriptionModalSkip(parseInt(itemIndex))}
-                                    className="border-2"
-                                    style={{ borderColor: '#000' }}
-                                >
-                                    <FontAwesomeIcon icon={faTimes} className="me-2" />
-                                    Skip
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => handleDescriptionModalSave(parseInt(itemIndex))}
-                                    className="border-2"
-                                    style={{ borderColor: '#000' }}
-                                >
-                                    <FontAwesomeIcon icon={faCheck} className="me-2" />
-                                    Save & Continue
-                                </Button>
-                            </Modal.Footer>
-                        </Modal>
-                    );
-                })}
-
-                {showAddItemModal && (
-                    <ProductModal
-                        show={showAddItemModal}
-                        onHide={handleModalClose}
-                        onSaveProduct={handleNewItemSaved}
-                        companyId={companyId}
-                        currentUser={currentUser}
-                        currentCompany={{ id: companyId, companyName: 'Current Company' }}
-                        formData={{
-                            name: quickAddContext?.searchTerm || '',
-                            type: 'product',
-                            unit: 'PCS',
-                            gstRate: 18,
-                            category: '',
-                            description: '',
-                            salePrice: '',
-                            buyPrice: '',
-                            currentStock: '',
-                            minStockLevel: '',
-                            hsnNumber: '',
-                            itemCode: '',
-                            isActive: true
-                        }}
-                        categories={[
-                            { id: 1, name: 'Electronics' },
-                            { id: 2, name: 'Furniture' },
-                            { id: 3, name: 'Stationery' },
-                            { id: 4, name: 'Other' }
-                        ]}
-                        onInputChange={() => { }}
-                        mode="add"
-                        type="product"
-                    />
+                {/* ✅ ENHANCED: Show helpful message when no valid products are added */}
+                {(!items.length || !items.some(item => item.productName)) && (
+                    <div className="text-center text-muted py-5">
+                        <FontAwesomeIcon icon={faBoxOpen} size="3x" className="mb-3 opacity-50" />
+                        <h5 className="text-muted">No Products Added Yet</h5>
+                        <p className="text-muted">
+                            Click the "Add Product" button above to start adding products to your sales order.
+                        </p>
+                    </div>
                 )}
             </div>
+
+            {/* ✅ NEW: Product Form Modal */}
+            <Modal
+                show={showProductFormModal}
+                onHide={() => setShowProductFormModal(false)}
+                size="lg"
+                centered
+                backdrop="static"
+            >
+                <Modal.Header closeButton>
+                    <Modal.Title>
+                        {currentEditingIndex !== null ? 'Edit Product' : 'Add Product'}
+                    </Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Row>
+                        {/* Product Selection */}
+                        <Col md={6}>
+                            <Form.Group className="mb-3 position-relative">
+                                <Form.Label className="fw-bold text-danger">
+                                    Select Product *
+                                    {tempFormData.selectedProduct && (
+                                        <Badge bg="success" className="ms-2">
+                                            <FontAwesomeIcon icon={faCheck} className="me-1" />
+                                            Selected
+                                        </Badge>
+                                    )}
+                                </Form.Label>
+                                <div className="position-relative">
+                                    <Form.Control
+                                        type="text"
+                                        value={productSearchTerms || ''}
+                                        onChange={(e) => handleProductSearchChange(e.target.value)}
+                                        onKeyDown={handleModalKeyDown}
+                                        style={{
+                                            ...inputStyle,
+                                            paddingLeft: '40px',
+                                            backgroundColor: tempFormData.selectedProduct ? '#e8f5e8' : 'white',
+                                            color: tempFormData.selectedProduct ? '#155724' : 'inherit',
+                                            fontWeight: tempFormData.selectedProduct ? 'bold' : 'normal'
+                                        }}
+                                        placeholder="Search product..."
+                                    />
+
+                                    {isLoadingProducts && (
+                                        <div className="position-absolute" style={{
+                                            top: '50%',
+                                            right: '12px',
+                                            transform: 'translateY(-50%)',
+                                            zIndex: 10
+                                        }}>
+                                            <Spinner size="sm" />
+                                        </div>
+                                    )}
+
+                                    <div className="position-absolute" style={{
+                                        top: '50%',
+                                        left: '12px',
+                                        transform: 'translateY(-50%)',
+                                        zIndex: 5
+                                    }}>
+                                        <FontAwesomeIcon
+                                            icon={tempFormData.selectedProduct ? faCheck : faBox}
+                                            className={tempFormData.selectedProduct ? 'text-success' : 'text-muted'}
+                                            style={{ fontSize: '16px' }}
+                                        />
+                                    </div>
+
+                                    {/* Product Suggestions */}
+                                    {showProductSuggestions && !tempFormData.selectedProduct && (
+                                        <div
+                                            className="position-absolute w-100 bg-white border rounded shadow-lg"
+                                            style={{
+                                                zIndex: 9999,
+                                                maxHeight: '200px',
+                                                overflowY: 'auto',
+                                                top: '100%',
+                                                left: 0,
+                                                right: 0,
+                                                marginTop: '2px'
+                                            }}
+                                        >
+                                            {products && products.length > 0 && (
+                                                <>
+                                                    {products.slice(0, 5).map((product, productIndex) => (
+                                                        <div
+                                                            key={product.id}
+                                                            className={`p-2 border-bottom cursor-pointer ${selectedSuggestionIndex === productIndex ? 'bg-primary text-white' : ''}`}
+                                                            style={{ cursor: 'pointer' }}
+                                                            onMouseDown={(e) => {
+                                                                e.preventDefault();
+                                                                handleProductSelect(product);
+                                                            }}
+                                                            onMouseEnter={() => setSelectedSuggestionIndex(productIndex)}
+                                                        >
+                                                            <div className="fw-bold">{product.name}</div>
+                                                            <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                                                                <span className="text-primary fw-bold">Sale: ₹{product.sellingPrice.toFixed(2)}</span>
+                                                                <span className="ms-2 text-warning">Purchase: ₹{product.purchasePrice.toFixed(2)}</span>
+                                                                <span className="ms-2 text-info">Stock: {product.stock}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+
+                                            {((products && products.length === 0) || !products) &&
+                                                productSearchTerms &&
+                                                productSearchTerms.length >= 2 &&
+                                                !isLoadingProducts && (
+                                                    <div
+                                                        className="p-2 cursor-pointer bg-success bg-opacity-10"
+                                                        style={{ cursor: 'pointer' }}
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            handleAddNewItemClick(productSearchTerms);
+                                                        }}
+                                                    >
+                                                        <FontAwesomeIcon icon={faPlus} className="text-success me-2" />
+                                                        Add "{productSearchTerms}"
+                                                    </div>
+                                                )}
+                                        </div>
+                                    )}
+                                </div>
+                            </Form.Group>
+                        </Col>
+
+                        {/* Quantity */}
+                        <Col md={3}>
+                            <Form.Group className="mb-3">
+                                <Form.Label className="fw-bold text-danger">Quantity *</Form.Label>
+                                <Form.Control
+                                    type="number"
+                                    value={tempFormData.quantity || ''}
+                                    onChange={(e) => handleTempFormChange('quantity', e.target.value)}
+                                    style={inputStyle}
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                    data-modal-quantity-input
+                                />
+                                {tempFormData.unit && (
+                                    <Form.Text className="text-muted">
+                                        Unit: {tempFormData.unit}
+                                    </Form.Text>
+                                )}
+                            </Form.Group>
+                        </Col>
+
+                        {/* Price */}
+                        <Col md={3}>
+                            <Form.Group className="mb-3">
+                                <Form.Label className="fw-bold text-danger">
+                                    Sale Price *
+                                    <Badge bg="primary" text="white" className="ms-2" style={{ fontSize: '10px' }}>
+                                        Sale
+                                    </Badge>
+                                </Form.Label>
+                                <div className="input-group">
+                                    <span className="input-group-text" style={{
+                                        ...inputStyle,
+                                        borderRight: 'none',
+                                        backgroundColor: '#cce5ff',
+                                        color: '#0066cc',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        <FontAwesomeIcon icon={faRupeeSign} />
+                                    </span>
+                                    <Form.Control
+                                        type="number"
+                                        value={tempFormData.price || ''}
+                                        onChange={(e) => handleTempFormChange('price', e.target.value)}
+                                        style={{
+                                            ...inputStyle,
+                                            borderLeft: 'none',
+                                            backgroundColor: '#cce5ff',
+                                            color: '#0066cc',
+                                            fontWeight: 'bold'
+                                        }}
+                                        placeholder="0.00"
+                                        min="0"
+                                        step="0.01"
+                                    />
+                                </div>
+                                <Form.Text className="text-primary" style={{ fontSize: '12px' }}>
+                                    💰 Sale price for this order
+                                </Form.Text>
+                            </Form.Group>
+                        </Col>
+                    </Row>
+
+                    <Row>
+                        {/* GST Mode */}
+                        <Col md={4}>
+                            <Form.Group className="mb-3">
+                                <Form.Label className="fw-bold">GST Mode</Form.Label>
+                                <Form.Select
+                                    value={tempFormData.gstMode || 'exclude'}
+                                    onChange={(e) => handleTempFormChange('gstMode', e.target.value)}
+                                    style={{
+                                        ...inputStyle,
+                                        backgroundColor: formData.gstType === 'gst' ? '#FFD700' : '#f8f9fa',
+                                        opacity: formData.gstType === 'non-gst' ? 0.6 : 1
+                                    }}
+                                    disabled={formData.gstType === 'non-gst'}
+                                >
+                                    <option value="include">GST Include</option>
+                                    <option value="exclude">GST Exclude</option>
+                                </Form.Select>
+                                <Form.Text className="text-muted">
+                                    Rate: {formData.gstType === 'gst' ? `${tempFormData.gstRate || 18}%` : 'No GST'}
+                                </Form.Text>
+                            </Form.Group>
+                        </Col>
+
+                        {/* Description */}
+                        <Col md={8}>
+                            <Form.Group className="mb-3">
+                                <Form.Label className="fw-bold">
+                                    Description
+                                </Form.Label>
+                                <Form.Control
+                                    as="textarea"
+                                    rows={2}
+                                    value={tempFormData.description || ''}
+                                    onChange={(e) => handleTempFormChange('description', e.target.value)}
+                                    style={inputStyle}
+                                    placeholder="Enter product description..."
+                                />
+                                <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
+                                    Optional: Add product details, specifications, or notes
+                                </Form.Text>
+                            </Form.Group>
+                        </Col>
+                    </Row>
+
+                    {/* Product Info Display */}
+                    {tempFormData.selectedProduct && (
+                        <Alert variant="success" className="mb-3">
+                            <Row>
+                                <Col md={3}>
+                                    <strong>Code:</strong> {tempFormData.productCode || 'N/A'}
+                                </Col>
+                                <Col md={3}>
+                                    <strong>Stock:</strong> {tempFormData.availableStock} {tempFormData.unit}
+                                </Col>
+                                <Col md={3}>
+                                    <strong>GST:</strong> ₹{(tempFormData.gstAmount || 0).toFixed(2)}
+                                </Col>
+                                <Col md={3}>
+                                    <strong>Subtotal:</strong> ₹{(tempFormData.subtotal || 0).toFixed(2)}
+                                </Col>
+                            </Row>
+                            {tempFormData.hsnNumber && (
+                                <div className="mt-2">
+                                    <strong>HSN:</strong> {tempFormData.hsnNumber}
+                                </div>
+                            )}
+                        </Alert>
+                    )}
+
+                    {/* Total Display */}
+                    <div className="text-center mb-3">
+                        <h4 className="text-success">
+                            Total: ₹{(tempFormData.totalAmount || 0).toFixed(2)}
+                        </h4>
+                    </div>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowProductFormModal(false)}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="success"
+                        onClick={handleSaveAndAdd}
+                        disabled={!tempFormData.productName || !tempFormData.quantity || !tempFormData.price}
+                    >
+                        <FontAwesomeIcon icon={faPlus} className="me-2" />
+                        Save & Add Another
+                    </Button>
+                    <Button
+                        variant="primary"
+                        onClick={handleSaveAndExit}
+                        disabled={!tempFormData.productName || !tempFormData.quantity || !tempFormData.price}
+                    >
+                        <FontAwesomeIcon icon={faSave} className="me-2" />
+                        Save & Exit
+                    </Button>
+                </Modal.Footer>
+            </Modal>
+
+            {/* Description Modal */}
+            <Modal
+                show={showDescriptionModal}
+                onHide={handleDescriptionModalSkip}
+                centered
+                backdrop="static"
+            >
+                <Modal.Header closeButton>
+                    <Modal.Title>Product Description</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form.Group>
+                        <Form.Label className="fw-bold">
+                            Description for: <span className="text-primary">{tempFormData.productName}</span>
+                        </Form.Label>
+                        <Form.Control
+                            ref={descriptionTextareaRef}
+                            as="textarea"
+                            rows={4}
+                            value={tempDescription}
+                            onChange={(e) => setTempDescription(e.target.value)}
+                            style={inputStyle}
+                            placeholder="Enter product description (optional)..."
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.ctrlKey) {
+                                    e.preventDefault();
+                                    handleDescriptionModalSave();
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleDescriptionModalSkip();
+                                }
+                            }}
+                        />
+                        <Form.Text className="text-muted">
+                            Press Ctrl+Enter to save, Escape to skip
+                        </Form.Text>
+                    </Form.Group>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="outline-secondary" onClick={handleDescriptionModalSkip}>
+                        <FontAwesomeIcon icon={faTimes} className="me-2" />
+                        Skip
+                    </Button>
+                    <Button variant="primary" onClick={handleDescriptionModalSave}>
+                        <FontAwesomeIcon icon={faCheck} className="me-2" />
+                        Save & Continue
+                    </Button>
+                </Modal.Footer>
+            </Modal>
+
+            {/* Add New Item Modal */}
+            {showAddItemModal && (
+                <ProductModal
+                    show={showAddItemModal}
+                    onHide={handleModalClose}
+                    onSaveProduct={handleNewItemSaved}
+                    companyId={companyId}
+                    currentUser={currentUser}
+                    currentCompany={{ id: companyId, companyName: 'Current Company' }}
+                    formData={{
+                        name: quickAddContext?.searchTerm || '',
+                        type: 'product',
+                        unit: 'PCS',
+                        gstRate: 18,
+                        category: '',
+                        description: '',
+                        salePrice: '',
+                        buyPrice: '',
+                        currentStock: '',
+                        minStockLevel: '',
+                        hsnNumber: '',
+                        itemCode: '',
+                        isActive: true
+                    }}
+                    categories={[
+                        { id: 1, name: 'Electronics' },
+                        { id: 2, name: 'Furniture' },
+                        { id: 3, name: 'Stationery' },
+                        { id: 4, name: 'Other' }
+                    ]}
+                    onInputChange={() => { }}
+                    mode="add"
+                    type="product"
+                />
+            )}
         </>
     );
 }

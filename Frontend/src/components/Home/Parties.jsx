@@ -550,7 +550,7 @@ function Parties() {
         }
     };
 
-    // **ENHANCED: Handle payment recorded callback with allocation details**
+    // ✅ ENHANCED: Handle payment recorded callback with bank transaction details
     const handlePaymentRecorded = (paymentData, updatedParty) => {
         console.log('💰 Payment recorded with data:', paymentData);
 
@@ -570,9 +570,29 @@ function Parties() {
             }
         }
 
-        // **ENHANCED: Show detailed success message with allocation info**
+        // ✅ ENHANCED: Show detailed success message with bank transaction details
         const paymentType = paymentData.type === 'payment_in' ? 'received' : 'made';
         let successMessage = `✅ Payment of ₹${paymentData.amount?.toLocaleString()} ${paymentType} successfully!`;
+        successMessage += `\n• Payment Number: ${paymentData.paymentNumber}`;
+
+        // ✅ NEW: Add bank transaction details if available
+        if (paymentData.bankTransactionCreated && paymentData.bankTransaction) {
+            successMessage += `\n\n🏦 Bank Transaction:`;
+            successMessage += `\n• Transaction #: ${paymentData.bankTransaction.transactionNumber}`;
+            successMessage += `\n• Bank: ${paymentData.bankTransaction.bankName}`;
+
+            if (paymentData.type === 'payment_in') {
+                successMessage += `\n• Credit: +₹${paymentData.amount?.toLocaleString()}`;
+            } else {
+                successMessage += `\n• Debit: -₹${paymentData.amount?.toLocaleString()}`;
+            }
+
+            if (paymentData.bankTransaction.balance !== undefined) {
+                successMessage += `\n• New Balance: ₹${paymentData.bankTransaction.balance?.toLocaleString()}`;
+            }
+        } else if (paymentData.paymentMethod === 'cash') {
+            successMessage += `\n\n💵 Cash Payment - No bank transaction created`;
+        }
 
         // Add allocation details if available
         if (paymentData.invoicesUpdated > 0) {
@@ -587,6 +607,9 @@ function Parties() {
             if (paymentData.remainingAmount > 0) {
                 successMessage += `\n\n💰 Remaining: ₹${paymentData.remainingAmount.toLocaleString()} credited to account`;
             }
+        } else if (paymentData.paymentMethod !== 'cash') {
+            // For advance payments with bank transactions
+            successMessage += `\n\n💰 Advance payment processed via bank`;
         }
 
         setSuccess(successMessage);
@@ -1173,7 +1196,7 @@ function Parties() {
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
                 companyId={companyId}
-                currentUser={currentCompany}
+                currentUser={currentCompany} // ✅ This should ideally be actual user data
             />
 
             <PayOut
@@ -1183,7 +1206,7 @@ function Parties() {
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
                 companyId={companyId}
-                currentUser={currentCompany}
+                currentUser={currentCompany} // ✅ This should ideally be actual user data
             />
 
             {/* Loading Overlay */}

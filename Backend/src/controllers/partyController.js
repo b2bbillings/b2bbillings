@@ -3,7 +3,6 @@ const Company = require('../models/Company');
 const mongoose = require('mongoose');
 
 const partyController = {
-    // Create a new party
     async createParty(req, res) {
         try {
             const {
@@ -17,45 +16,26 @@ const partyController = {
                 creditLimit = 0,
                 openingBalance = 0,
                 country = 'INDIA',
-
-                // Home address fields
                 homeAddressLine = '',
                 homePincode = '',
                 homeState = '',
                 homeDistrict = '',
                 homeTaluka = '',
-
-                // Delivery address fields
                 deliveryAddressLine = '',
                 deliveryPincode = '',
                 deliveryState = '',
                 deliveryDistrict = '',
                 deliveryTaluka = '',
                 sameAsHomeAddress = false,
-
-                // Phone numbers array
                 phoneNumbers = []
             } = req.body;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.body.companyId ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('📝 Creating new party:', {
-                name,
-                partyType,
-                phoneNumber,
-                gstType,
-                creditLimit,
-                userId,
-                companyId,
-                userObject: req.user ? 'Present' : 'Missing'
-            });
-
-            // Validation
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -84,7 +64,6 @@ const partyController = {
                 });
             }
 
-            // Validate phone number format
             const phoneRegex = /^[6-9]\d{9}$/;
             if (!phoneRegex.test(phoneNumber.trim())) {
                 return res.status(400).json({
@@ -93,7 +72,6 @@ const partyController = {
                 });
             }
 
-            // Validate email format if provided
             if (email?.trim()) {
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 if (!emailRegex.test(email.trim())) {
@@ -104,7 +82,6 @@ const partyController = {
                 }
             }
 
-            // Validate GST number if provided and type is not unregistered
             if (gstNumber?.trim() && gstType !== 'unregistered') {
                 const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
                 if (!gstRegex.test(gstNumber.trim().toUpperCase())) {
@@ -115,7 +92,6 @@ const partyController = {
                 }
             }
 
-            // Validate credit limit and opening balance
             if (creditLimit < 0) {
                 return res.status(400).json({
                     success: false,
@@ -130,11 +106,9 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId for consistency
             const userObjectId = new mongoose.Types.ObjectId(userId);
             const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
-            // Check if party with same phone number already exists for this company
             const existingParty = await Party.findOne({
                 phoneNumber: phoneNumber.trim(),
                 companyId: companyObjectId,
@@ -148,7 +122,6 @@ const partyController = {
                 });
             }
 
-            // Prepare party data
             const partyData = {
                 partyType,
                 name: name.trim(),
@@ -160,8 +133,6 @@ const partyController = {
                 creditLimit: parseFloat(creditLimit) || 0,
                 openingBalance: parseFloat(openingBalance) || 0,
                 country: country.toUpperCase(),
-
-                // Home Address
                 homeAddress: {
                     addressLine: homeAddressLine?.trim() || '',
                     pincode: homePincode?.trim() || '',
@@ -169,8 +140,6 @@ const partyController = {
                     district: homeDistrict?.trim() || '',
                     taluka: homeTaluka?.trim() || ''
                 },
-
-                // Delivery Address
                 deliveryAddress: sameAsHomeAddress ? {
                     addressLine: homeAddressLine?.trim() || '',
                     pincode: homePincode?.trim() || '',
@@ -184,34 +153,17 @@ const partyController = {
                     district: deliveryDistrict?.trim() || '',
                     taluka: deliveryTaluka?.trim() || ''
                 },
-
                 sameAsHomeAddress,
-
-                // Phone numbers - ensure primary phone is included
                 phoneNumbers: phoneNumbers.length > 0 ?
                     phoneNumbers.filter(p => p.number?.trim()) :
                     [{ number: phoneNumber.trim(), label: 'Primary' }],
-
-                // Associations
                 userId: userObjectId,
                 companyId: companyObjectId,
                 createdBy: userObjectId
             };
 
-            console.log('💾 Creating party with data:', {
-                name: partyData.name,
-                phoneNumber: partyData.phoneNumber,
-                gstType: partyData.gstType,
-                creditLimit: partyData.creditLimit,
-                companyId: partyData.companyId,
-                partyType: partyData.partyType
-            });
-
-            // Create new party
             const newParty = new Party(partyData);
             await newParty.save();
-
-            console.log('✅ Party created successfully:', newParty._id);
 
             res.status(201).json({
                 success: true,
@@ -220,9 +172,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error creating party:', error);
-
-            // Handle validation errors
             if (error.name === 'ValidationError') {
                 const validationErrors = Object.values(error.errors).map(err => err.message);
                 return res.status(400).json({
@@ -232,7 +181,6 @@ const partyController = {
                 });
             }
 
-            // Handle duplicate key errors
             if (error.code === 11000) {
                 return res.status(400).json({
                     success: false,
@@ -248,27 +196,16 @@ const partyController = {
         }
     },
 
-    // Create a quick party (minimal data)
     async createQuickParty(req, res) {
         try {
             const { name, phone, type = 'customer' } = req.body;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.body.companyId ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('⚡ Creating quick party:', {
-                name,
-                phone,
-                type,
-                userId,
-                companyId
-            });
-
-            // Validation
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -290,7 +227,6 @@ const partyController = {
                 });
             }
 
-            // Validate phone number format
             const phoneRegex = /^[6-9]\d{9}$/;
             if (!phoneRegex.test(phone.trim())) {
                 return res.status(400).json({
@@ -299,11 +235,9 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId for consistency
             const userObjectId = new mongoose.Types.ObjectId(userId);
             const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
-            // Check if party with same phone number already exists for this company
             const existingParty = await Party.findOne({
                 phoneNumber: phone.trim(),
                 companyId: companyObjectId,
@@ -344,8 +278,6 @@ const partyController = {
                 },
                 sameAsHomeAddress: false,
                 phoneNumbers: [{ number: phone.trim(), label: 'Primary' }],
-
-                // Associations
                 userId: userObjectId,
                 companyId: companyObjectId,
                 createdBy: userObjectId
@@ -354,8 +286,6 @@ const partyController = {
             const newParty = new Party(quickPartyData);
             await newParty.save();
 
-            console.log('✅ Quick party created successfully:', newParty._id);
-
             res.status(201).json({
                 success: true,
                 message: 'Quick party created successfully',
@@ -363,8 +293,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error creating quick party:', error);
-
             if (error.name === 'ValidationError') {
                 const validationErrors = Object.values(error.errors).map(err => err.message);
                 return res.status(400).json({
@@ -389,15 +317,12 @@ const partyController = {
         }
     },
 
-    // Check if phone number exists in company
     async checkPhoneExists(req, res) {
         try {
             const { phoneNumber } = req.params;
             const companyId = req.user?.currentCompany ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
-
-            console.log('🔍 Checking phone existence:', phoneNumber, 'in company:', companyId);
 
             if (!companyId) {
                 return res.status(400).json({
@@ -422,8 +347,6 @@ const partyController = {
                 isActive: true
             }).select('name partyType phoneNumber');
 
-            console.log('📞 Phone check result:', existingParty ? 'Found' : 'Not found');
-
             res.json({
                 success: true,
                 exists: !!existingParty,
@@ -436,7 +359,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error checking phone existence:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error checking phone number',
@@ -445,7 +367,6 @@ const partyController = {
         }
     },
 
-    // Get all parties with optional filtering (filtered by company)
     async getAllParties(req, res) {
         try {
             const {
@@ -457,24 +378,12 @@ const partyController = {
                 sortOrder = 'desc'
             } = req.query;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.body.companyId ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('📋 Fetching parties with filters:', {
-                page,
-                limit,
-                search,
-                type,
-                userId,
-                companyId,
-                userObject: req.user ? 'Present' : 'Missing'
-            });
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -489,17 +398,14 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
-            // Build filter object with company filter
             const filter = {
                 isActive: true,
                 companyId: companyObjectId
             };
 
-            // Add search filter
             if (search && search.trim()) {
                 filter.$or = [
                     { name: { $regex: search, $options: 'i' } },
@@ -510,16 +416,13 @@ const partyController = {
                 ];
             }
 
-            // Add party type filter
             if (type && type !== 'all') {
                 filter.partyType = type;
             }
 
-            // Build sort object
             const sort = {};
             sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-            // Execute query with pagination
             const skip = (parseInt(page) - 1) * parseInt(limit);
             const parties = await Party.find(filter)
                 .sort(sort)
@@ -527,10 +430,7 @@ const partyController = {
                 .limit(parseInt(limit))
                 .lean();
 
-            // Get total count for pagination
             const total = await Party.countDocuments(filter);
-
-            console.log(`✅ Found ${parties.length} parties for company ${companyId}`);
 
             res.json({
                 success: true,
@@ -548,7 +448,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error fetching parties:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error fetching parties',
@@ -557,20 +456,15 @@ const partyController = {
         }
     },
 
-    // Get party by ID (with company validation)
     async getPartyById(req, res) {
         try {
             const { id } = req.params;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('🔍 Fetching party by ID:', id, 'for company:', companyId);
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -585,7 +479,6 @@ const partyController = {
                 });
             }
 
-            // Validate ID format
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
                     success: false,
@@ -593,7 +486,6 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
@@ -610,8 +502,6 @@ const partyController = {
                 });
             }
 
-            console.log('✅ Party found:', party.name);
-
             res.json({
                 success: true,
                 message: 'Party retrieved successfully',
@@ -619,7 +509,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error fetching party:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error fetching party',
@@ -628,22 +517,17 @@ const partyController = {
         }
     },
 
-    // Update party (with company validation)
     async updateParty(req, res) {
         try {
             const { id } = req.params;
             const updateData = req.body;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.body.companyId ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('📝 Updating party:', id, 'for company:', companyId);
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -658,7 +542,6 @@ const partyController = {
                 });
             }
 
-            // Validate ID format
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
                     success: false,
@@ -666,11 +549,9 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
-            // Find the existing party within the company
             const existingParty = await Party.findOne({
                 _id: id,
                 companyId: companyObjectId,
@@ -684,9 +565,8 @@ const partyController = {
                 });
             }
 
-            // Check if phone number is being changed and if it conflicts within the company
+            // Validate phone number if being updated
             if (updateData.phoneNumber && updateData.phoneNumber !== existingParty.phoneNumber) {
-                // Validate phone number format
                 const phoneRegex = /^[6-9]\d{9}$/;
                 if (!phoneRegex.test(updateData.phoneNumber.trim())) {
                     return res.status(400).json({
@@ -710,7 +590,7 @@ const partyController = {
                 }
             }
 
-            // Validate email format if provided
+            // Validate email if provided
             if (updateData.email?.trim()) {
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 if (!emailRegex.test(updateData.email.trim())) {
@@ -732,7 +612,6 @@ const partyController = {
                 }
             }
 
-            // Validate credit limit and opening balance
             if (updateData.creditLimit !== undefined && updateData.creditLimit < 0) {
                 return res.status(400).json({
                     success: false,
@@ -747,14 +626,13 @@ const partyController = {
                 });
             }
 
-            // Prepare update data
             const updatedPartyData = {
                 ...updateData,
                 updatedAt: new Date(),
                 updatedBy: new mongoose.Types.ObjectId(userId)
             };
 
-            // Handle address data if provided
+            // Handle address data
             if (updateData.homeAddressLine !== undefined) {
                 updatedPartyData.homeAddress = {
                     addressLine: updateData.homeAddressLine || '',
@@ -777,28 +655,25 @@ const partyController = {
                 };
             }
 
-            // Handle GST number - clear if type is unregistered
+            // Handle GST number
             if (updateData.gstType === 'unregistered') {
                 updatedPartyData.gstNumber = '';
             } else if (updateData.gstNumber) {
                 updatedPartyData.gstNumber = updateData.gstNumber.trim().toUpperCase();
             }
 
-            // Remove undefined fields to prevent overwriting existing data
+            // Remove undefined fields
             Object.keys(updatedPartyData).forEach(key => {
                 if (updatedPartyData[key] === undefined) {
                     delete updatedPartyData[key];
                 }
             });
 
-            // Update party
             const updatedParty = await Party.findByIdAndUpdate(
                 id,
                 updatedPartyData,
                 { new: true, runValidators: true }
             );
-
-            console.log('✅ Party updated successfully:', updatedParty._id);
 
             res.json({
                 success: true,
@@ -807,8 +682,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error updating party:', error);
-
             if (error.name === 'ValidationError') {
                 const validationErrors = Object.values(error.errors).map(err => err.message);
                 return res.status(400).json({
@@ -833,20 +706,15 @@ const partyController = {
         }
     },
 
-    // Delete party (soft delete with company validation)
     async deleteParty(req, res) {
         try {
             const { id } = req.params;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('🗑️ Deleting party:', id, 'for company:', companyId);
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -861,7 +729,6 @@ const partyController = {
                 });
             }
 
-            // Validate ID format
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
                     success: false,
@@ -869,7 +736,6 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
@@ -895,8 +761,6 @@ const partyController = {
                 });
             }
 
-            console.log('✅ Party deleted successfully:', id);
-
             res.json({
                 success: true,
                 message: 'Party deleted successfully',
@@ -904,7 +768,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error deleting party:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error deleting party',
@@ -913,27 +776,16 @@ const partyController = {
         }
     },
 
-    // Search parties (within company)
     async searchParties(req, res) {
         try {
             const { query } = req.params;
             const { type, limit = 10 } = req.query;
 
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('🔍 Searching parties:', {
-                query,
-                type,
-                limit,
-                userId,
-                companyId
-            });
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -956,11 +808,9 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
-            // Build filter with company restriction
             const filter = {
                 isActive: true,
                 companyId: companyObjectId,
@@ -982,8 +832,6 @@ const partyController = {
                 .limit(parseInt(limit))
                 .lean();
 
-            console.log(`✅ Found ${parties.length} parties matching "${query}" in company ${companyId}`);
-
             res.json({
                 success: true,
                 message: 'Search results retrieved successfully',
@@ -991,7 +839,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error searching parties:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error searching parties',
@@ -1000,18 +847,13 @@ const partyController = {
         }
     },
 
-    // Get party statistics for the company
     async getPartyStats(req, res) {
         try {
-            // Get user and company from request
             const userId = req.user?.id || req.user?._id;
             const companyId = req.user?.currentCompany ||
                 req.headers['x-company-id'] ||
                 req.query.companyId;
 
-            console.log('📊 Fetching party stats for company:', companyId);
-
-            // Validate user and company
             if (!userId) {
                 return res.status(401).json({
                     success: false,
@@ -1026,11 +868,9 @@ const partyController = {
                 });
             }
 
-            // Convert to ObjectId if it's a string
             const companyObjectId = typeof companyId === 'string' ?
                 new mongoose.Types.ObjectId(companyId) : companyId;
 
-            // Get party statistics
             const stats = await Party.aggregate([
                 {
                     $match: {
@@ -1076,7 +916,6 @@ const partyController = {
                 }
             ]);
 
-            // Format response
             const formattedStats = {
                 totalParties: 0,
                 customers: {
@@ -1120,8 +959,6 @@ const partyController = {
 
             formattedStats.netBalance = formattedStats.totalReceivable - formattedStats.totalPayable;
 
-            console.log('✅ Party stats calculated:', formattedStats);
-
             res.json({
                 success: true,
                 message: 'Party statistics retrieved successfully',
@@ -1129,7 +966,6 @@ const partyController = {
             });
 
         } catch (error) {
-            console.error('❌ Error fetching party stats:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error fetching party statistics',

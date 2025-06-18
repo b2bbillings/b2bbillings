@@ -193,45 +193,179 @@ export const useRoundOff = (totals, gstEnabled) => {
     };
 };
 
-// Hook for managing bank accounts
+
+// FIXED: Hook for managing bank accounts
 export const useBankAccounts = (companyId) => {
     const [bankAccounts, setBankAccounts] = useState([]);
     const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
 
     const loadBankAccounts = async () => {
+        if (!companyId) {
+            console.log('⚠️ No companyId provided for bank accounts');
+            setBankAccounts([]);
+            return;
+        }
+
         try {
             setLoadingBankAccounts(true);
+            console.log('🏦 Loading bank accounts for company:', companyId);
 
-            const response = await bankAccountService.getBankAccountsByCompany(companyId, {
-                active: 'true',
-                limit: 100
-            });
+            // FIXED: Try different service methods based on your API
+            let response;
 
-            if (response && response.success) {
-                setBankAccounts(response.data || []);
+            try {
+                // Try the most common method first
+                response = await bankAccountService.getBankAccountsByCompany(companyId);
+            } catch (firstError) {
+                console.log('First method failed, trying alternative:', firstError.message);
+
+                try {
+                    // Try alternative method
+                    response = await bankAccountService.getBankAccounts(companyId, {
+                        active: true,
+                        limit: 100
+                    });
+                } catch (secondError) {
+                    console.log('Second method failed, trying third:', secondError.message);
+
+                    try {
+                        // Try another alternative
+                        response = await bankAccountService.getAllBankAccounts(companyId);
+                    } catch (thirdError) {
+                        console.log('Third method failed, trying basic fetch:', thirdError.message);
+
+                        // Last resort - basic fetch
+                        response = await bankAccountService.getBankAccounts(companyId);
+                    }
+                }
+            }
+
+            console.log('📥 Bank accounts raw response:', response);
+
+            if (response && (response.success || response.data || Array.isArray(response))) {
+                // Handle different response formats
+                let accounts = [];
+
+                if (response.success && response.data) {
+                    // Standard success response format
+                    accounts = response.data.banks ||
+                        response.data.bankAccounts ||
+                        response.data.accounts ||
+                        response.data ||
+                        [];
+                } else if (Array.isArray(response.data)) {
+                    // Direct array in data
+                    accounts = response.data;
+                } else if (Array.isArray(response)) {
+                    // Direct array response
+                    accounts = response;
+                } else if (response.banks) {
+                    // Banks property
+                    accounts = response.banks;
+                } else if (response.bankAccounts) {
+                    // bankAccounts property
+                    accounts = response.bankAccounts;
+                } else {
+                    console.log('⚠️ Unexpected response format:', response);
+                    accounts = [];
+                }
+
+                console.log('✅ Processed bank accounts:', accounts);
+
+                if (Array.isArray(accounts) && accounts.length > 0) {
+                    // Format accounts for consistency
+                    const formattedAccounts = accounts.map(account => ({
+                        _id: account._id || account.id,
+                        id: account._id || account.id,
+                        accountName: account.accountName || account.name || account.bankAccountName,
+                        name: account.accountName || account.name || account.bankAccountName,
+                        bankName: account.bankName || account.bank,
+                        accountNumber: account.accountNumber || account.accountNo,
+                        ifscCode: account.ifscCode || account.ifsc,
+                        branchName: account.branchName || account.branch,
+                        type: account.type || account.accountType || 'savings',
+                        currentBalance: parseFloat(account.currentBalance) || 0,
+                        isActive: account.isActive !== false && account.status !== 'inactive',
+                        displayName: `${account.accountName || account.name || 'Unknown'} - ${account.bankName || 'Unknown Bank'} (${account.accountNumber || 'No Account Number'})`
+                    }));
+
+                    // Filter out inactive accounts
+                    const activeAccounts = formattedAccounts.filter(account => account.isActive);
+
+                    console.log('✅ Formatted active bank accounts loaded:', activeAccounts.length);
+                    setBankAccounts(activeAccounts);
+                } else {
+                    console.log('⚠️ No bank accounts found in response');
+                    setBankAccounts([]);
+                }
             } else {
+                console.log('⚠️ Bank accounts response not successful:', response);
                 setBankAccounts([]);
             }
         } catch (error) {
+            console.error('❌ Error loading bank accounts:', error);
+            console.error('Error details:', {
+                message: error.message,
+                status: error.status,
+                response: error.response?.data
+            });
             setBankAccounts([]);
+
+            // Show user-friendly error message
+            if (error.message?.includes('401') || error.message?.includes('Authentication')) {
+                console.log('🔑 Authentication error - user may need to login again');
+            } else if (error.message?.includes('403')) {
+                console.log('🚫 Permission error - user may not have access to bank accounts');
+            } else if (error.message?.includes('404')) {
+                console.log('📭 Bank accounts endpoint not found');
+            } else {
+                console.log('🌐 Network or server error');
+            }
         } finally {
             setLoadingBankAccounts(false);
         }
     };
 
+    // FIXED: Add retry mechanism
+    const retryLoadBankAccounts = async () => {
+        console.log('🔄 Retrying bank accounts load...');
+        await loadBankAccounts();
+    };
+
     useEffect(() => {
         if (companyId) {
+            console.log('🏦 useEffect triggered for bank accounts with companyId:', companyId);
             loadBankAccounts();
+        } else {
+            console.log('⚠️ No companyId available for bank accounts');
+            setBankAccounts([]);
         }
     }, [companyId]);
+
+    // FIXED: Debug information
+    useEffect(() => {
+        console.log('🏦 Bank accounts state updated:', {
+            count: bankAccounts.length,
+            loading: loadingBankAccounts,
+            companyId: companyId,
+            accounts: bankAccounts.map(acc => ({
+                id: acc._id || acc.id,
+                name: acc.accountName || acc.name,
+                bank: acc.bankName
+            }))
+        });
+    }, [bankAccounts, loadingBankAccounts, companyId]);
 
     return {
         bankAccounts,
         setBankAccounts,
         loadingBankAccounts,
-        loadBankAccounts
+        loadBankAccounts,
+        retryLoadBankAccounts
     };
 };
+
+
 
 // Hook for managing party selection and validation
 export const usePartySelection = (selectedCustomer, selectedSupplier, formType, addToast) => {
@@ -473,7 +607,8 @@ export const useInvoiceSave = (
     getSecondaryPartyName,
     createTransactionWithInvoice,
     resetPaymentData,
-    globalTaxMode
+    globalTaxMode,
+    bankAccounts
 ) => {
 
     const handleSaveWithTransaction = useCallback(async () => {
@@ -534,6 +669,45 @@ export const useInvoiceSave = (
                 return { success: false, message };
             }
 
+            // ENHANCED: Payment info processing with bank account details
+            const paymentInfoForSave = paymentData.amount > 0 ? {
+                amount: paymentData.amount,
+                paymentType: paymentData.paymentType,
+                method: paymentData.paymentMethod || 'cash',
+                paymentMethod: paymentData.paymentMethod || 'cash',
+
+                // ADDED: Bank account information
+                bankAccountId: paymentData.bankAccountId,
+                bankAccount: paymentData.bankAccount,
+                bankAccountName: paymentData.bankAccountName,
+                bankName: paymentData.bankName,
+                accountNumber: paymentData.accountNumber,
+
+                // Party information
+                partyName: getPartyName(),
+                partyType: getPartyType(),
+                partyId: getPartyId(),
+
+                // Payment details
+                notes: paymentData.notes || '',
+                dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
+                creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
+                paymentDate: new Date().toISOString(),
+
+                // Transaction references
+                reference: paymentData.transactionId || paymentData.chequeNumber || '',
+                chequeNumber: paymentData.chequeNumber || '',
+                chequeDate: paymentData.chequeDate || null,
+                transactionId: paymentData.transactionId || '',
+                upiTransactionId: paymentData.transactionId || '',
+                bankTransactionId: paymentData.transactionId || '',
+
+                // Status and metadata
+                status: 'pending',
+                isPartialPayment: paymentData.isPartialPayment || false,
+                remainingAmount: paymentData.remainingAmount || 0
+            } : null;
+
             const invoiceDataForSave = {
                 companyId: companyId,
                 items: validItems,
@@ -551,31 +725,13 @@ export const useInvoiceSave = (
                     result.type === 'both' ? result.customer :
                         selectedCustomer,
 
+                // UPDATED: Enhanced payment information
+                paymentInfo: paymentInfoForSave,
                 paymentReceived: paymentData.amount || 0,
                 bankAccountId: paymentData.bankAccountId || null,
                 paymentMethod: paymentData.paymentMethod || 'cash',
                 dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
                 creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
-
-                paymentInfo: paymentData.amount > 0 ? {
-                    amount: paymentData.amount,
-                    paymentType: paymentData.paymentType,
-                    method: paymentData.paymentMethod || 'cash',
-                    paymentMethod: paymentData.paymentMethod || 'cash',
-                    bankAccountId: paymentData.bankAccountId,
-                    partyName: getPartyName(),
-                    partyType: getPartyType(),
-                    notes: paymentData.notes || '',
-                    dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
-                    creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
-                    paymentDate: new Date().toISOString(),
-                    reference: paymentData.transactionId || paymentData.chequeNumber || '',
-                    chequeNumber: paymentData.chequeNumber || '',
-                    chequeDate: paymentData.chequeDate || null,
-                    transactionId: paymentData.transactionId || '',
-                    upiTransactionId: paymentData.transactionId || '',
-                    bankTransactionId: paymentData.transactionId || ''
-                } : null,
 
                 ...(formType === 'purchase' ? {
                     purchaseNumber: invoiceNumber,
@@ -607,6 +763,14 @@ export const useInvoiceSave = (
                 roundOffEnabled: roundOffEnabled,
                 roundOff: roundOffValue || 0
             };
+
+            console.log('💾 Saving invoice with payment data:', {
+                hasPayment: !!paymentInfoForSave,
+                paymentAmount: paymentData.amount,
+                paymentMethod: paymentData.paymentMethod,
+                bankAccountId: paymentData.bankAccountId,
+                bankAccountName: paymentData.bankAccountName
+            });
 
             let invoiceResult;
             try {
@@ -783,7 +947,7 @@ export const useInvoiceSave = (
         selectedCustomer, selectedSupplier, onSave, addToast,
         getSelectedParty, getPartyType, getPartyId, getPartyName,
         getSecondaryParty, getSecondaryPartyType, getSecondaryPartyName,
-        createTransactionWithInvoice, resetPaymentData, globalTaxMode
+        createTransactionWithInvoice, resetPaymentData, globalTaxMode, bankAccounts
     ]);
 
     return {
@@ -791,7 +955,7 @@ export const useInvoiceSave = (
     };
 };
 
-// Hook for managing payment
+// ENHANCED: Hook for managing payment with improved bank account handling
 export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff, selectedCustomer, selectedSupplier, invoiceNumber, userId, currentConfig, bankAccounts) => {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentData, setPaymentData] = useState({
@@ -815,7 +979,11 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         remainingAmount: 0,
         dueDate: '',
         creditDays: 0,
-        hasDueDate: false
+        hasDueDate: false,
+        // NEW: Bank account details
+        bankAccount: null,
+        bankAccountName: '',
+        accountNumber: ''
     });
     const [paymentHistory, setPaymentHistory] = useState([]);
     const [loadingPaymentHistory, setLoadingPaymentHistory] = useState(false);
@@ -854,6 +1022,7 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 setPaymentHistory([]);
             }
         } catch (error) {
+            console.error('Error loading payment history:', error);
             setPaymentHistory([]);
         } finally {
             setLoadingPaymentHistory(false);
@@ -924,14 +1093,22 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
             chequeNumber: type === 'Cheque' ? prev.chequeNumber : '',
             chequeDate: type === 'Cheque' ? prev.chequeDate : '',
             bankName: type === 'Cheque' ? prev.bankName : '',
-            transactionId: ['UPI', 'Online', 'NEFT', 'RTGS'].includes(type) ? prev.transactionId : ''
+            transactionId: ['UPI', 'Online', 'NEFT', 'RTGS'].includes(type) ? prev.transactionId : '',
+            // Clear bank account details if payment type doesn't require them
+            bankAccount: ['Cash', 'UPI'].includes(type) ? null : prev.bankAccount,
+            bankAccountName: ['Cash', 'UPI'].includes(type) ? '' : prev.bankAccountName,
+            accountNumber: ['Cash', 'UPI'].includes(type) ? '' : prev.accountNumber
         }));
     };
 
+    // ENHANCED: Payment submission handler with proper bank account handling
     const handlePaymentSubmit = async (paymentSubmitData) => {
         try {
             setSubmittingPayment(true);
+            console.log('🚀 Starting payment submission with bank accounts:', bankAccounts?.length || 0);
+            console.log('💰 Payment data:', paymentData);
 
+            // Validation
             if (!paymentData.amount || paymentData.amount <= 0) {
                 throw new Error('Please enter a valid payment amount');
             }
@@ -948,37 +1125,98 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 throw new Error('Please select a customer/supplier');
             }
 
+            // Method-specific validation
             if (paymentData.paymentType === 'Cheque') {
-                if (!paymentData.chequeNumber) {
-                    throw new Error('Please enter cheque number');
+                if (!paymentData.chequeNumber?.trim()) {
+                    throw new Error('Please enter a valid cheque number');
                 }
                 if (!paymentData.chequeDate) {
-                    throw new Error('Please enter cheque date');
+                    throw new Error('Please select the cheque date');
                 }
             }
 
             if (paymentData.hasDueDate) {
                 if (paymentData.creditDays > 0 && paymentData.dueDate) {
-                    throw new Error('Please specify either credit days or due date, not both');
+                    throw new Error('Please specify either credit days OR due date, not both');
                 }
                 if (paymentData.creditDays <= 0 && !paymentData.dueDate) {
                     throw new Error('Please specify either credit days or due date');
                 }
             }
 
+            // ENHANCED: Bank account validation and details
+            let selectedBankAccount = null;
+            if (paymentData.bankAccountId && bankAccounts && bankAccounts.length > 0) {
+                selectedBankAccount = bankAccounts.find(account =>
+                    (account._id === paymentData.bankAccountId) ||
+                    (account.id === paymentData.bankAccountId)
+                );
+
+                if (!selectedBankAccount) {
+                    console.error('❌ Selected bank account not found:', paymentData.bankAccountId);
+                    console.log('Available bank accounts:', bankAccounts.map(acc => ({ id: acc._id || acc.id, name: acc.accountName || acc.name })));
+                    throw new Error('Selected bank account not found. Please refresh and try again.');
+                }
+
+                console.log('🏦 Selected bank account:', selectedBankAccount);
+            } else if (paymentData.bankAccountId) {
+                console.warn('⚠️ Bank account ID provided but no bank accounts available');
+                throw new Error('Bank accounts not loaded. Please refresh and try again.');
+            }
+
+            // Close modal first
             setShowPaymentModal(false);
+
+            // ENHANCED: Payment data with comprehensive bank account details
+            const enhancedPaymentData = {
+                ...paymentData,
+                dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
+                creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
+
+                // ENHANCED: Complete bank account details
+                bankAccount: selectedBankAccount,
+                bankAccountId: selectedBankAccount?._id || selectedBankAccount?.id || paymentData.bankAccountId,
+                bankAccountName: selectedBankAccount?.accountName || selectedBankAccount?.name || paymentData.bankAccountName,
+                bankName: selectedBankAccount?.bankName || paymentData.bankName,
+                accountNumber: selectedBankAccount?.accountNumber || paymentData.accountNumber,
+                ifscCode: selectedBankAccount?.ifscCode,
+                branchName: selectedBankAccount?.branchName || selectedBankAccount?.branch,
+                accountType: selectedBankAccount?.type || selectedBankAccount?.accountType,
+                currentBalance: selectedBankAccount?.currentBalance || 0,
+
+                // Ensure payment method consistency
+                paymentMethod: paymentData.paymentMethod || 'cash',
+
+                // Transaction metadata
+                invoiceNumber: invoiceNumber,
+                companyId: companyId,
+                formType: formType,
+                createdAt: new Date().toISOString(),
+
+                // Enhanced transaction references
+                transactionReference: paymentData.transactionId || paymentData.chequeNumber || `${formType}-${invoiceNumber}-${Date.now()}`,
+
+                // Payment processing info
+                processingStatus: 'completed',
+                verificationStatus: paymentData.paymentType === 'Cheque' ? 'pending' : 'verified'
+            };
+
+            console.log('✅ Enhanced payment data prepared:', {
+                hasBank: !!enhancedPaymentData.bankAccount,
+                bankAccountId: enhancedPaymentData.bankAccountId,
+                bankAccountName: enhancedPaymentData.bankAccountName,
+                paymentMethod: enhancedPaymentData.paymentMethod,
+                amount: enhancedPaymentData.amount
+            });
 
             return {
                 success: true,
                 message: 'Payment details saved successfully',
-                paymentData: {
-                    ...paymentData,
-                    dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
-                    creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0
-                }
+                paymentData: enhancedPaymentData
             };
 
         } catch (error) {
+            console.error('❌ Payment submission error:', error);
             throw error;
         } finally {
             setSubmittingPayment(false);
@@ -991,59 +1229,156 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 return { success: true, message: 'No payment to process' };
             }
 
+            console.log('🔄 Creating transaction with invoice data:', invoiceData);
+            console.log('💳 Using payment data:', paymentData);
+
+            // ✅ CRITICAL FIX: Handle cash payments properly
+            const isCashPayment = paymentData.paymentType === 'Cash' || paymentData.paymentMethod === 'cash';
+            const requiresBankAccount = !['Cash', 'UPI'].includes(paymentData.paymentType) &&
+                !['cash', 'upi'].includes(paymentData.paymentMethod);
+
+            console.log('💰 Payment analysis:', {
+                paymentType: paymentData.paymentType,
+                paymentMethod: paymentData.paymentMethod,
+                isCashPayment: isCashPayment,
+                requiresBankAccount: requiresBankAccount,
+                hasBankAccountId: !!paymentData.bankAccountId
+            });
+
+            // ✅ VALIDATION: Only require bank account for non-cash payments
+            if (requiresBankAccount && !paymentData.bankAccountId) {
+                throw new Error(`Please select a bank account for ${paymentData.paymentType} payments`);
+            }
+
             const transactionPayload = {
-                bankAccountId: paymentData.bankAccountId,
+                // ✅ FIXED: Only include bank account ID for non-cash payments
+                ...(requiresBankAccount && paymentData.bankAccountId && {
+                    bankAccountId: paymentData.bankAccountId
+                }),
+
+                // Core transaction data
                 amount: paymentData.amount,
                 paymentMethod: paymentData.paymentMethod,
-                description: `${formType === 'sales' ? 'Payment from' : 'Payment to'} ${paymentData.partyName} for ${formType === 'purchase' ? 'purchase' : 'sales'} invoice ${invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber}`,
-                notes: paymentData.notes || `Payment for ${formType} invoice ${invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber}`,
+                paymentType: paymentData.paymentType, // ✅ ADDED: Include payment type
 
+                description: `${formType === 'sales' ? 'Payment from' : 'Payment to'} ${paymentData.partyName} for ${formType === 'purchase' ? 'purchase' : 'sales'} invoice ${invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber || invoiceNumber}`,
+
+                notes: paymentData.notes || `Payment for ${formType} invoice ${invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber || invoiceNumber}`,
+
+                // Party information
                 partyId: paymentData.partyId,
                 partyName: paymentData.partyName,
                 partyType: formType === 'sales' ? 'customer' : 'supplier',
 
+                // Reference information
                 referenceId: invoiceData._id || invoiceData.id,
                 referenceType: formType === 'sales' ? 'sale' : 'purchase',
-                referenceNumber: invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber,
+                referenceNumber: invoiceData.invoiceNumber || invoiceData.saleNumber || invoiceData.purchaseNumber || invoiceNumber,
 
-                chequeNumber: paymentData.chequeNumber || null,
-                chequeDate: paymentData.chequeDate || null,
-                upiTransactionId: paymentData.transactionId || null,
-                bankTransactionId: paymentData.transactionId || null,
+                // ✅ CONDITIONAL: Payment method specific details
+                ...(paymentData.chequeNumber && {
+                    chequeNumber: paymentData.chequeNumber,
+                    chequeDate: paymentData.chequeDate
+                }),
 
+                ...(paymentData.transactionId && {
+                    upiTransactionId: paymentData.transactionId,
+                    bankTransactionId: paymentData.transactionId,
+                    transactionReference: paymentData.transactionId
+                }),
+
+                // ✅ FALLBACK: Use cheque number as reference if no transaction ID
+                ...(!paymentData.transactionId && paymentData.chequeNumber && {
+                    transactionReference: paymentData.chequeNumber
+                }),
+
+                // Payment terms
                 dueDate: paymentData.hasDueDate ? paymentData.dueDate : null,
                 creditDays: paymentData.hasDueDate ? paymentData.creditDays : 0,
 
+                // ✅ CONDITIONAL: Bank account details (only for non-cash payments)
+                ...(requiresBankAccount && paymentData.bankAccountId && {
+                    bankAccountName: paymentData.bankAccountName,
+                    bankName: paymentData.bankName,
+                    accountNumber: paymentData.accountNumber,
+                    ifscCode: paymentData.ifscCode,
+                    branchName: paymentData.branchName
+                }),
+
+                // Transaction metadata
                 transactionDate: new Date().toISOString(),
-                status: 'completed'
+                status: 'completed',
+                companyId: companyId,
+                createdBy: userId || 'system',
+                invoiceNumber: invoiceNumber,
+                formType: formType,
+
+                // ✅ ADDED: Cash payment specific fields
+                ...(isCashPayment && {
+                    cashPayment: true,
+                    cashReceived: paymentData.amount,
+                    cashTransactionType: formType === 'sales' ? 'cash_in' : 'cash_out'
+                })
             };
+
+            console.log('📤 Transaction payload prepared:', {
+                ...transactionPayload,
+                isCashPayment: isCashPayment,
+                hasBankAccount: !!transactionPayload.bankAccountId,
+                paymentMethod: transactionPayload.paymentMethod,
+                paymentType: transactionPayload.paymentType
+            });
 
             let transactionResponse;
 
-            if (formType === 'sales') {
-                transactionResponse = await transactionService.createPaymentInTransaction(companyId, transactionPayload);
-            } else if (formType === 'purchase') {
-                transactionResponse = await transactionService.createPaymentOutTransaction(companyId, transactionPayload);
-            } else {
-                throw new Error(`Unknown form type: ${formType}`);
+            try {
+                if (formType === 'sales') {
+                    transactionResponse = await transactionService.createPaymentInTransaction(companyId, transactionPayload);
+                } else if (formType === 'purchase') {
+                    transactionResponse = await transactionService.createPaymentOutTransaction(companyId, transactionPayload);
+                } else {
+                    throw new Error(`Unknown form type: ${formType}`);
+                }
+            } catch (serviceError) {
+                console.error('❌ Transaction service error:', serviceError);
+
+                // ✅ ENHANCED: Better error handling for cash payments
+                let errorMessage = serviceError.message || 'Transaction service failed';
+
+                if (errorMessage.includes('Bank account ID is required') && isCashPayment) {
+                    errorMessage = 'Cash payment processing failed. This may be a system configuration issue.';
+                    console.error('🚨 CASH PAYMENT ERROR: Backend is requiring bank account for cash payment');
+                    console.error('🚨 Payment Data:', paymentData);
+                    console.error('🚨 Transaction Payload:', transactionPayload);
+                }
+
+                throw new Error(errorMessage);
             }
 
             if (transactionResponse && transactionResponse.success) {
+                console.log('✅ Transaction created successfully:', transactionResponse);
                 resetPaymentData();
 
                 return {
                     success: true,
                     data: transactionResponse.data,
                     message: 'Transaction created successfully',
-                    transactionId: transactionResponse.data?._id || transactionResponse.data?.transactionId
+                    transactionId: transactionResponse.data?._id || transactionResponse.data?.transactionId,
+                    bankAccountUsed: requiresBankAccount ? paymentData.bankAccountName : 'Cash',
+                    paymentMethod: paymentData.paymentMethod,
+                    isCashPayment: isCashPayment
                 };
             } else {
+                console.error('❌ Transaction service returned failure:', transactionResponse);
                 throw new Error(transactionResponse?.message || 'Transaction service returned failure');
             }
 
         } catch (error) {
+            console.error('❌ Transaction creation error:', error);
+
             let errorMessage = `Failed to create ${formType} transaction`;
 
+            // ✅ ENHANCED: Specific error messages
             if (error.message?.includes('401') || error.message?.includes('Authentication')) {
                 errorMessage = 'Authentication failed. Please login again.';
             } else if (error.message?.includes('403') || error.message?.includes('Access denied')) {
@@ -1054,6 +1389,11 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
                 errorMessage = 'Transaction service not found. Please contact support.';
             } else if (error.message?.includes('Network') || error.message?.includes('fetch')) {
                 errorMessage = 'Network error. Please check your connection.';
+            } else if (error.message?.includes('bank account') && paymentData.paymentType !== 'Cash') {
+                errorMessage = 'Bank account error. Please check selected bank account.';
+            } else if (error.message?.includes('Bank account ID is required') && paymentData.paymentType === 'Cash') {
+                // ✅ SPECIAL CASE: Cash payment but backend requires bank account
+                errorMessage = 'Cash payment processing is not properly configured. Please contact system administrator.';
             } else if (error.message) {
                 errorMessage = error.message;
             }
@@ -1084,7 +1424,10 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
             remainingAmount: 0,
             dueDate: '',
             creditDays: 0,
-            hasDueDate: false
+            hasDueDate: false,
+            bankAccount: null,
+            bankAccountName: '',
+            accountNumber: ''
         });
         setPaymentHistory([]);
     };
@@ -1132,6 +1475,48 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         }));
     };
 
+    // NEW: Handle bank account selection
+    const handleBankAccountChange = (bankAccountId) => {
+        if (!bankAccountId) {
+            setPaymentData(prev => ({
+                ...prev,
+                bankAccountId: '',
+                bankAccount: null,
+                bankAccountName: '',
+                bankName: '',
+                accountNumber: '',
+                ifscCode: '',
+                branchName: ''
+            }));
+            return;
+        }
+
+        const selectedAccount = bankAccounts?.find(account =>
+            (account._id === bankAccountId) || (account.id === bankAccountId)
+        );
+
+        if (selectedAccount) {
+            setPaymentData(prev => ({
+                ...prev,
+                bankAccountId: bankAccountId,
+                bankAccount: selectedAccount,
+                bankAccountName: selectedAccount.accountName || selectedAccount.name,
+                bankName: selectedAccount.bankName,
+                accountNumber: selectedAccount.accountNumber,
+                ifscCode: selectedAccount.ifscCode,
+                branchName: selectedAccount.branchName || selectedAccount.branch
+            }));
+
+            console.log('🏦 Bank account selected:', {
+                id: bankAccountId,
+                name: selectedAccount.accountName || selectedAccount.name,
+                bank: selectedAccount.bankName
+            });
+        } else {
+            console.warn('⚠️ Selected bank account not found in available accounts');
+        }
+    };
+
     return {
         showPaymentModal,
         setShowPaymentModal,
@@ -1147,7 +1532,8 @@ export const usePaymentManagement = (formType, companyId, finalTotalWithRoundOff
         resetPaymentData,
         handleDueDateToggle,
         handleCreditDaysChange,
-        handleDueDateChange
+        handleDueDateChange,
+        handleBankAccountChange
     };
 };
 
@@ -1245,6 +1631,7 @@ export const useOverdueManagement = (companyId) => {
                 setOverdueSales([]);
             }
         } catch (error) {
+            console.error('Error loading overdue sales:', error);
             setOverdueSales([]);
         } finally {
             setOverdueLoading(false);
@@ -1264,6 +1651,7 @@ export const useOverdueManagement = (companyId) => {
                 setSalesDueToday([]);
             }
         } catch (error) {
+            console.error('Error loading sales due today:', error);
             setSalesDueToday([]);
         } finally {
             setDueTodayLoading(false);

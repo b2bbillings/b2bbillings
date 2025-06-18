@@ -56,8 +56,18 @@ function SalesInvoicesPageTitle({
         return isQuotationsMode ? 'info' : 'primary';
     };
 
+    // ✅ FIXED: Inline styles instead of styled-jsx
+    const containerStyles = {
+        borderLeft: isQuotationsMode
+            ? '4px solid var(--bs-info)'
+            : '4px solid var(--bs-primary)'
+    };
+
     return (
-        <div className={`bg-light border-bottom py-3 mb-3 ${isQuotationsMode ? 'border-info' : 'border-primary'}`}>
+        <div
+            className="bg-light border-bottom py-3 mb-3"
+            style={containerStyles}
+        >
             <Container fluid>
                 <Row className="align-items-center">
                     <Col>
@@ -108,23 +118,6 @@ function SalesInvoicesPageTitle({
                     </Col>
                 </Row>
             </Container>
-
-            {/* Minimal custom styles - only for the border accent */}
-            <style jsx>{`
-                .border-info {
-                    border-left: 4px solid var(--bs-info) !important;
-                }
-                .border-primary {
-                    border-left: 4px solid var(--bs-primary) !important;
-                }
-                
-                /* Responsive text hiding */
-                @media (max-width: 576px) {
-                    .d-none.d-sm-inline {
-                        display: none !important;
-                    }
-                }
-            `}</style>
         </div>
     );
 }

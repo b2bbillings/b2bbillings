@@ -1,20 +1,13 @@
 const mongoose = require('mongoose');
 
-// Helper function to safely require models
 const getModel = (modelName) => {
     try {
         return require(`../models/${modelName}`);
     } catch (error) {
-        console.warn(`⚠️ ${modelName} model not found:`, error.message);
         return null;
     }
 };
 
-// Backend/src/controllers/paymentController.js - Add this new function
-
-// ================================
-// 📋 GET PAYMENT ALLOCATION DETAILS
-// ================================
 const getPaymentAllocations = async (req, res) => {
     try {
         const { paymentId } = req.params;
@@ -47,7 +40,6 @@ const getPaymentAllocations = async (req, res) => {
 
         let allocationDetails = [];
 
-        // Get detailed allocation information
         if (payment.invoiceAllocations && payment.invoiceAllocations.length > 0 && Sale) {
             const invoiceIds = payment.invoiceAllocations.map(alloc => alloc.invoiceId);
 
@@ -93,7 +85,6 @@ const getPaymentAllocations = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error in getPaymentAllocations:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch payment allocation details',
@@ -102,17 +93,11 @@ const getPaymentAllocations = async (req, res) => {
     }
 };
 
-// ================================
-// 📋 GET PENDING INVOICES FOR PAYMENT
-// ================================
-// Backend/src/controllers/paymentController.js - Fix getPendingInvoicesForPayment
-
 const getPendingInvoicesForPayment = async (req, res) => {
     try {
         const { partyId } = req.params;
         const { companyId } = req.query;
 
-        // Validation
         if (!partyId) {
             return res.status(400).json({
                 success: false,
@@ -127,7 +112,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
             });
         }
 
-        // Validate MongoDB ObjectIds
         if (!mongoose.Types.ObjectId.isValid(partyId)) {
             return res.status(400).json({
                 success: false,
@@ -142,7 +126,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
             });
         }
 
-        // Get party information
         const Party = getModel('Party');
         if (!Party) {
             return res.status(500).json({
@@ -159,7 +142,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
             });
         }
 
-        // Get Sale model
         const Sale = getModel('Sale');
         if (!Sale) {
             return res.status(500).json({
@@ -168,7 +150,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
             });
         }
 
-        // Query conditions for sales
         const saleQueryConditions = {
             $and: [
                 { companyId: new mongoose.Types.ObjectId(companyId) },
@@ -197,15 +178,11 @@ const getPendingInvoicesForPayment = async (req, res) => {
             ]
         };
 
-        // **ENHANCED: Get fresh data from database to reflect latest payments**
         const sales = await Sale.find(saleQueryConditions)
             .sort({ invoiceDate: -1, createdAt: -1 })
             .limit(100)
             .lean();
 
-        console.log(`📋 Found ${sales.length} sales for party ${party.name}`);
-
-        // Transform and filter invoices with due amounts
         const invoicesWithDue = sales.map(invoice => {
             const totalAmount = parseFloat(
                 invoice.totals?.finalTotal ||
@@ -215,7 +192,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
                 0
             );
 
-            // **FIXED: Get the most recent paid amount from the updated sale record**
             const paidAmount = parseFloat(
                 invoice.payment?.paidAmount ||
                 invoice.payment?.totalPaid ||
@@ -230,8 +206,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
                 invoice.saleNumber ||
                 invoice.billNumber ||
                 `INV-${invoice._id}`;
-
-            console.log(`🧾 Invoice ${invoiceNumber}: Total=₹${totalAmount}, Paid=₹${paidAmount}, Due=₹${dueAmount}`);
 
             return {
                 _id: invoice._id,
@@ -257,20 +231,15 @@ const getPendingInvoicesForPayment = async (req, res) => {
                 currency: invoice.currency || 'INR',
                 taxAmount: invoice.totals?.totalTax || invoice.totals?.tax || 0,
                 discountAmount: invoice.totals?.totalDiscount || invoice.totals?.discount || 0,
-                // **NEW: Include payment history for debugging**
                 paymentHistory: invoice.paymentHistory || [],
                 lastPaymentDate: invoice.payment?.paymentDate || null
             };
         }).filter(invoice => {
-            // **ENHANCED: Only return invoices with actual due amounts**
             const hasDueAmount = invoice.totalAmount > 0 && invoice.dueAmount > 0;
-            console.log(`🔍 Invoice ${invoice.invoiceNumber}: Include=${hasDueAmount} (Due: ₹${invoice.dueAmount})`);
             return hasDueAmount;
         });
 
         const totalDueAmount = invoicesWithDue.reduce((sum, invoice) => sum + invoice.dueAmount, 0);
-
-        console.log(`✅ Returning ${invoicesWithDue.length} invoices with total due: ₹${totalDueAmount}`);
 
         const response = {
             success: true,
@@ -296,7 +265,6 @@ const getPendingInvoicesForPayment = async (req, res) => {
         res.status(200).json(response);
 
     } catch (error) {
-        console.error('❌ Error in getPendingInvoicesForPayment:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch pending invoices',
@@ -305,12 +273,149 @@ const getPendingInvoicesForPayment = async (req, res) => {
     }
 };
 
-// ================================
-// 💰 CREATE PAYMENT IN
-// ================================
-// Backend/src/controllers/paymentController.js - Updated createPaymentIn function
+const createBankTransaction = async (paymentData, payment) => {
+    try {
+        const Transaction = getModel('Transaction');
+        if (!Transaction) {
+            return null;
+        }
 
-// Backend/src/controllers/paymentController.js - Fix the createPaymentIn function
+        let bankAccount = null;
+        let balanceBefore = 0;
+        let balanceAfter = 0;
+
+        if (paymentData.paymentMethod !== 'cash' && paymentData.bankAccountId) {
+            const BankAccount = getModel('BankAccount');
+            if (BankAccount) {
+                bankAccount = await BankAccount.findById(paymentData.bankAccountId);
+                if (!bankAccount) {
+                    return null;
+                }
+
+                balanceBefore = parseFloat(bankAccount.currentBalance || bankAccount.balance || 0);
+
+                if (payment.type === 'payment_in') {
+                    balanceAfter = balanceBefore + parseFloat(payment.amount);
+                } else {
+                    balanceAfter = balanceBefore - parseFloat(payment.amount);
+                }
+
+                await BankAccount.findByIdAndUpdate(paymentData.bankAccountId, {
+                    currentBalance: balanceAfter,
+                    balance: balanceAfter,
+                    lastTransactionDate: new Date(),
+                    $inc: {
+                        transactionCount: 1,
+                        ...(payment.type === 'payment_in'
+                            ? { totalCredits: parseFloat(payment.amount) }
+                            : { totalDebits: parseFloat(payment.amount) }
+                        )
+                    }
+                });
+            }
+        }
+
+        const direction = payment.type === 'payment_in' ? 'in' : 'out';
+        const transactionType = payment.type === 'payment_in' ? 'payment_in' : 'payment_out';
+
+        const description = payment.type === 'payment_in'
+            ? `Payment received from ${payment.partyName}`
+            : `Payment made to ${payment.partyName}`;
+
+        const transactionData = {
+            transactionId: await generateTransactionId(paymentData.companyId),
+            companyId: new mongoose.Types.ObjectId(paymentData.companyId),
+            amount: parseFloat(payment.amount),
+            direction: direction,
+            transactionType: transactionType,
+            referenceType: 'payment',
+            referenceId: payment._id,
+            referenceNumber: payment.paymentNumber,
+            paymentMethod: payment.paymentMethod,
+            partyId: payment.partyId ? new mongoose.Types.ObjectId(payment.partyId) : null,
+            partyName: payment.partyName,
+            partyType: payment.type === 'payment_in' ? 'customer' : 'supplier',
+            description: description,
+            notes: paymentData.notes || `Transaction for ${payment.paymentNumber}`,
+            status: 'completed',
+            createdBy: paymentData.createdBy || paymentData.employeeName || 'system',
+            createdFrom: 'payment_system',
+            transactionReference: paymentData.reference || payment.paymentNumber,
+            transactionDate: payment.paymentDate
+        };
+
+        if (paymentData.paymentMethod === 'cash') {
+            transactionData.isCashTransaction = true;
+            transactionData.cashAmount = parseFloat(payment.amount);
+            transactionData.cashTransactionType = direction === 'in' ? 'cash_in' : 'cash_out';
+            transactionData.balanceBefore = 0;
+            transactionData.balanceAfter = 0;
+        } else {
+            transactionData.bankAccountId = new mongoose.Types.ObjectId(paymentData.bankAccountId);
+            transactionData.balanceBefore = balanceBefore;
+            transactionData.balanceAfter = balanceAfter;
+            transactionData.isCashTransaction = false;
+        }
+
+        const transaction = new Transaction(transactionData);
+        await transaction.save();
+
+        return {
+            _id: transaction._id,
+            transactionNumber: transaction.transactionId,
+            transactionType: transaction.direction,
+            amount: transaction.amount,
+            balance: transaction.balanceAfter || 0,
+            bankName: bankAccount?.bankName || 'N/A',
+            accountName: bankAccount?.accountName || bankAccount?.name || 'Cash',
+            description: transaction.description,
+            reference: transaction.transactionReference,
+            category: transaction.transactionType,
+            status: transaction.status
+        };
+
+    } catch (error) {
+        return null;
+    }
+};
+
+const generateTransactionId = async (companyId) => {
+    try {
+        const Transaction = getModel('Transaction');
+        if (!Transaction) {
+            return `TXN-${Date.now()}`;
+        }
+
+        const date = new Date();
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+
+        const todayStart = new Date(year, date.getMonth(), date.getDate());
+        const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+        const lastTransaction = await Transaction.findOne({
+            companyId: new mongoose.Types.ObjectId(companyId),
+            createdAt: { $gte: todayStart, $lt: todayEnd },
+            transactionId: new RegExp(`^TXN-${year}${month}${day}`)
+        }).sort({ transactionId: -1 });
+
+        let sequence = 1;
+        if (lastTransaction && lastTransaction.transactionId) {
+            const parts = lastTransaction.transactionId.split('-');
+            if (parts.length >= 3) {
+                const lastSequence = parseInt(parts[2]);
+                if (!isNaN(lastSequence)) {
+                    sequence = lastSequence + 1;
+                }
+            }
+        }
+
+        return `TXN-${year}${month}${day}-${String(sequence).padStart(6, '0')}`;
+    } catch (error) {
+        return `TXN-${Date.now()}`;
+    }
+};
 
 const createPaymentIn = async (req, res) => {
     try {
@@ -322,9 +427,10 @@ const createPaymentIn = async (req, res) => {
             paymentMethod,
             paymentDate,
             paymentType,
-            saleOrderId,
             invoiceId,
+            saleOrderId,
             invoiceAllocations,
+            allocations,
             reference,
             notes,
             bankAccountId,
@@ -338,17 +444,10 @@ const createPaymentIn = async (req, res) => {
         } = req.body;
 
         const effectivePartyId = party || partyId;
+        const effectiveInvoiceId = invoiceId || saleOrderId;
+        const effectiveAllocations = invoiceAllocations || allocations;
+        const effectiveBankAccountId = bankAccountId || bankAccount;
 
-        console.log('💰 Creating Payment In with data:', {
-            effectivePartyId,
-            amount,
-            companyId,
-            paymentMethod,
-            saleOrderId,
-            invoiceAllocations: invoiceAllocations?.length || 0
-        });
-
-        // Validate required fields
         if (!effectivePartyId || !amount || !type) {
             return res.status(400).json({
                 success: false,
@@ -363,10 +462,10 @@ const createPaymentIn = async (req, res) => {
             });
         }
 
-        if (!['in', 'out'].includes(type)) {
+        if (type !== 'in') {
             return res.status(400).json({
                 success: false,
-                message: 'Type must be either "in" or "out"'
+                message: 'Type must be "in" for Payment In'
             });
         }
 
@@ -384,7 +483,20 @@ const createPaymentIn = async (req, res) => {
             });
         }
 
-        // Get required models
+        if (paymentMethod && paymentMethod !== 'cash' && !effectiveBankAccountId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Bank account is required for non-cash payments'
+            });
+        }
+
+        if (effectiveBankAccountId && !mongoose.Types.ObjectId.isValid(effectiveBankAccountId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid Bank Account ID format'
+            });
+        }
+
         const Payment = getModel('Payment');
         const Sale = getModel('Sale');
         const Party = getModel('Party');
@@ -396,7 +508,6 @@ const createPaymentIn = async (req, res) => {
             });
         }
 
-        // Get party information
         const partyDoc = await Party?.findById(effectivePartyId);
         if (!partyDoc) {
             return res.status(404).json({
@@ -405,23 +516,33 @@ const createPaymentIn = async (req, res) => {
             });
         }
 
-        // Generate payment number
-        const paymentCount = await Payment.countDocuments();
-        const paymentNumber = type === 'in' ?
-            `PAY-IN-${String(paymentCount + 1).padStart(6, '0')}` :
-            `PAY-OUT-${String(paymentCount + 1).padStart(6, '0')}`;
+        let bankAccountDoc = null;
+        if (effectiveBankAccountId) {
+            const BankAccount = getModel('BankAccount');
+            if (BankAccount) {
+                bankAccountDoc = await BankAccount.findById(effectiveBankAccountId);
+                if (!bankAccountDoc) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'Bank account not found'
+                    });
+                }
+            }
+        }
 
-        // Create payment record
+        const paymentCount = await Payment.countDocuments();
+        const paymentNumber = `PAY-IN-${String(paymentCount + 1).padStart(6, '0')}`;
+
         const paymentData = {
             paymentNumber,
             party: new mongoose.Types.ObjectId(effectivePartyId),
-            type: type === 'in' ? 'payment_in' : 'payment_out',
+            type: 'payment_in',
             partyId: effectivePartyId,
             partyName: partyName || partyDoc.name,
             amount: parseFloat(amount),
             paymentMethod: paymentMethod || 'cash',
             paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-            paymentType: type === 'in' ? 'payment_in' : 'payment_out',
+            paymentType: 'payment_in',
             status: status || 'completed',
             reference: reference || '',
             notes: notes || '',
@@ -430,55 +551,64 @@ const createPaymentIn = async (req, res) => {
             companyId: new mongoose.Types.ObjectId(companyId)
         };
 
-        // Add optional fields
         if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
             paymentData.createdBy = new mongoose.Types.ObjectId(createdBy);
         }
 
-        if (bankAccountId || bankAccount) {
-            paymentData.bankAccountId = bankAccountId || bankAccount;
+        if (effectiveBankAccountId) {
+            paymentData.bankAccountId = new mongoose.Types.ObjectId(effectiveBankAccountId);
         }
 
-        if (saleOrderId) {
-            paymentData.saleOrderId = new mongoose.Types.ObjectId(saleOrderId);
+        if (effectiveInvoiceId) {
+            paymentData.invoiceId = new mongoose.Types.ObjectId(effectiveInvoiceId);
         }
 
         if (paymentType) {
             paymentData.subType = paymentType;
         }
 
-        // Create and save payment
         const payment = new Payment(paymentData);
         await payment.save();
 
-        console.log('✅ Payment record created:', payment.paymentNumber);
+        let bankTransaction = null;
+        try {
+            bankTransaction = await createBankTransaction({
+                paymentMethod,
+                bankAccountId: effectiveBankAccountId,
+                companyId,
+                reference,
+                notes,
+                createdBy,
+                employeeName
+            }, payment);
+        } catch (transactionError) {
+            // Continue with payment creation even if transaction fails
+        }
 
-        // **ENHANCED: Handle specific invoice payment vs auto-allocation**
+        // Handle invoice payment allocation
         let updatedInvoices = [];
         let remainingAmount = parseFloat(amount);
         let invoicesUpdated = 0;
 
         if (Sale && type === 'in') {
             try {
-                // **CASE 1: Payment against specific invoice**
-                if (saleOrderId && mongoose.Types.ObjectId.isValid(saleOrderId)) {
-                    console.log('🎯 Processing payment against specific invoice:', saleOrderId);
-
-                    const specificSale = await Sale.findById(saleOrderId);
-                    if (specificSale) {
+                if (effectiveInvoiceId && mongoose.Types.ObjectId.isValid(effectiveInvoiceId)) {
+                    const specificInvoice = await Sale.findById(effectiveInvoiceId);
+                    if (specificInvoice) {
                         const totalAmount = parseFloat(
-                            specificSale.totals?.finalTotal ||
-                            specificSale.totals?.grandTotal ||
-                            specificSale.totalAmount ||
-                            specificSale.amount ||
+                            specificInvoice.totals?.finalTotal ||
+                            specificInvoice.totals?.grandTotal ||
+                            specificInvoice.totals?.total ||
+                            specificInvoice.totalAmount ||
+                            specificInvoice.amount ||
                             0
                         );
 
                         const currentPaidAmount = parseFloat(
-                            specificSale.payment?.paidAmount ||
-                            specificSale.payment?.totalPaid ||
-                            specificSale.payment?.amountPaid ||
-                            specificSale.paidAmount ||
+                            specificInvoice.payment?.paidAmount ||
+                            specificInvoice.payment?.totalPaid ||
+                            specificInvoice.payment?.amountPaid ||
+                            specificInvoice.paidAmount ||
                             0
                         );
 
@@ -489,7 +619,6 @@ const createPaymentIn = async (req, res) => {
                             const newPaidAmount = currentPaidAmount + allocationAmount;
                             const newPendingAmount = Math.max(0, totalAmount - newPaidAmount);
 
-                            // Determine payment status
                             let paymentStatus = 'pending';
                             if (newPaidAmount >= totalAmount) {
                                 paymentStatus = 'paid';
@@ -497,9 +626,8 @@ const createPaymentIn = async (req, res) => {
                                 paymentStatus = 'partial';
                             }
 
-                            // **FIXED: Properly update the sale document**
                             const updateResult = await Sale.findByIdAndUpdate(
-                                saleOrderId,
+                                effectiveInvoiceId,
                                 {
                                     $set: {
                                         'payment.paidAmount': newPaidAmount,
@@ -515,8 +643,9 @@ const createPaymentIn = async (req, res) => {
                                             method: paymentMethod,
                                             reference: paymentNumber,
                                             paymentDate: new Date(),
-                                            notes: notes || `Payment ${paymentNumber}`,
+                                            notes: `Specific payment ${paymentNumber} - ${notes || 'Customer payment'}`,
                                             paymentId: payment._id,
+                                            transactionId: bankTransaction?._id || null,
                                             createdAt: new Date(),
                                             createdBy: createdBy || employeeName || 'system',
                                             type: 'payment_in'
@@ -528,8 +657,8 @@ const createPaymentIn = async (req, res) => {
 
                             if (updateResult) {
                                 updatedInvoices.push({
-                                    invoiceId: specificSale._id,
-                                    invoiceNumber: specificSale.invoiceNumber || specificSale.saleNumber || `INV-${specificSale._id}`,
+                                    invoiceId: specificInvoice._id,
+                                    invoiceNumber: specificInvoice.saleNumber || specificInvoice.invoiceNumber || `SALE-${specificInvoice._id}`,
                                     totalAmount: totalAmount,
                                     previousPaidAmount: currentPaidAmount,
                                     allocatedAmount: allocationAmount,
@@ -540,178 +669,38 @@ const createPaymentIn = async (req, res) => {
 
                                 remainingAmount -= allocationAmount;
                                 invoicesUpdated = 1;
-
-                                console.log(`✅ Updated specific invoice ${specificSale.invoiceNumber}: ₹${allocationAmount} allocated (Status: ${paymentStatus})`);
                             }
                         }
                     }
                 }
-                // **CASE 2: Auto-allocation to pending invoices**
-                else if (remainingAmount > 0) {
-                    console.log('🔄 Auto-allocating remaining amount to pending invoices');
-
-                    // Find pending invoices for this customer
-                    const pendingInvoicesQuery = {
-                        companyId: new mongoose.Types.ObjectId(companyId),
-                        $or: [
-                            { customer: new mongoose.Types.ObjectId(effectivePartyId) },
-                            { customerId: new mongoose.Types.ObjectId(effectivePartyId) },
-                            { customerId: effectivePartyId },
-                            { customerName: partyDoc.name }
-                        ],
-                        status: { $nin: ['cancelled', 'draft', 'deleted'] }
-                    };
-
-                    const allInvoices = await Sale.find(pendingInvoicesQuery)
-                        .sort({ invoiceDate: 1, createdAt: 1 }) // Oldest first
-                        .lean();
-
-                    console.log(`📋 Found ${allInvoices.length} total invoices for auto-allocation`);
-
-                    // Filter invoices with pending amounts
-                    const pendingInvoices = allInvoices.filter(invoice => {
-                        const totalAmount = parseFloat(
-                            invoice.totals?.finalTotal ||
-                            invoice.totals?.grandTotal ||
-                            invoice.totalAmount ||
-                            invoice.amount ||
-                            0
-                        );
-
-                        const paidAmount = parseFloat(
-                            invoice.payment?.paidAmount ||
-                            invoice.payment?.totalPaid ||
-                            invoice.payment?.amountPaid ||
-                            invoice.paidAmount ||
-                            0
-                        );
-
-                        const dueAmount = Math.max(0, totalAmount - paidAmount);
-                        return totalAmount > 0 && dueAmount > 0;
-                    });
-
-                    console.log(`💰 Found ${pendingInvoices.length} invoices with pending amounts for auto-allocation`);
-
-                    // Allocate payment to invoices
-                    for (const invoice of pendingInvoices) {
-                        if (remainingAmount <= 0) break;
-
-                        const totalAmount = parseFloat(
-                            invoice.totals?.finalTotal ||
-                            invoice.totals?.grandTotal ||
-                            invoice.totalAmount ||
-                            invoice.amount ||
-                            0
-                        );
-
-                        const currentPaidAmount = parseFloat(
-                            invoice.payment?.paidAmount ||
-                            invoice.payment?.totalPaid ||
-                            invoice.payment?.amountPaid ||
-                            invoice.paidAmount ||
-                            0
-                        );
-
-                        const pendingAmount = Math.max(0, totalAmount - currentPaidAmount);
-
-                        if (pendingAmount <= 0) continue;
-
-                        const allocationAmount = Math.min(remainingAmount, pendingAmount);
-                        const newPaidAmount = currentPaidAmount + allocationAmount;
-                        const newPendingAmount = Math.max(0, totalAmount - newPaidAmount);
-
-                        // Determine payment status
-                        let paymentStatus = 'pending';
-                        if (newPaidAmount >= totalAmount) {
-                            paymentStatus = 'paid';
-                        } else if (newPaidAmount > 0) {
-                            paymentStatus = 'partial';
-                        }
-
-                        // **FIXED: Update the invoice document properly**
-                        const updateResult = await Sale.findByIdAndUpdate(invoice._id, {
-                            $set: {
-                                'payment.paidAmount': newPaidAmount,
-                                'payment.pendingAmount': newPendingAmount,
-                                'payment.status': paymentStatus,
-                                'payment.method': paymentMethod,
-                                'payment.paymentDate': new Date(),
-                                'payment.lastUpdated': new Date()
-                            },
-                            $push: {
-                                'paymentHistory': {
-                                    amount: allocationAmount,
-                                    method: paymentMethod,
-                                    reference: paymentNumber,
-                                    paymentDate: new Date(),
-                                    notes: `Auto-allocated from payment ${paymentNumber} - ${notes || 'Customer payment'}`,
-                                    paymentId: payment._id,
-                                    createdAt: new Date(),
-                                    createdBy: createdBy || employeeName || 'system',
-                                    type: 'payment_in'
-                                }
-                            }
-                        }, { new: true });
-
-                        if (updateResult) {
-                            updatedInvoices.push({
-                                invoiceId: invoice._id,
-                                invoiceNumber: invoice.invoiceNumber || invoice.saleNumber || `INV-${invoice._id}`,
-                                totalAmount: totalAmount,
-                                previousPaidAmount: currentPaidAmount,
-                                allocatedAmount: allocationAmount,
-                                newPaidAmount: newPaidAmount,
-                                newPendingAmount: newPendingAmount,
-                                paymentStatus: paymentStatus
-                            });
-
-                            remainingAmount -= allocationAmount;
-                            invoicesUpdated++;
-
-                            console.log(`✅ Auto-allocated ₹${allocationAmount} to invoice ${invoice.invoiceNumber || invoice._id} (Status: ${paymentStatus})`);
-                        }
-                    }
-                }
-
-                // Update payment record with allocation details
-                if (updatedInvoices.length > 0) {
-                    payment.invoiceAllocations = updatedInvoices.map(inv => ({
-                        invoiceId: inv.invoiceId,
-                        invoiceNumber: inv.invoiceNumber,
-                        allocatedAmount: inv.allocatedAmount,
-                        allocationDate: new Date()
-                    }));
-
-                    const originalNotes = payment.notes || '';
-                    payment.notes = `${originalNotes} - Allocated to ${updatedInvoices.length} invoice(s)`.trim();
-                    await payment.save();
-                }
-
-                console.log(`💰 Payment allocation completed. Updated ${invoicesUpdated} invoices. Remaining: ₹${remainingAmount}`);
-
             } catch (invoiceUpdateError) {
-                console.error('❌ Error updating invoices:', invoiceUpdateError);
-                // Don't fail the payment creation, just log the error
+                // Continue with payment creation even if invoice update fails
             }
         }
 
-        // **ENHANCED: Update party balance more accurately**
+        // Update party balance for Payment In
         if (type === 'in') {
-            // Calculate the actual change in party balance
             const totalAllocatedAmount = updatedInvoices.reduce((sum, inv) => sum + inv.allocatedAmount, 0);
             const advanceAmount = parseFloat(amount) - totalAllocatedAmount;
-
-            // Only reduce party balance by the advance amount (not allocated to invoices)
-            partyDoc.currentBalance = (partyDoc.currentBalance || 0) - advanceAmount;
-
-            console.log(`📊 Party balance update: Total payment: ₹${amount}, Allocated: ₹${totalAllocatedAmount}, Advance: ₹${advanceAmount}`);
-        } else {
-            partyDoc.currentBalance = (partyDoc.currentBalance || 0) + parseFloat(amount);
+            partyDoc.currentBalance = (partyDoc.currentBalance || 0) + advanceAmount;
         }
 
         await partyDoc.save();
 
-        // **ENHANCED: Prepare detailed response**
+        // Update payment record with allocation details
+        if (updatedInvoices.length > 0) {
+            payment.invoiceAllocations = updatedInvoices.map(inv => ({
+                invoiceId: inv.invoiceId,
+                invoiceNumber: inv.invoiceNumber,
+                allocatedAmount: inv.allocatedAmount,
+                allocationDate: new Date()
+            }));
+
+            const originalNotes = payment.notes || '';
+            payment.notes = `${originalNotes} - Allocated to ${updatedInvoices.length} invoice(s)`.trim();
+            await payment.save();
+        }
+
         const responseDetails = {
             invoicesUpdated: invoicesUpdated,
             remainingAmount: remainingAmount,
@@ -722,20 +711,11 @@ const createPaymentIn = async (req, res) => {
             }))
         };
 
-        console.log('✅ Payment In completed successfully:', {
-            paymentNumber: payment.paymentNumber,
-            amount: payment.amount,
-            invoicesUpdated: responseDetails.invoicesUpdated,
-            remainingAmount: responseDetails.remainingAmount,
-            newPartyBalance: partyDoc.currentBalance
-        });
-
-        // **ENHANCED: Send comprehensive success response**
         res.status(201).json({
             success: true,
             message: responseDetails.invoicesUpdated > 0
-                ? `Payment of ₹${amount} recorded and allocated to ${responseDetails.invoicesUpdated} invoice(s) successfully`
-                : `Payment of ₹${amount} recorded successfully`,
+                ? `Payment of ₹${amount} received and allocated to ${responseDetails.invoicesUpdated} invoice(s) successfully`
+                : `Payment of ₹${amount} received successfully`,
             details: responseDetails,
             data: {
                 payment: {
@@ -753,8 +733,18 @@ const createPaymentIn = async (req, res) => {
                     reference: payment.reference,
                     notes: payment.notes,
                     createdAt: payment.createdAt,
-                    invoiceAllocations: payment.invoiceAllocations || []
+                    invoiceAllocations: payment.invoiceAllocations || [],
+                    bankAccountId: payment.bankAccountId
                 },
+                bankTransaction: bankTransaction,
+                transaction: bankTransaction,
+                bankAccount: bankAccountDoc ? {
+                    _id: bankAccountDoc._id,
+                    bankName: bankAccountDoc.bankName,
+                    accountName: bankAccountDoc.accountName,
+                    accountNumber: bankAccountDoc.accountNumber,
+                    currentBalance: bankAccountDoc.currentBalance
+                } : null,
                 partyBalance: partyDoc.currentBalance,
                 party: {
                     id: partyDoc._id,
@@ -763,13 +753,12 @@ const createPaymentIn = async (req, res) => {
                 },
                 invoiceAllocations: updatedInvoices,
                 remainingAmount: remainingAmount,
-                totalInvoicesUpdated: invoicesUpdated
+                totalInvoicesUpdated: invoicesUpdated,
+                invoicesUpdated: invoicesUpdated
             }
         });
 
     } catch (error) {
-        console.error('❌ Error in createPaymentIn:', error);
-
         if (error.name === 'ValidationError') {
             const validationErrors = Object.values(error.errors).map(err => ({
                 field: err.path,
@@ -791,9 +780,6 @@ const createPaymentIn = async (req, res) => {
     }
 };
 
-// ================================
-// 💸 CREATE PAYMENT OUT
-// ================================
 const createPaymentOut = async (req, res) => {
     try {
         const {
@@ -804,7 +790,12 @@ const createPaymentOut = async (req, res) => {
             paymentMethod,
             paymentDate,
             paymentType,
-            purchaseOrderId,
+            purchaseInvoiceId,
+            purchaseInvoiceAllocations,
+            invoiceId,
+            saleOrderId,
+            invoiceAllocations,
+            allocations,
             reference,
             notes,
             bankAccountId,
@@ -818,8 +809,10 @@ const createPaymentOut = async (req, res) => {
         } = req.body;
 
         const effectivePartyId = party || partyId;
+        const effectiveInvoiceId = purchaseInvoiceId || invoiceId || saleOrderId;
+        const effectiveAllocations = purchaseInvoiceAllocations || invoiceAllocations || allocations;
+        const effectiveBankAccountId = bankAccountId || bankAccount;
 
-        // Validate required fields
         if (!effectivePartyId || !amount || !type) {
             return res.status(400).json({
                 success: false,
@@ -841,25 +834,38 @@ const createPaymentOut = async (req, res) => {
             });
         }
 
-        // Get party information
-        const Party = getModel('Party');
-        if (!Party) {
-            return res.status(500).json({
+        if (!mongoose.Types.ObjectId.isValid(effectivePartyId)) {
+            return res.status(400).json({
                 success: false,
-                message: 'Party model not available'
+                message: 'Invalid Party ID format'
             });
         }
 
-        const partyDoc = await Party.findById(effectivePartyId);
-        if (!partyDoc) {
-            return res.status(404).json({
+        if (parseFloat(amount) <= 0) {
+            return res.status(400).json({
                 success: false,
-                message: 'Party not found'
+                message: 'Payment amount must be greater than 0'
             });
         }
 
-        // Get Payment model
+        if (paymentMethod && paymentMethod !== 'cash' && !effectiveBankAccountId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Bank account is required for non-cash payments'
+            });
+        }
+
+        if (effectiveBankAccountId && !mongoose.Types.ObjectId.isValid(effectiveBankAccountId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid Bank Account ID format'
+            });
+        }
+
         const Payment = getModel('Payment');
+        const Purchase = getModel('Purchase');
+        const Party = getModel('Party');
+
         if (!Payment) {
             return res.status(500).json({
                 success: false,
@@ -867,11 +873,31 @@ const createPaymentOut = async (req, res) => {
             });
         }
 
-        // Generate payment number
+        const partyDoc = await Party?.findById(effectivePartyId);
+        if (!partyDoc) {
+            return res.status(404).json({
+                success: false,
+                message: 'Party not found'
+            });
+        }
+
+        let bankAccountDoc = null;
+        if (effectiveBankAccountId) {
+            const BankAccount = getModel('BankAccount');
+            if (BankAccount) {
+                bankAccountDoc = await BankAccount.findById(effectiveBankAccountId);
+                if (!bankAccountDoc) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'Bank account not found'
+                    });
+                }
+            }
+        }
+
         const paymentCount = await Payment.countDocuments();
         const paymentNumber = `PAY-OUT-${String(paymentCount + 1).padStart(6, '0')}`;
 
-        // Create payment record
         const paymentData = {
             paymentNumber,
             party: new mongoose.Types.ObjectId(effectivePartyId),
@@ -890,17 +916,16 @@ const createPaymentOut = async (req, res) => {
             companyId: new mongoose.Types.ObjectId(companyId)
         };
 
-        // Add optional fields
         if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
             paymentData.createdBy = new mongoose.Types.ObjectId(createdBy);
         }
 
-        if (bankAccountId || bankAccount) {
-            paymentData.bankAccountId = bankAccountId || bankAccount;
+        if (effectiveBankAccountId) {
+            paymentData.bankAccountId = new mongoose.Types.ObjectId(effectiveBankAccountId);
         }
 
-        if (purchaseOrderId) {
-            paymentData.purchaseOrderId = new mongoose.Types.ObjectId(purchaseOrderId);
+        if (effectiveInvoiceId) {
+            paymentData.purchaseInvoiceId = new mongoose.Types.ObjectId(effectiveInvoiceId);
         }
 
         if (paymentType) {
@@ -910,13 +935,154 @@ const createPaymentOut = async (req, res) => {
         const payment = new Payment(paymentData);
         await payment.save();
 
-        // Update party balance
-        partyDoc.currentBalance = (partyDoc.currentBalance || 0) + parseFloat(amount);
+        let bankTransaction = null;
+        try {
+            bankTransaction = await createBankTransaction({
+                paymentMethod,
+                bankAccountId: effectiveBankAccountId,
+                companyId,
+                reference,
+                notes,
+                createdBy,
+                employeeName
+            }, payment);
+        } catch (transactionError) {
+            // Continue with payment creation even if transaction fails
+        }
+
+        // Handle purchase invoice payment allocation
+        let updatedInvoices = [];
+        let remainingAmount = parseFloat(amount);
+        let invoicesUpdated = 0;
+
+        if (Purchase && type === 'out') {
+            try {
+                if (effectiveInvoiceId && mongoose.Types.ObjectId.isValid(effectiveInvoiceId)) {
+                    const specificInvoice = await Purchase.findById(effectiveInvoiceId);
+                    if (specificInvoice) {
+                        const totalAmount = parseFloat(
+                            specificInvoice.totals?.finalTotal ||
+                            specificInvoice.totals?.grandTotal ||
+                            specificInvoice.totals?.total ||
+                            specificInvoice.totalAmount ||
+                            specificInvoice.amount ||
+                            0
+                        );
+
+                        const currentPaidAmount = parseFloat(
+                            specificInvoice.payment?.paidAmount ||
+                            specificInvoice.payment?.totalPaid ||
+                            specificInvoice.payment?.amountPaid ||
+                            specificInvoice.paidAmount ||
+                            0
+                        );
+
+                        const pendingAmount = Math.max(0, totalAmount - currentPaidAmount);
+
+                        if (pendingAmount > 0) {
+                            const allocationAmount = Math.min(remainingAmount, pendingAmount);
+                            const newPaidAmount = currentPaidAmount + allocationAmount;
+                            const newPendingAmount = Math.max(0, totalAmount - newPaidAmount);
+
+                            let paymentStatus = 'pending';
+                            if (newPaidAmount >= totalAmount) {
+                                paymentStatus = 'paid';
+                            } else if (newPaidAmount > 0) {
+                                paymentStatus = 'partial';
+                            }
+
+                            const updateResult = await Purchase.findByIdAndUpdate(
+                                effectiveInvoiceId,
+                                {
+                                    $set: {
+                                        'payment.paidAmount': newPaidAmount,
+                                        'payment.pendingAmount': newPendingAmount,
+                                        'payment.status': paymentStatus,
+                                        'payment.method': paymentMethod,
+                                        'payment.paymentDate': new Date(),
+                                        'payment.lastUpdated': new Date()
+                                    },
+                                    $push: {
+                                        'paymentHistory': {
+                                            amount: allocationAmount,
+                                            method: paymentMethod,
+                                            reference: paymentNumber,
+                                            paymentDate: new Date(),
+                                            notes: `Specific payment ${paymentNumber} - ${notes || 'Supplier payment'}`,
+                                            paymentId: payment._id,
+                                            transactionId: bankTransaction?._id || null,
+                                            createdAt: new Date(),
+                                            createdBy: createdBy || employeeName || 'system',
+                                            type: 'payment_out'
+                                        }
+                                    }
+                                },
+                                { new: true }
+                            );
+
+                            if (updateResult) {
+                                updatedInvoices.push({
+                                    invoiceId: specificInvoice._id,
+                                    purchaseInvoiceId: specificInvoice._id,
+                                    invoiceNumber: specificInvoice.purchaseNumber || specificInvoice.invoiceNumber || `PUR-${specificInvoice._id}`,
+                                    totalAmount: totalAmount,
+                                    previousPaidAmount: currentPaidAmount,
+                                    allocatedAmount: allocationAmount,
+                                    newPaidAmount: newPaidAmount,
+                                    newPendingAmount: newPendingAmount,
+                                    paymentStatus: paymentStatus
+                                });
+
+                                remainingAmount -= allocationAmount;
+                                invoicesUpdated = 1;
+                            }
+                        }
+                    }
+                }
+            } catch (invoiceUpdateError) {
+                // Continue with payment creation even if invoice update fails
+            }
+        }
+
+        // Update party balance for Payment Out
+        if (type === 'out') {
+            const totalAllocatedAmount = updatedInvoices.reduce((sum, inv) => sum + inv.allocatedAmount, 0);
+            const advanceAmount = parseFloat(amount) - totalAllocatedAmount;
+            partyDoc.currentBalance = (partyDoc.currentBalance || 0) - advanceAmount;
+        }
+
         await partyDoc.save();
+
+        // Update payment record with allocation details
+        if (updatedInvoices.length > 0) {
+            payment.purchaseInvoiceAllocations = updatedInvoices.map(inv => ({
+                purchaseInvoiceId: inv.purchaseInvoiceId || inv.invoiceId,
+                invoiceNumber: inv.invoiceNumber,
+                allocatedAmount: inv.allocatedAmount,
+                allocationDate: new Date()
+            }));
+
+            const originalNotes = payment.notes || '';
+            payment.notes = `${originalNotes} - Allocated to ${updatedInvoices.length} purchase invoice(s)`.trim();
+            await payment.save();
+        }
+
+        const responseDetails = {
+            invoicesUpdated: invoicesUpdated,
+            remainingAmount: remainingAmount,
+            invoiceList: updatedInvoices.map(inv => ({
+                invoiceNumber: inv.invoiceNumber,
+                allocatedAmount: inv.allocatedAmount,
+                paymentStatus: inv.paymentStatus
+            }))
+        };
 
         res.status(201).json({
             success: true,
-            message: 'Payment Out recorded successfully',
+            message: responseDetails.invoicesUpdated > 0
+                ? `Payment of ₹${amount} made and allocated to ${responseDetails.invoicesUpdated} purchase invoice(s) successfully`
+                : `Payment of ₹${amount} made successfully`,
+            details: responseDetails,
             data: {
                 payment: {
                     _id: payment._id,
@@ -932,14 +1098,30 @@ const createPaymentOut = async (req, res) => {
                     status: payment.status,
                     reference: payment.reference,
                     notes: payment.notes,
-                    createdAt: payment.createdAt
+                    createdAt: payment.createdAt,
+                    purchaseInvoiceAllocations: payment.purchaseInvoiceAllocations || [],
+                    bankAccountId: payment.bankAccountId
                 },
+                bankTransaction: bankTransaction,
+                transaction: bankTransaction,
+                bankAccount: bankAccountDoc ? {
+                    _id: bankAccountDoc._id,
+                    bankName: bankAccountDoc.bankName,
+                    accountName: bankAccountDoc.accountName,
+                    accountNumber: bankAccountDoc.accountNumber,
+                    currentBalance: bankAccountDoc.currentBalance
+                } : null,
                 partyBalance: partyDoc.currentBalance,
                 party: {
                     id: partyDoc._id,
                     name: partyDoc.name,
                     currentBalance: partyDoc.currentBalance
-                }
+                },
+                purchaseInvoiceAllocations: updatedInvoices,
+                invoiceAllocations: updatedInvoices,
+                remainingAmount: remainingAmount,
+                totalInvoicesUpdated: invoicesUpdated,
+                invoicesUpdated: invoicesUpdated
             }
         });
 
@@ -965,9 +1147,6 @@ const createPaymentOut = async (req, res) => {
     }
 };
 
-// ================================
-// 📊 GET PAYMENTS - FIXED
-// ================================
 const getPayments = async (req, res) => {
     try {
         const {
@@ -992,7 +1171,6 @@ const getPayments = async (req, res) => {
             });
         }
 
-        // Build query conditions
         const queryConditions = {};
 
         if (companyId) {
@@ -1001,7 +1179,6 @@ const getPayments = async (req, res) => {
             }
         }
 
-        // Handle both 'party' and 'partyId' fields
         if (partyId) {
             if (mongoose.Types.ObjectId.isValid(partyId)) {
                 queryConditions.$or = [
@@ -1034,7 +1211,6 @@ const getPayments = async (req, res) => {
             if (endDate) queryConditions.paymentDate.$lte = new Date(endDate);
         }
 
-        // Execute query with pagination
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const sortOptions = {};
         sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
@@ -1073,9 +1249,6 @@ const getPayments = async (req, res) => {
     }
 };
 
-// ================================
-// 🔍 GET PAYMENT BY ID
-// ================================
 const getPaymentById = async (req, res) => {
     try {
         const { paymentId } = req.params;
@@ -1119,9 +1292,6 @@ const getPaymentById = async (req, res) => {
     }
 };
 
-// ================================
-// 📊 GET PARTY PAYMENT SUMMARY
-// ================================
 const getPartyPaymentSummary = async (req, res) => {
     try {
         const { partyId } = req.params;
@@ -1142,13 +1312,11 @@ const getPartyPaymentSummary = async (req, res) => {
             });
         }
 
-        // Build query conditions
         const queryConditions = { partyId: new mongoose.Types.ObjectId(partyId) };
         if (companyId) {
             queryConditions.companyId = new mongoose.Types.ObjectId(companyId);
         }
 
-        // Aggregate payment summary
         const summary = await Payment.aggregate([
             { $match: queryConditions },
             {
@@ -1184,9 +1352,6 @@ const getPartyPaymentSummary = async (req, res) => {
     }
 };
 
-// ================================
-// ❌ CANCEL PAYMENT
-// ================================
 const cancelPayment = async (req, res) => {
     try {
         const { paymentId } = req.params;
@@ -1223,7 +1388,6 @@ const cancelPayment = async (req, res) => {
             });
         }
 
-        // Update payment status
         payment.status = 'cancelled';
         payment.cancelReason = reason || 'No reason provided';
         payment.cancelledAt = new Date();
@@ -1268,17 +1432,197 @@ const cancelPayment = async (req, res) => {
     }
 };
 
-// ================================
-// 📤 EXPORT ALL FUNCTIONS
-// ================================
+const getPendingPurchaseInvoicesForPayment = async (req, res) => {
+    try {
+        const { partyId } = req.params;
+        const { companyId } = req.query;
+
+        if (!partyId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Party ID is required'
+            });
+        }
+
+        if (!companyId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Company ID is required as query parameter'
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(partyId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid Party ID format'
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(companyId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid Company ID format'
+            });
+        }
+
+        const Party = getModel('Party');
+        if (!Party) {
+            return res.status(500).json({
+                success: false,
+                message: 'Party model not available'
+            });
+        }
+
+        const party = await Party.findById(partyId);
+        if (!party) {
+            return res.status(404).json({
+                success: false,
+                message: 'Party not found'
+            });
+        }
+
+        const Purchase = getModel('Purchase');
+        if (!Purchase) {
+            return res.status(500).json({
+                success: false,
+                message: 'Purchase model not available'
+            });
+        }
+
+        const purchaseQueryConditions = {
+            $and: [
+                { companyId: new mongoose.Types.ObjectId(companyId) },
+                {
+                    $or: [
+                        { supplier: new mongoose.Types.ObjectId(partyId) },
+                        { supplierId: new mongoose.Types.ObjectId(partyId) },
+                        { supplierId: partyId },
+                        { supplierName: party.name }
+                    ]
+                },
+                {
+                    status: {
+                        $nin: ['cancelled', 'deleted'],
+                        $ne: null
+                    }
+                },
+                {
+                    $or: [
+                        { 'totals.finalTotal': { $gt: 0 } },
+                        { totalAmount: { $gt: 0 } },
+                        { 'totals.grandTotal': { $gt: 0 } },
+                        { amount: { $gt: 0 } }
+                    ]
+                }
+            ]
+        };
+
+        const purchases = await Purchase.find(purchaseQueryConditions)
+            .sort({ purchaseDate: -1, createdAt: -1 })
+            .limit(100)
+            .lean();
+
+        const invoicesWithDue = purchases.map(invoice => {
+            const totalAmount = parseFloat(
+                invoice.totals?.finalTotal ||
+                invoice.totals?.grandTotal ||
+                invoice.totals?.total ||
+                invoice.totalAmount ||
+                invoice.amount ||
+                0
+            );
+
+            const paidAmount = parseFloat(
+                invoice.payment?.paidAmount ||
+                invoice.payment?.totalPaid ||
+                invoice.payment?.amountPaid ||
+                invoice.paidAmount ||
+                0
+            );
+
+            const dueAmount = Math.max(0, totalAmount - paidAmount);
+
+            const invoiceNumber = invoice.purchaseNumber ||
+                invoice.invoiceNumber ||
+                invoice.billNumber ||
+                `PUR-${invoice._id}`;
+
+            return {
+                _id: invoice._id,
+                id: invoice._id,
+                invoiceNumber: invoiceNumber,
+                purchaseNumber: invoiceNumber,
+                invoiceDate: invoice.purchaseDate || invoice.invoiceDate || invoice.createdAt,
+                purchaseDate: invoice.purchaseDate || invoice.invoiceDate || invoice.createdAt,
+                totalAmount: totalAmount,
+                paidAmount: paidAmount,
+                dueAmount: dueAmount,
+                paymentStatus: dueAmount > 0 ?
+                    (paidAmount > 0 ? 'partial' : 'pending') : 'paid',
+                status: invoice.status,
+                orderType: 'purchase_invoice',
+                documentType: 'purchase_invoice',
+                supplierName: party.name,
+                supplierId: party._id,
+                items: invoice.items || [],
+                createdAt: invoice.createdAt,
+                updatedAt: invoice.updatedAt,
+                currency: invoice.currency || 'INR',
+                taxAmount: invoice.totals?.totalTax || invoice.totals?.tax || 0,
+                discountAmount: invoice.totals?.totalDiscount || invoice.totals?.discount || 0,
+                paymentHistory: invoice.paymentHistory || [],
+                lastPaymentDate: invoice.payment?.paymentDate || null,
+                originalInvoice: invoice
+            };
+        }).filter(invoice => {
+            const hasAmount = invoice.totalAmount > 0;
+            const shouldInclude = hasAmount && (invoice.dueAmount > 0 || invoice.status === 'draft');
+            return shouldInclude;
+        });
+
+        const totalDueAmount = invoicesWithDue.reduce((sum, invoice) => sum + invoice.dueAmount, 0);
+
+        const response = {
+            success: true,
+            data: {
+                purchaseInvoices: invoicesWithDue,
+                invoices: invoicesWithDue,
+                purchases: invoicesWithDue,
+                data: invoicesWithDue,
+                totalInvoices: invoicesWithDue.length,
+                totalDueAmount: totalDueAmount,
+                party: {
+                    id: party._id,
+                    _id: party._id,
+                    name: party.name,
+                    currentBalance: party.currentBalance || 0,
+                    partyType: party.partyType || 'supplier'
+                }
+            },
+            message: invoicesWithDue.length > 0 ?
+                `Found ${invoicesWithDue.length} pending purchase invoices` :
+                `No pending purchase invoices found with due amounts (${purchases.length} total purchases found)`
+        };
+
+        res.status(200).json(response);
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch pending purchase invoices',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        });
+    }
+};
 
 module.exports = {
     getPendingInvoicesForPayment,
+    getPendingPurchaseInvoicesForPayment,
     createPaymentIn,
     createPaymentOut,
     getPayments,
     getPaymentById,
     getPartyPaymentSummary,
-    getPaymentAllocations, // NEW: Add this function
+    getPaymentAllocations,
     cancelPayment
 };

@@ -35,6 +35,8 @@ import PurchaseForm from '../components/Home/Purchases/PurchaseForm';
 import companyService from '../services/companyService';
 import partyService from '../services/partyService';
 import purchaseService from '../services/purchaseService';
+// ✅ CRITICAL FIX: Add salesService import
+import salesService from '../services/salesService';
 
 // Import utility components
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -307,6 +309,42 @@ function HomePage({
         }
     }, [onCompanyChange, addToast, navigate]);
 
+    // ✅ CRITICAL FIX: Handle sales invoice save
+    const handleSaveInvoice = useCallback(async (invoiceData) => {
+        try {
+            console.log('🏠 HomePage: Handling invoice save:', {
+                companyId: invoiceData.companyId,
+                customerName: invoiceData.customerName,
+                itemCount: invoiceData.items?.length,
+                totalAmount: invoiceData.totals?.finalTotal
+            });
+
+            // Call your sales service to save the invoice
+            const result = await salesService.createInvoice(invoiceData);
+
+            console.log('🏠 HomePage: Sales service result:', result);
+
+            if (result && result.success) {
+                addToast('Invoice created successfully!', 'success', 5000);
+
+                // Navigate back to invoices list after a short delay
+                setTimeout(() => {
+                    const companyId = currentCompany.id || currentCompany._id;
+                    navigate(`/companies/${companyId}/sales`);
+                }, 1500);
+
+                return result;
+            } else {
+                throw new Error(result?.message || result?.error || 'Failed to create invoice');
+            }
+
+        } catch (error) {
+            console.error('❌ HomePage: Error saving invoice:', error);
+            addToast(`Error creating invoice: ${error.message}`, 'error', 8000);
+            throw error;
+        }
+    }, [addToast, currentCompany, navigate]);
+
     // Handle purchase form save
     const handleSavePurchase = useCallback(async (purchaseData) => {
         try {
@@ -503,19 +541,24 @@ function HomePage({
                     <Parties {...commonProps} />
                 );
 
-            // Sales cases
+            // ✅ CRITICAL FIX: Sales cases - Add onSave prop
             case 'quotations':
                 return wrapWithErrorBoundary(
                     <Sales
                         view="quotations"
                         {...commonProps}
                         onNavigate={handleNavigation}
+                        onSave={handleSaveInvoice} // ✅ ADD THIS
                     />
                 );
             case 'invoices':
             case 'salesOrders':
                 return wrapWithErrorBoundary(
-                    <Sales view={currentView} {...commonProps} />
+                    <Sales
+                        view={currentView}
+                        {...commonProps}
+                        onSave={handleSaveInvoice} // ✅ ADD THIS
+                    />
                 );
 
             // ✅ UPDATED: Purchase cases - Separate purchaseOrder from others

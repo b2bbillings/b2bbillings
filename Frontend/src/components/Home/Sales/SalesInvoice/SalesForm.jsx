@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom';
 import GSTToggle from './SalesForm/GSTToggle';
 import CustomerSection from './SalesForm/CustomerSection';
 import InvoiceDetails from './SalesForm/InvoiceDetails';
-// ✅ UPDATED: Import the new combined component
 import ItemsTableWithTotals from './SalesForm/itemsTableWithTotals';
 import './SalesForm.css';
 
@@ -15,11 +14,11 @@ function SalesForm({
     inventoryItems = [],
     categories = [],
     onAddItem,
-    // ✅ NEW: Added mode and document type props
     mode = 'invoices',
     documentType = 'invoice',
     formType = 'sales',
-    pageTitle
+    pageTitle,
+    addToast // ✅ ADDED: Required prop for toast notifications
 }) {
     // Get companyId from URL params
     const { companyId } = useParams();
@@ -27,8 +26,27 @@ function SalesForm({
     // Alternative: Get companyId from localStorage if not in URL
     const [localCompanyId, setLocalCompanyId] = useState(null);
 
-    // ✅ NEW: Dynamic content based on document type
-    const isQuotationsMode = mode === 'quotations' || documentType === 'quotation';
+    // ✅ FIXED: Improved mode detection with proper formType handling
+    const isQuotationsMode = mode === 'quotations' || documentType === 'quotation' || formType === 'quotation';
+
+    // ✅ ADDED: Determine effective formType for ItemsTableWithTotals
+    const getEffectiveFormType = () => {
+        if (isQuotationsMode) {
+            return 'quotation';
+        }
+        return formType === 'purchase' ? 'purchase' : 'sales';
+    };
+
+    // ✅ ADDED: Default toast function if not provided
+    const defaultAddToast = useCallback((message, type = 'info') => {
+        console.log(`🍞 Toast (${type}):`, message);
+        // Fallback to alert if no toast system available
+        if (type === 'error') {
+            alert(`Error: ${message}`);
+        }
+    }, []);
+
+    const effectiveAddToast = addToast || defaultAddToast;
 
     useEffect(() => {
         if (!companyId) {
@@ -45,7 +63,7 @@ function SalesForm({
     // Use companyId from params, fallback to localStorage
     const effectiveCompanyId = companyId || localCompanyId;
 
-    // ✅ UPDATED: Generate document number function based on mode
+    // Generate document number function based on mode
     const generateDocumentNumber = (invoiceType = 'non-gst') => {
         const date = new Date();
         const year = date.getFullYear();
@@ -70,7 +88,7 @@ function SalesForm({
         }
     };
 
-    // ✅ UPDATED: Dynamic field labels based on mode
+    // Dynamic field labels based on mode
     const getFieldLabels = () => {
         return isQuotationsMode
             ? {
@@ -108,14 +126,14 @@ function SalesForm({
         items: [],
         paymentMethod: 'cash',
         notes: '',
-        // ✅ NEW: Add quotation-specific fields
-        quotationValidity: isQuotationsMode ? 30 : undefined, // 30 days validity for quotations
+        // Quotation-specific fields
+        quotationValidity: isQuotationsMode ? 30 : undefined,
         quotationStatus: isQuotationsMode ? 'draft' : undefined,
         convertedToInvoice: isQuotationsMode ? false : undefined,
         documentMode: isQuotationsMode ? 'quotation' : 'invoice'
     });
 
-    // Create empty item function - now has access to formData
+    // Create empty item function
     const createEmptyItem = () => {
         return {
             id: Date.now() + Math.random(),
@@ -136,7 +154,7 @@ function SalesForm({
             category: '',
             currentStock: 0,
             minStockLevel: 0,
-            taxMode: 'with-tax'
+            taxMode: 'without-tax'
         };
     };
 
@@ -150,7 +168,7 @@ function SalesForm({
         }
     }, [formData.gstEnabled]);
 
-    // ✅ UPDATED: Handle invoice type change with mode awareness
+    // Handle invoice type change with mode awareness
     const handleInvoiceTypeChange = (newType) => {
         console.log(`📋 Changing ${labels.documentName.toLowerCase()} type to:`, newType);
 
@@ -177,7 +195,7 @@ function SalesForm({
         });
     };
 
-    // ✅ UPDATED: Handle GST toggle change with mode awareness
+    // Handle GST toggle change with mode awareness
     const handleGSTToggleChange = (enabled) => {
         console.log(`🔄 GST Toggle changed to:`, enabled, `for ${labels.documentName.toLowerCase()}`);
 
@@ -218,7 +236,7 @@ function SalesForm({
         updateFormData('items', newItems);
     };
 
-    // ✅ UPDATED: Enhanced validation function with mode awareness
+    // Enhanced validation function with mode awareness
     const validateForm = () => {
         const errors = [];
 
@@ -227,50 +245,14 @@ function SalesForm({
             errors.push('Company selection is required');
         }
 
-        // Customer validation - more flexible for different scenarios
-        if (!formData.customer && !formData.mobileNumber) {
+        // Customer validation - more flexible for quotations
+        if (!isQuotationsMode && !formData.customer && !formData.mobileNumber) {
             errors.push(`Please select a customer or enter mobile number for ${labels.documentName.toLowerCase()}`);
         }
 
-        // Document number validation with mode-specific patterns
+        // Document number validation
         if (!formData.invoiceNumber) {
             errors.push(`${labels.documentNumber} is required`);
-        } else {
-            let validPattern = false;
-
-            if (isQuotationsMode) {
-                // Quotation patterns
-                const gstQuotationPattern = /^QUO-GST-\d{8}-\d{4}$/;
-                const nonGstQuotationPattern = /^QUO-\d{8}-\d{4}$/;
-
-                if (formData.invoiceType === 'gst') {
-                    validPattern = gstQuotationPattern.test(formData.invoiceNumber);
-                    if (!validPattern) {
-                        errors.push('GST quotation number must follow format: QUO-GST-YYYYMMDD-XXXX');
-                    }
-                } else {
-                    validPattern = nonGstQuotationPattern.test(formData.invoiceNumber);
-                    if (!validPattern) {
-                        errors.push('Quotation number must follow format: QUO-YYYYMMDD-XXXX');
-                    }
-                }
-            } else {
-                // Invoice patterns
-                const gstInvoicePattern = /^GST-\d{8}-\d{4}$/;
-                const nonGstInvoicePattern = /^INV-\d{8}-\d{4}$/;
-
-                if (formData.invoiceType === 'gst') {
-                    validPattern = gstInvoicePattern.test(formData.invoiceNumber);
-                    if (!validPattern) {
-                        errors.push('GST invoice number must follow format: GST-YYYYMMDD-XXXX');
-                    }
-                } else {
-                    validPattern = nonGstInvoicePattern.test(formData.invoiceNumber);
-                    if (!validPattern) {
-                        errors.push('Invoice number must follow format: INV-YYYYMMDD-XXXX');
-                    }
-                }
-            }
         }
 
         // Document date validation
@@ -291,14 +273,14 @@ function SalesForm({
             }
         }
 
-        // ✅ NEW: Quotation-specific validations
+        // Quotation-specific validations
         if (isQuotationsMode) {
             if (formData.quotationValidity && (formData.quotationValidity < 1 || formData.quotationValidity > 365)) {
                 errors.push('Quotation validity must be between 1 and 365 days');
             }
         }
 
-        // Items validation - enhanced
+        // Items validation
         const validItems = formData.items.filter(item =>
             item.itemName &&
             parseFloat(item.quantity) > 0 &&
@@ -309,70 +291,18 @@ function SalesForm({
             errors.push(`Please add at least one valid item with name, quantity, and price for ${labels.documentName.toLowerCase()}`);
         }
 
-        // Check for items with invalid data
-        const invalidItems = formData.items.filter((item, index) => {
-            if (!item.itemName && !item.quantity && !item.pricePerUnit) {
-                return false; // Empty row, skip
-            }
-
-            return (
-                (item.itemName && (!item.quantity || parseFloat(item.quantity) <= 0)) ||
-                (item.itemName && (!item.pricePerUnit || parseFloat(item.pricePerUnit) <= 0)) ||
-                (item.quantity && !item.itemName) ||
-                (item.pricePerUnit && !item.itemName)
-            );
-        });
-
-        if (invalidItems.length > 0) {
-            errors.push(`${invalidItems.length} item(s) have incomplete information. Please fill all required fields or remove empty items.`);
-        }
-
-        // GST specific validations
-        if (formData.invoiceType === 'gst' && formData.gstEnabled) {
-            const itemsWithoutHSN = validItems.filter(item => !item.hsnCode || item.hsnCode.trim() === '');
-            if (itemsWithoutHSN.length > 0) {
-                errors.push(`${itemsWithoutHSN.length} item(s) are missing HSN codes. HSN codes are required for GST ${labels.documentName.toLowerCase()}s.`);
-            }
-
-            // Validate tax rates for GST items
-            const itemsWithInvalidTax = validItems.filter(item => {
-                const taxRate = parseFloat(item.taxRate) || 0;
-                return taxRate < 0 || taxRate > 28;
-            });
-
-            if (itemsWithInvalidTax.length > 0) {
-                errors.push(`${itemsWithInvalidTax.length} item(s) have invalid tax rates. GST rates should be between 0% and 28%.`);
-            }
-        }
-
-        // Additional business logic validations
-        const totalAmount = validItems.reduce((sum, item) => {
-            const quantity = parseFloat(item.quantity) || 0;
-            const price = parseFloat(item.pricePerUnit) || 0;
-            const discount = parseFloat(item.discountAmount) || 0;
-            return sum + (quantity * price - discount);
-        }, 0);
-
-        if (totalAmount <= 0) {
-            errors.push(`${labels.documentName} total must be greater than zero`);
-        }
-
-        // Large amount validation (optional business rule)
-        if (totalAmount > 1000000) {
-            console.warn(`⚠️ Large ${labels.documentName.toLowerCase()} amount detected:`, totalAmount);
-        }
-
         return errors;
     };
 
-    // ✅ UPDATED: Enhanced save handler with mode awareness
+    // Enhanced save handler
     const handleSave = (invoiceDataFromTable) => {
         console.log(`📥 ${labels.documentName}Form received data:`, invoiceDataFromTable);
 
         const errors = validateForm();
 
         if (errors.length > 0) {
-            alert(`Please fix the following errors in your ${labels.documentName.toLowerCase()}:\n\n` + errors.join('\n'));
+            const errorMessage = `Please fix the following errors in your ${labels.documentName.toLowerCase()}:\n\n` + errors.join('\n');
+            effectiveAddToast(errorMessage, 'error');
             return Promise.resolve({
                 success: false,
                 error: 'Validation failed',
@@ -386,181 +316,157 @@ function SalesForm({
             parseFloat(item.pricePerUnit) > 0
         );
 
-        // ✅ UPDATED: Include mode-specific data
+        // Proper customer handling for backend
+        let customerData = null;
+        let customerName = 'Cash Customer';
+        let customerMobile = '';
+
+        if (formData.customer && formData.customer.id) {
+            customerData = formData.customer.id;
+            customerName = formData.customer.name || 'Customer';
+            customerMobile = formData.customer.mobile || formData.mobileNumber || '';
+        } else if (formData.customer && formData.customer._id) {
+            customerData = formData.customer._id;
+            customerName = formData.customer.name || 'Customer';
+            customerMobile = formData.customer.mobile || formData.mobileNumber || '';
+        } else {
+            customerName = 'Cash Customer';
+            customerMobile = formData.mobileNumber || '';
+        }
+
+        // Transform items to backend format
+        const transformedItems = itemsToSave.map(item => ({
+            itemName: item.itemName,
+            itemCode: item.itemCode || '',
+            hsnCode: item.hsnCode || '0000',
+            quantity: parseFloat(item.quantity) || 1,
+            unit: item.unit || 'PCS',
+            pricePerUnit: parseFloat(item.pricePerUnit) || 0,
+            taxRate: parseFloat(item.taxRate) || (formData.gstEnabled ? 18 : 0),
+            discountPercent: parseFloat(item.discountPercent) || 0,
+            discountAmount: parseFloat(item.discountAmount) || 0,
+            category: item.category || '',
+            itemRef: item.itemRef || null,
+            amount: parseFloat(item.amount) || (parseFloat(item.quantity) * parseFloat(item.pricePerUnit))
+        }));
+
+        // Get payment data from invoiceDataFromTable
+        const paymentInfo = invoiceDataFromTable?.paymentData || invoiceDataFromTable?.paymentInfo;
+
+        // Build proper backend data structure
         const saleData = {
-            ...formData,
             companyId: effectiveCompanyId,
-            items: itemsToSave,
-
-            // Document type information
-            documentType: isQuotationsMode ? 'quotation' : 'invoice',
-            documentMode: isQuotationsMode ? 'quotation' : 'invoice',
-            formType: isQuotationsMode ? 'quotation' : 'sales',
-
-            // Include totals from ItemsTableWithTotals
-            totals: invoiceDataFromTable?.totals || {
-                finalTotal: 0,
-                subtotal: 0,
-                totalTax: 0,
-                totalCGST: 0,
-                totalSGST: 0,
-                totalAmount: 0,
-                totalQuantity: 0,
-                totalDiscountAmount: 0,
-                withTaxTotal: 0,
-                withoutTaxTotal: 0,
-                roundOffValue: 0,
-                roundOffEnabled: false
+            customer: customerData,
+            customerName: customerName,
+            customerMobile: customerMobile,
+            invoiceNumber: formData.invoiceNumber,
+            invoiceDate: formData.invoiceDate,
+            invoiceType: formData.gstEnabled ? 'gst' : 'non-gst',
+            gstEnabled: formData.gstEnabled,
+            taxMode: 'without-tax',
+            priceIncludesTax: false,
+            items: transformedItems,
+            payment: paymentInfo ? {
+                method: paymentInfo.paymentType || paymentInfo.method || 'cash',
+                paidAmount: parseFloat(paymentInfo.amount) || 0,
+                status: paymentInfo.status || 'pending',
+                bankAccountId: paymentInfo.bankAccountId || null,
+                bankAccountName: paymentInfo.bankAccountName || null,
+                reference: paymentInfo.reference || '',
+                notes: paymentInfo.notes || ''
+            } : {
+                method: 'cash',
+                paidAmount: 0,
+                status: 'pending'
             },
-
-            // Include payment information if any
-            paymentInfo: invoiceDataFromTable?.paymentInfo || null,
-
-            // Include round-off information
-            roundOff: invoiceDataFromTable?.roundOff || {
-                enabled: false,
-                value: 0
-            },
-
-            // Additional metadata
-            gstCalculationMode: invoiceDataFromTable?.gstEnabled !== undefined
-                ? (invoiceDataFromTable.gstEnabled ? 'enabled' : 'disabled')
-                : (formData.gstEnabled ? 'enabled' : 'disabled'),
-
-            invoiceMetadata: {
-                formType: isQuotationsMode ? 'quotation' : 'sales',
-                documentType: isQuotationsMode ? 'quotation' : 'invoice',
-                createdFrom: 'ItemsTableWithTotals',
-                hasPayment: !!(invoiceDataFromTable?.paymentInfo?.amount),
-                paymentAmount: invoiceDataFromTable?.paymentInfo?.amount || 0,
-                enhancedDataProvided: !!invoiceDataFromTable,
-                calculationMethod: 'ItemsTableWithTotals',
-                mode: mode,
-                isQuotation: isQuotationsMode
-            },
-
-            // ✅ NEW: Quotation-specific fields
+            notes: formData.notes || '',
+            status: isQuotationsMode ? 'draft' : 'completed',
+            // Quotation-specific fields
             ...(isQuotationsMode && {
+                documentType: 'quotation',
                 quotationValidity: formData.quotationValidity || 30,
-                quotationStatus: formData.quotationStatus || 'draft',
-                validUntil: formData.quotationValidity ?
-                    new Date(Date.now() + (formData.quotationValidity * 24 * 60 * 60 * 1000)).toISOString() :
-                    new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(),
-                convertedToInvoice: false,
-                quotationNotes: formData.notes
-            }),
-
-            // Timestamps
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString()
+                quotationStatus: formData.quotationStatus || 'draft'
+            })
         };
 
-        console.log(`💾 Saving ${labels.documentName.toLowerCase()} data with totals:`, {
-            documentNumber: saleData.invoiceNumber,
-            documentType: saleData.documentType,
-            itemCount: saleData.items.length,
-            totalsFinalTotal: saleData.totals.finalTotal,
-            hasPayment: !!saleData.paymentInfo,
-            gstEnabled: saleData.gstEnabled,
+        console.log(`💾 Saving ${labels.documentName.toLowerCase()} with backend format:`, {
             companyId: saleData.companyId,
+            customer: saleData.customer,
+            customerName: saleData.customerName,
+            itemCount: saleData.items.length,
+            paymentAmount: saleData.payment.paidAmount,
+            paymentMethod: saleData.payment.method,
+            gstEnabled: saleData.gstEnabled,
+            invoiceNumber: saleData.invoiceNumber,
+            taxMode: saleData.taxMode,
+            hasCustomerId: !!saleData.customer,
             isQuotation: isQuotationsMode
         });
 
-        // Handle async/sync onSave functions
+        // Call onSave with proper error handling
         if (onSave) {
             try {
                 const result = onSave(saleData);
-                console.log('📨 onSave returned:', result);
+                console.log('📨 onSave called with result:', result);
 
                 if (result && typeof result.then === 'function') {
                     return result.then(successResult => {
                         console.log(`✅ Async ${labels.documentName.toLowerCase()} save completed:`, successResult);
-
-                        if (successResult && successResult.success) {
-                            return {
-                                success: true,
-                                data: successResult.data || successResult,
-                                message: successResult.message || `${labels.documentName} saved successfully`,
-                                totals: saleData.totals,
-                                paymentInfo: saleData.paymentInfo,
-                                invoiceNumber: saleData.invoiceNumber,
-                                documentType: saleData.documentType,
-                                originalResult: successResult
-                            };
-                        } else {
-                            return {
-                                success: true,
-                                data: successResult || saleData,
-                                message: `${labels.documentName} saved successfully`,
-                                totals: saleData.totals,
-                                paymentInfo: saleData.paymentInfo,
-                                invoiceNumber: saleData.invoiceNumber,
-                                documentType: saleData.documentType,
-                                originalResult: successResult
-                            };
-                        }
+                        effectiveAddToast(`${labels.documentName} saved successfully!`, 'success');
+                        return {
+                            success: true,
+                            data: successResult.data || successResult,
+                            message: successResult.message || `${labels.documentName} saved successfully`,
+                            invoiceNumber: saleData.invoiceNumber,
+                            originalResult: successResult
+                        };
                     }).catch(error => {
                         console.error(`❌ Error in async ${labels.documentName.toLowerCase()} onSave:`, error);
+                        effectiveAddToast(`Error saving ${labels.documentName.toLowerCase()}: ${error.message}`, 'error');
                         return {
                             success: false,
                             error: error.message || 'Save operation failed',
-                            data: null,
-                            totals: saleData.totals
+                            data: null
                         };
                     });
                 } else {
                     console.log(`✅ Sync ${labels.documentName.toLowerCase()} save completed:`, result);
-
-                    if (result && result.success) {
-                        return Promise.resolve({
-                            success: true,
-                            data: result.data || result,
-                            message: result.message || `${labels.documentName} saved successfully`,
-                            totals: saleData.totals,
-                            paymentInfo: saleData.paymentInfo,
-                            invoiceNumber: saleData.invoiceNumber,
-                            documentType: saleData.documentType,
-                            originalResult: result
-                        });
-                    } else {
-                        return Promise.resolve({
-                            success: true,
-                            data: result || saleData,
-                            message: `${labels.documentName} saved successfully`,
-                            totals: saleData.totals,
-                            paymentInfo: saleData.paymentInfo,
-                            invoiceNumber: saleData.invoiceNumber,
-                            documentType: saleData.documentType,
-                            originalResult: result
-                        });
-                    }
+                    effectiveAddToast(`${labels.documentName} saved successfully!`, 'success');
+                    return Promise.resolve({
+                        success: true,
+                        data: result || saleData,
+                        message: `${labels.documentName} saved successfully`,
+                        invoiceNumber: saleData.invoiceNumber,
+                        originalResult: result
+                    });
                 }
             } catch (error) {
                 console.error(`❌ Error in ${labels.documentName.toLowerCase()} onSave:`, error);
+                effectiveAddToast(`Error saving ${labels.documentName.toLowerCase()}: ${error.message}`, 'error');
                 return Promise.resolve({
                     success: false,
                     error: error.message || 'Save operation failed',
-                    data: null,
-                    totals: saleData.totals
+                    data: null
                 });
             }
         } else {
             console.warn(`⚠️ No onSave handler provided for ${labels.documentName.toLowerCase()}`);
+            effectiveAddToast('No save handler provided', 'error');
             return Promise.resolve({
                 success: false,
                 error: 'No save handler provided',
-                data: null,
-                totals: saleData.totals
+                data: null
             });
         }
     };
 
-    // ✅ UPDATED: Handle share with mode awareness
+    // Handle share with mode awareness
     const handleShare = () => {
         const errors = validateForm();
 
         if (errors.length > 0) {
-            alert(`Please complete the ${labels.documentName.toLowerCase()} before sharing:\n\n` + errors.join('\n'));
+            const errorMessage = `Please complete the ${labels.documentName.toLowerCase()} before sharing:\n\n` + errors.join('\n');
+            effectiveAddToast(errorMessage, 'warning');
             return;
         }
 
@@ -577,7 +483,7 @@ function SalesForm({
         };
 
         console.log(`📤 Sharing ${labels.documentName.toLowerCase()}:`, shareData);
-        alert(`${labels.documentName} ${formData.invoiceNumber} ready to share!`);
+        effectiveAddToast(`${labels.documentName} ${formData.invoiceNumber} ready to share!`, 'info');
     };
 
     // Handle adding new item from ItemsTable
@@ -589,19 +495,22 @@ function SalesForm({
                 const result = await onAddItem(productData);
                 if (result !== false) {
                     console.log('✅ Product added successfully');
+                    effectiveAddToast('Product added successfully', 'success');
                     return result;
                 }
             } else {
                 console.log('✅ Product added (simulated):', productData.name);
+                effectiveAddToast('Product added successfully', 'success');
                 return { id: Date.now(), ...productData };
             }
         } catch (error) {
             console.error('❌ Error adding product:', error);
+            effectiveAddToast(`Error adding product: ${error.message}`, 'error');
             return false;
         }
     };
 
-    // ✅ UPDATED: Auto-save draft functionality with mode awareness
+    // Auto-save draft functionality with mode awareness
     useEffect(() => {
         if (formData.invoiceNumber && effectiveCompanyId) {
             const draftKey = `${isQuotationsMode ? 'quotation' : 'invoice'}_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
@@ -671,7 +580,6 @@ function SalesForm({
                         gstEnabled={formData.gstEnabled}
                         invoiceType={formData.invoiceType}
                         onChange={handleGSTToggleChange}
-                        // ✅ NEW: Pass mode information
                         mode={mode}
                         documentType={documentType}
                         documentName={labels.documentName}
@@ -690,7 +598,6 @@ function SalesForm({
                                     onMobileChange={(mobile) => updateFormData('mobileNumber', mobile)}
                                     isSupplierMode={false}
                                     companyId={effectiveCompanyId}
-                                    // ✅ NEW: Pass mode information
                                     mode={mode}
                                     documentType={documentType}
                                     customerLabel={labels.customerLabel}
@@ -707,12 +614,10 @@ function SalesForm({
                                     invoiceType={formData.invoiceType}
                                     onInvoiceNumberChange={(number) => updateFormData('invoiceNumber', number)}
                                     onInvoiceDateChange={(date) => updateFormData('invoiceDate', date)}
-                                    // ✅ NEW: Pass mode information and labels
                                     mode={mode}
                                     documentType={documentType}
                                     documentNumberLabel={labels.documentNumber}
                                     documentDateLabel={labels.documentDate}
-                                    // ✅ NEW: Pass quotation-specific fields
                                     quotationValidity={formData.quotationValidity}
                                     onQuotationValidityChange={(validity) => updateFormData('quotationValidity', validity)}
                                 />
@@ -729,7 +634,7 @@ function SalesForm({
                         inventoryItems={inventoryItems}
                         companyId={effectiveCompanyId}
                         gstEnabled={formData.gstEnabled}
-                        formType={isQuotationsMode ? "quotation" : "sales"}
+                        formType={getEffectiveFormType()} // ✅ FIXED: Use proper formType
                         onSave={handleSave}
                         onShare={handleShare}
                         onCancel={onCancel}
@@ -738,14 +643,14 @@ function SalesForm({
                         invoiceNumber={formData.invoiceNumber}
                         invoiceDate={formData.invoiceDate}
                         userId={null}
-                        // ✅ NEW: Pass mode information
                         mode={mode}
                         documentType={documentType}
+                        addToast={effectiveAddToast} // ✅ FIXED: Pass addToast function
                         documentLabels={labels}
                     />
                 </div>
 
-                {/* ✅ UPDATED: Debug section with mode information */}
+                {/* Debug section */}
                 {process.env.NODE_ENV === 'development' && (
                     <div className="mb-3">
                         <Card className={`border-${isQuotationsMode ? 'warning' : 'info'} bg-opacity-10`}
@@ -759,6 +664,8 @@ function SalesForm({
                                         <div><strong>Form Data:</strong></div>
                                         <div>Mode: {mode}</div>
                                         <div>Document Type: {documentType}</div>
+                                        <div>Form Type: {getEffectiveFormType()}</div>
+                                        <div>Is Quotations Mode: {isQuotationsMode ? 'Yes' : 'No'}</div>
                                         <div>GST Enabled: {formData.gstEnabled ? 'Yes' : 'No'}</div>
                                         <div>Invoice Type: {formData.invoiceType}</div>
                                         <div>Company ID: {effectiveCompanyId}</div>
@@ -778,6 +685,7 @@ function SalesForm({
                                     <Col md={3}>
                                         <div><strong>Customer Info:</strong></div>
                                         <div>Customer: {formData.customer?.name || 'None'}</div>
+                                        <div>Customer ID: {formData.customer?.id || formData.customer?._id || 'None'}</div>
                                         <div>Mobile: {formData.mobileNumber || 'None'}</div>
                                         <div>Label: {labels.customerLabel}</div>
                                     </Col>
@@ -786,21 +694,32 @@ function SalesForm({
                                         <div>Total Items: {formData.items.length}</div>
                                         <div>Valid Items: {formData.items.filter(item => item.itemName).length}</div>
                                         <div>Component: ItemsTableWithTotals</div>
-                                        <div>Form Type: {isQuotationsMode ? 'quotation' : 'sales'}</div>
+                                        <div>Effective Form Type: {getEffectiveFormType()}</div>
+                                        <div>AddToast: {addToast ? 'Provided' : 'Default'}</div>
                                     </Col>
                                 </Row>
+                                <div className="mt-2 pt-2 border-top">
+                                    <strong>Backend Data Preview:</strong>
+                                    <div className="small">
+                                        Customer ID: {formData.customer?.id || formData.customer?._id || 'null'} |
+                                        Customer Name: {formData.customer?.name || 'Cash Customer'} |
+                                        Tax Mode: without-tax |
+                                        Price Includes Tax: false |
+                                        Document Type: {isQuotationsMode ? 'quotation' : 'invoice'}
+                                    </div>
+                                </div>
                             </Card.Body>
                         </Card>
                     </div>
                 )}
             </Container>
 
-            {/* ✅ NEW: Mode-specific styles */}
+            {/* Mode-specific styles */}
             <style jsx>{`
                 .sales-form-wrapper[data-mode="quotations"] {
-                    --primary-color: #ff6b35;
-                    --primary-rgb: 255, 107, 53;
-                    --secondary-color: #ff8c42;
+                    --primary-color: #17a2b8;
+                    --primary-rgb: 23, 162, 184;
+                    --secondary-color: #20c997;
                 }
 
                 .sales-form-wrapper[data-mode="invoices"] {

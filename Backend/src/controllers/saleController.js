@@ -5,13 +5,14 @@ const mongoose = require('mongoose');
 
 const saleController = {
 
-    // Create a new sale/invoice - FIXED WITH PROPER TAX MODE SUPPORT
+    // Create a new sale/invoice - FIXED WITH PROPER CUSTOMER HANDLING
     createSale: async (req, res) => {
         try {
             const {
-                customerName,           // Customer name (will find or create)
-                customerMobile,         // Customer mobile
-                customer,               // Customer ID (if provided directly)
+                customerName,           // Customer name (for display)
+                customerMobile,         // Customer mobile (for display)
+                customer,               // Customer ID (MAIN - we'll use this)
+                customerId,             // Alternative customer ID field
                 invoiceNumber,          // Invoice number
                 invoiceDate,           // Invoice date
                 gstEnabled = true,     // GST enabled flag
@@ -23,12 +24,14 @@ const saleController = {
                 roundOff = 0,          // Round off amount
                 roundOffEnabled = false, // Round off enabled flag
                 status = 'draft',      // Sale status
-                // FIXED: Handle both tax mode fields properly
                 taxMode = 'without-tax',         // Tax mode (with-tax/without-tax)
-                priceIncludesTax = false        // Whether the price includes tax (for backward compatibility)
+                priceIncludesTax = false        // Whether the price includes tax
             } = req.body;
 
-            console.log('📥 Creating sale with tax mode:', {
+            console.log('📥 Creating sale:', {
+                customerName,
+                customer,
+                customerId,
                 taxMode,
                 priceIncludesTax,
                 gstEnabled,
@@ -36,10 +39,76 @@ const saleController = {
             });
 
             // Validate required fields
-            if ((!customerName && !customer) || !companyId || !items || items.length === 0) {
+            if (!companyId || !items || items.length === 0) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Customer (name or ID), Company, and Items are required'
+                    message: 'Company ID and Items are required'
+                });
+            }
+
+            // FIXED: Handle customer - prioritize ID over name
+            let customerRecord = null;
+            const finalCustomerId = customer || customerId;
+
+            if (finalCustomerId && mongoose.Types.ObjectId.isValid(finalCustomerId)) {
+                // ✅ PREFERRED: Find existing customer by ID
+                console.log('🔍 Finding customer by ID:', finalCustomerId);
+                customerRecord = await Party.findById(finalCustomerId);
+
+                if (!customerRecord) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Customer not found with provided ID'
+                    });
+                }
+
+                console.log('✅ Found customer:', {
+                    id: customerRecord._id,
+                    name: customerRecord.name,
+                    mobile: customerRecord.mobile
+                });
+            } else if (customerName && customerMobile) {
+                // ✅ FALLBACK: Find by name and mobile (but don't create)
+                console.log('🔍 Finding customer by name and mobile:', customerName, customerMobile);
+
+                customerRecord = await Party.findOne({
+                    $and: [
+                        { companyId: companyId },
+                        { type: 'customer' },
+                        {
+                            $or: [
+                                { mobile: customerMobile },
+                                { phoneNumber: customerMobile }
+                            ]
+                        }
+                    ]
+                });
+
+                if (!customerRecord) {
+                    // Try by name only
+                    customerRecord = await Party.findOne({
+                        companyId: companyId,
+                        type: 'customer',
+                        name: { $regex: new RegExp(`^${customerName}$`, 'i') }
+                    });
+                }
+
+                if (!customerRecord) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Customer not found. Please select an existing customer or create one first.'
+                    });
+                }
+
+                console.log('✅ Found customer by search:', {
+                    id: customerRecord._id,
+                    name: customerRecord.name,
+                    mobile: customerRecord.mobile
+                });
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Customer ID or customer name and mobile are required'
                 });
             }
 
@@ -54,79 +123,6 @@ const saleController = {
                 finalPriceIncludesTax
             });
 
-            // Find or create customer (keeping existing logic)
-            let customerRecord;
-
-            if (customer && mongoose.Types.ObjectId.isValid(customer)) {
-                customerRecord = await Party.findById(customer);
-                if (!customerRecord) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Customer not found with provided ID'
-                    });
-                }
-            } else {
-                if (customerMobile) {
-                    customerRecord = await Party.findOne({
-                        mobile: customerMobile,
-                        type: 'customer'
-                    });
-                }
-
-                if (!customerRecord && customerName) {
-                    customerRecord = await Party.findOne({
-                        name: { $regex: new RegExp(`^${customerName}$`, 'i') },
-                        type: 'customer'
-                    });
-                }
-
-                if (!customerRecord) {
-                    if (!customerName) {
-                        return res.status(400).json({
-                            success: false,
-                            message: 'Customer name is required to create new customer'
-                        });
-                    }
-
-                    const userId = req.user?.id || companyId;
-
-                    customerRecord = new Party({
-                        name: customerName,
-                        mobile: customerMobile || '',
-                        phoneNumber: customerMobile || '',
-                        type: 'customer',
-                        email: '',
-                        companyId: companyId,
-                        userId: userId,
-                        createdBy: userId,
-                        address: {
-                            street: '',
-                            city: '',
-                            state: '',
-                            pincode: '',
-                            country: 'India'
-                        },
-                        gstNumber: '',
-                        panNumber: '',
-                        status: 'active',
-                        creditLimit: 0,
-                        creditDays: 0
-                    });
-
-                    try {
-                        await customerRecord.save();
-                        console.log('✅ Created new customer:', customerRecord._id);
-                    } catch (customerError) {
-                        console.error('❌ Error creating customer:', customerError);
-                        return res.status(400).json({
-                            success: false,
-                            message: 'Failed to create customer',
-                            error: customerError.message
-                        });
-                    }
-                }
-            }
-
             // FIXED: Process items with proper tax mode handling
             const processedItems = [];
             let subtotal = 0;
@@ -139,10 +135,9 @@ const saleController = {
 
                 console.log(`🔄 Processing item ${i + 1}:`, {
                     itemName: item.itemName,
-                    itemTaxMode: item.taxMode,
-                    itemPriceIncludesTax: item.priceIncludesTax,
-                    globalTaxMode: finalTaxMode,
-                    globalPriceIncludesTax: finalPriceIncludesTax
+                    quantity: item.quantity,
+                    pricePerUnit: item.pricePerUnit,
+                    taxRate: item.taxRate
                 });
 
                 // Basic validation
@@ -172,39 +167,6 @@ const saleController = {
                 const itemTaxMode = item.taxMode || finalTaxMode;
                 const itemPriceIncludesTax = itemTaxMode === 'with-tax';
 
-                console.log(`📋 Item ${i + 1} tax mode determined:`, {
-                    itemTaxMode,
-                    itemPriceIncludesTax,
-                    taxRate
-                });
-
-                // Get tax rates
-                let itemCgstRate = 0;
-                let itemSgstRate = 0;
-                let itemIgstRate = 0;
-
-                if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
-                    const itemDetails = await Item.findById(item.itemRef).select('cgst sgst igst taxRate');
-                    if (itemDetails) {
-                        itemCgstRate = parseFloat(itemDetails.cgst || 0);
-                        itemSgstRate = parseFloat(itemDetails.sgst || 0);
-                        itemIgstRate = parseFloat(itemDetails.igst || 0);
-
-                        if (itemCgstRate === 0 && itemSgstRate === 0 && itemIgstRate === 0) {
-                            const itemTaxRate = parseFloat(itemDetails.taxRate || taxRate || 0);
-                            if (itemTaxRate > 0) {
-                                itemCgstRate = itemTaxRate / 2;
-                                itemSgstRate = itemTaxRate / 2;
-                                itemIgstRate = 0;
-                            }
-                        }
-                    }
-                } else if (taxRate > 0) {
-                    itemCgstRate = taxRate / 2;
-                    itemSgstRate = taxRate / 2;
-                    itemIgstRate = 0;
-                }
-
                 // Calculate base amount
                 const baseAmount = quantity * pricePerUnit;
 
@@ -216,59 +178,36 @@ const saleController = {
 
                 const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
-                // FIXED: Calculate taxes based on item tax mode
+                // Calculate taxes
                 let cgst = 0;
                 let sgst = 0;
                 let igst = 0;
                 let itemAmount = 0;
                 let itemTaxableAmount = 0;
 
-                if (gstEnabled && (itemCgstRate > 0 || itemSgstRate > 0 || itemIgstRate > 0)) {
-                    const totalTaxRate = itemCgstRate + itemSgstRate + itemIgstRate;
+                if (gstEnabled && taxRate > 0) {
+                    // Split tax rate for CGST and SGST
+                    const cgstRate = taxRate / 2;
+                    const sgstRate = taxRate / 2;
 
                     if (itemPriceIncludesTax) {
                         // WITH TAX MODE - Extract tax from amount
-                        console.log(`🟢 Item ${i + 1}: WITH TAX calculation`);
-
-                        const taxMultiplier = 1 + (totalTaxRate / 100);
+                        const taxMultiplier = 1 + (taxRate / 100);
                         itemTaxableAmount = amountAfterDiscount / taxMultiplier;
-
-                        const totalTaxAmount = amountAfterDiscount - itemTaxableAmount;
-                        cgst = (itemTaxableAmount * itemCgstRate) / 100;
-                        sgst = (itemTaxableAmount * itemSgstRate) / 100;
-                        igst = (itemTaxableAmount * itemIgstRate) / 100;
-
+                        cgst = (itemTaxableAmount * cgstRate) / 100;
+                        sgst = (itemTaxableAmount * sgstRate) / 100;
                         itemAmount = amountAfterDiscount; // Amount stays same (tax included)
-
-                        console.log(`✅ Item ${i + 1} WITH TAX result:`, {
-                            amountAfterDiscount,
-                            itemTaxableAmount,
-                            totalTaxAmount,
-                            cgst, sgst, igst,
-                            itemAmount
-                        });
                     } else {
                         // WITHOUT TAX MODE - Add tax to amount
-                        console.log(`🔵 Item ${i + 1}: WITHOUT TAX calculation`);
-
                         itemTaxableAmount = amountAfterDiscount;
-                        cgst = (itemTaxableAmount * itemCgstRate) / 100;
-                        sgst = (itemTaxableAmount * itemSgstRate) / 100;
-                        igst = (itemTaxableAmount * itemIgstRate) / 100;
-
-                        itemAmount = itemTaxableAmount + cgst + sgst + igst; // Add tax
-
-                        console.log(`✅ Item ${i + 1} WITHOUT TAX result:`, {
-                            itemTaxableAmount,
-                            cgst, sgst, igst,
-                            itemAmount
-                        });
+                        cgst = (itemTaxableAmount * cgstRate) / 100;
+                        sgst = (itemTaxableAmount * sgstRate) / 100;
+                        itemAmount = itemTaxableAmount + cgst + sgst; // Add tax
                     }
                 } else {
                     // No GST
                     itemTaxableAmount = amountAfterDiscount;
                     itemAmount = amountAfterDiscount;
-                    console.log(`❌ Item ${i + 1}: No GST`);
                 }
 
                 // Update totals
@@ -278,7 +217,7 @@ const saleController = {
                 const itemTotalTax = cgst + sgst + igst;
                 totalTax += itemTotalTax;
 
-                // FIXED: Create processed item with all required fields
+                // Create processed item
                 const processedItem = {
                     itemRef: item.itemRef || null,
                     itemName: item.itemName.trim(),
@@ -288,31 +227,21 @@ const saleController = {
                     quantity,
                     unit: item.unit || 'PCS',
                     pricePerUnit,
-                    taxRate: itemCgstRate + itemSgstRate + itemIgstRate,
-
-                    // FIXED: Include both tax mode fields for compatibility
+                    taxRate: taxRate,
                     taxMode: itemTaxMode,
                     priceIncludesTax: itemPriceIncludesTax,
-
                     discountPercent,
                     discountAmount: parseFloat(itemDiscountAmount.toFixed(2)),
-
-                    // Tax amounts - both formats for compatibility
                     cgst: parseFloat(cgst.toFixed(2)),
                     sgst: parseFloat(sgst.toFixed(2)),
                     igst: parseFloat(igst.toFixed(2)),
                     cgstAmount: parseFloat(cgst.toFixed(2)),
                     sgstAmount: parseFloat(sgst.toFixed(2)),
                     igstAmount: parseFloat(igst.toFixed(2)),
-
-                    // Calculated amounts
                     taxableAmount: parseFloat(itemTaxableAmount.toFixed(2)),
                     totalTaxAmount: parseFloat(itemTotalTax.toFixed(2)),
-
-                    // Final amounts - both formats for compatibility
                     amount: parseFloat(itemAmount.toFixed(2)),
                     itemAmount: parseFloat(itemAmount.toFixed(2)),
-
                     lineNumber: i + 1
                 };
 
@@ -320,21 +249,21 @@ const saleController = {
 
                 console.log(`✅ Item ${i + 1} processed:`, {
                     itemName: processedItem.itemName,
-                    taxMode: processedItem.taxMode,
-                    priceIncludesTax: processedItem.priceIncludesTax,
                     taxableAmount: processedItem.taxableAmount,
                     totalTax: processedItem.totalTaxAmount,
                     finalAmount: processedItem.amount
                 });
 
-                // Stock validation
-                if (item.itemRef) {
-                    const itemDetails = await Item.findById(item.itemRef);
-                    if (itemDetails && itemDetails.currentStock < quantity) {
-                        return res.status(400).json({
-                            success: false,
-                            message: `Item ${i + 1} (${item.itemName}): Insufficient stock. Available: ${itemDetails.currentStock}, Required: ${quantity}`
-                        });
+                // OPTIONAL: Stock validation (if you want to check stock)
+                if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+                    try {
+                        const itemDetails = await Item.findById(item.itemRef);
+                        if (itemDetails && itemDetails.currentStock < quantity) {
+                            console.warn(`⚠️ Low stock for item ${item.itemName}: Available ${itemDetails.currentStock}, Required ${quantity}`);
+                            // Note: Not throwing error, just warning
+                        }
+                    } catch (stockError) {
+                        console.warn('Stock check failed:', stockError.message);
                     }
                 }
             }
@@ -350,27 +279,23 @@ const saleController = {
                 adjustedFinalTotal = finalTotal + appliedRoundOff;
             }
 
-            // FIXED: Prepare totals object with comprehensive fields
+            // Prepare totals object
             const totals = {
                 subtotal: parseFloat(subtotal.toFixed(2)),
                 totalQuantity: processedItems.reduce((sum, item) => sum + item.quantity, 0),
                 totalDiscount: parseFloat(totalDiscount.toFixed(2)),
-                totalDiscountAmount: parseFloat(totalDiscount.toFixed(2)),
                 totalTax: parseFloat(totalTax.toFixed(2)),
                 totalCGST: parseFloat(processedItems.reduce((sum, item) => sum + item.cgst, 0).toFixed(2)),
                 totalSGST: parseFloat(processedItems.reduce((sum, item) => sum + item.sgst, 0).toFixed(2)),
                 totalIGST: parseFloat(processedItems.reduce((sum, item) => sum + item.igst, 0).toFixed(2)),
                 totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2)),
                 finalTotal: parseFloat(adjustedFinalTotal.toFixed(2)),
-                roundOff: parseFloat(appliedRoundOff.toFixed(2)),
-                // Additional fields for tax mode compatibility
-                withTaxTotal: finalPriceIncludesTax ? parseFloat(adjustedFinalTotal.toFixed(2)) : parseFloat((totalTaxableAmount + totalTax + appliedRoundOff).toFixed(2)),
-                withoutTaxTotal: finalPriceIncludesTax ? parseFloat(totalTaxableAmount.toFixed(2)) : parseFloat(adjustedFinalTotal.toFixed(2))
+                roundOff: parseFloat(appliedRoundOff.toFixed(2))
             };
 
             console.log('💰 Final totals calculated:', totals);
 
-            // Payment details (keeping existing logic)
+            // FIXED: Payment details with bank account info
             const paymentDetails = {
                 method: payment?.method || 'cash',
                 status: payment?.status || 'pending',
@@ -380,7 +305,10 @@ const saleController = {
                 dueDate: payment?.dueDate ? new Date(payment.dueDate) : null,
                 creditDays: parseInt(payment?.creditDays || 0),
                 reference: payment?.reference || '',
-                notes: payment?.notes || ''
+                notes: payment?.notes || '',
+                // FIXED: Include bank account details if provided
+                bankAccountId: payment?.bankAccountId || null,
+                bankAccountName: payment?.bankAccountName || null
             };
 
             const paidAmount = paymentDetails.paidAmount;
@@ -420,26 +348,24 @@ const saleController = {
                     method: paymentDetails.method,
                     reference: paymentDetails.reference,
                     paymentDate: paymentDetails.paymentDate,
-                    dueDate: paymentDetails.dueDate,
+                    bankAccountId: paymentDetails.bankAccountId,
+                    bankAccountName: paymentDetails.bankAccountName,
                     notes: paymentDetails.notes || 'Initial payment',
                     createdAt: new Date(),
                     createdBy: req.user?.id || 'system'
                 });
             }
 
-            // FIXED: Create sale object with proper tax mode fields
+            // Create sale object
             const saleData = {
                 invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
                 invoiceType: gstEnabled ? 'gst' : 'non-gst',
-                customer: customerRecord._id,
+                customer: customerRecord._id, // Use the found customer ID
                 invoiceNumber,
-                customerMobile: customerMobile || customerRecord.mobile,
+                customerMobile: customerRecord.mobile || customerMobile, // Use customer's actual mobile
                 gstEnabled,
-
-                // FIXED: Include both tax mode fields for full compatibility
                 taxMode: finalTaxMode,
                 priceIncludesTax: finalPriceIncludesTax,
-
                 companyId,
                 items: processedItems,
                 totals,
@@ -453,10 +379,12 @@ const saleController = {
             };
 
             console.log('💾 Creating sale with data:', {
-                taxMode: saleData.taxMode,
-                priceIncludesTax: saleData.priceIncludesTax,
+                customer: customerRecord.name,
+                customerId: customerRecord._id,
                 itemCount: saleData.items.length,
-                finalTotal: saleData.totals.finalTotal
+                finalTotal: saleData.totals.finalTotal,
+                paymentAmount: saleData.payment.paidAmount,
+                paymentMethod: saleData.payment.method
             });
 
             // Create the sale
@@ -466,25 +394,30 @@ const saleController = {
             // Populate customer details for response
             await sale.populate('customer', 'name mobile email address type');
 
-            // Update item stock
+            // OPTIONAL: Update item stock (if you're tracking inventory)
             for (const item of processedItems) {
-                if (item.itemRef) {
-                    await Item.findByIdAndUpdate(
-                        item.itemRef,
-                        { $inc: { currentStock: -item.quantity } },
-                        { new: true }
-                    );
+                if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+                    try {
+                        await Item.findByIdAndUpdate(
+                            item.itemRef,
+                            { $inc: { currentStock: -item.quantity } },
+                            { new: true }
+                        );
+                        console.log(`📦 Updated stock for item ${item.itemName}: -${item.quantity}`);
+                    } catch (stockError) {
+                        console.warn('Stock update failed:', stockError.message);
+                    }
                 }
             }
 
             console.log('✅ Sale created successfully:', {
                 id: sale._id,
                 invoiceNumber: sale.invoiceNumber,
-                taxMode: sale.taxMode,
-                priceIncludesTax: sale.priceIncludesTax
+                customer: customerRecord.name,
+                finalTotal: sale.totals.finalTotal
             });
 
-            // FIXED: Enhanced response with proper tax mode info
+            // Response
             res.status(201).json({
                 success: true,
                 message: 'Sale created successfully',
@@ -494,6 +427,7 @@ const saleController = {
                         invoiceNumber: sale.invoiceNumber,
                         invoiceDate: sale.invoiceDate,
                         customer: {
+                            id: customerRecord._id,
                             name: customerRecord.name,
                             mobile: customerRecord.mobile
                         },
@@ -501,11 +435,8 @@ const saleController = {
                         payment: {
                             ...sale.payment,
                             dueDate: sale.payment.dueDate,
-                            creditDays: sale.payment.creditDays,
-                            isOverdue: sale.isOverdue,
-                            daysOverdue: sale.daysOverdue
+                            creditDays: sale.payment.creditDays
                         },
-                        // FIXED: Include both tax mode fields in response
                         taxMode: sale.taxMode,
                         priceIncludesTax: sale.priceIncludesTax,
                         gstEnabled: sale.gstEnabled

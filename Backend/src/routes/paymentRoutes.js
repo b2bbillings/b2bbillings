@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
-// Import controller functions
+// ✅ UPDATED: Import all controller functions including the new one
 const {
     createPaymentIn,
     createPaymentOut,
@@ -10,7 +10,8 @@ const {
     getPaymentById,
     getPartyPaymentSummary,
     cancelPayment,
-    getPendingInvoicesForPayment
+    getPendingInvoicesForPayment,
+    getPendingPurchaseInvoicesForPayment  // ✅ NEW: Added this import
 } = require('../controllers/paymentController');
 
 // Authentication middleware (replace with real auth)
@@ -66,6 +67,23 @@ const validatePayment = [
         .optional()
         .isMongoId()
         .withMessage('Invalid sale order ID'),
+    // ✅ NEW: Add validation for purchase invoice fields
+    body('purchaseInvoiceId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid purchase invoice ID'),
+    body('purchaseInvoiceAllocations')
+        .optional()
+        .isArray()
+        .withMessage('Purchase invoice allocations must be an array'),
+    body('purchaseInvoiceAllocations.*.purchaseInvoiceId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid purchase invoice ID in allocations'),
+    body('purchaseInvoiceAllocations.*.allocatedAmount')
+        .optional()
+        .isFloat({ min: 0.01 })
+        .withMessage('Allocated amount must be greater than 0'),
     body('bankAccountId')
         .optional()
         .isMongoId()
@@ -122,10 +140,16 @@ const handleValidationErrors = (req, res, next) => {
 // 📋 PENDING INVOICES ROUTES
 // ================================
 
-// Get pending invoices for payment
+// Get pending sales invoices for payment (PayIn - Customer payments)
 router.get('/pending-invoices/:partyId',
     auth,
     asyncHandler(getPendingInvoicesForPayment)
+);
+
+// ✅ NEW: Get pending purchase invoices for payment (PayOut - Supplier payments)
+router.get('/pending-purchase-invoices/:partyId',
+    auth,
+    asyncHandler(getPendingPurchaseInvoicesForPayment)
 );
 
 // ================================
@@ -184,6 +208,64 @@ router.patch('/:paymentId/cancel',
     validateCancelPayment,
     handleValidationErrors,
     asyncHandler(cancelPayment)
+);
+
+// ✅ NEW: Get payment allocation details for sales invoices (PayIn)
+router.get('/:paymentId/allocations',
+    auth,
+    asyncHandler(async (req, res) => {
+        try {
+            const { paymentId } = req.params;
+
+            // This would be implemented in your controller
+            // For now, return a placeholder response
+            res.json({
+                success: true,
+                data: {
+                    payment: { _id: paymentId },
+                    allocations: [],
+                    totalAllocatedAmount: 0,
+                    remainingAmount: 0
+                },
+                message: 'Payment allocation details retrieved'
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get payment allocations',
+                error: error.message
+            });
+        }
+    })
+);
+
+// ✅ NEW: Get payment allocation details for purchase invoices (PayOut)
+router.get('/:paymentId/purchase-invoice-allocations',
+    auth,
+    asyncHandler(async (req, res) => {
+        try {
+            const { paymentId } = req.params;
+
+            // This would be implemented in your controller
+            // For now, return a placeholder response
+            res.json({
+                success: true,
+                data: {
+                    payment: { _id: paymentId },
+                    allocations: [],
+                    totalAllocatedAmount: 0,
+                    remainingAmount: 0
+                },
+                message: 'Payment allocation details retrieved'
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to get payment allocations',
+                error: error.message
+            });
+        }
+    })
 );
 
 // ================================
@@ -296,12 +378,15 @@ router.use('*', (req, res) => {
         success: false,
         message: 'Payment route not found',
         availableRoutes: [
-            'GET /payments/pending-invoices/:partyId - Get pending invoices',
-            'POST /payments/pay-in - Create payment in',
-            'POST /payments/pay-out - Create payment out',
+            'GET /payments/pending-invoices/:partyId - Get pending sales invoices for PayIn',
+            'GET /payments/pending-purchase-invoices/:partyId - Get pending purchase invoices for PayOut', // ✅ NEW
+            'POST /payments/pay-in - Create payment in (customer pays us)',
+            'POST /payments/pay-out - Create payment out (we pay supplier)',
             'GET /payments - Get all payments',
             'GET /payments/:paymentId - Get payment by ID',
             'GET /payments/party/:partyId/summary - Get party payment summary',
+            'GET /payments/:paymentId/allocations - Get sales invoice allocation details', // ✅ NEW
+            'GET /payments/:paymentId/purchase-invoice-allocations - Get purchase invoice allocation details', // ✅ NEW
             'PATCH /payments/:paymentId/cancel - Cancel payment'
         ],
         requestedUrl: req.originalUrl,

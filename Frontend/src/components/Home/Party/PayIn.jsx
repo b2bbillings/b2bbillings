@@ -1,25 +1,21 @@
-// Frontend/src/components/Home/Party/PayIn.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Form, Button, Row, Col, Alert, Spinner, Card, Table, Badge } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Modal, Form, Button, Row, Col, Alert, Spinner, Card, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faMoneyBillWave,
-    faTimes,
     faExclamationTriangle,
     faInfoCircle,
     faCheckCircle,
     faSave,
     faPlus,
     faFileInvoice,
-    faEye,
     faCalendar,
     faRupeeSign,
     faReceipt,
-    faHistory,
-    faRefresh
+    faRefresh,
+    faUniversity
 } from '@fortawesome/free-solid-svg-icons';
 
-// Service imports
 import paymentService from '../../../services/paymentService';
 import bankAccountService from '../../../services/bankAccountService';
 import authService from '../../../services/authService';
@@ -33,10 +29,10 @@ function PayIn({
     companyId,
     currentUser
 }) {
-    // Form data state
     const [formData, setFormData] = useState({
         customerName: '',
         date: new Date().toISOString().split('T')[0],
+        clearingDate: '',
         employeeName: '',
         totalOutstanding: 0,
         amountReceived: '',
@@ -50,8 +46,6 @@ function PayIn({
         invoiceAllocations: []
     });
 
-    // UI states
-    const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -59,12 +53,10 @@ function PayIn({
     const [isLoadingInvoices, setIsLoadingInvoices] = useState(false);
     const [availableBanks, setAvailableBanks] = useState([]);
     const [isLoadingBanks, setIsLoadingBanks] = useState(false);
-
-    // Invoice selection state
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     const [showInvoicePanel, setShowInvoicePanel] = useState(false);
+    const [selectedBankDetails, setSelectedBankDetails] = useState(null);
 
-    // Payment methods for dropdown
     const paymentMethods = [
         { value: 'cash', label: 'Cash' },
         { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -73,14 +65,11 @@ function PayIn({
         { value: 'card', label: 'Card' }
     ];
 
-    // **ENHANCED: Load pending invoices with better error handling and fresh data**
     const loadPendingInvoices = async (forceRefresh = false) => {
         if (!party || !companyId) return;
 
         try {
             setIsLoadingInvoices(true);
-            console.log('📋 Loading pending invoices for party:', party.name, forceRefresh ? '(forced refresh)' : '');
-
             const response = await paymentService.getPendingInvoicesForPayment(
                 companyId,
                 party._id || party.id
@@ -92,7 +81,6 @@ function PayIn({
                     response.data.orders ||
                     [];
 
-                // **ENHANCED: Use updated due amounts from the response**
                 const invoicesWithDue = invoices.filter(invoice => {
                     const dueAmount = parseFloat(invoice.dueAmount || 0);
                     const totalAmount = parseFloat(
@@ -101,26 +89,18 @@ function PayIn({
                         invoice.finalTotal ||
                         0
                     );
-
-                    console.log(`🧾 Invoice ${invoice.invoiceNumber || invoice.orderNumber}: Due=₹${dueAmount}, Total=₹${totalAmount}`);
-
                     return dueAmount > 0 && totalAmount > 0;
                 });
 
-                console.log(`📊 Found ${invoicesWithDue.length} invoices with pending amounts`);
                 setPendingInvoices(invoicesWithDue);
 
-                // **NEW: Update the selected invoice if it still exists but with updated amounts**
                 if (selectedInvoice && invoicesWithDue.length > 0) {
                     const updatedSelectedInvoice = invoicesWithDue.find(inv =>
                         (inv._id || inv.id) === (selectedInvoice._id || selectedInvoice.id)
                     );
 
                     if (updatedSelectedInvoice) {
-                        console.log('🔄 Updating selected invoice with fresh data');
                         setSelectedInvoice(updatedSelectedInvoice);
-
-                        // Update the form with new due amount
                         const newDueAmount = parseFloat(updatedSelectedInvoice.dueAmount || 0);
                         if (newDueAmount > 0) {
                             setFormData(prev => ({
@@ -129,8 +109,6 @@ function PayIn({
                             }));
                         }
                     } else {
-                        // Invoice is fully paid, clear selection
-                        console.log('✅ Selected invoice is now fully paid, clearing selection');
                         setSelectedInvoice(null);
                         setFormData(prev => ({
                             ...prev,
@@ -139,13 +117,10 @@ function PayIn({
                         }));
                     }
                 }
-
             } else {
-                console.log('⚠️ No pending invoices found:', response.message);
                 setPendingInvoices([]);
             }
         } catch (error) {
-            console.error('❌ Error loading pending invoices:', error);
             setPendingInvoices([]);
             if (!forceRefresh) {
                 setError('Failed to load pending invoices');
@@ -155,15 +130,12 @@ function PayIn({
         }
     };
 
-    // **NEW: Refresh invoice data after payment**
     const refreshInvoiceData = async () => {
         if (formData.paymentType === 'pending' && party && companyId) {
-            console.log('🔄 Refreshing invoice data after payment...');
             await loadPendingInvoices(true);
         }
     };
 
-    // Load available banks from backend
     const loadAvailableBanks = async () => {
         if (!companyId) return;
 
@@ -181,14 +153,12 @@ function PayIn({
                 setAvailableBanks([]);
             }
         } catch (error) {
-            console.error('Error loading banks:', error);
             setAvailableBanks([]);
         } finally {
             setIsLoadingBanks(false);
         }
     };
 
-    // Auto-fill employee information
     const autoFillEmployeeData = () => {
         try {
             const user = currentUser || authService.getCurrentUser();
@@ -212,14 +182,12 @@ function PayIn({
         }
     };
 
-    // Initialize form when modal opens
     useEffect(() => {
         if (show && party) {
-            console.log('🔄 Initializing PayIn form for party:', party.name);
-
             setFormData({
                 customerName: party.name,
                 date: new Date().toISOString().split('T')[0],
+                clearingDate: '',
                 employeeName: '',
                 totalOutstanding: Math.abs(party.currentBalance || party.balance || 0),
                 amountReceived: '',
@@ -239,13 +207,12 @@ function PayIn({
             setAvailableBanks([]);
             setSelectedInvoice(null);
             setShowInvoicePanel(false);
+            setSelectedBankDetails(null);
 
-            // Auto-fill employee data
             setTimeout(() => {
                 autoFillEmployeeData();
             }, 100);
 
-            // Focus on amount input
             setTimeout(() => {
                 const amountInput = document.querySelector('[name="amountReceived"]');
                 if (amountInput) amountInput.focus();
@@ -253,33 +220,37 @@ function PayIn({
         }
     }, [show, party, companyId, currentUser]);
 
-    // Load banks when payment method changes to bank_transfer
     useEffect(() => {
         if (show && formData.paymentMethod === 'bank_transfer' && companyId) {
             loadAvailableBanks();
         } else {
             setAvailableBanks([]);
+            setSelectedBankDetails(null);
             setFormData(prev => ({ ...prev, selectedBank: '', bankDetails: '' }));
         }
     }, [formData.paymentMethod, show, companyId]);
 
-    // Handle input changes
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
         if (error) setError('');
     };
 
-    // Handle bank selection
     const handleBankSelect = (e) => {
         const bankId = e.target.value;
         setFormData(prev => ({ ...prev, selectedBank: bankId }));
+
+        if (bankId) {
+            const selectedBank = availableBanks.find(bank =>
+                (bank._id || bank.id) === bankId
+            );
+            setSelectedBankDetails(selectedBank);
+        } else {
+            setSelectedBankDetails(null);
+        }
     };
 
-    // **ENHANCED: Handle invoice selection with updated due amounts**
     const handleInvoiceSelection = (invoice) => {
-        console.log('📋 Invoice selected:', invoice.orderNumber || invoice.saleNumber);
-
         setSelectedInvoice(invoice);
         setFormData(prev => ({
             ...prev,
@@ -287,7 +258,6 @@ function PayIn({
             paymentType: 'pending'
         }));
 
-        // Auto-fill amount with current due amount
         const dueAmount = parseFloat(invoice.dueAmount || 0);
         if (dueAmount > 0) {
             setFormData(prev => ({
@@ -297,11 +267,8 @@ function PayIn({
         }
     };
 
-    // Handle payment type change
     const handlePaymentTypeChange = (e) => {
         const paymentType = e.target.value;
-        console.log('💳 Payment type changed to:', paymentType);
-
         setFormData(prev => ({ ...prev, paymentType }));
 
         if (paymentType === 'advance') {
@@ -320,7 +287,6 @@ function PayIn({
         }
     };
 
-    // **ENHANCED: Handle form submission with better data handling**
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -328,9 +294,6 @@ function PayIn({
         setSuccess('');
 
         try {
-            console.log('💰 Creating PayIn with data:', formData);
-
-            // Validation
             if (!formData.amountReceived || parseFloat(formData.amountReceived) <= 0) {
                 setError('Please enter a valid amount');
                 return;
@@ -356,68 +319,103 @@ function PayIn({
                 return;
             }
 
-            // **ENHANCED: Prepare payment data with correct structure**
+            if (formData.paymentMethod === 'cheque' && !formData.clearingDate) {
+                setError('Clearing date is required for cheque payments');
+                return;
+            }
+
             const paymentData = {
                 companyId: companyId,
                 partyId: party._id || party.id,
-                party: party._id || party.id, // Backend expects this field
+                party: party._id || party.id,
                 partyName: party.name,
-                type: 'in', // Backend expects 'in' or 'out'
+                type: 'in',
                 amount: parseFloat(formData.amountReceived),
                 paymentMethod: formData.paymentMethod,
                 paymentDate: formData.date,
+                clearingDate: formData.clearingDate || null,
                 paymentType: formData.paymentType,
                 reference: formData.reference,
                 notes: formData.additionalNotes,
                 employeeName: formData.employeeName,
-                bankAccountId: formData.selectedBank,
-                bankAccount: formData.selectedBank,
-                saleOrderId: formData.selectedSaleOrder,
-                invoiceId: formData.selectedSaleOrder, // Some backends expect this
-                invoiceAllocations: formData.invoiceAllocations,
+                ...(formData.selectedBank && {
+                    bankAccountId: formData.selectedBank,
+                    bankAccount: formData.selectedBank
+                }),
+                ...(formData.selectedSaleOrder && {
+                    saleOrderId: formData.selectedSaleOrder,
+                    invoiceId: formData.selectedSaleOrder
+                }),
                 status: 'completed'
             };
 
-            console.log('📤 Submitting payment data:', paymentData);
+            if (formData.paymentType === 'pending' && selectedInvoice) {
+                const selectedInvoiceData = {
+                    _id: selectedInvoice._id || selectedInvoice.id,
+                    invoiceNumber: selectedInvoice.orderNumber || selectedInvoice.saleNumber,
+                    dueAmount: parseFloat(selectedInvoice.dueAmount || 0),
+                    selected: true,
+                    allocatedAmount: parseFloat(formData.amountReceived)
+                };
+
+                paymentData.selectedInvoices = [selectedInvoiceData];
+                paymentData.invoiceAllocations = [{
+                    invoiceId: selectedInvoiceData._id,
+                    invoiceNumber: selectedInvoiceData.invoiceNumber,
+                    allocatedAmount: selectedInvoiceData.allocatedAmount
+                }];
+            }
 
             const response = await paymentService.createPaymentIn(paymentData);
 
             if (response.success) {
                 const { details, data } = response;
 
-                // **ENHANCED: Show detailed success message with invoice allocation info**
                 let successMsg = `✅ Payment of ₹${parseFloat(formData.amountReceived).toLocaleString()} recorded successfully!`;
+                successMsg += `\n• Payment Number: ${data.paymentNumber}`;
+
+                if (data.bankTransaction) {
+                    successMsg += `\n\n🏦 Bank Transaction Created:`;
+                    successMsg += `\n• Transaction #: ${data.bankTransaction.transactionNumber}`;
+                    successMsg += `\n• Bank: ${data.bankTransaction.bankName}`;
+                    successMsg += `\n• Amount: +₹${parseFloat(formData.amountReceived).toLocaleString()} (Credit)`;
+                    successMsg += `\n• New Balance: ₹${data.bankTransaction.balance?.toLocaleString() || 'N/A'}`;
+                    if (formData.reference) {
+                        successMsg += `\n• Reference: ${formData.reference}`;
+                    }
+                } else if (formData.paymentMethod === 'cash') {
+                    successMsg += `\n\n💵 Cash Payment - No bank transaction needed`;
+                }
 
                 if (details && details.invoicesUpdated > 0) {
-                    successMsg += `\n\n📋 Updated ${details.invoicesUpdated} invoice(s):`;
+                    successMsg += `\n\n📋 Invoice Allocations:`;
                     details.invoiceList?.forEach(allocation => {
-                        successMsg += `\n• ${allocation.invoiceNumber}: ₹${allocation.allocatedAmount.toLocaleString()}`;
+                        successMsg += `\n• ${allocation.invoiceNumber}: ₹${allocation.allocatedAmount.toLocaleString()} (${allocation.paymentStatus})`;
                     });
 
                     if (details.remainingAmount > 0) {
-                        successMsg += `\n\n💰 Remaining amount: ₹${details.remainingAmount.toLocaleString()} (credited to account)`;
+                        successMsg += `\n\n💰 Advance Amount: ₹${details.remainingAmount.toLocaleString()}`;
                     }
                 } else if (formData.paymentType === 'advance') {
-                    successMsg += `\n\n💰 Amount credited to customer account as advance payment.`;
+                    successMsg += `\n\n💰 Advance payment credited to customer account`;
                 }
 
-                // Show party balance update if available
                 if (data && data.partyBalance !== undefined) {
-                    successMsg += `\n\n📊 Updated party balance: ₹${Math.abs(data.partyBalance).toLocaleString()}`;
+                    const balanceStatus = data.partyBalance >= 0 ? 'Credit' : 'Debit';
+                    successMsg += `\n\n📊 Customer Balance: ₹${Math.abs(data.partyBalance).toLocaleString()} ${balanceStatus}`;
                 }
 
                 setSuccess(successMsg);
 
-                // **NEW: Refresh invoice data to show updated amounts**
                 setTimeout(async () => {
                     await refreshInvoiceData();
                 }, 500);
 
-                // Reset form
                 setFormData({
                     customerName: party.name,
                     date: new Date().toISOString().split('T')[0],
-                    employeeName: formData.employeeName, // Keep employee name
+                    clearingDate: '',
+                    employeeName: formData.employeeName,
                     totalOutstanding: Math.abs(party.currentBalance || party.balance || 0),
                     amountReceived: '',
                     paymentType: 'advance',
@@ -433,8 +431,8 @@ function PayIn({
                 setSelectedInvoice(null);
                 setPendingInvoices([]);
                 setShowInvoicePanel(false);
+                setSelectedBankDetails(null);
 
-                // Call parent callback with enhanced data
                 if (onPaymentRecorded) {
                     onPaymentRecorded({
                         ...data,
@@ -443,11 +441,14 @@ function PayIn({
                         partyName: party.name,
                         allocations: details?.invoiceList || [],
                         invoicesUpdated: details?.invoicesUpdated || 0,
-                        remainingAmount: details?.remainingAmount || 0
+                        remainingAmount: details?.remainingAmount || 0,
+                        bankTransactionCreated: !!data.bankTransaction,
+                        bankTransaction: data.bankTransaction,
+                        bankAccount: data.bankAccount,
+                        paymentMethod: formData.paymentMethod
                     });
                 }
 
-                // Auto-close after delay
                 setTimeout(() => {
                     onHide();
                 }, 3000);
@@ -457,14 +458,12 @@ function PayIn({
             }
 
         } catch (error) {
-            console.error('❌ PayIn Error:', error);
             setError(error.message || 'Failed to record payment. Please try again.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    // Reset form function
     const resetForm = () => {
         setFormData(prev => ({
             ...prev,
@@ -473,17 +472,18 @@ function PayIn({
             bankDetails: '',
             additionalNotes: '',
             reference: '',
+            clearingDate: '',
             paymentType: 'advance',
             invoiceAllocations: []
         }));
         setSelectedInvoice(null);
         setShowInvoicePanel(false);
         setPendingInvoices([]);
+        setSelectedBankDetails(null);
         setError('');
         setSuccess('');
     };
 
-    // **NEW: Manual refresh function for invoices**
     const handleRefreshInvoices = () => {
         if (formData.paymentType === 'pending') {
             loadPendingInvoices(true);
@@ -501,7 +501,7 @@ function PayIn({
             backdrop="static"
             className="payment-modal"
         >
-            <Modal.Header closeButton className="bg-primary text-white">
+            <Modal.Header closeButton style={{ backgroundColor: '#6f42c1', color: 'white' }}>
                 <Modal.Title className="fw-bold">
                     <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
                     Payment In - {party.name}
@@ -510,7 +510,6 @@ function PayIn({
 
             <Modal.Body className="p-0">
                 <div className="d-flex" style={{ minHeight: '500px' }}>
-                    {/* Left Side - Payment Form */}
                     <div
                         className="p-4 bg-white"
                         style={{
@@ -518,7 +517,6 @@ function PayIn({
                             borderRight: showInvoicePanel ? '1px solid #dee2e6' : 'none'
                         }}
                     >
-                        {/* Error/Success Alerts */}
                         {error && (
                             <Alert variant="danger" className="mb-3">
                                 <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -533,7 +531,6 @@ function PayIn({
                         )}
 
                         <Form onSubmit={handleSubmit}>
-                            {/* Basic Information */}
                             <Row className="mb-3">
                                 <Col md={6}>
                                     <Form.Group>
@@ -596,7 +593,6 @@ function PayIn({
                                 </Col>
                             </Row>
 
-                            {/* Amount and Payment Type */}
                             <Row className="mb-3">
                                 <Col md={6}>
                                     <Form.Group>
@@ -642,7 +638,6 @@ function PayIn({
                                 </Col>
                             </Row>
 
-                            {/* Selected Invoice Display */}
                             {formData.paymentType === 'pending' && (
                                 <Row className="mb-3">
                                     <Col md={12}>
@@ -655,7 +650,7 @@ function PayIn({
                                                     <Card.Body className="p-3">
                                                         <div className="d-flex justify-content-between align-items-center">
                                                             <div>
-                                                                <h6 className="mb-1 fw-bold text-primary">
+                                                                <h6 className="mb-1 fw-bold" style={{ color: '#6f42c1' }}>
                                                                     <FontAwesomeIcon icon={faReceipt} className="me-2" />
                                                                     {selectedInvoice.orderNumber || selectedInvoice.saleNumber}
                                                                 </h6>
@@ -683,11 +678,10 @@ function PayIn({
                                 </Row>
                             )}
 
-                            {/* Payment Method */}
                             <Row className="mb-3">
                                 <Col md={6}>
                                     <Form.Group>
-                                        <Form.Label className="fw-bold text-primary small">
+                                        <Form.Label className="fw-bold small" style={{ color: '#6f42c1' }}>
                                             Payment Method <span className="text-danger">*</span>
                                         </Form.Label>
                                         <Form.Select
@@ -705,11 +699,14 @@ function PayIn({
                                     </Form.Group>
                                 </Col>
                                 <Col md={6}>
-                                    {/* Bank Selection for Bank Transfer */}
                                     {formData.paymentMethod === 'bank_transfer' && (
                                         <Form.Group>
                                             <Form.Label className="fw-bold text-success small">
                                                 Bank Account <span className="text-danger">*</span>
+                                                <small className="text-info ms-2">
+                                                    <FontAwesomeIcon icon={faUniversity} className="me-1" />
+                                                    Will create bank transaction
+                                                </small>
                                             </Form.Label>
                                             {isLoadingBanks ? (
                                                 <div className="text-center p-2 bg-light border rounded">
@@ -737,10 +734,17 @@ function PayIn({
                                                     readOnly
                                                 />
                                             )}
+                                            {selectedBankDetails && (
+                                                <Form.Text className="text-muted">
+                                                    <small>
+                                                        <FontAwesomeIcon icon={faUniversity} className="me-1" />
+                                                        {selectedBankDetails.bankName} - {selectedBankDetails.accountNumber}
+                                                    </small>
+                                                </Form.Text>
+                                            )}
                                         </Form.Group>
                                     )}
 
-                                    {/* Payment Details for Other Methods */}
                                     {formData.paymentMethod !== 'cash' && formData.paymentMethod !== 'bank_transfer' && (
                                         <Form.Group>
                                             <Form.Label className="fw-bold text-warning small">
@@ -762,7 +766,28 @@ function PayIn({
                                 </Col>
                             </Row>
 
-                            {/* Transaction Reference for Bank Transfer */}
+                            {formData.paymentMethod === 'cheque' && (
+                                <Row className="mb-3">
+                                    <Col md={6}>
+                                        <Form.Group>
+                                            <Form.Label className="fw-bold text-warning small">
+                                                Clearing Date <span className="text-danger">*</span>
+                                            </Form.Label>
+                                            <Form.Control
+                                                type="date"
+                                                name="clearingDate"
+                                                value={formData.clearingDate}
+                                                onChange={handleChange}
+                                                required
+                                            />
+                                            <Form.Text className="text-muted">
+                                                <small>Expected date when cheque will clear</small>
+                                            </Form.Text>
+                                        </Form.Group>
+                                    </Col>
+                                </Row>
+                            )}
+
                             {formData.paymentMethod === 'bank_transfer' && formData.selectedBank && (
                                 <Row className="mb-3">
                                     <Col md={12}>
@@ -777,12 +802,14 @@ function PayIn({
                                                 onChange={handleChange}
                                                 placeholder="UTR Number / Transaction ID"
                                             />
+                                            <Form.Text className="text-muted">
+                                                <small>This reference will be included in the bank transaction</small>
+                                            </Form.Text>
                                         </Form.Group>
                                     </Col>
                                 </Row>
                             )}
 
-                            {/* Additional Notes */}
                             <Row className="mb-4">
                                 <Col md={12}>
                                     <Form.Group>
@@ -802,7 +829,28 @@ function PayIn({
                                 </Col>
                             </Row>
 
-                            {/* Action Buttons */}
+                            {formData.paymentMethod !== 'cash' && formData.selectedBank && selectedBankDetails && (
+                                <Row className="mb-3">
+                                    <Col md={12}>
+                                        <Card className="border-info bg-light">
+                                            <Card.Body className="p-3">
+                                                <h6 className="text-info mb-2">
+                                                    <FontAwesomeIcon icon={faUniversity} className="me-2" />
+                                                    Bank Transaction Summary
+                                                </h6>
+                                                <div className="small">
+                                                    <div><strong>Bank:</strong> {selectedBankDetails.bankName}</div>
+                                                    <div><strong>Account:</strong> {selectedBankDetails.accountName}</div>
+                                                    <div><strong>Transaction Type:</strong> Credit (+)</div>
+                                                    <div><strong>Amount:</strong> ₹{formData.amountReceived ? parseFloat(formData.amountReceived).toLocaleString('en-IN') : '0.00'}</div>
+                                                    <div><strong>Description:</strong> Payment received from {party.name}</div>
+                                                </div>
+                                            </Card.Body>
+                                        </Card>
+                                    </Col>
+                                </Row>
+                            )}
+
                             <Row>
                                 <Col className="text-center">
                                     <Button
@@ -819,8 +867,11 @@ function PayIn({
                                     <Button
                                         type="submit"
                                         disabled={isSubmitting}
-                                        variant="success"
-                                        style={{ minWidth: '120px' }}
+                                        style={{
+                                            backgroundColor: '#6f42c1',
+                                            borderColor: '#6f42c1',
+                                            minWidth: '120px'
+                                        }}
                                     >
                                         {isSubmitting ? (
                                             <>
@@ -839,7 +890,6 @@ function PayIn({
                         </Form>
                     </div>
 
-                    {/* Right Side - Invoice Panel */}
                     {showInvoicePanel && (
                         <div
                             className="bg-light border-start"
@@ -849,7 +899,7 @@ function PayIn({
                                 overflowY: 'auto'
                             }}
                         >
-                            <div className="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
+                            <div className="p-3 text-white d-flex justify-content-between align-items-center" style={{ backgroundColor: '#6f42c1' }}>
                                 <h6 className="mb-0 d-flex align-items-center">
                                     <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                                     Pending Invoices
@@ -857,7 +907,6 @@ function PayIn({
                                         <Badge bg="light" text="dark" className="ms-2">{pendingInvoices.length}</Badge>
                                     )}
                                 </h6>
-                                {/* **NEW: Refresh button** */}
                                 <Button
                                     variant="light"
                                     size="sm"
@@ -875,7 +924,7 @@ function PayIn({
                             <div className="p-3">
                                 {isLoadingInvoices ? (
                                     <div className="text-center py-4">
-                                        <Spinner animation="border" variant="primary" />
+                                        <Spinner animation="border" style={{ color: '#6f42c1' }} />
                                         <p className="mt-3 text-muted">Loading invoices...</p>
                                     </div>
                                 ) : pendingInvoices.length > 0 ? (
@@ -887,8 +936,11 @@ function PayIn({
                                             return (
                                                 <Card
                                                     key={invoice._id || invoice.id || index}
-                                                    className={`mb-2 ${isSelected ? 'border-primary' : 'border-light'}`}
-                                                    style={{ cursor: 'pointer' }}
+                                                    className={`mb-2 ${isSelected ? 'border-3' : 'border-light'}`}
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        borderColor: isSelected ? '#6f42c1' : undefined
+                                                    }}
                                                     onClick={() => handleInvoiceSelection(invoice)}
                                                 >
                                                     <Card.Body className="p-3">
@@ -911,7 +963,6 @@ function PayIn({
                                                                     <FontAwesomeIcon icon={faRupeeSign} className="me-1" />
                                                                     Due: ₹{dueAmount.toLocaleString('en-IN')}
                                                                 </div>
-                                                                {/* **NEW: Show payment status** */}
                                                                 <div className="mt-1">
                                                                     <Badge
                                                                         bg={invoice.paymentStatus === 'paid' ? 'success' :
@@ -929,6 +980,10 @@ function PayIn({
                                                                     e.stopPropagation();
                                                                     handleInvoiceSelection(invoice);
                                                                 }}
+                                                                style={!isSelected ? {
+                                                                    borderColor: '#6f42c1',
+                                                                    color: '#6f42c1'
+                                                                } : undefined}
                                                             >
                                                                 {isSelected ? (
                                                                     <>
@@ -959,6 +1014,10 @@ function PayIn({
                                             onClick={() => {
                                                 setFormData(prev => ({ ...prev, paymentType: 'advance' }));
                                                 setShowInvoicePanel(false);
+                                            }}
+                                            style={{
+                                                borderColor: '#6f42c1',
+                                                color: '#6f42c1'
                                             }}
                                         >
                                             Switch to Advance Payment

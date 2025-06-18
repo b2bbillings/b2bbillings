@@ -3,22 +3,19 @@ import { getAuthToken, getSelectedCompany } from '../utils/auth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// ✅ SIMPLIFIED: Create axios instance with better config
 const api = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 10000, // 10 second timeout
+    timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-// ✅ UPDATED: Request interceptor with automatic URL modification
 api.interceptors.request.use(
     (config) => {
         const token = getAuthToken();
         let companyId = getSelectedCompany();
 
-        // Try multiple sources for companyId
         if (!companyId) {
             try {
                 const currentCompanyStr = localStorage.getItem('currentCompany');
@@ -27,7 +24,7 @@ api.interceptors.request.use(
                     companyId = currentCompany.id || currentCompany._id;
                 }
             } catch (error) {
-                console.warn('Failed to parse currentCompany from localStorage');
+                // Silent error handling
             }
         }
 
@@ -36,20 +33,15 @@ api.interceptors.request.use(
                 sessionStorage.getItem('companyId');
         }
 
-        // Set auth headers
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
             config.headers['x-auth-token'] = token;
         }
 
-        // ✅ FIXED: Automatically modify URL to include company path structure
         if (companyId && config.url && !config.url.includes('/companies/')) {
-            // Check if URL starts with /bank-accounts
             if (config.url.startsWith('/bank-accounts')) {
                 config.url = `/companies/${companyId}${config.url}`;
-            }
-            // Handle other bank-account related URLs
-            else if (config.url.includes('bank-accounts')) {
+            } else if (config.url.includes('bank-accounts')) {
                 const urlParts = config.url.split('/');
                 const bankAccountIndex = urlParts.findIndex(part => part === 'bank-accounts');
                 if (bankAccountIndex > 0) {
@@ -59,67 +51,36 @@ api.interceptors.request.use(
             }
         }
 
-        // Set company ID in headers as backup
         if (companyId) {
             config.headers['x-company-id'] = companyId;
         }
 
-        console.log('🔗 Bank API Request:', {
-            method: config.method?.toUpperCase(),
-            url: config.url,
-            companyId,
-            hasAuth: !!token
-        });
-
         return config;
     },
     (error) => {
-        console.error('❌ Request interceptor error:', error);
         return Promise.reject(error);
     }
 );
 
-// ✅ SIMPLIFIED: Response interceptor
 api.interceptors.response.use(
     (response) => {
-        console.log('✅ Bank API Response:', {
-            status: response.status,
-            url: response.config.url,
-            dataType: typeof response.data
-        });
         return response;
     },
     (error) => {
-        console.error('❌ Bank API Error:', {
-            status: error.response?.status,
-            statusText: error.response?.statusText,
-            url: error.config?.url,
-            message: error.response?.data?.message || error.message
-        });
-
-        // Handle auth errors
         if (error.response?.status === 401) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            console.warn('🔐 Authentication expired, redirecting to login...');
-            // Don't auto-redirect in development
             if (process.env.NODE_ENV === 'production') {
                 window.location.href = '/login';
             }
         }
-
         return Promise.reject(error);
     }
 );
 
-// ✅ UPDATED: Bank Account Service with correct URL patterns
 const bankAccountService = {
-
-    // ✅ FIXED: Get bank accounts for PayIn.jsx compatibility
     async getBankAccounts(companyId, filters = {}) {
         try {
-            console.log('🏦 Getting bank accounts for company:', companyId);
-
             if (!companyId) {
                 throw new Error('Company ID is required to fetch bank accounts');
             }
@@ -132,7 +93,6 @@ const bankAccountService = {
                 limit = 50
             } = filters;
 
-            // ✅ FIXED: Call API route with correct URL pattern
             const response = await api.get('/bank-accounts', {
                 params: {
                     type,
@@ -143,9 +103,6 @@ const bankAccountService = {
                 }
             });
 
-            console.log('✅ Bank accounts response:', response.data);
-
-            // ✅ Handle response format
             const responseData = response.data;
 
             if (!responseData.success) {
@@ -154,7 +111,6 @@ const bankAccountService = {
 
             const bankAccounts = responseData.data || responseData.banks || responseData.bankAccounts || [];
 
-            // ✅ Format accounts for PayIn.jsx compatibility
             const formattedAccounts = bankAccounts.map(account => ({
                 _id: account._id || account.id,
                 id: account._id || account.id,
@@ -175,19 +131,16 @@ const bankAccountService = {
             return {
                 success: true,
                 data: {
-                    banks: formattedAccounts, // For PayIn.jsx
-                    bankAccounts: formattedAccounts, // Alternative
-                    accounts: formattedAccounts // Another alternative
+                    banks: formattedAccounts,
+                    bankAccounts: formattedAccounts,
+                    accounts: formattedAccounts
                 },
-                banks: formattedAccounts, // Direct property for PayIn.jsx
+                banks: formattedAccounts,
                 total: responseData.total || formattedAccounts.length,
                 message: responseData.message || 'Bank accounts retrieved successfully'
             };
 
         } catch (error) {
-            console.error('❌ Error getting bank accounts:', error);
-
-            // ✅ NO MOCK DATA - Return proper error
             return {
                 success: false,
                 data: {
@@ -203,11 +156,8 @@ const bankAccountService = {
         }
     },
 
-    // ✅ FIXED: Get single bank account
     async getBankAccount(companyId, accountId) {
         try {
-            console.log('📊 Getting bank account:', accountId);
-
             if (!companyId || !accountId) {
                 throw new Error('Company ID and Account ID are required');
             }
@@ -225,7 +175,6 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error getting bank account:', error);
             return {
                 success: false,
                 data: null,
@@ -234,11 +183,8 @@ const bankAccountService = {
         }
     },
 
-    // ✅ FIXED: Create bank account
     async createBankAccount(companyId, accountData) {
         try {
-            console.log('➕ Creating bank account for company:', companyId);
-
             if (!companyId) {
                 throw new Error('Company ID is required to create bank account');
             }
@@ -247,7 +193,6 @@ const bankAccountService = {
                 throw new Error('Account name is required');
             }
 
-            // ✅ Clean and validate data
             const cleanedData = {
                 accountName: accountData.accountName.trim(),
                 bankName: accountData.bankName?.trim() || '',
@@ -273,16 +218,12 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error creating bank account:', error);
             throw new Error(error.response?.data?.message || error.message || 'Failed to create bank account');
         }
     },
 
-    // ✅ FIXED: Update bank account
     async updateBankAccount(companyId, accountId, accountData) {
         try {
-            console.log('✏️ Updating bank account:', accountId);
-
             if (!companyId || !accountId) {
                 throw new Error('Company ID and Account ID are required');
             }
@@ -310,16 +251,12 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error updating bank account:', error);
             throw new Error(error.response?.data?.message || error.message || 'Failed to update bank account');
         }
     },
 
-    // ✅ FIXED: Delete bank account
     async deleteBankAccount(companyId, accountId) {
         try {
-            console.log('🗑️ Deleting bank account:', accountId);
-
             if (!companyId || !accountId) {
                 throw new Error('Company ID and Account ID are required');
             }
@@ -337,16 +274,12 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error deleting bank account:', error);
             throw new Error(error.response?.data?.message || error.message || 'Failed to delete bank account');
         }
     },
 
-    // ✅ FIXED: Update account balance
     async updateAccountBalance(companyId, accountId, balanceData) {
         try {
-            console.log('💰 Updating account balance:', { accountId, amount: balanceData.amount, type: balanceData.type });
-
             if (!companyId || !accountId) {
                 throw new Error('Company ID and Account ID are required');
             }
@@ -382,16 +315,12 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error updating account balance:', error);
             throw new Error(error.response?.data?.message || error.message || 'Failed to update account balance');
         }
     },
 
-    // ✅ FIXED: Process transfer between accounts
     async processTransfer(companyId, transferData) {
         try {
-            console.log('🔄 Processing transfer:', transferData);
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
@@ -427,16 +356,12 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error processing transfer:', error);
             throw new Error(error.response?.data?.message || error.message || 'Failed to process transfer');
         }
     },
 
-    // ✅ FIXED: Get account summary
     async getAccountSummary(companyId) {
         try {
-            console.log('📊 Getting account summary for company:', companyId);
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
@@ -454,7 +379,6 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error getting account summary:', error);
             return {
                 success: false,
                 data: null,
@@ -463,7 +387,6 @@ const bankAccountService = {
         }
     },
 
-    // ✅ FIXED: Validate account details
     async validateAccountDetails(companyId, validationData) {
         try {
             const {
@@ -498,7 +421,6 @@ const bankAccountService = {
             };
 
         } catch (error) {
-            console.error('❌ Error validating account details:', error);
             return {
                 success: false,
                 isValid: false,
@@ -508,7 +430,6 @@ const bankAccountService = {
         }
     },
 
-    // ✅ HELPER: Format account display name
     formatAccountDisplayName(account) {
         if (!account) return 'Unknown Account';
 
@@ -525,7 +446,6 @@ const bankAccountService = {
         }
     },
 
-    // ✅ HELPER: Format currency
     formatCurrency(amount) {
         const numAmount = parseFloat(amount) || 0;
         return new Intl.NumberFormat('en-IN', {
@@ -536,7 +456,6 @@ const bankAccountService = {
         }).format(numAmount);
     },
 
-    // ✅ FIXED: Get active accounts for payments (PayIn.jsx compatible)
     async getActiveAccountsForPayment(companyId, paymentType = 'all') {
         try {
             const response = await this.getBankAccounts(companyId, {
@@ -550,7 +469,6 @@ const bankAccountService = {
 
             let filteredAccounts = response.banks || response.data?.banks || [];
 
-            // Filter by payment type if specified
             switch (paymentType) {
                 case 'bank_transfer':
                 case 'Bank':
@@ -565,20 +483,18 @@ const bankAccountService = {
                     );
                     break;
                 default:
-                    // Return all active accounts
                     break;
             }
 
             return {
                 success: true,
                 data: filteredAccounts,
-                banks: filteredAccounts, // For PayIn.jsx compatibility
+                banks: filteredAccounts,
                 total: filteredAccounts.length,
                 message: `Active accounts for ${paymentType} payments retrieved successfully`
             };
 
         } catch (error) {
-            console.error('❌ Error getting active accounts:', error);
             return {
                 success: false,
                 data: [],
@@ -590,7 +506,6 @@ const bankAccountService = {
     }
 };
 
-// ✅ UPDATED: Export service and individual methods
 export default bankAccountService;
 
 export const {

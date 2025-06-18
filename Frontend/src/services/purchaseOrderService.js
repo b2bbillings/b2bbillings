@@ -1,5 +1,7 @@
 import axios from 'axios';
 import apiConfig from '../config/api';
+// Add this import near the top of the file (around line 3-5)
+import paymentService from './paymentService';
 
 // Create axios instance with your API configuration
 const apiClient = axios.create({
@@ -147,103 +149,162 @@ class PurchaseOrderService {
     }
 
     /**
-     * ✅ NEW: Get purchases (alias for getPurchaseOrders for backward compatibility with PayOut)
+     * ✅ UPDATED: Get purchase invoices (for PayOut functionality)
      */
     async getPurchases(companyId, filters = {}) {
-        console.log('🔄 getPurchases called - redirecting to getPurchaseOrders');
-        return this.getPurchaseOrders(companyId, filters);
-    }
-
-    /**
-     * ✅ NEW: Get pending purchase orders for payment (specific for PayOut component)
-     */
-    async getPendingPurchasesForPayment(companyId, supplierId, supplierName = null) {
         try {
-            console.log('💰 Loading pending purchases for payment:', { companyId, supplierId, supplierName });
+            console.log('💰 Fetching purchase invoices for PayOut:', { companyId, filters });
 
-            const filters = {
-                supplierId: supplierId,
-                supplierName: supplierName,
-                status: 'sent,confirmed,received,pending', // Orders that can make payments
-                orderType: 'purchase_order,purchase_quotation', // Orders and quotations
-                limit: 100,
-                page: 1,
-                // Add date range to limit results (last 2 years)
-                dateFrom: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                dateTo: new Date().toISOString().split('T')[0]
+            const params = {
+                companyId,
+                page: filters.page || 1,
+                limit: filters.limit || 100,
+                ...filters
             };
 
-            const response = await this.getPurchaseOrders(companyId, filters);
+            // Add supplier filtering for PayOut
+            if (filters.supplierId) {
+                params.supplierId = filters.supplierId;
+            } else if (filters.supplier) {
+                params.supplier = filters.supplier;
+            }
+
+            if (filters.supplierName) {
+                params.supplierName = filters.supplierName;
+            }
+
+            // Add status filtering for pending invoices
+            if (filters.status) {
+                params.status = filters.status;
+            }
+
+            // Add date range filtering
+            if (filters.dateFrom) {
+                params.dateFrom = filters.dateFrom;
+            }
+            if (filters.dateTo) {
+                params.dateTo = filters.dateTo;
+            }
+
+            console.log('📡 Fetching purchase invoices with params:', params);
+
+            // ✅ FIXED: Use purchase invoices endpoint instead of purchase orders
+            const response = await apiClient.get('/api/purchases', { params });
+
+            // Handle different response structures
+            const rawData = response.data;
+            let purchaseInvoices = [];
+
+            if (rawData.data && rawData.data.purchases && Array.isArray(rawData.data.purchases)) {
+                purchaseInvoices = rawData.data.purchases;
+            } else if (rawData.data && Array.isArray(rawData.data)) {
+                purchaseInvoices = rawData.data;
+            } else if (rawData.purchases && Array.isArray(rawData.purchases)) {
+                purchaseInvoices = rawData.purchases;
+            } else if (rawData.invoices && Array.isArray(rawData.invoices)) {
+                purchaseInvoices = rawData.invoices;
+            } else if (Array.isArray(rawData)) {
+                purchaseInvoices = rawData;
+            }
+
+            console.log('✅ Processed purchase invoices:', purchaseInvoices.length);
+
+            return {
+                success: true,
+                data: {
+                    purchaseInvoices: purchaseInvoices,
+                    purchases: purchaseInvoices,
+                    invoices: purchaseInvoices,
+                    data: purchaseInvoices,
+                    pagination: rawData.data?.pagination || rawData.pagination || {},
+                    summary: rawData.data?.summary || rawData.summary || {}
+                },
+                message: 'Purchase invoices fetched successfully'
+            };
+        } catch (error) {
+            console.error('❌ Error fetching purchase invoices:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || error.message || 'Failed to fetch purchase invoices',
+                data: {
+                    purchaseInvoices: [],
+                    purchases: [],
+                    invoices: [],
+                    data: []
+                }
+            };
+        }
+    }
+    /**
+  * ✅ UPDATED: Get pending purchase invoices for payment (NOT purchase orders)
+  */
+    async getPendingPurchasesForPayment(companyId, supplierId, supplierName = null) {
+        try {
+            console.log('💰 Loading pending purchase invoices for payment:', { companyId, supplierId, supplierName });
+
+            // ✅ FIXED: Use paymentService method that fetches purchase invoices
+            const response = await paymentService.getPendingPurchaseInvoicesForPayment(companyId, supplierId);
+
+            console.log('📊 Payment service response:', {
+                success: response.success,
+                totalInvoices: response.data?.purchaseInvoices?.length || 0
+            });
 
             if (response.success) {
-                const allOrders = response.data.purchaseOrders || response.data.orders || response.data.data || [];
-                console.log('📋 Total orders fetched:', allOrders.length);
+                const invoices = response.data.purchaseInvoices || response.data.invoices || [];
 
-                // Filter orders with pending amounts on client side
-                const ordersWithPending = allOrders.filter(order => {
-                    if (!order) return false;
+                // Transform invoices for compatibility with existing PayOut UI
+                const enhancedInvoices = invoices.map(invoice => {
+                    const totalAmount = parseFloat(invoice.totalAmount || invoice.dueAmount + (invoice.paidAmount || 0) || 0);
+                    const paidAmount = parseFloat(invoice.paidAmount || 0);
+                    const pendingAmount = parseFloat(invoice.dueAmount || totalAmount - paidAmount);
 
-                    // Verify supplier match (more flexible matching)
-                    const orderSupplierId = order.supplierId || order.supplier?._id || order.supplier?.id;
-                    const orderSupplierName = order.supplierName || order.supplier?.name || order.supplier?.businessName;
-                    const orderSupplierPhone = order.supplierPhone || order.supplierMobile || order.supplier?.mobile || order.supplier?.phone;
-
-                    const partyId = supplierId;
-                    const partyName = supplierName;
-
-                    const isSupplierMatch = orderSupplierId === partyId ||
-                        orderSupplierName === partyName ||
-                        (orderSupplierPhone && orderSupplierPhone === partyName); // Phone match as fallback
-
-                    if (!isSupplierMatch) {
-                        console.log('❌ Supplier mismatch for order:', order.orderNumber, {
-                            orderSupplierId,
-                            orderSupplierName,
-                            orderSupplierPhone,
-                            partyId,
-                            partyName
-                        });
-                        return false;
-                    }
-
-                    // Check pending amount
-                    const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || order.grandTotal || 0);
-                    const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
-                    const pendingAmount = totalAmount - paidAmount;
-
-                    console.log(`💸 Order ${order.orderNumber || order._id} payment status:`, {
-                        totalAmount,
-                        paidAmount,
-                        pendingAmount,
-                        hasPending: pendingAmount > 0.01
-                    });
-
-                    return pendingAmount > 0.01; // At least 1 paisa pending
+                    return {
+                        ...invoice,
+                        dueAmount: pendingAmount,
+                        totalAmount: totalAmount,
+                        paidAmount: paidAmount,
+                        pendingAmount: pendingAmount,
+                        paymentStatus: invoice.paymentStatus ||
+                            (paidAmount >= totalAmount ? 'paid' :
+                                paidAmount > 0 ? 'partial' : 'pending'),
+                        displayOrderNumber: invoice.invoiceNumber || invoice.purchaseNumber || `PUR-${invoice._id}`,
+                        displayDate: invoice.invoiceDate || invoice.purchaseDate || invoice.createdAt,
+                        formattedTotalAmount: totalAmount.toLocaleString('en-IN'),
+                        formattedPendingAmount: pendingAmount.toLocaleString('en-IN'),
+                        formattedPaidAmount: paidAmount.toLocaleString('en-IN'),
+                        // Add order-like properties for UI compatibility
+                        orderNumber: invoice.invoiceNumber || invoice.purchaseNumber,
+                        orderDate: invoice.invoiceDate || invoice.purchaseDate
+                    };
                 });
 
-                console.log('✅ Orders with pending amounts:', ordersWithPending.length);
-
-                // Sort by order date (newest first)
-                ordersWithPending.sort((a, b) => {
-                    const dateA = new Date(a.orderDate || a.purchaseDate || a.quotationDate || a.createdAt);
-                    const dateB = new Date(b.orderDate || b.purchaseDate || b.quotationDate || b.createdAt);
+                // Sort by invoice date (newest first)
+                enhancedInvoices.sort((a, b) => {
+                    const dateA = new Date(a.displayDate);
+                    const dateB = new Date(b.displayDate);
                     return dateB - dateA;
                 });
 
                 return {
                     success: true,
                     data: {
-                        purchaseOrders: ordersWithPending,
-                        orders: ordersWithPending,
-                        data: ordersWithPending,
-                        count: ordersWithPending.length,
-                        totalPending: ordersWithPending.reduce((sum, order) => {
-                            const total = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || 0);
-                            const paid = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
-                            return sum + (total - paid);
-                        }, 0)
+                        purchaseInvoices: enhancedInvoices,
+                        purchases: enhancedInvoices,
+                        invoices: enhancedInvoices,
+                        purchaseOrders: enhancedInvoices, // For UI compatibility
+                        orders: enhancedInvoices, // For UI compatibility
+                        data: enhancedInvoices,
+                        count: enhancedInvoices.length,
+                        totalPending: enhancedInvoices.reduce((sum, invoice) => sum + invoice.pendingAmount, 0),
+                        summary: {
+                            totalInvoices: enhancedInvoices.length,
+                            totalPendingAmount: enhancedInvoices.reduce((sum, invoice) => sum + invoice.pendingAmount, 0),
+                            totalPaidAmount: enhancedInvoices.reduce((sum, invoice) => sum + invoice.paidAmount, 0),
+                            totalInvoiceValue: enhancedInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0)
+                        }
                     },
-                    message: `Found ${ordersWithPending.length} pending purchase orders`
+                    message: `Found ${enhancedInvoices.length} pending purchase invoices`
                 };
             }
 
@@ -253,49 +314,58 @@ class PurchaseOrderService {
             console.error('❌ Error in getPendingPurchasesForPayment:', error);
             return {
                 success: false,
-                message: error.response?.data?.message || error.message || 'Failed to fetch pending purchase orders',
+                message: error.response?.data?.message || error.message || 'Failed to fetch pending purchase invoices',
                 data: {
-                    purchaseOrders: [],
-                    orders: [],
+                    purchaseInvoices: [],
+                    purchases: [],
+                    invoices: [],
+                    purchaseOrders: [], // For UI compatibility  
+                    orders: [], // For UI compatibility
                     data: [],
                     count: 0,
-                    totalPending: 0
+                    totalPending: 0,
+                    summary: {
+                        totalInvoices: 0,
+                        totalPendingAmount: 0,
+                        totalPaidAmount: 0,
+                        totalInvoiceValue: 0
+                    }
                 }
             };
         }
     }
 
     /**
-     * ✅ NEW: Get supplier's purchase order summary for payment
+     * ✅ UPDATED: Get supplier's purchase invoice summary for payment
      */
     async getSupplierOrderSummary(companyId, supplierId, supplierName = null) {
         try {
             const response = await this.getPendingPurchasesForPayment(companyId, supplierId, supplierName);
 
             if (response.success) {
-                const orders = response.data.purchaseOrders || [];
+                const invoices = response.data.purchaseInvoices || [];
 
                 const summary = {
-                    totalOrders: orders.length,
+                    totalInvoices: invoices.length,
                     totalPendingAmount: response.data.totalPending || 0,
-                    oldestPendingOrder: orders.length > 0 ? orders[orders.length - 1] : null,
-                    newestOrder: orders.length > 0 ? orders[0] : null,
-                    ordersByStatus: {}
+                    oldestPendingInvoice: invoices.length > 0 ? invoices[invoices.length - 1] : null,
+                    newestInvoice: invoices.length > 0 ? invoices[0] : null,
+                    invoicesByStatus: {}
                 };
 
                 // Group by status
-                orders.forEach(order => {
-                    const status = order.status || 'pending';
-                    if (!summary.ordersByStatus[status]) {
-                        summary.ordersByStatus[status] = 0;
+                invoices.forEach(invoice => {
+                    const status = invoice.status || 'pending';
+                    if (!summary.invoicesByStatus[status]) {
+                        summary.invoicesByStatus[status] = 0;
                     }
-                    summary.ordersByStatus[status]++;
+                    summary.invoicesByStatus[status]++;
                 });
 
                 return {
                     success: true,
                     data: summary,
-                    message: 'Supplier order summary fetched successfully'
+                    message: 'Supplier invoice summary fetched successfully'
                 };
             }
 
@@ -303,11 +373,12 @@ class PurchaseOrderService {
         } catch (error) {
             return {
                 success: false,
-                message: error.message || 'Failed to fetch supplier order summary',
+                message: error.message || 'Failed to fetch supplier invoice summary',
                 data: null
             };
         }
     }
+
 
     /**
      * Get purchase order by ID with full details
@@ -1467,31 +1538,59 @@ class PurchaseOrderService {
     /**
      * ✅ Calculate pending amount for an order
      */
-    calculatePendingAmount(order) {
-        const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || order.grandTotal || 0);
-        const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+    calculatePendingAmount(invoice) {
+        const totalAmount = parseFloat(
+            invoice.totals?.finalTotal ||
+            invoice.totalAmount ||
+            invoice.amount ||
+            invoice.finalTotal ||
+            invoice.grandTotal ||
+            0
+        );
+        const paidAmount = parseFloat(
+            invoice.payment?.paidAmount ||
+            invoice.paidAmount ||
+            invoice.amountPaid ||
+            0
+        );
         return Math.max(0, totalAmount - paidAmount);
     }
+
 
     /**
      * ✅ Format order for PayOut dropdown display
      */
-    formatOrderForPayment(order) {
-        const totalAmount = parseFloat(order.totals?.finalTotal || order.totalAmount || order.amount || order.finalTotal || 0);
-        const paidAmount = parseFloat(order.payment?.paidAmount || order.paidAmount || order.amountPaid || 0);
+
+    formatOrderForPayment(invoice) {
+        const totalAmount = parseFloat(
+            invoice.totals?.finalTotal ||
+            invoice.totalAmount ||
+            invoice.amount ||
+            invoice.finalTotal ||
+            0
+        );
+        const paidAmount = parseFloat(
+            invoice.payment?.paidAmount ||
+            invoice.paidAmount ||
+            invoice.amountPaid ||
+            0
+        );
         const pendingAmount = totalAmount - paidAmount;
-        const orderNumber = order.orderNumber || order.purchaseNumber || order.quotationNumber || order._id;
-        const orderDate = order.orderDate || order.purchaseDate || order.quotationDate || order.createdAt;
+        const invoiceNumber = invoice.invoiceNumber || invoice.purchaseNumber || `PUR-${invoice._id}`;
+        const invoiceDate = invoice.invoiceDate || invoice.purchaseDate || invoice.createdAt;
 
         return {
-            id: order._id || order.id,
-            orderNumber,
-            orderDate,
+            id: invoice._id || invoice.id,
+            orderNumber: invoiceNumber, // Keep for UI compatibility
+            invoiceNumber: invoiceNumber,
+            orderDate: invoiceDate, // Keep for UI compatibility
+            invoiceDate: invoiceDate,
             totalAmount,
             paidAmount,
             pendingAmount,
-            displayText: `#${orderNumber} - ₹${totalAmount.toLocaleString('en-IN')} (Pending: ₹${pendingAmount.toLocaleString('en-IN')}) - ${new Date(orderDate).toLocaleDateString('en-IN')}`,
-            order: order
+            displayText: `#${invoiceNumber} - ₹${totalAmount.toLocaleString('en-IN')} (Pending: ₹${pendingAmount.toLocaleString('en-IN')}) - ${new Date(invoiceDate).toLocaleDateString('en-IN')}`,
+            invoice: invoice, // Changed from 'order' to 'invoice'
+            order: invoice // Keep for UI compatibility
         };
     }
 

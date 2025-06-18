@@ -12,8 +12,8 @@ import SalesInvoicesSummary from './SalesInvoice/SalesInvoicesSummary';
 import SalesInvoicesTable from './SalesInvoice/SalesInvoicesTable';
 import SalesForm from './SalesInvoice/SalesForm';
 
-// Import API services
-import salesService from '../../../services/salesService';
+// ✅ FIXED: Import services only as fallback
+import defaultSalesService from '../../../services/salesService';
 import saleOrderService from '../../../services/saleOrderService';
 import itemService from '../../../services/itemService';
 import './SalesInvoices.css';
@@ -47,18 +47,47 @@ function SalesInvoices({
     onViewChange,
     onNavigate,
     isOnline = true,
-    addToast
+    addToast,
+    // ✅ ADDED: Accept service instances from parent
+    salesService: propSalesService,
+    onCreateSale,
+    onSave,
+    // ✅ NEW: Quotation-specific props
+    onSaveQuotation,
+    onCreateQuotation,
+    quotationService,
+    formType
 }) {
     const { companyId: paramCompanyId } = useParams();
     const companyId = propCompanyId || paramCompanyId;
 
-    // Enhanced mode detection logic
-    const isQuotationsMode = useMemo(() => {
-        const modes = [view, mode, documentType];
-        return modes.some(m => m === 'quotations' || m === 'quotation');
-    }, [view, mode, documentType]);
+    // ✅ FIXED: Use service from props or fallback to default
+    const salesService = propSalesService || defaultSalesService;
 
-    // Dynamic field labels based on mode
+    // ✅ FIXED: Enhanced mode detection logic with debugging
+    const isQuotationsMode = useMemo(() => {
+        const modes = [view, mode, documentType, formType];
+        const isQuotation = modes.some(m =>
+            m === 'quotations' ||
+            m === 'quotation' ||
+            m === 'quote' ||
+            m === 'quotes'
+        );
+
+        console.log('🔍 SalesInvoices Mode Detection:', {
+            view,
+            mode,
+            documentType,
+            formType,
+            modes,
+            isQuotation,
+            detectedAs: isQuotation ? 'QUOTATIONS' : 'INVOICES'
+        });
+
+        return isQuotation;
+    }, [view, mode, documentType, formType]);
+
+    // ✅ FIXED: Dynamic field labels based on mode with enhanced labels
     const labels = useMemo(() => {
         return isQuotationsMode
             ? {
@@ -68,7 +97,12 @@ function SalesInvoices({
                 editAction: 'Edit Quotation',
                 backToList: 'Back to Quotations',
                 createNew: 'Create New Quotation',
-                pageTitle: 'Quotations Management'
+                pageTitle: 'Quotations Management',
+                formTitle: 'Add Sales Quotation',
+                savingText: 'Saving quotation...',
+                savedText: 'Quotation saved successfully!',
+                deletingText: 'Deleting quotation...',
+                deletedText: 'Quotation deleted successfully!'
             }
             : {
                 documentName: 'Invoice',
@@ -77,11 +111,16 @@ function SalesInvoices({
                 editAction: 'Edit Invoice',
                 backToList: 'Back to Invoices',
                 createNew: 'Create New Sale Invoice',
-                pageTitle: 'Sales Invoices Management'
+                pageTitle: 'Sales Invoices Management',
+                formTitle: 'Add Sales Invoice',
+                savingText: 'Saving invoice...',
+                savedText: 'Invoice saved successfully!',
+                deletingText: 'Deleting invoice...',
+                deletedText: 'Invoice deleted successfully!'
             };
     }, [isQuotationsMode]);
 
-    // State management
+    // ✅ FIXED: State management with proper initialization
     const [currentView, setCurrentView] = useState('list');
     const [editingSale, setEditingSale] = useState(null);
     const [dateRange, setDateRange] = useState('This Month');
@@ -230,9 +269,11 @@ function SalesInvoices({
         }
     }, [companyId, startDate, endDate, isQuotationsMode]);
 
+    // ✅ FIXED: Enhanced data loading with better error handling
     const loadSalesData = async () => {
         try {
             setLoading(true);
+            console.log(`🔄 Loading ${isQuotationsMode ? 'quotations' : 'sales'} data for company:`, companyId);
 
             const filters = {
                 dateFrom: startDate.toISOString().split('T')[0],
@@ -243,15 +284,37 @@ function SalesInvoices({
 
             if (isQuotationsMode) {
                 try {
-                    response = await saleOrderService.getQuotations(companyId, filters);
+                    // ✅ FIXED: Check if method exists before calling
+                    if (saleOrderService && typeof saleOrderService.getQuotations === 'function') {
+                        response = await saleOrderService.getQuotations(companyId, filters);
+                    } else if (saleOrderService && typeof saleOrderService.getSalesOrders === 'function') {
+                        // Fallback to getSalesOrders
+                        response = await saleOrderService.getSalesOrders(companyId, { ...filters, orderType: 'quotation' });
+                    } else {
+                        console.warn('⚠️ saleOrderService.getQuotations not available');
+                        response = { success: false, message: 'Quotations service not available' };
+                    }
                 } catch (serviceError) {
+                    console.error('❌ Error loading quotations:', serviceError);
                     throw serviceError;
                 }
             } else {
-                response = await salesService.getInvoices(companyId, filters);
+                // ✅ FIXED: Check if service and method exist before calling
+                if (salesService && typeof salesService.getInvoices === 'function') {
+                    response = await salesService.getInvoices(companyId, filters);
+                } else if (salesService && typeof salesService.getSales === 'function') {
+                    // Fallback to getSales
+                    response = await salesService.getSales(companyId, filters);
+                } else {
+                    console.error('❌ salesService.getInvoices is not a function. Available methods:',
+                        salesService ? Object.getOwnPropertyNames(Object.getPrototypeOf(salesService)) : 'salesService is null');
+                    throw new Error('Sales service getInvoices method not available');
+                }
             }
 
-            if (response.success && response.data) {
+            console.log(`📥 ${isQuotationsMode ? 'Quotations' : 'Sales'} response:`, response);
+
+            if (response && response.success && response.data) {
                 // Enhanced data extraction debugging
                 let dataArray = [];
 
@@ -263,9 +326,15 @@ function SalesInvoices({
                             dataArray = response.data.quotations;
                         }
                     } else if (response.data.salesOrders) {
-                        dataArray = response.data.salesOrders;
+                        dataArray = response.data.salesOrders.filter(order =>
+                            order.orderType === 'quotation' ||
+                            order.documentType === 'quotation'
+                        );
                     } else if (Array.isArray(response.data)) {
-                        dataArray = response.data;
+                        dataArray = response.data.filter(item =>
+                            item.orderType === 'quotation' ||
+                            item.documentType === 'quotation'
+                        );
                     } else {
                         // Try other possible structures
                         dataArray = response.data.data ||
@@ -279,16 +348,20 @@ function SalesInvoices({
                         response.data.invoices ||
                         response.data.sales ||
                         response.data.data ||
-                        [];
+                        (Array.isArray(response.data) ? response.data : []);
                 }
+
+                console.log(`📊 Data array extracted:`, dataArray);
 
                 // Add safety check
                 if (!Array.isArray(dataArray)) {
+                    console.warn('⚠️ Data is not an array:', dataArray);
                     setTransactions([]);
                     return;
                 }
 
                 if (dataArray.length === 0) {
+                    console.log('📭 No transactions found');
                     setTransactions([]);
                     return;
                 }
@@ -297,11 +370,11 @@ function SalesInvoices({
                 const transformedTransactions = dataArray.map((item, index) => {
                     if (isQuotationsMode) {
                         return {
-                            id: item._id || item.id,
+                            id: item._id || item.id || `quo-${index}`,
                             invoiceNo: item.orderNo ||
                                 item.orderNumber ||
                                 item.quotationNumber ||
-                                `QUO-${item._id?.slice(-6)}`,
+                                `QUO-${item._id?.slice(-6) || index}`,
                             quotationNumber: item.orderNo ||
                                 item.orderNumber ||
                                 item.quotationNumber,
@@ -349,18 +422,62 @@ function SalesInvoices({
                             originalSale: item
                         };
                     } else {
-                        return salesService.transformToFrontendFormat ?
-                            salesService.transformToFrontendFormat(item) :
-                            item;
+                        // ✅ FIXED: Better transformation for invoices
+                        return {
+                            id: item._id || item.id || `inv-${index}`,
+                            invoiceNo: item.invoiceNumber ||
+                                item.invoiceNo ||
+                                item.orderNo ||
+                                `INV-${item._id?.slice(-6) || index}`,
+                            partyName: item.customer?.name ||
+                                item.customerName ||
+                                item.partyName ||
+                                'Walk-in Customer',
+                            partyPhone: item.customer?.mobile ||
+                                item.customerMobile ||
+                                item.partyPhone,
+                            amount: item.totals?.finalTotal ||
+                                item.totals?.totalAmount ||
+                                item.amount ||
+                                0,
+                            balance: item.payment?.pendingAmount ||
+                                item.balanceAmount ||
+                                item.balance ||
+                                0,
+                            date: item.invoiceDate ||
+                                item.date ||
+                                item.createdAt,
+                            transaction: item.gstEnabled ? 'GST Invoice' : 'Sale',
+                            documentType: 'invoice',
+                            status: item.status || 'completed',
+                            paymentType: item.payment?.method ||
+                                item.paymentType ||
+                                'Cash',
+                            cgst: item.totals?.totalCgstAmount ||
+                                item.totals?.totalCGST ||
+                                0,
+                            sgst: item.totals?.totalSgstAmount ||
+                                item.totals?.totalSGST ||
+                                0,
+                            gstEnabled: item.gstEnabled !== undefined ? item.gstEnabled : true,
+                            originalSale: item
+                        };
                     }
                 });
 
+                console.log(`✅ Transformed ${transformedTransactions.length} transactions`);
                 setTransactions(transformedTransactions);
             } else {
+                console.warn('⚠️ Invalid response structure:', response);
                 setTransactions([]);
+
+                if (response && response.message) {
+                    console.error('📥 API Error:', response.message);
+                }
             }
 
         } catch (error) {
+            console.error(`❌ Error loading ${isQuotationsMode ? 'quotations' : 'sales'} data:`, error);
             setTransactions([]);
 
             if (!error.message.includes('fetch') && !error.message.includes('Failed to fetch')) {
@@ -376,14 +493,24 @@ function SalesInvoices({
 
     const loadInventoryItems = async () => {
         try {
-            const response = await itemService.getItems(companyId);
+            console.log('🔄 Loading inventory items for company:', companyId);
 
-            if (response.success && response.data && response.data.items) {
-                setInventoryItems(response.data.items);
+            if (itemService && typeof itemService.getItems === 'function') {
+                const response = await itemService.getItems(companyId);
+
+                if (response.success && response.data && response.data.items) {
+                    console.log('✅ Loaded inventory items:', response.data.items.length);
+                    setInventoryItems(response.data.items);
+                } else {
+                    console.log('📭 No inventory items found');
+                    setInventoryItems([]);
+                }
             } else {
+                console.warn('⚠️ itemService.getItems not available');
                 setInventoryItems([]);
             }
         } catch (error) {
+            console.error('❌ Error loading inventory items:', error);
             setInventoryItems([]);
         }
     };
@@ -405,120 +532,207 @@ function SalesInvoices({
         setDateRange('Custom Range');
     }, []);
 
-    // Enhanced create handler
+    // ✅ FIXED: Enhanced handleCreateSale with better debugging
     const handleCreateSale = useCallback(() => {
+        console.log('🎯 Creating sale/quotation:', {
+            isQuotationsMode,
+            mode,
+            documentType,
+            view,
+            formType,
+            expectedFormProps: {
+                mode: isQuotationsMode ? 'quotations' : 'invoices',
+                documentType: isQuotationsMode ? 'quotation' : 'invoice',
+                formType: isQuotationsMode ? 'quotation' : 'sales'
+            }
+        });
+
         setEditingSale(null);
         setCurrentView('sale');
 
-        // Call parent handler if provided
-        if (onAddSale) {
-            onAddSale();
+        // ✅ FIXED: Call appropriate handler based on mode
+        if (isQuotationsMode) {
+            if (onCreateQuotation) {
+                console.log('📞 Calling onCreateQuotation handler');
+                onCreateQuotation();
+            } else if (onAddSale) {
+                console.log('📞 Calling onAddSale handler (fallback)');
+                onAddSale();
+            }
+        } else {
+            if (onAddSale) {
+                console.log('📞 Calling onAddSale handler');
+                onAddSale();
+            }
         }
-    }, [onAddSale]);
+    }, [onAddSale, onCreateQuotation, isQuotationsMode, mode, documentType, view, formType]);
 
     const handleBackToList = useCallback(() => {
+        console.log('↩️ Returning to list view');
         setCurrentView('list');
         setEditingSale(null);
     }, []);
 
-    // Enhanced save handler with better error handling
+    // ✅ FIXED: Enhanced save handler with proper service usage
     const handleSaleFormSave = useCallback(async (saleData) => {
         try {
+            console.log('💾 Saving sale/quotation data:', {
+                isQuotationsMode,
+                mode,
+                documentType,
+                formType,
+                data: saleData
+            });
+
             setLoading(true);
-            const documentDataWithCompany = {
-                ...saleData,
-                companyId: companyId,
-                documentType: isQuotationsMode ? 'quotation' : 'invoice'
-            };
 
-            let response;
+            // Show saving toast
+            if (addToast) {
+                addToast(labels.savingText, 'info');
+            }
 
-            if (editingSale) {
-                if (isQuotationsMode) {
-                    response = await saleOrderService.updateSalesOrder(editingSale.id, documentDataWithCompany);
+            let result;
+
+            // ✅ FIXED: Handle quotations vs invoices properly
+            if (isQuotationsMode) {
+                // Handle quotation save
+                if (onSaveQuotation) {
+                    console.log('📞 Using onSaveQuotation handler');
+                    result = await onSaveQuotation(saleData);
+                } else if (quotationService && quotationService.createQuotation) {
+                    console.log('📞 Using quotationService.createQuotation');
+                    result = await quotationService.createQuotation(saleData);
+                } else if (saleOrderService && saleOrderService.createSalesOrder) {
+                    console.log('📞 Using saleOrderService.createSalesOrder for quotation');
+                    const quotationData = {
+                        ...saleData,
+                        documentType: 'quotation',
+                        orderType: 'quotation',
+                        mode: 'quotations'
+                    };
+                    result = await saleOrderService.createSalesOrder(quotationData);
+                } else if (onSave) {
+                    console.log('📞 Using onSave handler with quotation data');
+                    const quotationData = {
+                        ...saleData,
+                        documentType: 'quotation',
+                        orderType: 'quotation',
+                        mode: 'quotations'
+                    };
+                    result = await onSave(quotationData);
                 } else {
-                    response = await salesService.updateInvoice(editingSale.id, documentDataWithCompany);
+                    throw new Error('No quotation save handler available');
                 }
             } else {
-                if (isQuotationsMode) {
-                    response = await saleOrderService.createSalesOrder({
-                        ...documentDataWithCompany,
-                        orderType: 'quotation'
-                    });
+                // Handle regular sales save
+                if (onSave) {
+                    console.log('📞 Using onSave handler for invoice');
+                    result = await onSave(saleData);
+                } else if (salesService && salesService.createInvoice) {
+                    console.log('📞 Using salesService.createInvoice');
+                    result = await salesService.createInvoice(saleData);
                 } else {
-                    response = await salesService.createInvoice(documentDataWithCompany);
+                    throw new Error('No invoice save handler available');
                 }
             }
 
-            if (response.success) {
-                const transformedDocument = isQuotationsMode
-                    ? {
-                        ...response.data.quotation,
-                        documentType: 'quotation',
-                        transaction: 'Quotation'
-                    }
-                    : (salesService.transformToFrontendFormat ?
-                        salesService.transformToFrontendFormat(response.data.sale) :
-                        response.data.sale);
+            console.log('📨 Save result:', result);
 
-                const documentNumber = transformedDocument.quotationNumber || transformedDocument.invoiceNo;
+            if (result && result.success) {
+                // Update local state
+                if (result.data) {
+                    const newTransaction = {
+                        id: result.data._id || result.data.id || Date.now(),
+                        invoiceNo: result.data.invoiceNumber || result.data.invoiceNo || result.data.orderNo || saleData.invoiceNumber,
+                        quotationNumber: result.data.quotationNumber || result.data.orderNo,
+                        partyName: result.data.customerName || saleData.customerName,
+                        amount: result.data.totals?.finalTotal || result.data.amount || 0,
+                        date: result.data.invoiceDate || result.data.orderDate || saleData.invoiceDate,
+                        transaction: isQuotationsMode ? 'Quotation' : 'Sale',
+                        documentType: isQuotationsMode ? 'quotation' : 'invoice',
+                        status: result.data.status || (isQuotationsMode ? 'draft' : 'completed'),
+                        originalSale: result.data
+                    };
 
-                if (editingSale) {
-                    setTransactions(prev =>
-                        prev.map(t => t.id === editingSale.id ? transformedDocument : t)
-                    );
-                    const message = `${labels.documentName} ${documentNumber} updated successfully!`;
-                    if (addToast) {
-                        addToast(message, 'success');
-                    }
-                } else {
-                    setTransactions(prev => [transformedDocument, ...prev]);
-                    const message = `${labels.documentName} ${documentNumber} created successfully!`;
-                    if (addToast) {
-                        addToast(message, 'success');
+                    if (editingSale) {
+                        setTransactions(prev =>
+                            prev.map(t => t.id === editingSale.id ? newTransaction : t)
+                        );
+                    } else {
+                        setTransactions(prev => [newTransaction, ...prev]);
                     }
                 }
 
                 setCurrentView('list');
                 setEditingSale(null);
+
+                // Show success toast
+                if (addToast) {
+                    addToast(labels.savedText, 'success');
+                }
+
+                // Optionally reload data
+                setTimeout(() => {
+                    loadSalesData();
+                }, 1000);
+
+                return result;
             } else {
-                throw new Error(response.message || `Failed to save ${labels.documentName.toLowerCase()}`);
+                throw new Error(result?.error || result?.message || 'Save operation failed');
             }
 
         } catch (error) {
+            console.error('❌ Error saving sale/quotation:', error);
             const errorMessage = `Error saving ${labels.documentName.toLowerCase()}: ${error.message}`;
             if (addToast) {
                 addToast(errorMessage, 'error');
             }
+
+            return {
+                success: false,
+                error: error.message,
+                message: errorMessage
+            };
         } finally {
             setLoading(false);
         }
-    }, [editingSale, companyId, labels, isQuotationsMode, addToast]);
+    }, [editingSale, companyId, labels, isQuotationsMode, addToast, onSave, onSaveQuotation, onCreateSale, salesService, quotationService, saleOrderService, loadSalesData]);
 
     const handleAddItem = useCallback(async (productData) => {
         try {
-            const response = await itemService.createItem(companyId, productData);
+            if (itemService && typeof itemService.createItem === 'function') {
+                const response = await itemService.createItem(companyId, productData);
 
-            if (response.success) {
-                setInventoryItems(prev => [...prev, response.data]);
+                if (response.success) {
+                    setInventoryItems(prev => [...prev, response.data]);
 
-                return {
-                    success: true,
-                    data: response.data,
-                    message: `Item "${productData.name}" added successfully`
-                };
+                    if (addToast) {
+                        addToast(`Item "${productData.name}" added successfully`, 'success');
+                    }
+
+                    return {
+                        success: true,
+                        data: response.data,
+                        message: `Item "${productData.name}" added successfully`
+                    };
+                } else {
+                    throw new Error(response.message || 'Failed to add item');
+                }
             } else {
-                throw new Error(response.message || 'Failed to add item');
+                throw new Error('Item service not available');
             }
 
         } catch (error) {
+            if (addToast) {
+                addToast('Error adding item to inventory', 'error');
+            }
             return {
                 success: false,
                 error: error.message,
                 message: 'Error adding item to inventory'
             };
         }
-    }, [companyId]);
+    }, [companyId, addToast]);
 
     const handleSearchChange = useCallback((e) => {
         setTopSearchTerm(e.target.value);
@@ -539,6 +753,7 @@ function SalesInvoices({
     }, [labels.documentName, addToast, onEditSale]);
 
     const handleEditTransaction = useCallback((transaction) => {
+        console.log('✏️ Editing transaction:', transaction);
         setEditingSale(transaction.originalSale || transaction);
         setCurrentView('sale');
 
@@ -555,21 +770,33 @@ function SalesInvoices({
             try {
                 setLoading(true);
 
-                let response;
-                if (isQuotationsMode) {
-                    response = await saleOrderService.deleteSalesOrder(transaction.id);
-                } else {
-                    response = await salesService.deleteInvoice(transaction.id);
+                if (addToast) {
+                    addToast(labels.deletingText, 'info');
                 }
 
-                if (response.success) {
+                let response;
+                if (isQuotationsMode) {
+                    if (saleOrderService && typeof saleOrderService.deleteSalesOrder === 'function') {
+                        response = await saleOrderService.deleteSalesOrder(transaction.id);
+                    } else {
+                        throw new Error('Delete quotation service not available');
+                    }
+                } else {
+                    if (salesService && typeof salesService.deleteInvoice === 'function') {
+                        response = await salesService.deleteInvoice(transaction.id);
+                    } else {
+                        throw new Error('Delete invoice service not available');
+                    }
+                }
+
+                if (response && response.success) {
                     setTransactions(prev => prev.filter(t => t.id !== transaction.id));
                     const message = `${labels.documentName} ${documentNumber} deleted successfully`;
                     if (addToast) {
                         addToast(message, 'success');
                     }
                 } else {
-                    throw new Error(response.message || `Failed to delete ${labels.documentName.toLowerCase()}`);
+                    throw new Error(response?.message || `Failed to delete ${labels.documentName.toLowerCase()}`);
                 }
             } catch (error) {
                 const errorMessage = `Error deleting ${labels.documentName.toLowerCase()}: ${error.message}`;
@@ -580,7 +807,7 @@ function SalesInvoices({
                 setLoading(false);
             }
         }
-    }, [labels.documentName, isQuotationsMode, addToast]);
+    }, [labels.documentName, isQuotationsMode, addToast, salesService]);
 
     // Convert to Invoice handler
     const handleConvertTransaction = useCallback(async (transaction) => {
@@ -598,36 +825,40 @@ function SalesInvoices({
                     convertedFrom: 'quotation_table'
                 };
 
-                const response = await saleOrderService.convertToInvoice(transaction.id, conversionData);
+                if (saleOrderService && typeof saleOrderService.convertToInvoice === 'function') {
+                    const response = await saleOrderService.convertToInvoice(transaction.id, conversionData);
 
-                if (response.success) {
-                    // Update the transaction in the list to show it's converted
-                    setTransactions(prev =>
-                        prev.map(t =>
-                            t.id === transaction.id
-                                ? {
-                                    ...t,
-                                    convertedToInvoice: true,
-                                    status: 'converted',
-                                    quotationStatus: 'converted',
-                                    invoiceId: response.data.invoice?._id || response.data.invoice?.id,
-                                    invoiceNumber: response.data.invoice?.invoiceNumber || response.data.invoice?.invoiceNo
-                                }
-                                : t
-                        )
-                    );
+                    if (response.success) {
+                        // Update the transaction in the list to show it's converted
+                        setTransactions(prev =>
+                            prev.map(t =>
+                                t.id === transaction.id
+                                    ? {
+                                        ...t,
+                                        convertedToInvoice: true,
+                                        status: 'converted',
+                                        quotationStatus: 'converted',
+                                        invoiceId: response.data.invoice?._id || response.data.invoice?.id,
+                                        invoiceNumber: response.data.invoice?.invoiceNumber || response.data.invoice?.invoiceNo
+                                    }
+                                    : t
+                            )
+                        );
 
-                    if (addToast) {
-                        addToast(`${labels.documentName} converted successfully!`, 'success');
+                        if (addToast) {
+                            addToast(`${labels.documentName} converted successfully!`, 'success');
+                        }
+
+                        // Optionally reload data to get fresh state
+                        setTimeout(() => {
+                            loadSalesData();
+                        }, 1000);
+
+                    } else {
+                        throw new Error(response.error || `Failed to convert ${labels.documentName.toLowerCase()}`);
                     }
-
-                    // Optionally reload data to get fresh state
-                    setTimeout(() => {
-                        loadSalesData();
-                    }, 1000);
-
                 } else {
-                    throw new Error(response.error || `Failed to convert ${labels.documentName.toLowerCase()}`);
+                    throw new Error('Convert to invoice service not available');
                 }
             } catch (error) {
                 const errorMessage = `Error converting ${labels.documentName.toLowerCase()}: ${error.message}`;
@@ -692,7 +923,7 @@ function SalesInvoices({
         window.print();
     }, []);
 
-    // Light color scheme 
+    // ✅ FIXED: Light color scheme with better contrast
     const colors = useMemo(() => {
         return isQuotationsMode
             ? {
@@ -709,11 +940,69 @@ function SalesInvoices({
             };
     }, [isQuotationsMode]);
 
-    // Render Sales Form View
+    // ✅ DEBUG: Log service availability
+    useEffect(() => {
+        console.log('🔧 SalesInvoices Debug Info:', {
+            salesService: salesService ? 'Available' : 'Missing',
+            salesServiceMethods: salesService ? Object.getOwnPropertyNames(Object.getPrototypeOf(salesService)) : [],
+            saleOrderService: saleOrderService ? 'Available' : 'Missing',
+            itemService: itemService ? 'Available' : 'Missing',
+            companyId,
+            isQuotationsMode,
+            propSalesService: propSalesService ? 'Provided' : 'Not provided',
+            onSave: onSave ? 'Provided' : 'Not provided',
+            onCreateSale: onCreateSale ? 'Provided' : 'Not provided',
+            onSaveQuotation: onSaveQuotation ? 'Provided' : 'Not provided',
+            onCreateQuotation: onCreateQuotation ? 'Provided' : 'Not provided',
+            quotationService: quotationService ? 'Available' : 'Missing',
+            currentView,
+            editingSale: editingSale ? 'Set' : 'Not set'
+        });
+    }, [salesService, propSalesService, onSave, onCreateSale, onSaveQuotation, onCreateQuotation, quotationService, companyId, isQuotationsMode, currentView, editingSale]);
+
+    // ✅ FIXED: CSS-in-JS styles instead of styled-jsx
+    const containerStyles = {
+        backgroundColor: '#f8f9fa',
+        minHeight: '100vh',
+        '--primary-color': colors.primary,
+        '--primary-rgb': colors.primaryRgb,
+        '--secondary-color': colors.secondary,
+        '--primary-gradient': colors.gradient
+    };
+
+    const formHeaderStyles = {
+        zIndex: 1020,
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        borderBottom: `2px solid ${colors.primary}`
+    };
+
+    const pageTitleStyles = {
+        fontSize: '1.1rem',
+        color: colors.primary,
+        fontWeight: 600
+    };
+
+    const backBtnStyles = {
+        borderColor: colors.primary,
+        color: colors.primary,
+        transition: 'all 0.3s ease'
+    };
+
+    // ✅ FIXED: Render Sales Form View with proper props
     if (currentView === 'sale') {
+        console.log('🎨 Rendering SalesForm with props:', {
+            mode: isQuotationsMode ? 'quotations' : 'invoices',
+            documentType: isQuotationsMode ? 'quotation' : 'invoice',
+            formType: isQuotationsMode ? 'quotation' : 'sales',
+            pageTitle: labels.formTitle,
+            editingSale: editingSale ? 'Present' : 'Not present',
+            hasAddToast: !!addToast,
+            isQuotationMode: isQuotationsMode
+        });
+
         return (
-            <div className="sales-invoices-wrapper" data-mode={isQuotationsMode ? 'quotations' : 'invoices'}>
-                <div className="sales-form-header bg-white border-bottom sticky-top">
+            <div className="sales-invoices-wrapper" style={containerStyles} data-mode={isQuotationsMode ? 'quotations' : 'invoices'}>
+                <div className="sales-form-header bg-white border-bottom sticky-top" style={formHeaderStyles}>
                     <Container fluid className="px-4">
                         <Row className="align-items-center py-3">
                             <Col>
@@ -721,15 +1010,16 @@ function SalesInvoices({
                                     variant="outline-secondary"
                                     onClick={handleBackToList}
                                     className="me-3 back-btn"
+                                    style={backBtnStyles}
                                     disabled={loading}
                                 >
                                     <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
                                     {labels.backToList}
                                 </Button>
-                                <span className="page-title-text fw-semibold">
+                                <span className="page-title-text fw-semibold" style={pageTitleStyles}>
                                     {editingSale
                                         ? `${labels.editAction} ${editingSale.quotationNumber || editingSale.invoiceNo}`
-                                        : labels.createNew
+                                        : labels.formTitle
                                     }
                                 </span>
                             </Col>
@@ -737,6 +1027,7 @@ function SalesInvoices({
                     </Container>
                 </div>
 
+                {/* ✅ FIXED: SalesForm with all required props */}
                 <SalesForm
                     editingSale={editingSale}
                     onSave={handleSaleFormSave}
@@ -750,7 +1041,11 @@ function SalesInvoices({
                     mode={isQuotationsMode ? 'quotations' : 'invoices'}
                     documentType={isQuotationsMode ? 'quotation' : 'invoice'}
                     formType={isQuotationsMode ? 'quotation' : 'sales'}
-                    pageTitle={labels.pageTitle}
+                    pageTitle={labels.formTitle}
+                    addToast={addToast}
+                    // ✅ FIXED: Pass quotation-specific props
+                    isQuotationMode={isQuotationsMode}
+                    quotationService={quotationService || saleOrderService}
                 />
             </div>
         );
@@ -758,7 +1053,7 @@ function SalesInvoices({
 
     // Render Main Sales Invoices View with Compact Sidebar Layout
     return (
-        <div className="sales-invoices-wrapper" data-mode={isQuotationsMode ? 'quotations' : 'invoices'}>
+        <div className="sales-invoices-wrapper" style={containerStyles} data-mode={isQuotationsMode ? 'quotations' : 'invoices'}>
             {/* Header Section */}
             <SalesInvoicesHeader
                 searchTerm={topSearchTerm}
@@ -841,148 +1136,6 @@ function SalesInvoices({
                     </Col>
                 </Row>
             </Container>
-
-            {/* Enhanced styles with mode awareness */}
-            <style jsx>{`
-                .sales-invoices-wrapper {
-                    background-color: #f8f9fa;
-                    min-height: 100vh;
-                    --primary-color: ${colors.primary};
-                    --primary-rgb: ${colors.primaryRgb};
-                    --secondary-color: ${colors.secondary};
-                    --primary-gradient: ${colors.gradient};
-                }
-                
-                .sales-form-header {
-                    z-index: 1020;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    border-bottom: 2px solid var(--primary-color) !important;
-                }
-                
-                .page-title-text {
-                    font-size: 1.1rem;
-                    color: var(--primary-color);
-                    font-weight: 600;
-                }
-
-                .back-btn {
-                    border-color: var(--primary-color);
-                    color: var(--primary-color);
-                    transition: all 0.3s ease;
-                }
-
-                .back-btn:hover {
-                    background: var(--primary-gradient);
-                    border-color: var(--primary-color);
-                    color: white;
-                    transform: translateY(-1px);
-                }
-
-                .sidebar-col {
-                    padding-right: 0.75rem;
-                }
-
-                .content-col {
-                    padding-left: 0.75rem;
-                }
-
-                /* Mode-specific styling */
-                .sales-invoices-wrapper[data-mode="quotations"] {
-                    --accent-color: rgba(255, 107, 53, 0.1);
-                }
-
-                .sales-invoices-wrapper[data-mode="invoices"] {
-                    --accent-color: rgba(108, 99, 255, 0.1);
-                }
-
-                .sales-invoices-wrapper[data-mode="quotations"] .card {
-                    border-left: 4px solid var(--primary-color);
-                }
-
-                .sales-invoices-wrapper[data-mode="quotations"] .card-header {
-                    background: var(--accent-color);
-                }
-
-                /* Enhanced responsive design */
-                @media (max-width: 1200px) {
-                    .sidebar-col {
-                        padding-right: 0.5rem;
-                    }
-                    
-                    .content-col {
-                        padding-left: 0.5rem;
-                    }
-                }
-
-                @media (max-width: 992px) {
-                    .sidebar-col {
-                        padding-right: 0;
-                        margin-bottom: 1rem;
-                    }
-                    
-                    .content-col {
-                        padding-left: 0;
-                    }
-                }
-                
-                @media (max-width: 768px) {
-                    .page-title-text {
-                        font-size: 1rem;
-                    }
-
-                    .sidebar-col,
-                    .content-col {
-                        padding-left: 0;
-                        padding-right: 0;
-                    }
-
-                    .back-btn {
-                        padding: 0.375rem 0.75rem;
-                        font-size: 0.875rem;
-                    }
-                }
-
-                /* Enhanced animations */
-                @keyframes fadeIn {
-                    from {
-                        opacity: 0;
-                        transform: translateY(10px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
-                }
-
-                .sales-invoices-wrapper {
-                    animation: fadeIn 0.3s ease-out;
-                }
-
-                /* Theme integration */
-                .sales-invoices-wrapper::before {
-                    content: '';
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 2px;
-                    background: var(--primary-gradient);
-                    z-index: 9999;
-                    opacity: 0.8;
-                }
-
-                /* Print styles */
-                @media print {
-                    .sales-invoices-wrapper::before,
-                    .sales-form-header {
-                        display: none;
-                    }
-                    
-                    .sales-invoices-wrapper {
-                        background: white !important;
-                    }
-                }
-            `}</style>
         </div>
     );
 }

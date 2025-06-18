@@ -135,8 +135,8 @@ class TransactionService {
     // ==================== ENHANCED TRANSACTION CRUD OPERATIONS ====================
 
     /**
-     * ✅ FIXED: Create a new transaction with enhanced validation
-     */
+   * ✅ FIXED: Create a new transaction with enhanced validation and proper field mapping
+   */
     async createTransaction(companyId, transactionData) {
         try {
             console.log('💳 Creating transaction:', { companyId, transactionData });
@@ -146,8 +146,22 @@ class TransactionService {
                 throw new Error('Company ID is required');
             }
 
-            if (!transactionData.bankAccountId) {
-                throw new Error('Bank account ID is required');
+            // ✅ CRITICAL FIX: Only require bank account for non-cash payments
+            const isCashPayment = transactionData.paymentMethod === 'cash' ||
+                transactionData.paymentType === 'Cash' ||
+                transactionData.cashPayment === true;
+
+            console.log('💰 Payment type analysis:', {
+                paymentMethod: transactionData.paymentMethod,
+                paymentType: transactionData.paymentType,
+                cashPayment: transactionData.cashPayment,
+                isCashPayment: isCashPayment,
+                hasBankAccountId: !!transactionData.bankAccountId
+            });
+
+            // ✅ FIXED: Only validate bank account for non-cash payments
+            if (!isCashPayment && !transactionData.bankAccountId) {
+                throw new Error('Bank account ID is required for non-cash payments');
             }
 
             const amount = parseFloat(transactionData.amount);
@@ -155,56 +169,119 @@ class TransactionService {
                 throw new Error('Valid amount greater than 0 is required');
             }
 
-            if (!transactionData.direction || !['in', 'out'].includes(transactionData.direction)) {
-                throw new Error('Transaction direction must be "in" or "out"');
-            }
-
-            if (!transactionData.transactionType) {
-                throw new Error('Transaction type is required');
-            }
-
+            // ✅ FIXED: Ensure required fields are present
             if (!transactionData.description?.trim()) {
                 throw new Error('Transaction description is required');
             }
 
-            // Clean and prepare transaction data
+            // ✅ FIXED: Clean and prepare transaction data with proper field mapping
             const cleanTransactionData = {
+                // Core required fields
                 companyId,
-                bankAccountId: transactionData.bankAccountId,
                 amount: amount,
-                direction: transactionData.direction,
-                transactionType: transactionData.transactionType,
+                transactionType: transactionData.transactionType || 'payment_in',
                 paymentMethod: transactionData.paymentMethod || 'cash',
                 description: transactionData.description.trim(),
-                notes: transactionData.notes?.trim() || '',
 
-                // Party information
-                partyId: transactionData.partyId || null,
-                partyName: transactionData.partyName?.trim() || '',
-                partyType: transactionData.partyType || '',
+                // ✅ FIXED: Use proper field names that backend expects
+                transactionDate: transactionData.transactionDate || new Date().toISOString(),
+                status: transactionData.status || 'completed',
 
-                // Reference information
-                referenceId: transactionData.referenceId || null,
-                referenceType: transactionData.referenceType || 'payment',
-                referenceNumber: transactionData.referenceNumber?.trim() || '',
+                // ✅ CONDITIONAL: Only include bank account for non-cash payments
+                ...(transactionData.bankAccountId && !isCashPayment && {
+                    bankAccountId: transactionData.bankAccountId,
+                    // Include bank account details
+                    bankAccountName: transactionData.bankAccountName,
+                    bankName: transactionData.bankName,
+                    accountNumber: transactionData.accountNumber,
+                    ifscCode: transactionData.ifscCode,
+                    branchName: transactionData.branchName
+                }),
+
+                // ✅ CASH PAYMENT: Add cash-specific fields
+                ...(isCashPayment && {
+                    isCashTransaction: true,
+                    cashAmount: amount,
+                    cashTransactionType: transactionData.direction === 'out' ? 'cash_out' : 'cash_in'
+                }),
+
+                // Party information (if available)
+                ...(transactionData.partyId && {
+                    partyId: transactionData.partyId,
+                    partyName: transactionData.partyName?.trim() || '',
+                    partyType: transactionData.partyType || ''
+                }),
+
+                // Reference information (if available)
+                ...(transactionData.referenceId && {
+                    referenceId: transactionData.referenceId,
+                    referenceType: transactionData.referenceType || 'payment',
+                    referenceNumber: transactionData.referenceNumber?.trim() || ''
+                }),
 
                 // Payment specific details
-                chequeNumber: transactionData.chequeNumber?.trim() || '',
-                chequeDate: transactionData.chequeDate || null,
-                upiTransactionId: transactionData.upiTransactionId?.trim() || '',
-                bankTransactionId: transactionData.bankTransactionId?.trim() || '',
+                ...(transactionData.chequeNumber && {
+                    chequeNumber: transactionData.chequeNumber.trim(),
+                    chequeDate: transactionData.chequeDate
+                }),
 
-                // Metadata
-                transactionDate: transactionData.transactionDate || new Date().toISOString(),
-                status: transactionData.status || 'completed'
+                ...(transactionData.transactionId && {
+                    externalTransactionId: transactionData.transactionId.trim(),
+                    transactionReference: transactionData.transactionId.trim()
+                }),
+
+                // UPI specific
+                ...(transactionData.upiTransactionId && {
+                    upiTransactionId: transactionData.upiTransactionId.trim()
+                }),
+
+                // Payment terms (if applicable)
+                ...(transactionData.dueDate && {
+                    dueDate: transactionData.dueDate
+                }),
+                ...(transactionData.creditDays && {
+                    creditDays: parseInt(transactionData.creditDays) || 0
+                }),
+
+                // Additional metadata
+                notes: transactionData.notes?.trim() || '',
+
+                // Invoice/Form specific fields
+                ...(transactionData.invoiceNumber && {
+                    invoiceNumber: transactionData.invoiceNumber.trim()
+                }),
+                ...(transactionData.formType && {
+                    sourceType: transactionData.formType // Backend might expect 'sourceType' instead of 'formType'
+                }),
+                ...(transactionData.createdBy && {
+                    createdBy: transactionData.createdBy
+                }),
+
+                // Direction (if not already set by transaction type)
+                ...(transactionData.direction && {
+                    direction: transactionData.direction
+                })
             };
 
-            // Remove empty strings and null values
+            // ✅ FIXED: Remove empty strings, null values, and undefined values
             Object.keys(cleanTransactionData).forEach(key => {
-                if (cleanTransactionData[key] === '' || cleanTransactionData[key] === null) {
+                const value = cleanTransactionData[key];
+                if (value === '' || value === null || value === undefined) {
                     delete cleanTransactionData[key];
                 }
             });
+
+            console.log('📤 Clean transaction data prepared:', {
+                hasRequiredFields: !!(cleanTransactionData.companyId && cleanTransactionData.amount && cleanTransactionData.description),
+                isCashPayment: isCashPayment,
+                hasBankAccount: !!cleanTransactionData.bankAccountId,
+                paymentMethod: cleanTransactionData.paymentMethod,
+                transactionType: cleanTransactionData.transactionType,
+                fieldsCount: Object.keys(cleanTransactionData).length
+            });
+
+            // ✅ DEBUG: Log the exact payload being sent
+            console.log('📤 Exact payload being sent to backend:', JSON.stringify(cleanTransactionData, null, 2));
 
             const response = await this.apiCall(`/companies/${companyId}/transactions`, {
                 method: 'POST',
@@ -216,9 +293,10 @@ class TransactionService {
             });
 
             console.log('✅ Transaction created successfully:', {
-                transactionId: response.data?.transactionId,
+                transactionId: response.data?.transactionId || response.data?._id,
                 amount: response.data?.amount,
-                direction: response.data?.direction
+                paymentMethod: response.data?.paymentMethod,
+                isCashPayment: isCashPayment
             });
 
             return {
@@ -229,15 +307,39 @@ class TransactionService {
 
         } catch (error) {
             console.error('❌ Error creating transaction:', error);
+
+            // ✅ ENHANCED: Better error messages for validation errors
+            let errorMessage = error.message || 'Failed to create transaction';
+
+            if (errorMessage.includes('Validation failed')) {
+                errorMessage = 'Transaction validation failed. Please check all required fields are provided.';
+
+                // Log more details for debugging
+                console.error('🔍 Validation Error Debug:', {
+                    originalPayload: transactionData,
+                    isCashPayment: transactionData.paymentMethod === 'cash' || transactionData.paymentType === 'Cash',
+                    hasAmount: !!transactionData.amount,
+                    hasDescription: !!transactionData.description,
+                    hasCompanyId: !!companyId,
+                    paymentMethod: transactionData.paymentMethod,
+                    transactionType: transactionData.transactionType
+                });
+            }
+
+            if (errorMessage.includes('Bank account ID is required') &&
+                (transactionData.paymentMethod === 'cash' || transactionData.paymentType === 'Cash')) {
+                errorMessage = 'Cash payment processing failed. Backend configuration issue detected.';
+                console.error('🚨 BACKEND ISSUE: Cash payment is being rejected due to bank account requirement');
+            }
+
             return {
                 success: false,
                 data: null,
-                message: error.message || 'Failed to create transaction',
-                error: error.message
+                message: errorMessage,
+                error: errorMessage
             };
         }
     }
-
     /**
      * ✅ FIXED: Get all transactions for a company with enhanced filtering
      */
@@ -484,6 +586,9 @@ class TransactionService {
      * @param {Object} paymentData - Payment data
      * @returns {Promise<Object>} API response
      */
+    /**
+ * ✅ FIXED: Create Payment In Transaction (Customer pays us)
+ */
     async createPaymentInTransaction(companyId, paymentData) {
         try {
             console.log('💰 Creating Payment In transaction:', { companyId, paymentData });
@@ -492,14 +597,29 @@ class TransactionService {
                 throw new Error('Company ID is required');
             }
 
+            // ✅ FIXED: Ensure proper transaction data structure
             const transactionData = {
                 ...paymentData,
                 direction: 'in',
                 transactionType: 'payment_in',
-                companyId
+                companyId,
+                // ✅ FIXED: Ensure description is present
+                description: paymentData.description ||
+                    `Payment from ${paymentData.partyName || 'Customer'} for ${paymentData.referenceNumber || 'invoice'}`,
+                // ✅ FIXED: Ensure amount is a number
+                amount: parseFloat(paymentData.amount) || 0
             };
 
-            // Use your existing createTransaction method
+            console.log('📋 Payment In transaction data:', {
+                hasDescription: !!transactionData.description,
+                hasAmount: !!transactionData.amount,
+                hasCompanyId: !!transactionData.companyId,
+                transactionType: transactionData.transactionType,
+                direction: transactionData.direction,
+                paymentMethod: transactionData.paymentMethod
+            });
+
+            // Use the enhanced createTransaction method
             return await this.createTransaction(companyId, transactionData);
 
         } catch (error) {
