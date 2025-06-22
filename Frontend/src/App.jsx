@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import Layout from './Layout/Layout';
@@ -10,38 +10,33 @@ import AuthPage from './Pages/AuthPage';
 import companyService from './services/companyService';
 import authService from './services/authService';
 import purchaseService from './services/purchaseService';
+import salesService from './services/salesService';
+import saleOrderService from './services/saleOrderService';
 
 // Import form components
 import SalesForm from './components/Home/Sales/SalesInvoice/SalesForm';
 import PurchaseForm from './components/Home/Purchases/PurchaseForm';
-import SalesOrderForm from './components/Home/Sales/SalesOrder/SalesOrderForm'; // ✅ Add this import
+import SalesOrderForm from './components/Home/Sales/SalesOrder/SalesOrderForm';
+import EditSalesInvoice from './components/Home/Sales/EditSalesInvoice';
 
 function App() {
-  // Authentication state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-
-  // Company state
   const [currentCompany, setCurrentCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
-
-  // User state
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Check for existing authentication on app startup
   useEffect(() => {
     checkExistingAuth();
   }, []);
 
-  // Load companies when user logs in
   useEffect(() => {
     if (isLoggedIn && !companies.length) {
       loadCompanies();
     }
   }, [isLoggedIn]);
 
-  // Restore company selection from localStorage on component mount
   useEffect(() => {
     const restoreCompanySelection = () => {
       try {
@@ -63,7 +58,6 @@ function App() {
   const loadCompanies = async () => {
     try {
       setIsLoadingCompanies(true);
-
       const response = await companyService.getCompanies();
       const isSuccess = response?.success === true || response?.status === 'success';
 
@@ -73,7 +67,6 @@ function App() {
         await handleAutoCompanySelection(companiesList);
       }
     } catch (error) {
-      // Handle error silently or show user-friendly message
       setCompanies([]);
     } finally {
       setIsLoadingCompanies(false);
@@ -86,7 +79,6 @@ function App() {
         return;
       }
 
-      // Try to restore from localStorage first
       const savedCompany = localStorage.getItem('currentCompany');
       if (savedCompany) {
         try {
@@ -105,7 +97,6 @@ function App() {
         }
       }
 
-      // Auto-select the first company
       const firstCompany = companiesList[0];
       await setCompanyAsActive(firstCompany);
     } catch (error) {
@@ -117,7 +108,6 @@ function App() {
     try {
       if (!company) return;
 
-      // Standardize company object format
       const standardizedCompany = {
         id: company.id || company._id,
         _id: company.id || company._id,
@@ -238,8 +228,16 @@ function App() {
     }
   };
 
+  // Helper to get companyId from all possible sources
   const getCompanyId = () => {
-    return currentCompany?.id || currentCompany?._id;
+    return (
+      currentCompany?.id ||
+      currentCompany?._id ||
+      (typeof currentCompany === 'string' ? currentCompany : null) ||
+      localStorage.getItem('selectedCompanyId') ||
+      localStorage.getItem('companyId') ||
+      sessionStorage.getItem('companyId')
+    );
   };
 
   const navigateToListView = (section) => {
@@ -249,56 +247,181 @@ function App() {
     }
   };
 
-  // Toast helper function
-  const showToast = (message, type) => {
+  const showToast = (message, type = 'info') => {
+    console.log(`Toast [${type}]: ${message}`);
     if (type === 'error') {
       alert(`Error: ${message}`);
     } else if (type === 'success') {
-      // Success messages can be handled more elegantly
-      // For now, we'll just log them
+      console.log(`Success: ${message}`);
     }
   };
 
-  // Form handlers
+  // --- FIX: Always include companyId in all save/update handlers ---
+
   const handleSalesFormSave = async (saleData) => {
     try {
-      // TODO: Integrate with sales service when ready
-      // const response = await salesService.createInvoice(saleData);
-      alert('Sale saved successfully!');
-      navigateToListView('sales');
-      return { success: true };
+      console.log('🧾 Saving sales invoice:', saleData);
+
+      // FIX: Always include companyId
+      const effectiveCompanyId =
+        saleData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const response = await salesService.createInvoice({
+        ...saleData,
+        companyId: effectiveCompanyId,
+        documentType: 'invoice',
+        mode: 'invoices'
+      });
+
+      if (response?.success) {
+        showToast('Sales invoice created successfully!', 'success');
+        navigateToListView('sales');
+        return response;
+      } else {
+        throw new Error(response?.message || 'Failed to create sales invoice');
+      }
     } catch (error) {
-      alert('Error saving sale: ' + error.message);
+      console.error('❌ Error saving sales invoice:', error);
+      showToast('Error saving sales invoice: ' + error.message, 'error');
       return { success: false, error: error.message };
     }
   };
 
   const handleSalesFormUpdate = async (saleData) => {
     try {
-      // TODO: Integrate with sales service when ready
-      // const response = await salesService.updateInvoice(id, saleData);
-      alert('Sale updated successfully!');
-      navigateToListView('sales');
-      return { success: true };
+      console.log('🧾 Updating sales invoice:', saleData);
+
+      const effectiveCompanyId =
+        saleData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const response = await salesService.updateInvoice(saleData.id, {
+        ...saleData,
+        companyId: effectiveCompanyId,
+        documentType: 'invoice',
+        mode: 'invoices'
+      });
+
+      if (response?.success) {
+        showToast('Sales invoice updated successfully!', 'success');
+        navigateToListView('sales');
+        return response;
+      } else {
+        throw new Error(response?.message || 'Failed to update sales invoice');
+      }
     } catch (error) {
-      alert('Error updating sale: ' + error.message);
+      console.error('❌ Error updating sales invoice:', error);
+      showToast('Error updating sales invoice: ' + error.message, 'error');
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleQuotationSave = async (quotationData) => {
+    try {
+      console.log('📋 Saving quotation:', quotationData);
+
+      const effectiveCompanyId =
+        quotationData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const response = await saleOrderService.createSalesOrder({
+        ...quotationData,
+        companyId: effectiveCompanyId,
+        documentType: 'quotation',
+        orderType: 'quotation',
+        mode: 'quotations'
+      });
+
+      if (response?.success) {
+        showToast('Quotation created successfully!', 'success');
+        navigateToListView('quotations');
+        return response;
+      } else {
+        throw new Error(response?.message || 'Failed to create quotation');
+      }
+    } catch (error) {
+      console.error('❌ Error saving quotation:', error);
+      showToast('Error saving quotation: ' + error.message, 'error');
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleQuotationUpdate = async (quotationData) => {
+    try {
+      console.log('📋 Updating quotation:', quotationData);
+
+      const effectiveCompanyId =
+        quotationData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const response = await saleOrderService.updateSalesOrder(quotationData.id, {
+        ...quotationData,
+        companyId: effectiveCompanyId,
+        documentType: 'quotation',
+        orderType: 'quotation',
+        mode: 'quotations'
+      });
+
+      if (response?.success) {
+        showToast('Quotation updated successfully!', 'success');
+        navigateToListView('quotations');
+        return response;
+      } else {
+        throw new Error(response?.message || 'Failed to update quotation');
+      }
+    } catch (error) {
+      console.error('❌ Error updating quotation:', error);
+      showToast('Error updating quotation: ' + error.message, 'error');
       return { success: false, error: error.message };
     }
   };
 
   const handlePurchaseFormSave = async (purchaseData) => {
     try {
-      const result = await purchaseService.createPurchaseWithTransaction(purchaseData);
+      const effectiveCompanyId =
+        purchaseData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const result = await purchaseService.createPurchaseWithTransaction({
+        ...purchaseData,
+        companyId: effectiveCompanyId
+      });
 
       if (result && result.success) {
-        alert('Purchase created successfully!');
+        showToast('Purchase created successfully!', 'success');
         navigateToListView('purchase-bills');
         return result;
       } else {
         throw new Error(result?.message || 'Failed to create purchase');
       }
     } catch (error) {
-      alert('Error saving purchase: ' + error.message);
+      showToast('Error saving purchase: ' + error.message, 'error');
       return {
         success: false,
         error: error.message,
@@ -309,17 +432,29 @@ function App() {
 
   const handlePurchaseFormUpdate = async (purchaseData) => {
     try {
-      const result = await purchaseService.updatePurchase(purchaseData.id, purchaseData);
+      const effectiveCompanyId =
+        purchaseData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const result = await purchaseService.updatePurchase(purchaseData.id, {
+        ...purchaseData,
+        companyId: effectiveCompanyId
+      });
 
       if (result && result.success) {
-        alert('Purchase updated successfully!');
+        showToast('Purchase updated successfully!', 'success');
         navigateToListView('purchase-bills');
         return result;
       } else {
         throw new Error(result?.message || 'Failed to update purchase');
       }
     } catch (error) {
-      alert('Error updating purchase: ' + error.message);
+      showToast('Error updating purchase: ' + error.message, 'error');
       return {
         success: false,
         error: error.message,
@@ -328,30 +463,231 @@ function App() {
     }
   };
 
-  // ✅ Add quotation and sales order handlers
-  const handleQuotationSave = async (orderData) => {
-    try {
-      alert('Quotation saved successfully!');
-      navigateToListView('quotations');
-      return { success: true };
-    } catch (error) {
-      alert('Error saving quotation: ' + error.message);
-      return { success: false, error: error.message };
-    }
-  };
-
   const handleSalesOrderSave = async (orderData) => {
     try {
-      alert('Sales order saved successfully!');
-      navigateToListView('sales-orders');
-      return { success: true };
+      console.log('📦 Saving sales order:', orderData);
+
+      const effectiveCompanyId =
+        orderData.companyId ||
+        getCompanyId() ||
+        (currentCompany?.id || currentCompany?._id);
+
+      if (!effectiveCompanyId) {
+        throw new Error('Company ID is required');
+      }
+
+      const response = await saleOrderService.createSalesOrder({
+        ...orderData,
+        companyId: effectiveCompanyId,
+        documentType: 'sales_order',
+        orderType: 'sales_order',
+        mode: 'sales_orders'
+      });
+
+      if (response?.success) {
+        showToast('Sales order created successfully!', 'success');
+        navigateToListView('sales-orders');
+        return response;
+      } else {
+        throw new Error(response?.message || 'Failed to create sales order');
+      }
     } catch (error) {
-      alert('Error saving sales order: ' + error.message);
+      console.error('❌ Error saving sales order:', error);
+      showToast('Error saving sales order: ' + error.message, 'error');
       return { success: false, error: error.message };
     }
   };
 
-  // Protected Route Component
+  // --- Wrappers and Routing remain unchanged except for passing currentUser where needed ---
+
+  const SalesFormWrapper = ({ isEdit = false }) => {
+    const { companyId } = useParams();
+
+    React.useEffect(() => {
+      console.log('🧾 SalesFormWrapper mounted:', { isEdit, companyId, currentCompany });
+    }, [isEdit, companyId]);
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <SalesForm
+        onSave={isEdit ? handleSalesFormUpdate : handleSalesFormSave}
+        onCancel={() => window.location.href = `/companies/${companyId}/sales`}
+        onExit={() => window.location.href = `/companies/${companyId}/sales`}
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        companyId={companyId}
+        isEdit={isEdit}
+        editMode={isEdit}
+        mode="invoices"
+        documentType="invoice"
+        formType="sales"
+        pageTitle={isEdit ? "Edit Sales Invoice" : "Create Sales Invoice"}
+        addToast={showToast}
+      />
+    );
+  };
+
+  const QuotationFormWrapper = ({ isEdit = false }) => {
+    const { companyId, quotationId } = useParams();
+    const navigate = useNavigate();
+
+    React.useEffect(() => {
+      console.log('📋 QuotationFormWrapper mounted:', {
+        isEdit,
+        companyId,
+        quotationId,
+        currentCompany: !!currentCompany
+      });
+    }, [isEdit, companyId, quotationId]);
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <SalesOrderForm
+        isPageMode={true}
+        show={true}
+        orderType="quotation"
+        editMode={isEdit}
+        orderId={quotationId}
+        onSaveOrder={isEdit ? handleQuotationUpdate : handleQuotationSave}
+        onHide={() => navigate(`/companies/${companyId}/quotations`)}
+        onCancel={() => navigate(`/companies/${companyId}/quotations`)}
+        companyId={companyId}
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={showToast}
+        onNavigate={(page) => {
+          console.log('📋 SalesOrderForm navigation:', page);
+          if (page === 'quotations') {
+            navigate(`/companies/${companyId}/quotations`);
+          }
+        }}
+        isOnline={true}
+      />
+    );
+  };
+
+  const PurchaseFormWrapper = ({ isEdit = false }) => {
+    const { companyId } = useParams();
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <PurchaseForm
+        onSave={isEdit ? handlePurchaseFormUpdate : handlePurchaseFormSave}
+        onCancel={() => window.location.href = `/companies/${companyId}/purchase-bills`}
+        onExit={() => window.location.href = `/companies/${companyId}/purchase-bills`}
+        inventoryItems={[]}
+        categories={[]}
+        bankAccounts={[]}
+        addToast={showToast}
+        isEdit={isEdit}
+        companyId={companyId}
+        currentCompany={currentCompany}
+      />
+    );
+  };
+
+  const EditSalesInvoiceWrapper = ({ mode, documentType }) => {
+    const { companyId, transactionId } = useParams();
+
+    React.useEffect(() => {
+      console.log('✏️ EditSalesInvoiceWrapper mounted:', {
+        mode,
+        documentType,
+        companyId,
+        transactionId,
+        currentCompany
+      });
+    }, [mode, documentType, companyId, transactionId]);
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <EditSalesInvoice
+        addToast={showToast}
+        mode={mode}
+        documentType={documentType}
+        companyId={companyId}
+        transactionId={transactionId}
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        companies={companies}
+        onSave={mode === 'quotations' ? handleQuotationUpdate : handleSalesFormUpdate}
+        onCancel={() => window.location.href = `/companies/${companyId}/${mode === 'quotations' ? 'quotations' : 'sales'}`}
+      />
+    );
+  };
+
+  const SalesOrderFormWrapper = ({ isEdit = false }) => {
+    const { companyId, id } = useParams();
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <SalesOrderForm
+        show={true}
+        onHide={() => window.location.href = `/companies/${companyId}/sales-orders`}
+        onSaveOrder={handleSalesOrderSave}
+        orderType="sales_order"
+        currentCompany={currentCompany}
+        companyId={companyId}
+        addToast={showToast}
+        onNavigate={navigateToListView}
+        isEdit={isEdit}
+        orderId={id}
+        editMode={isEdit}
+        isPageMode={true}
+      />
+    );
+  };
+
   const ProtectedRoute = ({ children }) => {
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
@@ -373,7 +709,6 @@ function App() {
     );
   };
 
-  // Auto-redirect Component
   const AutoRedirect = () => {
     useEffect(() => {
       if (companies.length > 0 && currentCompany) {
@@ -405,7 +740,6 @@ function App() {
     );
   };
 
-  // Loading screen while checking authentication
   if (isCheckingAuth) {
     return (
       <div className="App">
@@ -426,7 +760,6 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
-          {/* Auth Route */}
           <Route
             path="/auth"
             element={
@@ -434,7 +767,6 @@ function App() {
             }
           />
 
-          {/* Root Route */}
           <Route
             path="/"
             element={
@@ -444,154 +776,92 @@ function App() {
             }
           />
 
-          {/* Company-specific Routes */}
           <Route
-            path="/companies/:companyId/*"
+            path="/companies/:companyId/purchases/add"
             element={
               <ProtectedRoute>
-                <Routes>
-                  {/* ✅ Dedicated Form Routes - Updated with quotations and sales orders */}
-                  <Route
-                    path="purchases/add"
-                    element={
-                      <PurchaseForm
-                        onSave={handlePurchaseFormSave}
-                        onCancel={() => navigateToListView('purchase-bills')}
-                        onExit={() => navigateToListView('purchase-bills')}
-                        inventoryItems={[]}
-                        categories={[]}
-                        bankAccounts={[]}
-                        addToast={showToast}
-                      />
-                    }
-                  />
-
-                  <Route
-                    path="purchases/:id/edit"
-                    element={
-                      <PurchaseForm
-                        onSave={handlePurchaseFormUpdate}
-                        onCancel={() => navigateToListView('purchase-bills')}
-                        onExit={() => navigateToListView('purchase-bills')}
-                        inventoryItems={[]}
-                        categories={[]}
-                        bankAccounts={[]}
-                        addToast={showToast}
-                        isEdit={true}
-                      />
-                    }
-                  />
-
-                  <Route
-                    path="sales/add"
-                    element={
-                      <SalesForm
-                        onSave={handleSalesFormSave}
-                        onCancel={() => navigateToListView('sales')}
-                        currentCompany={currentCompany}
-                        isEdit={false}
-                      />
-                    }
-                  />
-
-                  <Route
-                    path="sales/:id/edit"
-                    element={
-                      <SalesForm
-                        onSave={handleSalesFormUpdate}
-                        onCancel={() => navigateToListView('sales')}
-                        currentCompany={currentCompany}
-                        isEdit={true}
-                      />
-                    }
-                  />
-
-                  {/* ✅ Add Quotation Routes */}
-                  <Route
-                    path="quotations/add"
-                    element={
-                      <SalesOrderForm
-                        show={true}
-                        onHide={() => navigateToListView('quotations')}
-                        onSaveOrder={handleQuotationSave}
-                        orderType="quotation"
-                        currentCompany={currentCompany}
-                        companyId={getCompanyId()}
-                        addToast={showToast}
-                        onNavigate={navigateToListView}
-                      />
-                    }
-                  />
-
-                  <Route
-                    path="quotations/:id/edit"
-                    element={
-                      <SalesOrderForm
-                        show={true}
-                        onHide={() => navigateToListView('quotations')}
-                        onSaveOrder={handleQuotationSave}
-                        orderType="quotation"
-                        currentCompany={currentCompany}
-                        companyId={getCompanyId()}
-                        addToast={showToast}
-                        onNavigate={navigateToListView}
-                        isEdit={true}
-                      />
-                    }
-                  />
-
-                  {/* ✅ Add Sales Order Routes */}
-                  <Route
-                    path="sales-orders/add"
-                    element={
-                      <SalesOrderForm
-                        show={true}
-                        onHide={() => navigateToListView('sales-orders')}
-                        onSaveOrder={handleSalesOrderSave}
-                        orderType="sales_order"
-                        currentCompany={currentCompany}
-                        companyId={getCompanyId()}
-                        addToast={showToast}
-                        onNavigate={navigateToListView}
-                      />
-                    }
-                  />
-
-                  <Route
-                    path="sales-orders/:id/edit"
-                    element={
-                      <SalesOrderForm
-                        show={true}
-                        onHide={() => navigateToListView('sales-orders')}
-                        onSaveOrder={handleSalesOrderSave}
-                        orderType="sales_order"
-                        currentCompany={currentCompany}
-                        companyId={getCompanyId()}
-                        addToast={showToast}
-                        onNavigate={navigateToListView}
-                        isEdit={true}
-                      />
-                    }
-                  />
-
-                  {/* All other routes handled by HomePage */}
-                  <Route
-                    path="*"
-                    element={
-                      <HomePage
-                        currentCompany={currentCompany}
-                        onCompanyChange={handleCompanyChange}
-                        companies={companies}
-                        currentUser={currentUser}
-                      />
-                    }
-                  />
-                </Routes>
+                <PurchaseFormWrapper isEdit={false} />
               </ProtectedRoute>
             }
           />
 
-          {/* Global Fallback Route */}
+          <Route
+            path="/companies/:companyId/purchases/:id/edit"
+            element={
+              <ProtectedRoute>
+                <PurchaseFormWrapper isEdit={true} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/sales/add"
+            element={
+              <ProtectedRoute>
+                <SalesFormWrapper isEdit={false} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/sales/edit/:transactionId"
+            element={
+              <ProtectedRoute>
+                <EditSalesInvoiceWrapper mode="invoices" documentType="invoice" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/quotations/add"
+            element={
+              <ProtectedRoute>
+                <QuotationFormWrapper isEdit={false} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/quotations/edit/:transactionId"
+            element={
+              <ProtectedRoute>
+                <EditSalesInvoiceWrapper mode="quotations" documentType="quotation" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/sales-orders/add"
+            element={
+              <ProtectedRoute>
+                <SalesOrderFormWrapper isEdit={false} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/sales-orders/:id/edit"
+            element={
+              <ProtectedRoute>
+                <SalesOrderFormWrapper isEdit={true} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/companies/:companyId/*"
+            element={
+              <ProtectedRoute>
+                <HomePage
+                  currentCompany={currentCompany}
+                  onCompanyChange={handleCompanyChange}
+                  companies={companies}
+                  currentUser={currentUser}
+                />
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

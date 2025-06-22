@@ -502,22 +502,47 @@ function OrderFormProductSection({
     return (
         <>
             <div className="order-form-product-section">
-                {/* ✅ FIXED: Add Product Button - Always visible */}
+                {/* ✅ UPDATED: Header section with product count on left, add button on right */}
                 <div className="mb-4">
-                    <Row>
+                    <Row className="align-items-center">
                         <Col md={8}>
+                            {/* Product count display */}
+                            {items.length > 0 && items.some(item => item.productName) ? (
+                                <div className="d-flex align-items-center text-muted">
+                                    <FontAwesomeIcon icon={faShoppingCart} className="me-2" size="lg" />
+                                    <div>
+                                        <h5 className="mb-0 text-dark">
+                                            <strong>{items.filter(item => item.productName).length}</strong> {items.filter(item => item.productName).length === 1 ? 'Product' : 'Products'} Added
+                                        </h5>
+                                        <small className="text-muted">
+                                            Ready to create sales order
+                                        </small>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="d-flex align-items-center text-muted">
+                                    <FontAwesomeIcon icon={faBoxOpen} className="me-2" size="lg" />
+                                    <div>
+                                        <h5 className="mb-0 text-muted">No Products Added</h5>
+                                        <small className="text-muted">
+                                            Click "Add Product" to start building your order
+                                        </small>
+                                    </div>
+                                </div>
+                            )}
+                        </Col>
+                        <Col md={4} className="text-end">
+                            {/* ✅ UPDATED: Smaller Add Product button on the right */}
                             <Button
                                 variant="primary"
-                                size="lg"
                                 onClick={handleAddProductClick}
                                 disabled={disabled}
-                                className="w-100"
                                 style={{
                                     backgroundColor: '#007bff',
                                     borderColor: '#000',
-                                    fontSize: '16px',
+                                    fontSize: '14px',
                                     fontWeight: 'bold',
-                                    padding: '12px 24px',
+                                    padding: '8px 16px',
                                     borderWidth: '2px'
                                 }}
                             >
@@ -525,17 +550,6 @@ function OrderFormProductSection({
                                 Add Product
                             </Button>
                         </Col>
-                        {/* ✅ FIXED: Only show product count if there are valid products */}
-                        {items.length > 0 && items.some(item => item.productName) && (
-                            <Col md={4}>
-                                <div className="text-center text-muted d-flex align-items-center justify-content-center h-100">
-                                    <div>
-                                        <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-                                        <strong>{items.filter(item => item.productName).length}</strong> {items.filter(item => item.productName).length === 1 ? 'Product' : 'Products'} Added
-                                    </div>
-                                </div>
-                            </Col>
-                        )}
                     </Row>
                 </div>
 

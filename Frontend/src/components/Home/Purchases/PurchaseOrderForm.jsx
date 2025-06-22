@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Form, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faUser, faRefresh } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faUser, faRefresh, faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import purchaseOrderService from '../../../services/purchaseOrderService';
 import authService from '../../../services/authService';
@@ -72,7 +72,7 @@ function PurchaseOrderForm({
     const [error, setError] = useState('');
     const [errors, setErrors] = useState({});
 
-    // ✅ Enhanced user management
+    // Enhanced user management
     const fetchCurrentUser = async () => {
         try {
             setIsLoadingUser(true);
@@ -98,12 +98,10 @@ function PurchaseOrderForm({
             }
 
             setUserError('Unable to fetch user information');
-            addToast?.('Unable to fetch user information. Some features may be limited.', 'warning');
             return null;
 
         } catch (error) {
             setUserError(error.message || 'Failed to fetch user information');
-            addToast?.('Failed to fetch user information', 'error');
             return null;
         } finally {
             setIsLoadingUser(false);
@@ -138,7 +136,18 @@ function PurchaseOrderForm({
         }
     };
 
-    // ✅ Cleaner useEffect hooks
+    // Helper function for back button
+    const handleBack = () => {
+        if (onCancel) {
+            onCancel();
+        } else if (onNavigate) {
+            onNavigate('purchase-orders');
+        } else {
+            window.history.back();
+        }
+    };
+
+    // Cleaner useEffect hooks
     useEffect(() => {
         if (editingOrder) {
             setFormData(prev => ({
@@ -179,7 +188,7 @@ function PurchaseOrderForm({
         }
     }, [propCurrentUser]);
 
-    // ✅ Enhanced form data handler with cleaner GST calculation
+    // Enhanced form data handler with cleaner GST calculation
     const handleFormDataChange = (field, value) => {
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
@@ -206,7 +215,7 @@ function PurchaseOrderForm({
         }
     };
 
-    // ✅ Extracted calculation logic for better maintainability
+    // Extracted calculation logic for better maintainability
     const calculateItemTotals = (item, gstType) => {
         const quantity = parseFloat(item.quantity) || 0;
         const price = parseFloat(item.price) || 0;
@@ -238,7 +247,7 @@ function PurchaseOrderForm({
         };
     };
 
-    // ✅ Enhanced validation with better error messages
+    // Enhanced validation with better error messages
     const validateForm = () => {
         const newErrors = {};
 
@@ -281,7 +290,7 @@ function PurchaseOrderForm({
         return Object.keys(newErrors).length === 0;
     };
 
-    // ✅ Cleaner totals calculation
+    // Cleaner totals calculation
     const calculateGrandTotals = () => {
         const items = formData.items || [];
         const totals = items.reduce((acc, item) => ({
@@ -299,7 +308,7 @@ function PurchaseOrderForm({
         };
     };
 
-    // ✅ Enhanced save handler with better data mapping for purchase orders
+    // Enhanced save handler with better data mapping for purchase orders
     const handleSave = async () => {
         try {
             setSaving(true);
@@ -324,7 +333,7 @@ function PurchaseOrderForm({
 
             const totals = calculateGrandTotals();
 
-            // ✅ Clean data mapping for purchase order backend
+            // Clean data mapping for purchase order backend
             const purchaseOrderData = {
                 purchaseOrderNumber: formData.purchaseOrderNumber,
                 purchaseDate: formData.purchaseDate,
@@ -408,8 +417,6 @@ function PurchaseOrderForm({
             const response = await purchaseOrderService.createPurchaseOrder(purchaseOrderData);
 
             if (response.success) {
-                addToast?.(`Purchase Order ${formData.purchaseOrderNumber} created successfully!`, 'success');
-
                 if (onSave) {
                     onSave(response.data);
                 }
@@ -425,7 +432,6 @@ function PurchaseOrderForm({
 
         } catch (error) {
             setError(error.message);
-            addToast?.(error.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -433,19 +439,19 @@ function PurchaseOrderForm({
 
     const totals = calculateGrandTotals();
 
-    // ✅ Enhanced loading state
+    // Enhanced loading state
     if (loading) {
         return (
-            <Container className="py-4">
+            <Container className="py-4" style={{ backgroundColor: '#FF8C00', minHeight: '100vh' }}>
                 <div className="text-center">
-                    <Spinner animation="border" />
-                    <p className="mt-2">Loading purchase order form...</p>
+                    <Spinner animation="border" className="text-white" />
+                    <p className="mt-2 text-white fw-bold">Loading purchase order form...</p>
                 </div>
             </Container>
         );
     }
 
-    // ✅ Helper function for save button state
+    // Helper function for save button state
     const isSaveDisabled = () => {
         return saving ||
             totals.grandTotal <= 0 ||
@@ -505,7 +511,45 @@ function PurchaseOrderForm({
                 </Alert>
             )}
 
-            {/* Main Form Card - Reduced max width */}
+            {/* Page Heading with Back Button */}
+            <div className="mb-3">
+                <Card className="mx-auto shadow-sm" style={{ maxWidth: '850px', border: '2px solid #000', borderRadius: '8px' }}>
+                    <Card.Body className="py-2 px-3">
+                        <div className="d-flex align-items-center justify-content-between">
+                            {/* Back Button */}
+                            <Button
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={handleBack}
+                                disabled={saving}
+                                style={{
+                                    borderWidth: '2px',
+                                    borderColor: '#000',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    padding: '6px 12px',
+                                    borderRadius: '6px'
+                                }}
+                                title="Go back to purchase orders list"
+                            >
+                                <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
+                                Back
+                            </Button>
+
+                            {/* Title */}
+                            <h4 className="mb-0 fw-bold text-dark d-flex align-items-center">
+                                <FontAwesomeIcon icon={faSave} className="me-2 text-primary" />
+                                {editingOrder ? 'Edit Purchase Order' : 'Create Purchase Order'}
+                            </h4>
+
+                            {/* Spacer for centering */}
+                            <div style={{ width: '60px' }}></div>
+                        </div>
+                    </Card.Body>
+                </Card>
+            </div>
+
+            {/* Main Form Card - Same width */}
             <Card className="mx-auto shadow-lg" style={{ maxWidth: '850px' }}>
                 <Card.Body className="p-4">
                     {/* Header Section */}
@@ -619,23 +663,23 @@ function PurchaseOrderForm({
                                     )}
                                 </Button>
 
-                                {onCancel && (
-                                    <Button
-                                        variant="secondary"
-                                        onClick={onCancel}
-                                        disabled={saving}
-                                        className="border-2"
-                                        style={{
-                                            borderColor: '#000',
-                                            fontSize: '12px',
-                                            padding: '8px 16px',
-                                            fontWeight: 'bold',
-                                            minWidth: '80px'
-                                        }}
-                                    >
-                                        Cancel
-                                    </Button>
-                                )}
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={handleBack}
+                                    disabled={saving}
+                                    className="border-2"
+                                    style={{
+                                        borderColor: '#000',
+                                        fontSize: '12px',
+                                        padding: '8px 16px',
+                                        fontWeight: 'bold',
+                                        minWidth: '80px'
+                                    }}
+                                    title="Cancel and go back"
+                                >
+                                    <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
+                                    Cancel
+                                </Button>
                             </div>
                         </Col>
                     </Row>

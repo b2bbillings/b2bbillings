@@ -57,14 +57,14 @@ const ItemsTableWithTotals = ({
     userId = null,
     addToast
 }) => {
-    // ===== REFS =====
+    // Refs
     const searchTimeouts = useRef({});
     const inputRefs = useRef({});
 
-    // ===== MODE DETECTION =====
+    // Mode detection
     const isQuotationsMode = mode === 'quotations' || documentType === 'quotation' || formType === 'quotation';
 
-    // ===== CONFIGURATION =====
+    // Configuration
     const config = itemsTableLogic.getFormConfig ? itemsTableLogic.getFormConfig() : {};
 
     // Enhanced configuration with quotation support
@@ -100,9 +100,7 @@ const ItemsTableWithTotals = ({
 
     const currentConfig = getFormTypeConfig();
 
-    // ===== CUSTOM HOOKS =====
-
-    // Items management hook - Initialize first to get real functions
+    // Custom hooks
     const {
         localItems,
         setLocalItems,
@@ -114,7 +112,6 @@ const ItemsTableWithTotals = ({
         calculateItemTotals
     } = useItemsManagement(items, onItemsChange, gstEnabled, 'without-tax');
 
-    // Tax mode hook with real functions
     const {
         globalTaxMode,
         setGlobalTaxMode,
@@ -128,7 +125,6 @@ const ItemsTableWithTotals = ({
         updateTotals
     );
 
-    // Search functionality hook
     const {
         itemSearches,
         itemSuggestions,
@@ -139,7 +135,6 @@ const ItemsTableWithTotals = ({
         handleItemSuggestionSelect
     } = useItemSearch(companyId);
 
-    // Round-off calculations hook
     const {
         roundOffEnabled,
         setRoundOffEnabled,
@@ -149,7 +144,6 @@ const ItemsTableWithTotals = ({
         roundOffValue
     } = useRoundOff(totals, gstEnabled);
 
-    // Bank accounts hook
     const {
         bankAccounts,
         setBankAccounts,
@@ -157,7 +151,6 @@ const ItemsTableWithTotals = ({
         loadBankAccounts
     } = useBankAccounts(companyId);
 
-    // Party selection hook
     const {
         getSelectedParty,
         getPartyType,
@@ -169,7 +162,6 @@ const ItemsTableWithTotals = ({
         validatePaymentRequirements
     } = usePartySelection(selectedCustomer, selectedSupplier, formType, addToast);
 
-    // Payment management hook with quotation support
     const {
         showPaymentModal,
         setShowPaymentModal,
@@ -198,7 +190,6 @@ const ItemsTableWithTotals = ({
         bankAccounts
     );
 
-    // Invoice save hook
     const { handleSaveWithTransaction } = useInvoiceSave(
         localItems,
         totals,
@@ -229,7 +220,6 @@ const ItemsTableWithTotals = ({
         isQuotationsMode
     );
 
-    // Overdue management hook (only for sales, not quotations)
     const {
         overdueSales,
         salesDueToday,
@@ -238,7 +228,7 @@ const ItemsTableWithTotals = ({
         getOverdueSummary
     } = useOverdueManagement(companyId);
 
-    // ===== DERIVED VALUES =====
+    // Derived values
     const hasValidItems = totals.finalTotal > 0 || totals.subtotal > 0;
     const gridLayout = itemsTableLogic.calculateGridLayout ?
         itemsTableLogic.calculateGridLayout(hasValidItems, gstEnabled, totals.totalTax) :
@@ -247,18 +237,14 @@ const ItemsTableWithTotals = ({
         itemsTableLogic.getColumnWidths(gstEnabled) :
         { serial: '50px', item: '200px', qty: '80px', unit: '80px', price: '120px', discount: '100px', tax: '100px', amount: '120px', action: '60px', hsn: '100px' };
 
-    // ===== HELPER FUNCTIONS =====
-
-    // Enhanced payment handler for quotations
+    // Helper functions
     const handlePayment = () => {
         if (isQuotationsMode) {
-            // For quotations, different validation - just need items
             if (!hasValidItems) {
                 addToast('Please add items to create quotation terms', 'warning');
                 return;
             }
         } else {
-            // For invoices, strict validation
             const validation = validatePaymentRequirements(hasValidItems, finalTotalWithRoundOff);
             if (!validation.valid) {
                 return;
@@ -269,8 +255,6 @@ const ItemsTableWithTotals = ({
     };
 
     const handleIndividualTaxModeChange = (index, mode) => {
-        console.log(`🔄 Changing item ${index + 1} tax mode to:`, mode);
-
         const newItems = [...localItems];
         const oldItem = newItems[index];
 
@@ -280,28 +264,10 @@ const ItemsTableWithTotals = ({
             priceIncludesTax: mode === 'with-tax'
         };
 
-        console.log(`📝 Item ${index + 1} before tax mode change:`, {
-            itemName: oldItem.itemName,
-            oldTaxMode: oldItem.taxMode,
-            oldPriceIncludesTax: oldItem.priceIncludesTax,
-            pricePerUnit: oldItem.pricePerUnit,
-            oldAmount: oldItem.amount
-        });
-
         // Recalculate item totals with new tax mode
         if (newItems[index].itemName && newItems[index].pricePerUnit > 0) {
             const recalculatedItem = calculateItemTotals(newItems[index], index, newItems, 'taxMode');
             newItems[index] = recalculatedItem;
-
-            console.log(`✅ Item ${index + 1} after tax mode change:`, {
-                itemName: recalculatedItem.itemName,
-                newTaxMode: recalculatedItem.taxMode,
-                newPriceIncludesTax: recalculatedItem.priceIncludesTax,
-                pricePerUnit: recalculatedItem.pricePerUnit,
-                newAmount: recalculatedItem.amount,
-                taxableAmount: recalculatedItem.taxableAmount,
-                totalTax: recalculatedItem.cgstAmount + recalculatedItem.sgstAmount
-            });
         }
 
         setLocalItems(newItems);
@@ -311,35 +277,11 @@ const ItemsTableWithTotals = ({
 
     // Global tax mode change handler
     const handleGlobalTaxModeChangeWithLogging = (mode) => {
-        console.log('🌍 UI: Changing global tax mode to:', mode);
-        console.log('🌍 UI: Current items before change:', localItems.map(item => ({
-            name: item.itemName,
-            taxMode: item.taxMode,
-            priceIncludesTax: item.priceIncludesTax,
-            amount: item.amount,
-            pricePerUnit: item.pricePerUnit
-        })));
-
         const result = handleGlobalTaxModeChange(mode);
-
-        // Force a re-render to ensure UI updates
-        setTimeout(() => {
-            console.log('🌍 UI: Tax mode changed, current items after change:', localItems.map(item => ({
-                name: item.itemName,
-                taxMode: item.taxMode,
-                priceIncludesTax: item.priceIncludesTax,
-                amount: item.amount,
-                pricePerUnit: item.pricePerUnit
-            })));
-        }, 100);
-
-        console.log('✅ UI: Global tax mode change result:', result);
         return result;
     };
 
-    // ===== RENDER HELPERS =====
-
-    // Table header with tax mode controls
+    // Render helpers
     const renderTableHeader = () => {
         const currentTaxMode = globalTaxMode || 'without-tax';
 
@@ -688,10 +630,8 @@ const ItemsTableWithTotals = ({
                         <div>
                             <strong>No Party Selected</strong>
                             <br />
-                            <small>
-                                Please select a {formType === 'purchase' ? 'supplier or customer' : 'customer or supplier'} to proceed with {isQuotationsMode ? 'quotation creation' : 'payments and save the invoice'}.
-                                <br />
-                                <em>You can select both if needed (e.g., selling to supplier or buying from customer).</em>
+                            <small className="text-muted">
+                                Please select a {formType === 'sales' ? 'customer' : 'supplier'} to continue
                             </small>
                         </div>
                     </div>
@@ -848,17 +788,29 @@ const ItemsTableWithTotals = ({
             <Alert variant="info" className="mb-3">
                 <div className="d-flex align-items-center justify-content-between">
                     <div className="d-flex align-items-center">
-                        <FontAwesomeIcon icon={faPercent} className="me-2" />
+                        <FontAwesomeIcon icon={faCalculator} className="me-2" />
                         <div>
-                            <strong>Current Tax Mode: </strong>
-                            <span className={`badge bg-${currentTaxMode === 'with-tax' ? 'success' : 'primary'} ms-1`}>
-                                {displayText}
-                            </span>
+                            <strong>Tax Mode: {displayText}</strong>
+                            <br />
+                            <small className="text-muted">{explanationText}</small>
                         </div>
                     </div>
-                    <small className="text-muted">
-                        {explanationText}
-                    </small>
+                    <div className="text-end">
+                        <ButtonGroup size="sm">
+                            <Button
+                                variant={currentTaxMode === 'with-tax' ? 'success' : 'outline-success'}
+                                onClick={() => handleGlobalTaxModeChangeWithLogging('with-tax')}
+                            >
+                                With Tax
+                            </Button>
+                            <Button
+                                variant={currentTaxMode === 'without-tax' ? 'primary' : 'outline-primary'}
+                                onClick={() => handleGlobalTaxModeChangeWithLogging('without-tax')}
+                            >
+                                Without Tax
+                            </Button>
+                        </ButtonGroup>
+                    </div>
                 </div>
 
                 {itemsWithDifferentModes.length > 0 && (
@@ -888,7 +840,7 @@ const ItemsTableWithTotals = ({
         );
     };
 
-    // ===== MAIN RENDER =====
+    // Main render
     return (
         <div className="items-table-with-totals">
             {/* Overdue Dashboard */}
@@ -1272,12 +1224,17 @@ const ItemsTableWithTotals = ({
                 setPaymentData={setPaymentData}
                 handlePaymentAmountChange={handlePaymentAmountChange}
                 handlePaymentTypeChange={handlePaymentTypeChange}
-                handlePaymentSubmit={(paymentSubmitData) => {
-                    return handlePaymentSubmit(paymentSubmitData);
+                handlePaymentSubmit={(invoiceDate, onSave, loadBankAccounts) => {
+                    return handlePaymentSubmit();
                 }}
                 submittingPayment={submittingPayment}
                 bankAccounts={bankAccounts}
                 loadingBankAccounts={loadingBankAccounts}
+                retryLoadBankAccounts={() => {
+                    if (loadBankAccounts && typeof loadBankAccounts === 'function') {
+                        loadBankAccounts();
+                    }
+                }}
                 paymentHistory={paymentHistory}
                 totals={totals}
                 gstEnabled={gstEnabled}
@@ -1288,6 +1245,8 @@ const ItemsTableWithTotals = ({
                 handleDueDateToggle={handleDueDateToggle}
                 handleCreditDaysChange={handleCreditDaysChange}
                 handleDueDateChange={handleDueDateChange}
+                companyId={companyId}
+                formType={formType}
                 isQuotationsMode={isQuotationsMode}
             />
         </div>

@@ -759,6 +759,8 @@ const saleController = {
             const { id } = req.params;
             const updateData = req.body;
 
+            console.log('🔄 Updating sale:', id, 'with data:', Object.keys(updateData));
+
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
                     success: false,
@@ -766,43 +768,267 @@ const saleController = {
                 });
             }
 
-            const sale = await Sale.findById(id);
-            if (!sale) {
+            const existingSale = await Sale.findById(id);
+            if (!existingSale) {
                 return res.status(404).json({
                     success: false,
                     message: 'Sale not found'
                 });
             }
 
-            if (sale.status === 'completed' || sale.status === 'cancelled') {
+            // Check if sale can be updated
+            if (existingSale.status === 'completed' || existingSale.status === 'cancelled') {
                 return res.status(400).json({
                     success: false,
                     message: 'Cannot update completed or cancelled sales'
                 });
             }
 
-            updateData.lastModifiedBy = req.user?.id || 'system';
+            // Store original items for stock adjustment
+            const originalItems = existingSale.items || [];
 
-            if (updateData.items) {
+            // FIXED: Process updated items if provided
+            if (updateData.items && Array.isArray(updateData.items)) {
+                console.log('🔄 Processing updated items:', updateData.items.length);
+
+                const processedItems = [];
+                let subtotal = 0;
+                let totalDiscount = 0;
+                let totalTax = 0;
+                let totalTaxableAmount = 0;
+
+                // Get GST and tax mode settings
+                const gstEnabled = updateData.gstEnabled ?? existingSale.gstEnabled ?? true;
+                const taxMode = updateData.taxMode || existingSale.taxMode || 'exclusive';
+                const priceIncludesTax = taxMode === 'inclusive';
+
+                // Process each item
                 for (let i = 0; i < updateData.items.length; i++) {
                     const item = updateData.items[i];
-                    if (item.itemRef) {
+
+                    // Validate item
+                    if (!item.itemName || !item.quantity || !item.pricePerUnit) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `Item ${i + 1}: Name, quantity, and price are required`
+                        });
+                    }
+
+                    // Check stock availability if item reference exists
+                    if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
                         const itemDetails = await Item.findById(item.itemRef);
-                        if (itemDetails && itemDetails.currentStock < item.quantity) {
-                            return res.status(400).json({
-                                success: false,
-                                message: `Item ${i + 1}: Insufficient stock`
-                            });
+                        if (itemDetails) {
+                            // Find original quantity for this item
+                            const originalItem = originalItems.find(orig =>
+                                orig.itemRef && orig.itemRef.toString() === item.itemRef.toString()
+                            );
+                            const originalQuantity = originalItem ? originalItem.quantity : 0;
+                            const quantityDifference = item.quantity - originalQuantity;
+
+                            // Check if we have enough stock for the increase
+                            if (quantityDifference > 0 && itemDetails.currentStock < quantityDifference) {
+                                return res.status(400).json({
+                                    success: false,
+                                    message: `Item ${i + 1} (${item.itemName}): Insufficient stock. Available: ${itemDetails.currentStock}, Required additional: ${quantityDifference}`
+                                });
+                            }
                         }
                     }
+
+                    // Parse values
+                    const quantity = parseFloat(item.quantity);
+                    const pricePerUnit = parseFloat(item.pricePerUnit);
+                    const discountPercent = parseFloat(item.discountPercent || 0);
+                    const discountAmount = parseFloat(item.discountAmount || 0);
+                    const taxRate = parseFloat(item.taxRate || 18);
+
+                    // Calculate base amount
+                    const baseAmount = quantity * pricePerUnit;
+
+                    // Calculate discount
+                    let itemDiscountAmount = discountAmount;
+                    if (discountAmount === 0 && discountPercent > 0) {
+                        itemDiscountAmount = (baseAmount * discountPercent) / 100;
+                    }
+
+                    const amountAfterDiscount = baseAmount - itemDiscountAmount;
+
+                    // Calculate taxes
+                    let cgst = 0;
+                    let sgst = 0;
+                    let igst = 0;
+                    let itemAmount = 0;
+                    let itemTaxableAmount = 0;
+
+                    if (gstEnabled && taxRate > 0) {
+                        const cgstRate = taxRate / 2;
+                        const sgstRate = taxRate / 2;
+
+                        if (priceIncludesTax) {
+                            // Tax inclusive calculation
+                            const taxMultiplier = 1 + (taxRate / 100);
+                            itemTaxableAmount = amountAfterDiscount / taxMultiplier;
+                            cgst = (itemTaxableAmount * cgstRate) / 100;
+                            sgst = (itemTaxableAmount * sgstRate) / 100;
+                            itemAmount = amountAfterDiscount;
+                        } else {
+                            // Tax exclusive calculation
+                            itemTaxableAmount = amountAfterDiscount;
+                            cgst = (itemTaxableAmount * cgstRate) / 100;
+                            sgst = (itemTaxableAmount * sgstRate) / 100;
+                            itemAmount = itemTaxableAmount + cgst + sgst;
+                        }
+                    } else {
+                        itemTaxableAmount = amountAfterDiscount;
+                        itemAmount = amountAfterDiscount;
+                    }
+
+                    // Update totals
+                    subtotal += baseAmount;
+                    totalDiscount += itemDiscountAmount;
+                    totalTaxableAmount += itemTaxableAmount;
+                    const itemTotalTax = cgst + sgst + igst;
+                    totalTax += itemTotalTax;
+
+                    // Create processed item
+                    const processedItem = {
+                        itemRef: item.itemRef || null,
+                        itemName: item.itemName.trim(),
+                        itemCode: item.itemCode || '',
+                        hsnCode: item.hsnCode || '0000',
+                        category: item.category || '',
+                        quantity,
+                        unit: item.unit || 'PCS',
+                        pricePerUnit,
+                        taxRate,
+                        taxMode: item.taxMode || taxMode,
+                        priceIncludesTax,
+                        discountPercent,
+                        discountAmount: parseFloat(itemDiscountAmount.toFixed(2)),
+                        cgst: parseFloat(cgst.toFixed(2)),
+                        sgst: parseFloat(sgst.toFixed(2)),
+                        igst: parseFloat(igst.toFixed(2)),
+                        cgstAmount: parseFloat(cgst.toFixed(2)),
+                        sgstAmount: parseFloat(sgst.toFixed(2)),
+                        igstAmount: parseFloat(igst.toFixed(2)),
+                        taxableAmount: parseFloat(itemTaxableAmount.toFixed(2)),
+                        totalTaxAmount: parseFloat(itemTotalTax.toFixed(2)),
+                        amount: parseFloat(itemAmount.toFixed(2)),
+                        itemAmount: parseFloat(itemAmount.toFixed(2)),
+                        lineNumber: i + 1
+                    };
+
+                    processedItems.push(processedItem);
                 }
+
+                // Calculate final totals
+                const finalTotal = processedItems.reduce((sum, item) => sum + item.amount, 0);
+
+                // Apply round off if enabled
+                const roundOffEnabled = updateData.roundOffEnabled ?? existingSale.roundOffEnabled ?? false;
+                const roundOff = updateData.roundOff || existingSale.roundOff || 0;
+                let appliedRoundOff = 0;
+                let adjustedFinalTotal = finalTotal;
+
+                if (roundOffEnabled && roundOff !== 0) {
+                    appliedRoundOff = parseFloat(roundOff);
+                    adjustedFinalTotal = finalTotal + appliedRoundOff;
+                }
+
+                // Update totals
+                updateData.totals = {
+                    subtotal: parseFloat(subtotal.toFixed(2)),
+                    totalQuantity: processedItems.reduce((sum, item) => sum + item.quantity, 0),
+                    totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+                    totalTax: parseFloat(totalTax.toFixed(2)),
+                    totalCGST: parseFloat(processedItems.reduce((sum, item) => sum + item.cgst, 0).toFixed(2)),
+                    totalSGST: parseFloat(processedItems.reduce((sum, item) => sum + item.sgst, 0).toFixed(2)),
+                    totalIGST: parseFloat(processedItems.reduce((sum, item) => sum + item.igst, 0).toFixed(2)),
+                    totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2)),
+                    finalTotal: parseFloat(adjustedFinalTotal.toFixed(2)),
+                    roundOff: parseFloat(appliedRoundOff.toFixed(2))
+                };
+
+                updateData.items = processedItems;
+
+                // FIXED: Update payment status based on new total
+                if (updateData.totals.finalTotal !== existingSale.totals.finalTotal) {
+                    const currentPaidAmount = existingSale.payment.paidAmount;
+                    const newPendingAmount = updateData.totals.finalTotal - currentPaidAmount;
+
+                    updateData.payment = {
+                        ...existingSale.payment,
+                        pendingAmount: parseFloat(Math.max(0, newPendingAmount).toFixed(2))
+                    };
+
+                    // Update payment status
+                    if (currentPaidAmount >= updateData.totals.finalTotal) {
+                        updateData.payment.status = 'paid';
+                        updateData.payment.pendingAmount = 0;
+                    } else if (currentPaidAmount > 0) {
+                        updateData.payment.status = 'partial';
+                    } else {
+                        updateData.payment.status = 'pending';
+                        updateData.payment.pendingAmount = updateData.totals.finalTotal;
+                    }
+                }
+
+                console.log('✅ Items processed, new total:', updateData.totals.finalTotal);
             }
 
+            // Add update metadata
+            updateData.lastModifiedBy = req.user?.id || 'system';
+            updateData.lastModifiedAt = new Date();
+
+            // Update the sale
             const updatedSale = await Sale.findByIdAndUpdate(
                 id,
                 updateData,
                 { new: true, runValidators: true }
             ).populate('customer', 'name mobile email address');
+
+            // FIXED: Adjust stock for item changes
+            if (updateData.items) {
+                // Create maps for easier comparison
+                const originalItemsMap = new Map();
+                const updatedItemsMap = new Map();
+
+                originalItems.forEach(item => {
+                    if (item.itemRef) {
+                        originalItemsMap.set(item.itemRef.toString(), item.quantity);
+                    }
+                });
+
+                updateData.items.forEach(item => {
+                    if (item.itemRef) {
+                        updatedItemsMap.set(item.itemRef.toString(), item.quantity);
+                    }
+                });
+
+                // Process stock changes
+                const allItemRefs = new Set([...originalItemsMap.keys(), ...updatedItemsMap.keys()]);
+
+                for (const itemRef of allItemRefs) {
+                    const originalQuantity = originalItemsMap.get(itemRef) || 0;
+                    const updatedQuantity = updatedItemsMap.get(itemRef) || 0;
+                    const quantityDifference = updatedQuantity - originalQuantity;
+
+                    if (quantityDifference !== 0 && mongoose.Types.ObjectId.isValid(itemRef)) {
+                        try {
+                            await Item.findByIdAndUpdate(
+                                itemRef,
+                                { $inc: { currentStock: -quantityDifference } },
+                                { new: true }
+                            );
+                            console.log(`📦 Stock adjusted for item ${itemRef}: ${quantityDifference > 0 ? '-' : '+'}${Math.abs(quantityDifference)}`);
+                        } catch (stockError) {
+                            console.warn('Stock adjustment failed:', stockError.message);
+                        }
+                    }
+                }
+            }
+
+            console.log('✅ Sale updated successfully:', updatedSale.invoiceNumber);
 
             res.status(200).json({
                 success: true,
@@ -811,7 +1037,7 @@ const saleController = {
             });
 
         } catch (error) {
-            console.error('Error updating sale:', error);
+            console.error('❌ Error updating sale:', error);
             res.status(500).json({
                 success: false,
                 message: 'Failed to update sale',
@@ -823,6 +1049,9 @@ const saleController = {
     deleteSale: async (req, res) => {
         try {
             const { id } = req.params;
+            const { reason = 'User requested deletion' } = req.body;
+
+            console.log('🗑️ Deleting/Cancelling sale:', id);
 
             if (!mongoose.Types.ObjectId.isValid(id)) {
                 return res.status(400).json({
@@ -831,7 +1060,7 @@ const saleController = {
                 });
             }
 
-            const sale = await Sale.findById(id);
+            const sale = await Sale.findById(id).populate('customer', 'name mobile email');
             if (!sale) {
                 return res.status(404).json({
                     success: false,
@@ -839,20 +1068,111 @@ const saleController = {
                 });
             }
 
-            sale.status = 'cancelled';
-            sale.lastModifiedBy = req.user?.id || 'system';
-            await sale.save();
+            // Check if sale can be cancelled
+            if (sale.status === 'cancelled') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Sale is already cancelled'
+                });
+            }
+
+            if (sale.status === 'completed' && sale.payment.status === 'paid') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Cannot cancel completed and fully paid sales. Please create a return/refund instead.'
+                });
+            }
+
+            // FIXED: Restore stock for all items
+            if (sale.items && sale.items.length > 0) {
+                console.log('📦 Restoring stock for cancelled sale items...');
+
+                for (const item of sale.items) {
+                    if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+                        try {
+                            const updatedItem = await Item.findByIdAndUpdate(
+                                item.itemRef,
+                                { $inc: { currentStock: item.quantity } }, // Restore stock
+                                { new: true }
+                            );
+
+                            if (updatedItem) {
+                                console.log(`✅ Restored stock for ${item.itemName}: +${item.quantity} (New stock: ${updatedItem.currentStock})`);
+                            }
+                        } catch (stockError) {
+                            console.warn(`⚠️ Failed to restore stock for item ${item.itemName}:`, stockError.message);
+                        }
+                    }
+                }
+            }
+
+            // FIXED: Handle payment cancellation
+            const cancellationData = {
+                status: 'cancelled',
+                lastModifiedBy: req.user?.id || 'system',
+                lastModifiedAt: new Date(),
+                cancellationReason: reason,
+                cancelledAt: new Date()
+            };
+
+            // If there were payments made, record them in payment history
+            if (sale.payment.paidAmount > 0) {
+                if (!sale.paymentHistory) {
+                    sale.paymentHistory = [];
+                }
+
+                sale.paymentHistory.push({
+                    amount: -sale.payment.paidAmount, // Negative amount for refund/cancellation
+                    method: 'cancellation',
+                    reference: `Cancellation of invoice ${sale.invoiceNumber}`,
+                    paymentDate: new Date(),
+                    notes: `Sale cancelled. Reason: ${reason}`,
+                    createdAt: new Date(),
+                    createdBy: req.user?.id || 'system'
+                });
+
+                // Reset payment amounts
+                cancellationData.payment = {
+                    ...sale.payment,
+                    paidAmount: 0,
+                    pendingAmount: 0,
+                    status: 'cancelled'
+                };
+
+                // Add payment history
+                cancellationData.paymentHistory = sale.paymentHistory;
+            }
+
+            // Update the sale
+            const cancelledSale = await Sale.findByIdAndUpdate(
+                id,
+                cancellationData,
+                { new: true }
+            ).populate('customer', 'name mobile email');
+
+            console.log('✅ Sale cancelled successfully:', sale.invoiceNumber);
+
+            // OPTIONAL: Send notification (implement as needed)
+            // await sendCancellationNotification(sale, reason);
 
             res.status(200).json({
                 success: true,
-                message: 'Sale cancelled successfully'
+                message: 'Sale cancelled successfully',
+                data: {
+                    invoiceNumber: cancelledSale.invoiceNumber,
+                    status: cancelledSale.status,
+                    cancellationReason: reason,
+                    cancelledAt: cancelledSale.cancelledAt,
+                    restoredItems: sale.items.length,
+                    refundAmount: sale.payment.paidAmount
+                }
             });
 
         } catch (error) {
-            console.error('Error deleting sale:', error);
+            console.error('❌ Error deleting/cancelling sale:', error);
             res.status(500).json({
                 success: false,
-                message: 'Failed to delete sale',
+                message: 'Failed to cancel sale',
                 error: error.message
             });
         }

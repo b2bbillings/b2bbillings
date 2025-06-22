@@ -11,7 +11,8 @@
   --input-border-radius: 0.25rem;
   --box-shadow: 0 0.15rem 1.75rem 0 rgba(94, 96, 206, 0.15);
   --transition: all 0.2s ease-in-out;
-  --font-primary: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  /* Updated font family to Inter */
+  --font-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -19,6 +20,49 @@ body {
   font-family: var(--font-primary);
   background-color: #f9faff;
   color: var(--dark-color);
+  /* Enhanced text rendering for Inter font */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ensure Inter font is applied to all elements */
+* {
+  font-family: var(--font-primary) !important;
+}
+
+/* Specific font weights for different elements */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-primary) !important;
+  font-weight: 600;
+  /* Inter looks great at 600 weight for headers */
+  letter-spacing: -0.025em;
+  /* Slightly tighter letter spacing for headers */
+}
+
+.btn {
+  font-family: var(--font-primary) !important;
+  font-weight: 500;
+  /* Medium weight for buttons */
+  letter-spacing: 0.01em;
+}
+
+.form-control,
+.form-select,
+.form-label {
+  font-family: var(--font-primary) !important;
+  font-weight: 400;
+  /* Regular weight for form elements */
+}
+
+.table {
+  font-family: var(--font-primary) !important;
+  font-weight: 400;
 }
 
 .app-container {
@@ -36,9 +80,11 @@ body {
 }
 
 .app-header h1 {
-  font-weight: 800;
+  font-weight: 700;
+  /* Inter looks excellent at 700 weight for main headers */
   margin: 0;
-  letter-spacing: 0.5px;
+  letter-spacing: -0.02em;
+  /* Tighter spacing for main title */
 }
 
 /* Center the main content area better */
@@ -53,7 +99,8 @@ main {
 .btn-primary {
   background: linear-gradient(135deg, #5e60ce 0%, #4c4dd3 100%);
   border: none;
-  font-weight: 600;
+  font-weight: 500;
+  /* Inter medium weight for primary buttons */
   box-shadow: 0 2px 6px rgba(94, 96, 206, 0.25);
   transition: var(--transition);
 }
@@ -80,9 +127,11 @@ main {
 
 .auth-toggle .btn {
   padding: 0.6rem 2.5rem;
-  font-weight: 600;
+  font-weight: 500;
+  /* Inter medium weight for toggle buttons */
   border: none;
   transition: var(--transition);
+  letter-spacing: 0.01em;
 }
 
 .auth-toggle .btn-light {
@@ -97,4 +146,41 @@ main {
 
 .auth-toggle .btn-primary {
   background: linear-gradient(135deg, #5e60ce 0%, #7400b8 100%);
+}
+
+/* Additional Inter font optimizations */
+.card-title {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+}
+
+.card-text {
+  font-weight: 400 !important;
+  line-height: 1.6;
+  /* Better line height for Inter */
+}
+
+.nav-link {
+  font-weight: 500 !important;
+  letter-spacing: 0.005em;
+}
+
+.badge {
+  font-weight: 500 !important;
+  letter-spacing: 0.01em;
+}
+
+/* Small text optimizations for Inter */
+small,
+.small {
+  font-weight: 400 !important;
+  line-height: 1.5;
+}
+
+/* Inter font loading optimization */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
 }

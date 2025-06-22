@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Modal, Row, Col, Form, InputGroup, Button, Card, Badge, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -47,31 +47,96 @@ const PaymentModal = ({
     formType = 'sales'
 }) => {
 
-    // ✅ UPDATED: Clean payment submission handler
-    const handleCleanPaymentSubmit = (e) => {
-        // Prevent event object from being passed
+    // ✅ FIXED: Auto-set payment amount to full invoice total when modal opens
+    useEffect(() => {
+        if (show && finalTotalWithRoundOff > 0) {
+            // Only set the amount if it's currently 0 or empty (first time opening modal)
+            if (!paymentData.amount || paymentData.amount === 0) {
+                const roundedTotal = Math.round(finalTotalWithRoundOff * 100) / 100;
+                handlePaymentAmountChange(roundedTotal);
+            }
+        }
+    }, [show, finalTotalWithRoundOff, paymentData.amount, handlePaymentAmountChange]);
+
+    // ✅ OPTIMIZED: Debounced payment amount change to prevent rapid-fire updates
+    const debouncedPaymentAmountChange = useCallback((value) => {
+        const numericValue = parseFloat(value) || 0;
+        handlePaymentAmountChange(numericValue);
+    }, [handlePaymentAmountChange]);
+
+    // ✅ FIXED: More precise remaining amount calculation
+    const calculateRemainingAmount = () => {
+        const invoiceTotal = parseFloat(finalTotalWithRoundOff) || 0;
+        const paidAmount = parseFloat(paymentData.amount) || 0;
+
+        // If no payment amount entered, remaining is full invoice total
+        if (paidAmount === 0) {
+            return invoiceTotal;
+        }
+
+        // If payment equals or exceeds invoice total, no remaining balance
+        if (paidAmount >= invoiceTotal) {
+            return 0;
+        }
+
+        // Otherwise, calculate remaining
+        return Math.max(0, invoiceTotal - paidAmount);
+    };
+
+    const remainingAmount = calculateRemainingAmount();
+
+    // ✅ ENHANCED: More precise payment status logic
+    const getPaymentStatus = () => {
+        const invoiceTotal = parseFloat(finalTotalWithRoundOff) || 0;
+        const paidAmount = parseFloat(paymentData.amount) || 0;
+
+        // No payment entered yet
+        if (paidAmount === 0) {
+            return 'no-payment';
+        }
+
+        // Use small threshold for floating point comparison
+        const threshold = 0.01;
+
+        // Full payment (within threshold)
+        if (Math.abs(paidAmount - invoiceTotal) <= threshold || paidAmount >= invoiceTotal) {
+            return 'full-payment';
+        }
+
+        // Partial payment
+        if (paidAmount > threshold && paidAmount < invoiceTotal) {
+            return 'partial-payment';
+        }
+
+        return 'no-payment';
+    };
+
+    const paymentStatus = getPaymentStatus();
+
+    // ✅ UPDATED: Payment status flags based on precise logic
+    const isPartialPayment = paymentStatus === 'partial-payment';
+    const isFullPayment = paymentStatus === 'full-payment';
+    const isNoPayment = paymentStatus === 'no-payment';
+
+    // ✅ OPTIMIZED: Payment submission handler with better error handling
+    const handleCleanPaymentSubmit = useCallback((e) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
         }
 
-        console.log('💰 Payment details submission triggered');
-        console.log('Payment data:', paymentData);
-
-        // Call the original handler with clean parameters
         if (handlePaymentSubmit && typeof handlePaymentSubmit === 'function') {
-            // Pass only the necessary clean parameters
-            handlePaymentSubmit(
-                invoiceDate,          // invoiceDate
-                null,                 // onSave callback (will be handled internally)
-                null                  // loadBankAccounts callback (will be handled internally)
-            );
+            try {
+                handlePaymentSubmit(invoiceDate, null, null);
+            } catch (error) {
+                console.error('❌ Error in payment submission:', error);
+            }
         } else {
             console.error('❌ handlePaymentSubmit function not provided');
         }
-    };
+    }, [paymentData, paymentStatus, remainingAmount, finalTotalWithRoundOff, handlePaymentSubmit, invoiceDate]);
 
-    // ✅ FIXED: Enhanced validation with better field checks
+    // ✅ UPDATED: Enhanced validation
     const getSubmitButtonState = () => {
         const validations = {
             hasParty: !!(paymentData.partyId && paymentData.partyName),
@@ -80,9 +145,7 @@ const PaymentModal = ({
                 !!(paymentData.bankAccountId && paymentData.bankAccountId !== ''),
             hasChequeDetails: paymentData.paymentType !== 'Cheque' ||
                 !!(paymentData.chequeNumber && paymentData.chequeDate),
-            hasNextPaymentDate: !paymentData.isPartialPayment ||
-                (paymentData.remainingAmount || 0) <= 0 ||
-                !!paymentData.nextPaymentDate
+            hasNextPaymentDate: !isPartialPayment || !!paymentData.nextPaymentDate
         };
 
         const isValid = Object.values(validations).every(Boolean);
@@ -116,15 +179,40 @@ const PaymentModal = ({
         return '';
     };
 
-    // ✅ NEW: Handle retry bank accounts loading
-    const handleRetryBankAccounts = () => {
-        console.log('🔄 Retrying bank accounts load from PaymentModal');
+    // ✅ OPTIMIZED: Handle retry bank accounts loading
+    const handleRetryBankAccounts = useCallback(() => {
         if (retryLoadBankAccounts && typeof retryLoadBankAccounts === 'function') {
             retryLoadBankAccounts();
         } else {
             console.warn('⚠️ retryLoadBankAccounts function not provided');
         }
-    };
+    }, [retryLoadBankAccounts]);
+
+    // ✅ OPTIMIZED: Handle full amount button click
+    const handleFullAmountClick = useCallback(() => {
+        const roundedTotal = Math.round(finalTotalWithRoundOff * 100) / 100;
+        debouncedPaymentAmountChange(roundedTotal);
+    }, [finalTotalWithRoundOff, debouncedPaymentAmountChange]);
+
+    // ✅ OPTIMIZED: Handle payment type change
+    const handlePaymentTypeChangeOptimized = useCallback((value) => {
+        handlePaymentTypeChange(value);
+    }, [handlePaymentTypeChange]);
+
+    // ✅ FIXED: Handle bank account change
+    const handleBankAccountChange = useCallback((value) => {
+        const selectedAccount = bankAccounts.find(acc =>
+            (acc._id || acc.id) === value
+        );
+
+        setPaymentData(prev => ({
+            ...prev,
+            bankAccountId: value,
+            bankAccountName: selectedAccount?.accountName || selectedAccount?.name || '',
+            bankName: selectedAccount?.bankName || '',
+            accountNumber: selectedAccount?.accountNumber || ''
+        }));
+    }, [bankAccounts, setPaymentData]);
 
     return (
         <Modal show={show} onHide={onHide} centered size="xl">
@@ -141,11 +229,16 @@ const PaymentModal = ({
             </Modal.Header>
 
             <Modal.Body className="p-4">
-                {/* ✅ NEW: Information banner about the new flow */}
+                {/* ✅ UPDATED: Information banner */}
                 <Alert variant="info" className="mb-3">
                     <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                    <strong>Payment Selection:</strong> This will store your payment details.
-                    The actual transaction will be recorded when you create the invoice.
+                    <strong>New Invoice Payment:</strong> Enter payment details that will be saved with the invoice.
+                    {isFullPayment && (
+                        <div className="mt-1">
+                            <FontAwesomeIcon icon={faCheckCircle} className="me-1 text-success" />
+                            <small className="text-success">Payment amount auto-set to full invoice total</small>
+                        </div>
+                    )}
                 </Alert>
 
                 {/* ✅ Enhanced validation feedback */}
@@ -159,10 +252,7 @@ const PaymentModal = ({
                 <Row>
                     {/* Left Column - Payment Form */}
                     <Col md={7}>
-                        <Form onSubmit={(e) => {
-                            e.preventDefault();
-                            handleCleanPaymentSubmit(e);
-                        }}>
+                        <Form onSubmit={handleCleanPaymentSubmit}>
                             {/* Party Information */}
                             <div className="mb-4">
                                 <Form.Label className="fw-bold text-secondary mb-2">
@@ -189,11 +279,7 @@ const PaymentModal = ({
                                 </Form.Label>
                                 <Form.Select
                                     value={paymentData.paymentType || 'Cash'}
-                                    onChange={(e) => {
-                                        const value = e.target.value;
-                                        console.log('💳 Payment type changed to:', value);
-                                        handlePaymentTypeChange(value);
-                                    }}
+                                    onChange={(e) => handlePaymentTypeChangeOptimized(e.target.value)}
                                     className="border-2 rounded-3"
                                     style={{ padding: '12px 16px', fontSize: '16px' }}
                                 >
@@ -208,7 +294,7 @@ const PaymentModal = ({
                                 </Form.Select>
                             </div>
 
-                            {/* ✅ ENHANCED: Bank Account Selection with retry functionality */}
+                            {/* Bank Account Selection */}
                             {!['Cash', 'UPI'].includes(paymentData.paymentType) && (
                                 <div className="mb-4">
                                     <Form.Label className="fw-bold text-secondary mb-2 d-flex justify-content-between align-items-center">
@@ -255,8 +341,8 @@ const PaymentModal = ({
                                                         variant="primary"
                                                         size="sm"
                                                         onClick={() => {
-                                                            // You can add navigation to bank account creation here
-                                                            console.log('Navigate to add bank account');
+                                                            // Navigate to add bank account functionality
+                                                            window.open('/bank-accounts/add', '_blank');
                                                         }}
                                                     >
                                                         <FontAwesomeIcon icon={faPlus} className="me-1" />
@@ -269,19 +355,7 @@ const PaymentModal = ({
                                         <>
                                             <Form.Select
                                                 value={paymentData.bankAccountId || ''}
-                                                onChange={(e) => {
-                                                    const value = e.target.value;
-                                                    console.log('🏦 Bank account selected:', value);
-                                                    const selectedAccount = bankAccounts.find(acc =>
-                                                        (acc._id || acc.id) === value
-                                                    );
-                                                    console.log('🏦 Selected account details:', selectedAccount);
-                                                    setPaymentData(prev => ({
-                                                        ...prev,
-                                                        bankAccountId: value,
-                                                        bankAccountName: selectedAccount?.accountName || selectedAccount?.name
-                                                    }));
-                                                }}
+                                                onChange={(e) => handleBankAccountChange(e.target.value)}
                                                 className={`border-2 rounded-3 ${!paymentData.bankAccountId ? 'border-warning' : 'border-success'}`}
                                                 style={{ padding: '12px 16px', fontSize: '16px' }}
                                                 required
@@ -303,7 +377,7 @@ const PaymentModal = ({
                                 </div>
                             )}
 
-                            {/* ✅ ENHANCED: Cheque Details with better validation */}
+                            {/* Cheque Details */}
                             {paymentData.paymentType === 'Cheque' && (
                                 <Row className="mb-4">
                                     <Col md={6}>
@@ -316,7 +390,6 @@ const PaymentModal = ({
                                             value={paymentData.chequeNumber || ''}
                                             onChange={(e) => {
                                                 const value = e.target.value;
-                                                console.log('📝 Cheque number:', value);
                                                 setPaymentData(prev => ({ ...prev, chequeNumber: value }));
                                             }}
                                             placeholder="Enter cheque number"
@@ -341,7 +414,6 @@ const PaymentModal = ({
                                             value={paymentData.chequeDate || ''}
                                             onChange={(e) => {
                                                 const value = e.target.value;
-                                                console.log('📅 Cheque date:', value);
                                                 setPaymentData(prev => ({ ...prev, chequeDate: value }));
                                             }}
                                             className={`border-2 rounded-3 ${!paymentData.chequeDate ? 'border-warning' : 'border-success'}`}
@@ -359,11 +431,14 @@ const PaymentModal = ({
                                 </Row>
                             )}
 
-                            {/* ✅ ENHANCED: Payment Amount with better validation */}
+                            {/* ✅ FIXED: Payment Amount - now pre-filled with invoice total */}
                             <div className="mb-4">
                                 <Form.Label className="fw-bold text-secondary mb-2">
                                     <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
                                     Payment Amount *
+                                    {isFullPayment && (
+                                        <Badge bg="success" className="ms-2">Full Payment</Badge>
+                                    )}
                                 </Form.Label>
                                 <InputGroup size="lg">
                                     <InputGroup.Text className={`${currentConfig.totalBgColor} text-white fw-bold`}>
@@ -375,26 +450,24 @@ const PaymentModal = ({
                                         value={paymentData.amount || ''}
                                         onChange={(e) => {
                                             const value = e.target.value;
-                                            console.log('💰 Payment amount changed:', value);
-                                            handlePaymentAmountChange(value);
+                                            // ✅ FIXED: Direct call without multiple triggers
+                                            debouncedPaymentAmountChange(value);
                                         }}
                                         max={finalTotalWithRoundOff}
                                         min="0"
                                         step="0.01"
-                                        className={`fw-bold border-2 ${!paymentData.amount || paymentData.amount <= 0 ? 'border-warning' : 'border-success'}`}
+                                        className={`fw-bold border-2 ${!paymentData.amount || paymentData.amount <= 0 ? 'border-warning' : isFullPayment ? 'border-success' : 'border-info'}`}
                                         style={{ fontSize: '18px' }}
                                         required
                                     />
                                     <Button
-                                        variant={currentConfig.saveButtonVariant}
-                                        onClick={() => {
-                                            console.log('💯 Setting full amount:', finalTotalWithRoundOff);
-                                            handlePaymentAmountChange(finalTotalWithRoundOff);
-                                        }}
+                                        variant={isFullPayment ? 'success' : currentConfig.saveButtonVariant}
+                                        onClick={handleFullAmountClick}
                                         className="fw-bold"
                                         type="button"
+                                        disabled={isFullPayment}
                                     >
-                                        Full Amount
+                                        {isFullPayment ? 'Full Amount Set' : 'Full Amount'}
                                     </Button>
                                 </InputGroup>
 
@@ -409,23 +482,29 @@ const PaymentModal = ({
                                         <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
                                         Payment amount cannot exceed invoice total
                                     </small>
-                                ) : (
+                                ) : isFullPayment ? (
                                     <small className="text-success">
                                         <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
-                                        Valid payment amount
+                                        Full payment amount - No remaining balance
+                                    </small>
+                                ) : (
+                                    <small className="text-info">
+                                        <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                        Valid payment amount - Partial payment
                                     </small>
                                 )}
 
-                                {paymentData.isPartialPayment && (
+                                {/* ✅ FIXED: Only show partial payment alert when truly partial */}
+                                {isPartialPayment && (
                                     <Alert variant="warning" className="mt-2 mb-0">
                                         <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                                        <strong>Partial Payment:</strong> ₹{itemsTableLogic.formatCurrency(paymentData.remainingAmount)} will remain pending
+                                        <strong>Partial Payment:</strong> ₹{itemsTableLogic.formatCurrency(remainingAmount)} will remain pending
                                     </Alert>
                                 )}
                             </div>
 
-                            {/* ✅ ENHANCED: Next Payment Date for partial payments */}
-                            {paymentData.isPartialPayment && paymentData.remainingAmount > 0 && (
+                            {/* ✅ ENHANCED: Next Payment Date for partial payments only */}
+                            {isPartialPayment && (
                                 <div className="mb-4">
                                     <Form.Label className="fw-bold text-secondary mb-2">
                                         <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
@@ -436,7 +515,6 @@ const PaymentModal = ({
                                         value={paymentData.nextPaymentDate || ''}
                                         onChange={(e) => {
                                             const value = e.target.value;
-                                            console.log('📅 Next payment date:', value);
                                             setPaymentData(prev => ({ ...prev, nextPaymentDate: value }));
                                         }}
                                         className={`border-2 rounded-3 ${!paymentData.nextPaymentDate ? 'border-warning' : 'border-success'}`}
@@ -445,7 +523,7 @@ const PaymentModal = ({
                                         required
                                     />
                                     <small className="text-muted">
-                                        Expected date for remaining payment of ₹{itemsTableLogic.formatCurrency(paymentData.remainingAmount)}
+                                        Expected date for remaining payment of ₹{itemsTableLogic.formatCurrency(remainingAmount)}
                                     </small>
                                 </div>
                             )}
@@ -462,7 +540,6 @@ const PaymentModal = ({
                                         value={paymentData.transactionId || ''}
                                         onChange={(e) => {
                                             const value = e.target.value;
-                                            console.log('🧾 Transaction ID:', value);
                                             setPaymentData(prev => ({ ...prev, transactionId: value }));
                                         }}
                                         placeholder="Enter transaction ID or reference number"
@@ -506,11 +583,11 @@ const PaymentModal = ({
                                 <div className="mb-3">
                                     <div className="d-flex justify-content-between mb-2">
                                         <span className="text-muted">Invoice Number:</span>
-                                        <span className="fw-bold">{invoiceNumber || 'N/A'}</span>
+                                        <span className="fw-bold">{invoiceNumber || 'New Invoice'}</span>
                                     </div>
                                     <div className="d-flex justify-content-between mb-2">
                                         <span className="text-muted">Invoice Date:</span>
-                                        <span className="fw-bold">{invoiceDate || 'N/A'}</span>
+                                        <span className="fw-bold">{invoiceDate || new Date().toLocaleDateString()}</span>
                                     </div>
                                     <hr />
 
@@ -551,73 +628,105 @@ const PaymentModal = ({
                                         <span className="fw-bold text-primary">₹{itemsTableLogic.formatCurrency(finalTotalWithRoundOff || 0)}</span>
                                     </div>
 
-                                    {/* Payment Details */}
-                                    <hr />
-                                    <div className="d-flex justify-content-between mb-2">
-                                        <span>Current Payment:</span>
-                                        <span className="fw-bold text-success">₹{itemsTableLogic.formatCurrency(paymentData.amount || 0)}</span>
-                                    </div>
+                                    {/* ✅ FIXED: Payment Details - always show when payment amount is present */}
+                                    {paymentData.amount && parseFloat(paymentData.amount) > 0 && (
+                                        <>
+                                            <hr />
+                                            <div className="d-flex justify-content-between mb-2">
+                                                <span className="fw-bold">Payment Amount:</span>
+                                                <span className={`fw-bold ${isFullPayment ? 'text-success' : 'text-info'}`}>
+                                                    ₹{itemsTableLogic.formatCurrency(paymentData.amount || 0)}
+                                                </span>
+                                            </div>
 
-                                    {paymentData.totalPaid > 0 && (
-                                        <div className="d-flex justify-content-between mb-2">
-                                            <span>Previously Paid:</span>
-                                            <span className="fw-bold text-info">₹{itemsTableLogic.formatCurrency(paymentData.totalPaid || 0)}</span>
-                                        </div>
-                                    )}
-
-                                    <div className="d-flex justify-content-between">
-                                        <span className="fw-bold">Remaining Balance:</span>
-                                        <span className={`fw-bold ${(paymentData.remainingAmount || 0) === 0 ? 'text-success' : 'text-warning'}`}>
-                                            ₹{itemsTableLogic.formatCurrency(paymentData.remainingAmount || 0)}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Payment Status */}
-                                <div className="text-center mb-3">
-                                    {(paymentData.remainingAmount || 0) === 0 && (paymentData.amount || 0) > 0 ? (
-                                        <span className="badge bg-success fs-6 px-3 py-2">
-                                            <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
-                                            Fully Paid
-                                        </span>
-                                    ) : (paymentData.amount || 0) > 0 ? (
-                                        <span className="badge bg-warning fs-6 px-3 py-2">
-                                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
-                                            Partially Paid
-                                        </span>
-                                    ) : (
-                                        <span className="badge bg-secondary fs-6 px-3 py-2">
-                                            No Payment
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Payment History */}
-                                {paymentHistory && paymentHistory.length > 0 && (
-                                    <div className="mt-3">
-                                        <hr />
-                                        <h6 className="text-secondary">
-                                            <FontAwesomeIcon icon={faHistory} className="me-2" />
-                                            Payment History ({paymentHistory.length})
-                                        </h6>
-                                        <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                                            {paymentHistory.map((payment, index) => (
-                                                <div key={payment._id || payment.id || index} className="d-flex justify-content-between align-items-center mb-1 p-1 bg-white rounded">
-                                                    <div>
-                                                        <small className="text-muted">
-                                                            {payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : 'Unknown Date'}
-                                                        </small>
-                                                        <br />
-                                                        <small className="fw-bold">
-                                                            {payment.paymentType || payment.paymentMethod || 'Unknown Method'}
-                                                        </small>
-                                                    </div>
-                                                    <span className="fw-bold text-success">
-                                                        ₹{itemsTableLogic.formatCurrency(payment.amount || 0)}
+                                            {/* ✅ FIXED: Only show remaining balance if there's actually a remaining amount */}
+                                            {remainingAmount > 0 && (
+                                                <div className="d-flex justify-content-between">
+                                                    <span className="fw-bold">Remaining Balance:</span>
+                                                    <span className="fw-bold text-warning">
+                                                        ₹{itemsTableLogic.formatCurrency(remainingAmount)}
                                                     </span>
                                                 </div>
-                                            ))}
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* ✅ FIXED: Payment Status with correct logic */}
+                                <div className="text-center mb-3">
+                                    {isNoPayment ? (
+                                        <span className="badge bg-secondary fs-6 px-3 py-2">
+                                            <FontAwesomeIcon icon={faMoneyBillWave} className="me-1" />
+                                            Enter Payment Amount
+                                        </span>
+                                    ) : isFullPayment ? (
+                                        <span className="badge bg-success fs-6 px-3 py-2">
+                                            <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                            Full Payment Ready
+                                        </span>
+                                    ) : isPartialPayment ? (
+                                        <span className="badge bg-warning fs-6 px-3 py-2">
+                                            <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                                            Partial Payment
+                                        </span>
+                                    ) : (
+                                        <span className="badge bg-info fs-6 px-3 py-2">
+                                            <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                                            Ready to Process
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Payment Method Display */}
+                                {paymentData.paymentType && (
+                                    <div className="mb-3">
+                                        <hr />
+                                        <div className="text-center">
+                                            <Badge bg="info" className="fs-6 px-3 py-2">
+                                                <FontAwesomeIcon icon={faCreditCard} className="me-2" />
+                                                Payment Method: {paymentData.paymentType}
+                                            </Badge>
                                         </div>
+
+                                        {/* Show additional payment details */}
+                                        {paymentData.bankAccountName && (
+                                            <div className="mt-2 text-center">
+                                                <small className="text-muted">
+                                                    Bank: {paymentData.bankAccountName}
+                                                </small>
+                                            </div>
+                                        )}
+
+                                        {paymentData.chequeNumber && (
+                                            <div className="mt-1 text-center">
+                                                <small className="text-muted">
+                                                    Cheque #: {paymentData.chequeNumber}
+                                                </small>
+                                            </div>
+                                        )}
+
+                                        {paymentData.transactionId && (
+                                            <div className="mt-1 text-center">
+                                                <small className="text-muted">
+                                                    Transaction ID: {paymentData.transactionId}
+                                                </small>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* ✅ FIXED: Credit Terms Display only for partial payments */}
+                                {isPartialPayment && paymentData.nextPaymentDate && (
+                                    <div className="mt-3">
+                                        <hr />
+                                        <Alert variant="warning" className="mb-0">
+                                            <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                                            <strong>Next Payment Due:</strong>
+                                            <br />
+                                            Date: {new Date(paymentData.nextPaymentDate).toLocaleDateString('en-IN')}
+                                            <br />
+                                            Amount: ₹{itemsTableLogic.formatCurrency(remainingAmount)}
+                                        </Alert>
                                     </div>
                                 )}
                             </Card.Body>
@@ -638,7 +747,7 @@ const PaymentModal = ({
 
                 {/* ✅ ENHANCED: Better button state management */}
                 <Button
-                    variant={submitState.isValid ? currentConfig.buttonVariant : 'outline-secondary'}
+                    variant={submitState.isValid ? (isFullPayment ? 'success' : currentConfig.buttonVariant) : 'outline-secondary'}
                     size="lg"
                     onClick={handleCleanPaymentSubmit}
                     disabled={submitState.isDisabled}
@@ -653,7 +762,7 @@ const PaymentModal = ({
                     ) : (
                         <>
                             <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-                            Save Payment Details
+                            {isFullPayment ? 'Save Full Payment' : 'Save Payment Details'}
                             {(paymentData.amount || 0) > 0 && (
                                 <span className="ms-2">
                                     (₹{itemsTableLogic.formatCurrency(paymentData.amount || 0)})

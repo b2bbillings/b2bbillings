@@ -12,35 +12,43 @@ import {
     faExclamationCircle
 } from '@fortawesome/free-solid-svg-icons';
 
-// Import the components - UPDATED: Added PurchaseOrderForm
+// Import the components
 import DayBook from '../components/Home/DayBook';
 import Parties from '../components/Home/Parties';
 import Sales from '../components/Home/Sales';
+import Quotations from '../components/Home/Quotations'; // ✅ FIXED: Import Quotations component
 import SalesOrderForm from '../components/Home/Sales/SalesOrder/SalesOrderForm';
 import Inventory from '../components/Home/Inventory';
 import StaffManagement from '../components/Home/StaffManagement';
 import PurchaseOrders from '../components/Home/PurchaseOrders';
 import Bank from '../components/Home/Bank';
 
-// ✅ NEW: Import PurchaseOrder component
+// Import PurchaseOrder component
 import PurchaseOrder from '../components/Home/Purchases/PurchaseOrder';
 
-// ✅ NEW: Import PurchaseOrderForm for direct page rendering
+// Import PurchaseOrderForm for direct page rendering
 import PurchaseOrderForm from '../components/Home/Purchases/PurchaseOrderForm';
 
 // Import form components
 import PurchaseForm from '../components/Home/Purchases/PurchaseForm';
 
+// ✅ NEW: Import edit components
+import EditSalesInvoice from '../components/Home/Sales/EditSalesInvoice';
+import EditQuotation from '../components/Home/Sales/EditQuotation';
+
 // Import services
 import companyService from '../services/companyService';
 import partyService from '../services/partyService';
 import purchaseService from '../services/purchaseService';
-// ✅ CRITICAL FIX: Add salesService import
 import salesService from '../services/salesService';
+import saleOrderService from '../services/saleOrderService'; // ✅ FIXED: Use saleOrderService for quotations
 
 // Import utility components
 import ErrorBoundary from '../components/ErrorBoundary';
 import Loading from '../components/Loading';
+
+// ✅ NEW: Import custom hook for better online detection
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 import './HomePage.css';
 
@@ -54,55 +62,104 @@ function HomePage({
     const navigate = useNavigate();
     const location = useLocation();
 
+    // ✅ ENHANCED: Better online status detection
+    const { isOnline, lastChecked } = useOnlineStatus();
+
+    // ✅ ENHANCED: Better path parsing for complex routes
     const getViewFromPath = () => {
-        const pathParts = location.pathname.split('/');
+        const pathParts = location.pathname.split('/').filter(part => part);
         const lastPart = pathParts[pathParts.length - 1];
         const secondLastPart = pathParts[pathParts.length - 2];
+        const thirdLastPart = pathParts[pathParts.length - 3];
 
-        // Handle form routes like "purchases/add", "sales/add", "quotations/add", "sales-orders/add"
-        if (lastPart === 'add') {
+        console.log('🔍 HomePage - Path analysis:', {
+            fullPath: location.pathname,
+            pathParts,
+            lastPart,
+            secondLastPart,
+            thirdLastPart
+        });
+
+        // ✅ ENHANCED: Handle edit routes with better pattern matching
+        if (lastPart && (lastPart.match(/^[a-f0-9]{24}$/) || lastPart.match(/^\d+$/) || lastPart.includes('edit'))) {
+            if (secondLastPart === 'edit') {
+                if (thirdLastPart === 'sales' || thirdLastPart === 'invoices') return 'editSalesInvoice';
+                if (thirdLastPart === 'quotations') return 'editQuotation';
+                if (thirdLastPart === 'sales-orders') return 'editSalesOrder';
+            }
+            // Handle direct edit URLs like /quotations/edit/id
+            if (lastPart.includes('edit') && secondLastPart === 'quotations') return 'editQuotation';
+            if (lastPart.includes('edit') && (secondLastPart === 'sales' || secondLastPart === 'invoices')) return 'editSalesInvoice';
+            if (lastPart.includes('edit') && secondLastPart === 'sales-orders') return 'editSalesOrder';
+        }
+
+        // ✅ ENHANCED: Handle form routes with better detection
+        if (lastPart === 'add' || lastPart === 'create') {
+            console.log('📝 Add/Create route detected for:', secondLastPart);
             if (secondLastPart === 'purchases') return 'createPurchase';
-            if (secondLastPart === 'sales') return 'createInvoice';
+            if (secondLastPart === 'sales' || secondLastPart === 'invoices') return 'createInvoice';
             if (secondLastPart === 'purchase-orders') return 'createPurchaseOrder';
             if (secondLastPart === 'quotations') return 'createQuotation';
             if (secondLastPart === 'sales-orders') return 'createSalesOrder';
         }
 
-        // Map URL paths to views - ✅ UPDATED: Properly map purchase-order URL
+        // ✅ ENHANCED: Map URL paths to views with more comprehensive mapping
         const pathViewMap = {
+            // Dashboard & Day Book
             'dashboard': 'dailySummary',
             'daybook': 'dailySummary',
+            'day-book': 'dailySummary',
             'transactions': 'transactions',
             'cash-bank': 'cashAndBank',
+            'cash-and-bank': 'cashAndBank',
+
+            // Parties
             'parties': 'parties',
-            // Sales
+            'customers': 'parties',
+            'suppliers': 'parties',
+
+            // Sales - Enhanced mapping
             'sales': 'invoices',
             'quotations': 'quotations',
+            'quotes': 'quotations',
             'sales-orders': 'salesOrders',
             'invoices': 'invoices',
-            // Purchase - ✅ UPDATED: Map purchase-order to purchaseOrder
+            'bills': 'invoices',
+
+            // Purchase
             'purchases': 'allPurchases',
             'purchase-bills': 'purchaseBills',
-            'purchase-orders': 'purchaseOrder', // ✅ FIXED: This should map to purchaseOrder view
+            'purchase-orders': 'purchaseOrder',
+            'purchase-order': 'purchaseOrder',
+
             // Inventory
             'inventory': 'inventory',
             'products': 'allProducts',
+            'items': 'allProducts',
             'low-stock': 'lowStock',
             'stock-movement': 'stockMovement',
+            'stock-movements': 'stockMovement',
+
             // Bank & Cash
             'bank-accounts': 'bankAccounts',
             'cash-accounts': 'cashAccounts',
             'bank-transactions': 'bankTransactions',
             'bank-reconciliation': 'bankReconciliation',
             'cash-flow': 'cashFlow',
+
             // Other
             'staff': 'staff',
+            'employees': 'staff',
             'insights': 'insights',
+            'analytics': 'insights',
             'reports': 'reports',
-            'settings': 'settings'
+            'settings': 'settings',
+            'configuration': 'settings'
         };
 
-        return pathViewMap[lastPart] || 'dailySummary';
+        const detectedView = pathViewMap[lastPart] || 'dailySummary';
+        console.log('🎯 HomePage - Detected view:', detectedView, 'from path:', lastPart);
+        return detectedView;
     };
 
     // Current view state - derived from URL
@@ -114,7 +171,6 @@ function HomePage({
     // Loading and error states
     const [isLoadingCompany, setIsLoadingCompany] = useState(false);
     const [companyError, setCompanyError] = useState(null);
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
 
     // Toast notifications state
     const [toasts, setToasts] = useState([]);
@@ -123,44 +179,64 @@ function HomePage({
     const [componentHealth, setComponentHealth] = useState({
         parties: 'unknown',
         sales: 'unknown',
+        quotations: 'unknown',
+        purchases: 'unknown',
         purchaseOrders: 'unknown',
         inventory: 'unknown'
     });
 
-    // Update view when URL changes
+    // ✅ ENHANCED: Update view when URL changes with better logging
     useEffect(() => {
         const newView = getViewFromPath();
+        console.log('🔄 HomePage - View change detected:', {
+            oldView: currentView,
+            newView,
+            pathname: location.pathname
+        });
         setCurrentView(newView);
-    }, [location.pathname]);
+    }, [location.pathname, currentView]);
 
-    // Update company when companyId in URL changes or when prop changes
+    // ✅ ENHANCED: Update company state with better error handling
     useEffect(() => {
+        console.log('🏢 HomePage - Company effect triggered:', {
+            companyId,
+            companiesCount: companies.length,
+            propCurrentCompany: propCurrentCompany?.name || propCurrentCompany?.businessName
+        });
+
         if (companyId && companies.length > 0) {
             const foundCompany = companies.find(c =>
                 (c.id || c._id) === companyId
             );
 
             if (foundCompany) {
+                console.log('✅ Company found in companies list:', foundCompany.name || foundCompany.businessName);
                 setCurrentCompany(foundCompany);
                 setCompanyError(null);
             } else if (propCurrentCompany && (propCurrentCompany.id || propCurrentCompany._id) === companyId) {
+                console.log('✅ Using prop company:', propCurrentCompany.name || propCurrentCompany.businessName);
                 setCurrentCompany(propCurrentCompany);
                 setCompanyError(null);
             } else {
+                console.log('❌ Company not found:', companyId);
                 setCompanyError(`Company with ID ${companyId} not found`);
             }
         } else if (propCurrentCompany) {
+            console.log('✅ Using prop company (no URL companyId):', propCurrentCompany.name || propCurrentCompany.businessName);
             setCurrentCompany(propCurrentCompany);
             setCompanyError(null);
+        } else {
+            console.log('⚠️ No company available');
         }
     }, [companyId, companies, propCurrentCompany]);
 
-    // Add toast notification helper
+    // ✅ ENHANCED: Toast notification helper with better management
     const addToast = useCallback((message, type = 'info', duration = 5000) => {
         const id = Date.now() + Math.random();
         const toast = { id, message, type, duration };
 
-        setToasts(prev => [...prev, toast]);
+        console.log('🍞 Adding toast:', { message, type, duration });
+        setToasts(prev => [...prev.slice(-4), toast]); // Keep only last 5 toasts
 
         // Auto remove toast after duration
         setTimeout(() => {
@@ -173,30 +249,11 @@ function HomePage({
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
-    // Monitor online/offline status
-    useEffect(() => {
-        const handleOnline = () => {
-            setIsOnline(true);
-            addToast('Connection restored', 'success', 3000);
-        };
-
-        const handleOffline = () => {
-            setIsOnline(false);
-            addToast('Connection lost. Some features may not work.', 'warning', 10000);
-        };
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }, [addToast]);
-
-    // Health check for components
+    // ✅ FIXED: Health check for components with proper API calls
     const performHealthCheck = useCallback(async () => {
         if (!isOnline || !currentCompany?.id) return;
+
+        console.log('🔍 Performing health check for company:', currentCompany.name || currentCompany.businessName);
 
         try {
             // Test parties service
@@ -204,13 +261,48 @@ function HomePage({
                 await partyService.getParties({ limit: 1 });
                 setComponentHealth(prev => ({ ...prev, parties: 'healthy' }));
             } catch (error) {
+                console.warn('Parties health check failed:', error);
                 setComponentHealth(prev => ({ ...prev, parties: 'error' }));
             }
 
-            // Add other service health checks here as they're implemented
+            // ✅ FIXED: Test quotations using saleOrderService with proper companyId
+            try {
+                const companyId = currentCompany.id || currentCompany._id;
+                await saleOrderService.getQuotations(companyId, { limit: 1 });
+                setComponentHealth(prev => ({ ...prev, quotations: 'healthy' }));
+            } catch (error) {
+                console.warn('Quotations health check failed:', error);
+                setComponentHealth(prev => ({ ...prev, quotations: 'error' }));
+            }
+
+            // ✅ FIXED: Test sales service with proper query parameters
+            try {
+                const companyId = currentCompany.id || currentCompany._id;
+                await salesService.getInvoices({
+                    companyId: companyId,
+                    limit: 1
+                });
+                setComponentHealth(prev => ({ ...prev, sales: 'healthy' }));
+            } catch (error) {
+                console.warn('Sales health check failed:', error);
+                setComponentHealth(prev => ({ ...prev, sales: 'error' }));
+            }
+
+            // ✅ NEW: Test purchase service
+            try {
+                const companyId = currentCompany.id || currentCompany._id;
+                await purchaseService.getPurchases({
+                    companyId: companyId,
+                    limit: 1
+                });
+                setComponentHealth(prev => ({ ...prev, purchases: 'healthy' }));
+            } catch (error) {
+                console.warn('Purchases health check failed:', error);
+                setComponentHealth(prev => ({ ...prev, purchases: 'error' }));
+            }
 
         } catch (error) {
-            // Silent error handling
+            console.warn('Health check failed:', error);
         }
     }, [isOnline, currentCompany]);
 
@@ -221,8 +313,10 @@ function HomePage({
         }
     }, [currentCompany, isOnline, performHealthCheck]);
 
-    // Handle navigation changes - ✅ UPDATED: Map purchaseOrder to purchase-orders URL
+    // ✅ ENHANCED: Handle navigation changes with better error handling
     const handleNavigation = useCallback((page) => {
+        console.log('🧭 Navigation requested:', page);
+
         if (!currentCompany?.id && !currentCompany?._id) {
             addToast('Please select a company first to access this feature', 'warning', 5000);
             return;
@@ -230,38 +324,47 @@ function HomePage({
 
         const companyId = currentCompany.id || currentCompany._id;
 
-        // Map views to URL paths - ✅ UPDATED: Properly map purchaseOrder to URL
+        // ✅ ENHANCED: Map views to URL paths with comprehensive mapping
         const viewPathMap = {
+            // Dashboard & Day Book
             'dailySummary': 'dashboard',
             'transactions': 'transactions',
             'cashAndBank': 'cash-bank',
+
+            // Parties
             'parties': 'parties',
-            // Sales
+
+            // Sales - Enhanced mapping
             'invoices': 'sales',
             'quotations': 'quotations',
             'salesOrders': 'sales-orders',
-            // Purchase - ✅ UPDATED: Map purchaseOrder to purchase-orders URL
+
+            // Purchase
             'allPurchases': 'purchases',
             'purchaseBills': 'purchase-bills',
-            'purchaseOrder': 'purchase-orders', // ✅ FIXED: This should map to purchase-orders URL
-            'purchaseOrders': 'purchase-orders', // ✅ Keep both for backward compatibility
+            'purchaseOrder': 'purchase-orders',
+            'purchaseOrders': 'purchase-orders',
+
             // Inventory
             'inventory': 'inventory',
             'allProducts': 'products',
             'lowStock': 'low-stock',
             'stockMovement': 'stock-movement',
+
             // Bank & Cash
             'bankAccounts': 'bank-accounts',
             'cashAccounts': 'cash-accounts',
             'bankTransactions': 'bank-transactions',
             'bankReconciliation': 'bank-reconciliation',
             'cashFlow': 'cash-flow',
+
             // Other
             'staff': 'staff',
             'insights': 'insights',
             'reports': 'reports',
             'settings': 'settings',
-            // Form routes
+
+            // Form routes - Enhanced
             'createInvoice': 'sales/add',
             'createQuotation': 'quotations/add',
             'createSalesOrder': 'sales-orders/add',
@@ -272,11 +375,13 @@ function HomePage({
         const urlPath = viewPathMap[page] || 'dashboard';
         const newPath = `/companies/${companyId}/${urlPath}`;
 
+        console.log('🎯 Navigating to:', newPath);
         navigate(newPath);
     }, [currentCompany, navigate, addToast]);
 
-    // Handle company change from child components
+    // ✅ ENHANCED: Handle company change with better validation
     const handleCompanyChange = useCallback(async (company) => {
+        console.log('🏢 Company change requested:', company?.name || company?.businessName);
         setIsLoadingCompany(true);
         setCompanyError(null);
 
@@ -289,7 +394,8 @@ function HomePage({
             setCurrentCompany(company);
 
             if (company) {
-                addToast(`Company changed to ${company.businessName || company.name}`, 'success', 3000);
+                const companyName = company.businessName || company.name;
+                addToast(`Company changed to ${companyName}`, 'success', 3000);
 
                 // Navigate to new company's dashboard
                 const companyId = company.id || company._id;
@@ -302,6 +408,7 @@ function HomePage({
             }
 
         } catch (error) {
+            console.error('❌ Company change failed:', error);
             setCompanyError(error.message);
             addToast('Failed to change company: ' + error.message, 'error', 5000);
         } finally {
@@ -309,20 +416,11 @@ function HomePage({
         }
     }, [onCompanyChange, addToast, navigate]);
 
-    // ✅ CRITICAL FIX: Handle sales invoice save
+    // ✅ ENHANCED: Handle sales invoice save with better error handling
     const handleSaveInvoice = useCallback(async (invoiceData) => {
+        console.log('💾 Saving invoice:', invoiceData);
         try {
-            console.log('🏠 HomePage: Handling invoice save:', {
-                companyId: invoiceData.companyId,
-                customerName: invoiceData.customerName,
-                itemCount: invoiceData.items?.length,
-                totalAmount: invoiceData.totals?.finalTotal
-            });
-
-            // Call your sales service to save the invoice
             const result = await salesService.createInvoice(invoiceData);
-
-            console.log('🏠 HomePage: Sales service result:', result);
 
             if (result && result.success) {
                 addToast('Invoice created successfully!', 'success', 5000);
@@ -339,14 +437,15 @@ function HomePage({
             }
 
         } catch (error) {
-            console.error('❌ HomePage: Error saving invoice:', error);
+            console.error('❌ Invoice save failed:', error);
             addToast(`Error creating invoice: ${error.message}`, 'error', 8000);
             throw error;
         }
     }, [addToast, currentCompany, navigate]);
 
-    // Handle purchase form save
+    // ✅ ENHANCED: Handle purchase form save with transaction support
     const handleSavePurchase = useCallback(async (purchaseData) => {
+        console.log('💾 Saving purchase:', purchaseData);
         try {
             // Call the purchase service with transaction support
             const result = await purchaseService.createPurchaseWithTransaction(purchaseData);
@@ -364,55 +463,111 @@ function HomePage({
             }
 
         } catch (error) {
+            console.error('❌ Purchase save failed:', error);
             addToast(`Error creating purchase: ${error.message}`, 'error');
             throw error;
         }
     }, [currentCompany, addToast, navigate]);
 
-    // ✅ NEW: Handle purchase order form save
+    // ✅ ENHANCED: Handle purchase order form save
     const handleSavePurchaseOrder = useCallback(async (purchaseOrderData) => {
+        console.log('💾 Saving purchase order:', purchaseOrderData);
         try {
             addToast('Purchase order created successfully!', 'success');
             // Navigate back to purchase orders
             handleNavigation('purchaseOrder');
         } catch (error) {
+            console.error('❌ Purchase order save failed:', error);
             addToast(`Error saving purchase order: ${error.message}`, 'error');
             throw error;
         }
     }, [handleNavigation, addToast]);
 
-    // Handle quotation save
+    // ✅ FIXED: Handle quotation save using saleOrderService
     const handleSaveQuotation = useCallback(async (orderData, status) => {
+        console.log('💾 HomePage: Saving quotation using saleOrderService:', { orderData, status });
+
         try {
-            addToast(`Quotation ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
-            // Navigate back to quotations
-            handleNavigation('quotations');
+            // Transform orderData to quotation format
+            const quotationData = {
+                ...orderData,
+                orderType: 'quotation', // ✅ CRITICAL: Set orderType to quotation
+                quotationStatus: status || orderData.quotationStatus || 'draft',
+                documentType: 'quotation',
+                mode: 'quotations',
+                quotationNumber: orderData.quotationNumber || orderData.orderNumber,
+                quotationDate: orderData.quotationDate || orderData.orderDate,
+                companyId: currentCompany?.id || currentCompany?._id,
+                status: status || 'draft'
+            };
+
+            console.log('✅ Transformed quotation data for saleOrderService:', quotationData);
+
+            // ✅ FIXED: Use saleOrderService.createSalesOrder with quotation orderType
+            const result = await saleOrderService.createSalesOrder(quotationData);
+
+            if (result && result.success) {
+                addToast(`Quotation ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
+
+                // Navigate back to quotations after a short delay
+                setTimeout(() => {
+                    handleNavigation('quotations');
+                }, 1000);
+
+                return { success: true, data: result.data || quotationData };
+            } else {
+                throw new Error(result?.message || 'Failed to save quotation');
+            }
+
         } catch (error) {
+            console.error('❌ Error saving quotation:', error);
             addToast(`Error saving quotation: ${error.message}`, 'error');
             throw error;
         }
-    }, [handleNavigation, addToast]);
+    }, [handleNavigation, addToast, currentCompany]);
 
-    // Handle sales order save
+    // ✅ ENHANCED: Handle sales order save using saleOrderService
     const handleSaveSalesOrder = useCallback(async (orderData, status) => {
+        console.log('💾 Saving sales order using saleOrderService:', { orderData, status });
         try {
-            addToast(`Sales order ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
-            // Navigate back to sales orders
-            handleNavigation('salesOrders');
+            // Transform orderData to sales order format
+            const salesOrderData = {
+                ...orderData,
+                orderType: 'sales_order', // ✅ CRITICAL: Set orderType to sales_order
+                status: status || 'draft',
+                companyId: currentCompany?.id || currentCompany?._id
+            };
+
+            const result = await saleOrderService.createSalesOrder(salesOrderData);
+
+            if (result && result.success) {
+                addToast(`Sales order ${status === 'confirmed' ? 'confirmed' : 'saved'} successfully!`, 'success');
+                // Navigate back to sales orders
+                handleNavigation('salesOrders');
+                return result;
+            } else {
+                throw new Error(result?.message || 'Failed to save sales order');
+            }
         } catch (error) {
+            console.error('❌ Sales order save failed:', error);
             addToast(`Error saving sales order: ${error.message}`, 'error');
             throw error;
         }
-    }, [handleNavigation, addToast]);
+    }, [handleNavigation, addToast, currentCompany]);
 
-    // Common props to pass to all components
+    // ✅ ENHANCED: Common props with saleOrderService
     const commonProps = {
         currentCompany,
+        currentUser,
         onNavigate: handleNavigation,
         onCompanyChange: handleCompanyChange,
         isOnline,
+        lastChecked, // ✅ NEW: Add last checked time for connectivity
         addToast,
-        companyId: currentCompany?.id || currentCompany?._id
+        companyId: currentCompany?.id || currentCompany?._id,
+        // Additional props for enhanced functionality
+        componentHealth,
+        saleOrderService // ✅ FIXED: Pass saleOrderService instead of quotationService
     };
 
     // Render loading state
@@ -456,24 +611,33 @@ function HomePage({
         </div>
     );
 
-    // Check if component requires company - ✅ UPDATED: Removed expenses and purchaseReturn
+    // ✅ ENHANCED: Check if component requires company with more views
     const requiresCompany = (viewName) => {
         const companyRequiredViews = [
+            // Inventory
             'inventory', 'allProducts', 'lowStock', 'stockMovement',
+            // Sales
             'quotations', 'invoices', 'salesOrders',
-            'purchaseBills', 'purchaseOrder', // ✅ REMOVED: expenses, purchaseReturn
-            'allPurchases', 'purchaseOrders',
+            // Purchase
+            'purchaseBills', 'purchaseOrder', 'allPurchases', 'purchaseOrders',
+            // Bank & Cash
             'bankAccounts', 'cashAccounts', 'bankTransactions',
             'bankReconciliation', 'cashFlow',
+            // Parties
             'parties',
+            // Form routes
             'createPurchase', 'createInvoice', 'createPurchaseOrder',
-            'createQuotation', 'createSalesOrder'
+            'createQuotation', 'createSalesOrder',
+            // Edit routes
+            'editSalesInvoice', 'editQuotation', 'editSalesOrder'
         ];
         return companyRequiredViews.includes(viewName);
     };
 
-    // Render the appropriate component based on the current view - ✅ UPDATED
+    // ✅ ENHANCED: Render the appropriate component based on the current view
     const renderContent = () => {
+        console.log('🎨 Rendering content for view:', currentView);
+
         // Show loading state if company is being loaded
         if (isLoadingCompany) {
             return renderLoadingState('Loading company data...');
@@ -492,28 +656,38 @@ function HomePage({
         // Check if current view requires a company and if we don't have one
         if (requiresCompany(currentView) && !currentCompany?.id && !currentCompany?._id) {
             const componentNameMap = {
+                // Inventory
                 'inventory': 'Inventory Management',
                 'allProducts': 'Products & Services',
                 'lowStock': 'Low Stock Items',
                 'stockMovement': 'Stock Movement',
+                // Sales
                 'quotations': 'Quotations',
                 'salesOrders': 'Sales Orders',
                 'invoices': 'Sales Invoices',
+                // Purchase
                 'purchaseBills': 'Purchase Bills',
-                'purchaseOrder': 'Purchase Orders', // ✅ UPDATED: Removed expenses, purchaseReturn
+                'purchaseOrder': 'Purchase Orders',
                 'allPurchases': 'Purchase Management',
                 'purchaseOrders': 'Purchase Orders',
+                // Bank & Cash
                 'bankAccounts': 'Bank Accounts',
                 'cashAccounts': 'Cash Accounts',
                 'bankTransactions': 'Bank Transactions',
                 'bankReconciliation': 'Bank Reconciliation',
                 'cashFlow': 'Cash Flow',
+                // Parties
                 'parties': 'Parties Management',
+                // Form routes
                 'createPurchase': 'Create Purchase',
                 'createInvoice': 'Create Sales Invoice',
                 'createPurchaseOrder': 'Create Purchase Order',
                 'createQuotation': 'Create Quotation',
-                'createSalesOrder': 'Create Sales Order'
+                'createSalesOrder': 'Create Sales Order',
+                // Edit routes
+                'editSalesInvoice': 'Edit Sales Invoice',
+                'editQuotation': 'Edit Quotation',
+                'editSalesOrder': 'Edit Sales Order'
             };
 
             return renderNoCompanyState(componentNameMap[currentView] || 'this feature');
@@ -541,27 +715,66 @@ function HomePage({
                     <Parties {...commonProps} />
                 );
 
-            // ✅ CRITICAL FIX: Sales cases - Add onSave prop
+            // ✅ FIXED: Sales cases with proper component usage
             case 'quotations':
                 return wrapWithErrorBoundary(
-                    <Sales
+                    <Quotations
                         view="quotations"
                         {...commonProps}
                         onNavigate={handleNavigation}
-                        onSave={handleSaveInvoice} // ✅ ADD THIS
-                    />
-                );
-            case 'invoices':
-            case 'salesOrders':
-                return wrapWithErrorBoundary(
-                    <Sales
-                        view={currentView}
-                        {...commonProps}
-                        onSave={handleSaveInvoice} // ✅ ADD THIS
+                        onSave={handleSaveQuotation}
+                        useAdvancedForm={false} // ✅ Use page navigation by default
                     />
                 );
 
-            // ✅ UPDATED: Purchase cases - Separate purchaseOrder from others
+            case 'invoices':
+                return wrapWithErrorBoundary(
+                    <Sales
+                        view="invoices"
+                        {...commonProps}
+                        onSave={handleSaveInvoice}
+                    />
+                );
+
+            case 'salesOrders':
+                return wrapWithErrorBoundary(
+                    <Sales
+                        view="salesOrders"
+                        {...commonProps}
+                        onSave={handleSaveSalesOrder}
+                    />
+                );
+
+            // ✅ ENHANCED: Edit cases with better props
+            case 'editSalesInvoice':
+                return wrapWithErrorBoundary(
+                    <EditSalesInvoice
+                        {...commonProps}
+                        onSave={handleSaveInvoice}
+                        onCancel={() => handleNavigation('invoices')}
+                    />
+                );
+
+            case 'editQuotation':
+                return wrapWithErrorBoundary(
+                    <EditQuotation
+                        {...commonProps}
+                        onSave={handleSaveQuotation}
+                        onCancel={() => handleNavigation('quotations')}
+                    />
+                );
+
+            case 'editSalesOrder':
+                return wrapWithErrorBoundary(
+                    <EditSalesOrder
+                        {...commonProps}
+                        orderType="sales_order"
+                        onSave={handleSaveSalesOrder}
+                        onCancel={() => handleNavigation('salesOrders')}
+                    />
+                );
+
+            // Purchase cases
             case 'purchaseOrder':
                 return wrapWithErrorBoundary(
                     <PurchaseOrder {...commonProps} />
@@ -575,7 +788,7 @@ function HomePage({
                     <PurchaseOrders view={currentView} {...commonProps} />
                 );
 
-            // Form cases
+            // ✅ FIXED: Form cases with page mode support
             case 'createPurchase':
                 return wrapWithErrorBoundary(
                     <PurchaseForm
@@ -591,7 +804,6 @@ function HomePage({
                         inventoryItems={[]}
                         categories={[]}
                         bankAccounts={[]}
-                        addToast={addToast}
                         {...commonProps}
                     />
                 );
@@ -615,39 +827,68 @@ function HomePage({
                     </div>
                 );
 
+            // ✅ FIXED: Enhanced quotation form with page mode (like purchase order)
             case 'createQuotation':
+                console.log('🎯 Rendering createQuotation as full page (like purchase order)');
                 return wrapWithErrorBoundary(
                     <SalesOrderForm
-                        show={true}
-                        onHide={() => handleNavigation('quotations')}
+                        // ✅ CRITICAL: Enable page mode like purchase order
+                        isPageMode={true}
+                        show={true} // Always show in page mode
+                        onHide={() => {
+                            console.log('🔄 Quotation form closed, navigating back to quotations');
+                            handleNavigation('quotations');
+                        }}
+                        onCancel={() => {
+                            console.log('🔄 Quotation form cancelled, navigating back to quotations');
+                            handleNavigation('quotations');
+                        }}
                         onSaveOrder={handleSaveQuotation}
                         orderType="quotation"
+                        editMode={false}
+                        // ✅ CRITICAL: Add these props to identify it as a quotation
+                        mode="quotations"
+                        documentType="quotation"
+                        formType="quotation"
+                        isQuotationMode={true}
+                        // Common props
                         {...commonProps}
+                        // Additional quotation-specific props
+                        title="Create New Quotation"
+                        submitButtonText="Save Quotation"
+                        enableQuotationFields={true}
+                        // Enhanced props for better functionality
+                        defaultQuotationValidity={30}
+                        quotationStatuses={['draft', 'sent', 'accepted', 'declined', 'expired']}
+                        // ✅ Service props for order number generation
+                        orderService={saleOrderService}
                     />
                 );
 
             case 'createSalesOrder':
                 return wrapWithErrorBoundary(
                     <SalesOrderForm
-                        show={true}
+                        // ✅ CRITICAL: Enable page mode 
+                        isPageMode={true}
+                        show={true} // Always show in page mode
                         onHide={() => handleNavigation('salesOrders')}
+                        onCancel={() => handleNavigation('salesOrders')}
                         onSaveOrder={handleSaveSalesOrder}
                         orderType="sales_order"
+                        editMode={false}
+                        mode="sales_orders"
+                        documentType="sales_order"
+                        formType="sales_order"
                         {...commonProps}
+                        orderService={saleOrderService}
                     />
                 );
 
-            // ✅ UPDATED: Purchase Order Form - Now renders as a page instead of placeholder
             case 'createPurchaseOrder':
                 return wrapWithErrorBoundary(
                     <PurchaseOrderForm
                         onSave={handleSavePurchaseOrder}
                         onCancel={() => handleNavigation('purchaseOrder')}
-                        currentCompany={currentCompany}
-                        currentUser={currentUser}
-                        companyId={currentCompany?.id || currentCompany?._id}
-                        addToast={addToast}
-                        onNavigate={handleNavigation}
                         {...commonProps}
                     />
                 );
@@ -737,6 +978,7 @@ function HomePage({
 
             // Default case
             default:
+                console.log('🔄 Falling back to default view (dailySummary)');
                 return wrapWithErrorBoundary(
                     <DayBook view="dailySummary" {...commonProps} />
                 );
@@ -751,6 +993,11 @@ function HomePage({
                     <FontAwesomeIcon icon={isOnline ? faWifi : faTimesCircle} className="me-1" />
                     {isOnline ? 'Online' : 'Offline'}
                 </div>
+                {lastChecked && (
+                    <div className="small text-muted mt-1">
+                        Last checked: {new Date(lastChecked).toLocaleTimeString()}
+                    </div>
+                )}
             </div>
 
             {/* Toast Notifications */}

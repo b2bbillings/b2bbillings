@@ -1,33 +1,30 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
+import { Container, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExclamationTriangle, faBuilding } from '@fortawesome/free-solid-svg-icons';
 
-// Import components
 import SalesInvoices from './Sales/SalesInvoices';
-import Quotations from './Quotations'; // ✅ ADDED: Import Quotations component
-
-// ✅ FIXED: Import salesService instance (not class)
 import salesService from '../../services/salesService';
+import saleOrderService from '../../services/saleOrderService';
 
 function Sales({
     view = 'allSales',
     onNavigate,
     currentCompany,
+    currentUser,
     isOnline = true,
     addToast,
     companyId: propCompanyId,
-    onSave // ✅ Accept onSave prop from HomePage
+    onSave
 }) {
     const { companyId: urlCompanyId } = useParams();
     const navigate = useNavigate();
     const [isRedirecting, setIsRedirecting] = useState(false);
 
-    // Use companyId from props or URL
     const companyId = propCompanyId || urlCompanyId;
 
-    // Handle view mapping for the new system
+    // ✅ SIMPLIFIED: Map view names to component subviews
     const mapViewToSubView = (viewName) => {
         const viewMap = {
             'allSales': 'invoices',
@@ -38,254 +35,188 @@ function Sales({
             'salesReturns': 'returns',
             'estimates': 'estimates'
         };
-
-        const mappedView = viewMap[viewName] || 'invoices';
-        return mappedView;
+        return viewMap[viewName] || 'invoices';
     };
 
-    // ✅ FIXED: Enhanced handleCreateSale with proper validation
+    // ✅ SIMPLIFIED: Always navigate to page (no modal logic)
+    const handleAddSale = () => {
+        console.log('🧾 Sales.jsx - Adding new sale/quotation:', view);
+
+        if (!companyId) {
+            addToast?.('Please select a company first', 'warning');
+            return;
+        }
+
+        // ✅ FIXED: Navigate based on current view
+        if (view === 'quotations') {
+            console.log('📋 Sales.jsx - Navigating to quotation creation');
+            if (onNavigate) {
+                onNavigate('createQuotation');
+            } else {
+                navigate(`/companies/${companyId}/quotations/add`);
+            }
+        } else {
+            console.log('🧾 Sales.jsx - Navigating to invoice creation');
+            if (onNavigate) {
+                onNavigate('createInvoice');
+            } else {
+                navigate(`/companies/${companyId}/sales/add`);
+            }
+        }
+    };
+
+    // ✅ SIMPLIFIED: Always navigate to edit page (no modal logic)
+    const handleEditSale = (transaction) => {
+        console.log('✏️ Sales.jsx - Editing transaction:', transaction.id || transaction._id);
+
+        const transactionId = transaction.id || transaction._id;
+
+        if (!transactionId) {
+            addToast?.('Unable to edit: Transaction ID not found', 'error');
+            return;
+        }
+
+        // ✅ FIXED: Navigate based on current view
+        if (view === 'quotations') {
+            console.log('📋 Sales.jsx - Navigating to quotation edit');
+            if (onNavigate) {
+                onNavigate('editQuotation', { quotationId: transactionId, quotation: transaction });
+            } else {
+                navigate(`/companies/${companyId}/quotations/edit/${transactionId}`);
+            }
+        } else {
+            console.log('🧾 Sales.jsx - Navigating to invoice edit');
+            if (onNavigate) {
+                onNavigate('editSalesInvoice', { invoiceId: transactionId, invoice: transaction });
+            } else {
+                navigate(`/companies/${companyId}/sales/edit/${transactionId}`);
+            }
+        }
+    };
+
+    // ✅ SIMPLIFIED: View handler
+    const handleViewSale = (transaction) => {
+        console.log('👁️ Sales.jsx - Viewing transaction:', transaction.id || transaction._id);
+        // View logic can be handled by the table component
+    };
+
+    // ✅ SIMPLIFIED: Delete handler
+    const handleDeleteSale = async (transaction) => {
+        console.log('🗑️ Sales.jsx - Deleting transaction:', transaction.id || transaction._id);
+        // Delete logic will be handled by SalesInvoices component
+    };
+
+    // ✅ SIMPLIFIED: Print handler
+    const handlePrintSale = (transaction) => {
+        console.log('🖨️ Sales.jsx - Printing transaction:', transaction.id || transaction._id);
+        const docName = view === 'quotations' ? 'quotation' : 'invoice';
+        const docNumber = transaction.quotationNumber || transaction.invoiceNo || 'Unknown';
+        addToast?.(`Printing ${docName} ${docNumber}...`, 'info');
+    };
+
+    // ✅ SIMPLIFIED: Share handler
+    const handleShareSale = (transaction) => {
+        console.log('📤 Sales.jsx - Sharing transaction:', transaction.id || transaction._id);
+        const docName = view === 'quotations' ? 'quotation' : 'invoice';
+        const docNumber = transaction.quotationNumber || transaction.invoiceNo || 'Unknown';
+        addToast?.(`Sharing ${docName} ${docNumber}...`, 'info');
+    };
+
+    // ✅ SIMPLIFIED: Convert handler
+    const handleConvertSale = (transaction) => {
+        console.log('🔄 Sales.jsx - Converting transaction:', transaction.id || transaction._id);
+        // Convert logic will be handled by SalesInvoices component
+    };
+
+    // ✅ SIMPLIFIED: Download handler
+    const handleDownloadSale = (transaction) => {
+        console.log('💾 Sales.jsx - Downloading transaction:', transaction.id || transaction._id);
+        const docName = view === 'quotations' ? 'quotation' : 'invoice';
+        const docNumber = transaction.quotationNumber || transaction.invoiceNo || 'Unknown';
+        addToast?.(`Downloading ${docName} ${docNumber}...`, 'info');
+    };
+
+    // ✅ SIMPLIFIED: Save handlers
     const handleCreateSale = async (saleData) => {
         try {
-            // ✅ CRITICAL FIX: Handle initialization calls gracefully
-            if (!saleData) {
-                console.warn('⚠️ Sales.jsx: handleCreateSale called without data (likely initialization)');
-                return {
-                    success: false,
-                    error: 'No sale data provided',
-                    message: 'Sale data is required',
-                    isInitializationCall: true
+            console.log('💾 Sales.jsx - Creating sale/quotation:', view, saleData);
+
+            if (!saleData || typeof saleData !== 'object') {
+                return { success: false, error: 'Invalid sale data' };
+            }
+
+            const isQuotation = view === 'quotations' || saleData.documentType === 'quotation';
+
+            let result;
+            if (isQuotation) {
+                const quotationData = {
+                    ...saleData,
+                    documentType: 'quotation',
+                    orderType: 'quotation',
+                    mode: 'quotations'
                 };
+                result = await saleOrderService.createSalesOrder(quotationData);
+            } else {
+                const invoiceData = {
+                    ...saleData,
+                    documentType: 'invoice',
+                    mode: 'invoices'
+                };
+                result = await salesService.createInvoice(invoiceData);
             }
 
-            // ✅ ENHANCED: Validate saleData structure
-            if (typeof saleData !== 'object') {
-                console.error('❌ Sales.jsx: saleData is not an object:', typeof saleData);
-                throw new Error('Invalid sale data format');
-            }
+            if (result?.success) {
+                const docName = isQuotation ? 'Quotation' : 'Invoice';
+                addToast?.(`${docName} created successfully!`, 'success');
 
-            console.log('🔄 Sales.jsx: Creating sale/invoice with:', {
-                hasOnSaveProp: !!onSave,
-                companyId: companyId,
-                view: view,
-                hasValidSaleData: !!saleData,
-                customerName: saleData.customerName || saleData.customer?.name || 'N/A',
-                itemCount: saleData.items?.length || 0,
-                dataKeys: Object.keys(saleData || {})
-            });
-
-            // ✅ VALIDATION: Check required fields
-            if (!companyId) {
-                throw new Error('Company ID is required');
-            }
-
-            // ✅ VALIDATION: Check items array
-            if (!saleData.items || !Array.isArray(saleData.items) || saleData.items.length === 0) {
-                throw new Error('At least one item is required for the sale');
-            }
-
-            // ✅ ENHANCED: Build complete sale data with all required fields
-            const completeSaleData = {
-                // Basic invoice info
-                companyId: companyId,
-                invoiceNumber: saleData.invoiceNumber || `INV-${Date.now()}`,
-                invoiceDate: saleData.invoiceDate || new Date().toISOString().split('T')[0],
-                invoiceType: saleData.gstEnabled ? 'gst' : 'non-gst',
-                documentType: getDocumentType(view),
-
-                // Customer info (handle both string ID and object)
-                customer: saleData.customer,
-                customerName: saleData.customerName || saleData.customer?.name || 'Cash Customer',
-                customerMobile: saleData.customerMobile || saleData.customer?.mobile || '',
-
-                // Items and calculations
-                items: saleData.items || [],
-                totals: saleData.totals || {
-                    subtotal: 0,
-                    totalTax: 0,
-                    finalTotal: 0,
-                    finalTotalWithRoundOff: 0
-                },
-
-                // Tax and pricing settings
-                gstEnabled: Boolean(saleData.gstEnabled),
-                taxMode: saleData.taxMode || saleData.globalTaxMode || 'without-tax',
-                priceIncludesTax: Boolean(saleData.priceIncludesTax),
-
-                // Payment info
-                payment: saleData.payment || {
-                    method: 'cash',
-                    paidAmount: 0,
-                    status: 'pending'
-                },
-
-                // Additional fields
-                notes: saleData.notes || '',
-                status: saleData.status || 'draft',
-                termsAndConditions: saleData.termsAndConditions || '',
-
-                // Round off
-                roundOffValue: saleData.roundOffValue || 0,
-                roundOffEnabled: Boolean(saleData.roundOffEnabled),
-
-                // Copy any additional fields
-                ...saleData
-            };
-
-            console.log('📋 Sales.jsx: Complete sale data prepared:', {
-                companyId: completeSaleData.companyId,
-                customerName: completeSaleData.customerName,
-                customer: completeSaleData.customer,
-                itemCount: completeSaleData.items.length,
-                finalTotal: completeSaleData.totals.finalTotal,
-                documentType: completeSaleData.documentType
-            });
-
-            // ✅ CRITICAL: Use onSave prop from HomePage if available
-            if (onSave && typeof onSave === 'function') {
-                console.log('📤 Sales.jsx: Using onSave prop from HomePage');
-                const result = await onSave(completeSaleData);
-
-                // Handle HomePage onSave response
-                if (result && result.success) {
-                    const documentType = view === 'quotations' ? 'Quotation' : 'Invoice';
-                    const invoiceNumber = result.data?.invoiceNumber || completeSaleData.invoiceNumber;
-
-                    addToast?.(
-                        `${documentType} ${invoiceNumber} created successfully!`,
-                        'success',
-                        5000
-                    );
-
-                    // Navigate after success
-                    setTimeout(() => {
-                        if (view === 'quotations') {
-                            navigate(`/companies/${companyId}/quotations`);
-                        } else {
-                            navigate(`/companies/${companyId}/sales`);
-                        }
-                    }, 1500);
-                }
-
-                return result;
-            }
-
-            // ✅ FALLBACK: Use salesService directly if no onSave prop
-            console.log('📤 Sales.jsx: Using direct salesService call');
-
-            const result = await salesService.createInvoice(completeSaleData);
-
-            console.log('📥 Sales.jsx: salesService response:', {
-                success: result?.success,
-                hasData: !!result?.data,
-                error: result?.error,
-                message: result?.message
-            });
-
-            // ✅ RESPONSE HANDLING: Check for various response formats
-            if (!result) {
-                throw new Error('No response from sales service');
-            }
-
-            // Success cases
-            if (result.success === true || (result.data && !result.error)) {
-                const documentType = view === 'quotations' ? 'Quotation' : 'Invoice';
-                const invoiceNumber = result.data?.invoiceNumber || completeSaleData.invoiceNumber;
-
-                addToast?.(
-                    `${documentType} ${invoiceNumber} created successfully!`,
-                    'success',
-                    5000
-                );
-
-                // Navigate after success
+                // Navigate back to list
                 setTimeout(() => {
-                    if (view === 'quotations') {
+                    if (isQuotation) {
                         navigate(`/companies/${companyId}/quotations`);
                     } else {
                         navigate(`/companies/${companyId}/sales`);
                     }
                 }, 1500);
-
-                return {
-                    success: true,
-                    data: result.data,
-                    message: result.message || `${documentType} created successfully`
-                };
-            }
-            // Error cases
-            else if (result.success === false || result.error) {
-                throw new Error(result.error || result.message || 'Save operation failed');
-            }
-            // Unexpected response
-            else {
-                throw new Error('Unable to confirm invoice creation - unexpected response format');
             }
 
+            return result;
         } catch (error) {
-            console.error('❌ Sales.jsx: Error in handleCreateSale:', {
-                error: error,
-                message: error.message,
-                name: error.name,
-                stack: error.stack,
-                saleDataProvided: !!saleData,
-                saleDataKeys: saleData ? Object.keys(saleData) : null,
-                isInitializationCall: !saleData
-            });
-
-            // ✅ ENHANCED ERROR HANDLING: Don't show errors for initialization calls
-            if (!saleData) {
-                return {
-                    success: false,
-                    error: 'No sale data provided',
-                    message: 'Sale data is required',
-                    isInitializationCall: true
-                };
-            }
-
-            const documentType = view === 'quotations' ? 'quotation' : 'invoice';
-            let errorMessage = error.message || `Failed to create ${documentType}`;
-
-            // ✅ SPECIFIC ERROR HANDLING
-            if (error.response) {
-                errorMessage = error.response.data?.message ||
-                    error.response.data?.error ||
-                    `Server error: ${error.response.status}`;
-            } else if (error.request) {
-                errorMessage = 'Network error - please check your connection';
-            } else if (error.name === 'TypeError' && error.message.includes('constructor')) {
-                errorMessage = 'Service configuration error - please refresh the page';
-            } else if (error.message.includes('Customer')) {
-                errorMessage = error.message; // Keep customer-related errors as is
-            } else if (error.message.includes('required')) {
-                errorMessage = error.message; // Keep validation errors as is
-            }
-
-            // Show error toast
-            addToast?.(
-                `Failed to create ${documentType}: ${errorMessage}`,
-                'error',
-                8000
-            );
-
-            return {
-                success: false,
-                error: errorMessage,
-                message: errorMessage,
-                data: null
-            };
+            console.error('❌ Sales.jsx - Save error:', error);
+            const docName = view === 'quotations' ? 'quotation' : 'invoice';
+            addToast?.(`Error creating ${docName}: ${error.message}`, 'error');
+            return { success: false, error: error.message };
         }
     };
 
-    // ✅ DEBUG: Log component rendering
-    console.log('🔧 Sales component rendering with:', {
-        view,
-        subView: mapViewToSubView(view),
-        companyId,
-        hasOnSave: !!onSave,
-        salesServiceAvailable: !!salesService
-    });
+    // Get page title based on view
+    const getPageTitle = (viewName) => {
+        const titleMap = {
+            'allSales': 'All Sales',
+            'invoices': 'Sales Invoices',
+            'quotations': 'Quotations',
+            'salesOrders': 'Sales Orders',
+            'creditNotes': 'Credit Notes',
+            'salesReturns': 'Sales Returns',
+            'estimates': 'Estimates'
+        };
+        return titleMap[viewName] || 'Sales Management';
+    };
 
-    // ✅ VALIDATION: Check required props
+    // Get document type based on view
+    const getDocumentType = (viewName) => {
+        const typeMap = {
+            'allSales': 'invoice',
+            'invoices': 'invoice',
+            'quotations': 'quotation',
+            'salesOrders': 'sales_order',
+            'creditNotes': 'credit_note',
+            'salesReturns': 'sales_return',
+            'estimates': 'estimate'
+        };
+        return typeMap[viewName] || 'invoice';
+    };
+
+    // Early returns for error states
     if (!companyId) {
         return (
             <div className="sales-container">
@@ -300,7 +231,6 @@ function Sales({
         );
     }
 
-    // ✅ LOADING STATE
     if (isRedirecting) {
         return (
             <div className="sales-container">
@@ -316,103 +246,49 @@ function Sales({
         );
     }
 
-    // ✅ OFFLINE STATE
-    if (!isOnline) {
-        return (
-            <div className="sales-container">
-                <Container className="py-4">
-                    <Alert variant="warning" className="text-center">
-                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                        You are currently offline. Sales data may not be up to date.
-                    </Alert>
-                </Container>
-            </div>
-        );
-    }
-
-    // Get mapped subview
     const subView = mapViewToSubView(view);
 
-    // ✅ FIXED: Proper conditional rendering for quotations
-    const renderContent = () => {
-        // ✅ CRITICAL FIX: Handle quotations view separately
-        if (view === 'quotations') {
-            console.log('🔄 Sales.jsx: Rendering Quotations component');
-            return (
-                <Quotations
-                    view="quotations"
-                    onNavigate={onNavigate}
-                    currentCompany={currentCompany}
-                    isOnline={isOnline}
-                    addToast={addToast}
-                    companyId={companyId}
-                    onSave={onSave} // ✅ CRITICAL: Pass onSave to Quotations
-                />
-            );
-        }
-
-        // ✅ For all other sales views, use SalesInvoices
-        console.log('🔄 Sales.jsx: Rendering SalesInvoices component');
-        return (
+    // ✅ FIXED: Render SalesInvoices with clean props (no modal complexity)
+    return (
+        <div className="sales-container">
             <SalesInvoices
                 companyId={companyId}
                 currentCompany={currentCompany}
+                currentUser={currentUser}
                 view={subView}
-                mode={view}
+                mode={view === 'quotations' ? 'quotations' : 'invoices'}
                 pageTitle={getPageTitle(view)}
                 documentType={getDocumentType(view)}
-                onAddSale={handleCreateSale} // Pass the fixed function
-                onCreateSale={handleCreateSale} // Pass the fixed function
-                onSave={handleCreateSale} // Pass the fixed function
-                onEditSale={(saleData) => {
-                    console.log('Edit sale:', saleData);
-                    // Handle edit logic here
-                }}
-                onViewChange={(newView) => {
-                    console.log('View change:', newView);
-                    if (onNavigate) {
-                        onNavigate(newView);
-                    }
-                }}
+                formType={view === 'quotations' ? 'quotation' : 'sales'}
+
+                // ✅ SIMPLE: Action handlers that ALWAYS navigate to pages
+                onAddSale={handleAddSale}
+                onEditSale={handleEditSale}
+                onViewSale={handleViewSale}
+                onDeleteSale={handleDeleteSale}
+                onPrintSale={handlePrintSale}
+                onShareSale={handleShareSale}
+                onConvertSale={handleConvertSale}
+                onDownloadSale={handleDownloadSale}
+
+                // Save handlers
+                onCreateSale={handleCreateSale}
+                onSave={view === 'quotations' ? handleCreateSale : onSave}
+                onSaveQuotation={handleCreateSale}
+
+                // Navigation and utilities
                 onNavigate={onNavigate}
                 isOnline={isOnline}
                 addToast={addToast}
+
+                // Services
                 salesService={salesService}
+                quotationService={saleOrderService}
+                saleOrderService={saleOrderService}
+
+            // ✅ REMOVED: All useAdvancedForm, showFormModal, and complex props
+            // Clean, simple navigation only
             />
-        );
-    };
-
-    // ✅ HELPER: Get page title
-    const getPageTitle = (viewName) => {
-        const titleMap = {
-            'allSales': 'All Sales',
-            'invoices': 'Sales Invoices',
-            'quotations': 'Quotations',
-            'salesOrders': 'Sales Orders',
-            'creditNotes': 'Credit Notes',
-            'salesReturns': 'Sales Returns',
-            'estimates': 'Estimates'
-        };
-        return titleMap[viewName] || 'Sales Management';
-    };
-
-    // ✅ HELPER: Get document type
-    const getDocumentType = (viewName) => {
-        const typeMap = {
-            'allSales': 'invoice',
-            'invoices': 'invoice',
-            'quotations': 'quotation',
-            'salesOrders': 'sales_order',
-            'creditNotes': 'credit_note',
-            'salesReturns': 'sales_return',
-            'estimates': 'estimate'
-        };
-        return typeMap[viewName] || 'invoice';
-    };
-
-    return (
-        <div className="sales-container">
-            {renderContent()}
         </div>
     );
 }

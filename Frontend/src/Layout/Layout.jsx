@@ -33,12 +33,58 @@ function Layout({
   // Company error state
   const [companyError, setCompanyError] = useState(null);
 
-  // Get current view from URL path - ✅ UPDATED: Fixed purchase-orders mapping
+  // ✅ UPDATED: Enhanced path detection for edit routes
   const getCurrentViewFromPath = () => {
-    const pathParts = location.pathname.split('/');
+    const pathParts = location.pathname.split('/').filter(part => part);
+
+    // Debug current path
+    console.log('🔍 Layout - Current path parts:', pathParts, 'Full path:', location.pathname);
+
+    // Handle edit routes specially
+    if (pathParts.includes('edit')) {
+      const editIndex = pathParts.indexOf('edit');
+      if (editIndex > 0) {
+        const baseSection = pathParts[editIndex - 1];
+        console.log('📝 Edit route detected for section:', baseSection);
+
+        // Map edit routes to their base sections
+        const editRouteMap = {
+          'sales': 'invoices',
+          'quotations': 'quotations',
+          'purchases': 'purchaseBills',
+          'purchase-bills': 'purchaseBills',
+          'sales-orders': 'salesOrders',
+          'purchase-orders': 'purchaseOrder'
+        };
+
+        return editRouteMap[baseSection] || baseSection;
+      }
+    }
+
+    // Handle add routes
+    if (pathParts.includes('add')) {
+      const addIndex = pathParts.indexOf('add');
+      if (addIndex > 0) {
+        const baseSection = pathParts[addIndex - 1];
+        console.log('➕ Add route detected for section:', baseSection);
+
+        // Map add routes to their create views
+        const addRouteMap = {
+          'sales': 'createInvoice',
+          'quotations': 'createQuotation',
+          'purchases': 'createPurchase',
+          'purchase-bills': 'createPurchase',
+          'sales-orders': 'createSalesOrder',
+          'purchase-orders': 'createPurchaseOrder'
+        };
+
+        return addRouteMap[baseSection] || baseSection;
+      }
+    }
+
     const lastPart = pathParts[pathParts.length - 1];
 
-    // Map URL paths to views - ✅ UPDATED: Fixed purchase-orders to purchaseOrder
+    // Map URL paths to views
     const pathViewMap = {
       'dashboard': 'dailySummary',
       'daybook': 'dailySummary',
@@ -55,7 +101,7 @@ function Layout({
       'purchases': 'allPurchases',
       'purchase-bills': 'purchaseBills',
       'create-purchase': 'createPurchase',
-      'purchase-orders': 'purchaseOrder', // ✅ UPDATED: Map to purchaseOrder (not purchaseOrders)
+      'purchase-orders': 'purchaseOrder',
       'create-purchase-order': 'createPurchaseOrder',
       'inventory': 'inventory',
       'products': 'allProducts',
@@ -72,7 +118,10 @@ function Layout({
       'settings': 'settings'
     };
 
-    return pathViewMap[lastPart] || 'dailySummary';
+    const detectedView = pathViewMap[lastPart] || 'dailySummary';
+    console.log('🎯 Layout - Detected view:', detectedView, 'from path part:', lastPart);
+
+    return detectedView;
   };
 
   // Current page derived from URL
@@ -128,7 +177,7 @@ function Layout({
     setSidebarOpen(!sidebarOpen);
   };
 
-  // Handle navigation - ✅ UPDATED: Fixed purchaseOrder mapping
+  // ✅ FIXED: Enhanced navigation handler with proper quotation support
   const handleNavigation = (page) => {
     console.log('🚀 Layout handleNavigation called with:', page);
 
@@ -144,35 +193,51 @@ function Layout({
       return;
     }
 
-    // Map views to URL paths - ✅ UPDATED: Fixed purchaseOrder to purchase-orders
+    // ✅ ENHANCED: Better view to path mapping with quotation support
     const viewPathMap = {
       'dailySummary': 'dashboard',
       'transactions': 'transactions',
       'cashAndBank': 'cash-bank',
       'parties': 'parties',
-      'invoices': 'invoices',
+
+      // ✅ SALES ROUTES
+      'invoices': 'sales',
       'allSales': 'sales',
+      'createInvoice': 'sales/add',
+      'salesInvoices': 'sales',
+
+      // ✅ QUOTATION ROUTES - Separate and distinct
       'quotations': 'quotations',
       'createQuotation': 'quotations/add',
-      'createInvoice': 'invoices/add',
+      'addQuotation': 'quotations/add', // Alternative naming
+
+      // ✅ OTHER SALES ROUTES
       'creditNotes': 'credit-notes',
       'salesOrders': 'sales-orders',
       'createSalesOrder': 'sales-orders/add',
+
+      // ✅ PURCHASE ROUTES
       'allPurchases': 'purchases',
       'purchaseBills': 'purchase-bills',
       'createPurchase': 'purchases/add',
-      'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
-      'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+      'purchaseOrder': 'purchase-orders',
+      'purchaseOrders': 'purchase-orders',
       'createPurchaseOrder': 'purchase-orders/add',
+
+      // ✅ INVENTORY ROUTES
       'inventory': 'inventory',
       'allProducts': 'products',
       'lowStock': 'low-stock',
       'stockMovement': 'stock-movement',
+
+      // ✅ BANK ROUTES
       'bankAccounts': 'bank-accounts',
       'cashAccounts': 'cash-accounts',
       'bankTransactions': 'bank-transactions',
       'bankReconciliation': 'bank-reconciliation',
       'cashFlow': 'cash-flow',
+
+      // ✅ OTHER ROUTES
       'staff': 'staff',
       'insights': 'insights',
       'reports': 'reports',
@@ -182,39 +247,58 @@ function Layout({
     const urlPath = viewPathMap[page] || 'dashboard';
     const newPath = `/companies/${effectiveCompanyId}/${urlPath}`;
 
-    console.log('✅ Layout navigating to:', newPath);
+    console.log('✅ Layout navigating to:', newPath, 'for page:', page);
     navigate(newPath);
   };
 
-  // Handle company change with error handling and navigation - ✅ UPDATED: Fixed purchaseOrder mapping
+  // ✅ UPDATED: Enhanced company change handler
   const handleCompanyChange = (company) => {
     setCompanyError(null);
 
     try {
       if (company) {
-        // Navigate to new company's dashboard
+        // Navigate to new company's dashboard - but preserve current view if possible
         const newCompanyId = company.id || company._id;
         const currentView = getCurrentViewFromPath();
 
-        // ✅ UPDATED: Fixed purchaseOrder mapping
+        // ✅ Check if we're in an edit route - if so, go to the list view instead
+        const pathParts = location.pathname.split('/').filter(part => part);
+        const isEditRoute = pathParts.includes('edit');
+        const isAddRoute = pathParts.includes('add');
+
+        let targetView = currentView;
+
+        if (isEditRoute || isAddRoute) {
+          // If in edit/add mode, navigate to the list view instead
+          const editToListMap = {
+            'invoices': 'invoices',
+            'quotations': 'quotations',
+            'purchaseBills': 'purchaseBills',
+            'salesOrders': 'salesOrders',
+            'purchaseOrder': 'purchaseOrder'
+          };
+          targetView = editToListMap[currentView] || 'dailySummary';
+          console.log('🔄 Company change during edit/add - redirecting to list view:', targetView);
+        }
+
         const viewPathMap = {
           'dailySummary': 'dashboard',
           'transactions': 'transactions',
           'cashAndBank': 'cash-bank',
           'parties': 'parties',
-          'invoices': 'invoices',
+          'invoices': 'sales',
           'allSales': 'sales',
           'quotations': 'quotations',
           'createQuotation': 'quotations/add',
-          'createInvoice': 'invoices/add',
+          'createInvoice': 'sales/add',
           'creditNotes': 'credit-notes',
           'salesOrders': 'sales-orders',
           'createSalesOrder': 'sales-orders/add',
           'allPurchases': 'purchases',
           'purchaseBills': 'purchase-bills',
           'createPurchase': 'purchases/add',
-          'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
-          'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+          'purchaseOrder': 'purchase-orders',
+          'purchaseOrders': 'purchase-orders',
           'createPurchaseOrder': 'purchase-orders/add',
           'inventory': 'inventory',
           'allProducts': 'products',
@@ -231,7 +315,7 @@ function Layout({
           'settings': 'settings'
         };
 
-        const urlPath = viewPathMap[currentView] || 'dashboard';
+        const urlPath = viewPathMap[targetView] || 'dashboard';
         const newPath = `/companies/${newCompanyId}/${urlPath}`;
 
         navigate(newPath);
@@ -262,7 +346,7 @@ function Layout({
 
         setTimeout(() => {
           navigate(newPath);
-        }, 100); // Small delay to ensure state is updated
+        }, 100);
       }
     } catch (error) {
       setCompanyError(`Failed to create company: ${error.message}`);
@@ -282,6 +366,10 @@ function Layout({
     }
   };
 
+  // ✅ ADDED: Check if we're in edit mode for special handling
+  const isEditMode = location.pathname.includes('/edit/');
+  const isAddMode = location.pathname.includes('/add');
+
   // Enhanced children props with all necessary context
   const childrenWithProps = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
@@ -294,7 +382,12 @@ function Layout({
         onCompanyUpdated: handleCompanyUpdated,
         currentUser,
         isOnline,
-        companyId: companyId || currentCompany?.id || currentCompany?._id
+        companyId: companyId || currentCompany?.id || currentCompany?._id,
+        // ✅ ADDED: Pass edit/add mode info
+        isEditMode,
+        isAddMode,
+        // ✅ ADDED: Pass location info for advanced routing
+        currentLocation: location
       });
     }
     return child;
@@ -336,6 +429,9 @@ function Layout({
         isLoadingCompanies={isLoadingCompanies}
         isOnline={isOnline}
         companyId={companyId}
+        // ✅ ADDED: Pass edit mode info to navbar
+        isEditMode={isEditMode}
+        isAddMode={isAddMode}
       />
 
       {/* Main content section with sidebar */}
@@ -349,6 +445,9 @@ function Layout({
           currentUser={currentUser}
           isOnline={isOnline}
           companyId={companyId}
+          // ✅ ADDED: Pass edit mode info to sidebar
+          isEditMode={isEditMode}
+          isAddMode={isAddMode}
         />
 
         <div className={`content-wrapper ${sidebarOpen ? '' : 'expanded'}`}>
@@ -378,8 +477,8 @@ function Layout({
               </Container>
             )}
 
-            {/* Company ID Mismatch Warning */}
-            {companyId && currentCompany && (currentCompany.id !== companyId && currentCompany._id !== companyId) && (
+            {/* ✅ UPDATED: Enhanced company ID mismatch warning */}
+            {companyId && currentCompany && (currentCompany.id !== companyId && currentCompany._id !== companyId) && !isEditMode && (
               <Container className="py-2">
                 <Alert variant="warning" className="mb-3">
                   <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -390,25 +489,24 @@ function Layout({
                       const correctId = currentCompany.id || currentCompany._id;
                       const currentView = getCurrentViewFromPath();
 
-                      // ✅ UPDATED: Fixed purchaseOrder mapping here too
                       const viewPathMap = {
                         'dailySummary': 'dashboard',
                         'transactions': 'transactions',
                         'cashAndBank': 'cash-bank',
                         'parties': 'parties',
-                        'invoices': 'invoices',
+                        'invoices': 'sales',
                         'allSales': 'sales',
                         'quotations': 'quotations',
                         'createQuotation': 'quotations/add',
-                        'createInvoice': 'invoices/add',
+                        'createInvoice': 'sales/add',
                         'creditNotes': 'credit-notes',
                         'salesOrders': 'sales-orders',
                         'createSalesOrder': 'sales-orders/add',
                         'allPurchases': 'purchases',
                         'purchaseBills': 'purchase-bills',
                         'createPurchase': 'purchases/add',
-                        'purchaseOrder': 'purchase-orders', // ✅ UPDATED: Map purchaseOrder to purchase-orders URL
-                        'purchaseOrders': 'purchase-orders', // ✅ Keep for backward compatibility
+                        'purchaseOrder': 'purchase-orders',
+                        'purchaseOrders': 'purchase-orders',
                         'createPurchaseOrder': 'purchase-orders/add',
                         'inventory': 'inventory',
                         'allProducts': 'products',
@@ -434,6 +532,21 @@ function Layout({
               </Container>
             )}
 
+            {/* ✅ ADDED: Edit mode indicator */}
+            {isEditMode && (
+              <Container className="py-2">
+                <Alert variant="info" className="mb-3 d-flex align-items-center">
+                  <div className="me-auto">
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                    <strong>Edit Mode:</strong> You are currently editing a document.
+                  </div>
+                  <small className="text-muted">
+                    Changes will be saved automatically
+                  </small>
+                </Alert>
+              </Container>
+            )}
+
             {childrenWithProps}
           </main>
 
@@ -441,6 +554,8 @@ function Layout({
             currentCompany={currentCompany}
             isOnline={isOnline}
             companyId={companyId}
+            isEditMode={isEditMode}
+            isAddMode={isAddMode}
           />
         </div>
       </div>

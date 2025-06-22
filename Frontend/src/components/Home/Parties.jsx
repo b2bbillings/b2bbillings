@@ -1,4 +1,3 @@
-// Frontend/src/components/Home/Parties.jsx
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Button, Card, Form, InputGroup, Badge, Dropdown, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -20,10 +19,7 @@ import {
     faTrash,
     faExclamationTriangle,
     faCheckCircle,
-    faPlus,
-    faFileInvoice,
-    faEye,
-    faInfoCircle
+    faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import './Parties.css';
@@ -31,19 +27,17 @@ import PartyHeader from './Party/PartyHeader';
 import AddNewParty from './Party/AddNewParty';
 import partyService from '../../services/partyService';
 import paymentService from '../../services/paymentService';
+import purchaseService from '../../services/purchaseService';
 import PayIn from './Party/PayIn';
 import PayOut from './Party/PayOut';
 import TransactionTable from './Party/TransactionTable';
 
 function Parties() {
-    // Get company ID from URL params
     const { companyId } = useParams();
 
-    // State for managing parties
+    // State management
     const [parties, setParties] = useState([]);
     const [selectedParty, setSelectedParty] = useState(null);
-
-    // Loading and error states
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingParties, setIsLoadingParties] = useState(true);
     const [error, setError] = useState('');
@@ -54,17 +48,17 @@ function Parties() {
     const [editingParty, setEditingParty] = useState(null);
     const [showPayIn, setShowPayIn] = useState(false);
     const [showPayOut, setShowPayOut] = useState(false);
+    const [payInData, setPayInData] = useState(null);
+    const [payOutData, setPayOutData] = useState(null);
 
-    // Search states
+    // Search and filter states
     const [searchQuery, setSearchQuery] = useState('');
     const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
-
-    // Filter states
     const [partyTypeFilter, setPartyTypeFilter] = useState('all');
 
-    // Sorting states
+    // ✅ Enhanced sorting state with mapping
     const [sortConfig, setSortConfig] = useState({
-        key: 'createdAt',
+        key: 'currentBalance', // Use backend key directly
         direction: 'desc'
     });
 
@@ -74,7 +68,7 @@ function Parties() {
     const [totalParties, setTotalParties] = useState(0);
     const partiesPerPage = 20;
 
-    // Transaction states - for TransactionTable component
+    // Transaction states
     const [transactions, setTransactions] = useState([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
     const [transactionsPagination, setTransactionsPagination] = useState({
@@ -82,11 +76,9 @@ function Parties() {
         totalPages: 1,
         totalRecords: 0
     });
-
-    // Transaction refresh trigger
     const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0);
 
-    // **NEW: Payment summary state**
+    // Payment summary state
     const [paymentSummary, setPaymentSummary] = useState({
         totalPaymentsIn: 0,
         totalPaymentsOut: 0,
@@ -94,14 +86,18 @@ function Parties() {
         totalTransactions: 0
     });
 
-    // Current company state - updated with actual company ID from URL
+    // ✅ Enhanced bank accounts state
+    const [bankAccounts, setBankAccounts] = useState([]);
+    const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(false);
+
+    // Company state
     const [currentCompany, setCurrentCompany] = useState({
         id: companyId,
         _id: companyId,
         name: 'Your Company Name',
     });
 
-    // Update currentCompany when companyId changes
+    // Update company when companyId changes
     useEffect(() => {
         if (companyId) {
             setCurrentCompany(prev => ({
@@ -112,7 +108,92 @@ function Parties() {
         }
     }, [companyId]);
 
-    // Helper function to format currency safely
+    // ✅ Sort key mapping helper function
+    const mapSortKey = (frontendKey) => {
+        const sortKeyMapping = {
+            'balance': 'currentBalance',
+            'name': 'name',
+            'createdAt': 'createdAt',
+            'updatedAt': 'updatedAt',
+            'partyType': 'partyType',
+            'creditLimit': 'creditLimit',
+            'gstType': 'gstType'
+        };
+
+        return sortKeyMapping[frontendKey] || frontendKey;
+    };
+
+    // ✅ Enhanced bank accounts loading
+    const loadBankAccounts = async () => {
+        if (!companyId) return;
+
+        try {
+            setIsLoadingBankAccounts(true);
+            let bankAccountsData = [];
+
+            // Try multiple sources for bank accounts
+            try {
+                // First try payment service
+                const paymentBankResponse = await paymentService.getBankAccounts?.(companyId);
+                if (paymentBankResponse?.success && paymentBankResponse.data) {
+                    bankAccountsData = paymentBankResponse.data;
+                }
+            } catch (err) {
+                console.warn('Could not load bank accounts from payment service:', err.message);
+            }
+
+            // If no data from payment service, try purchase service
+            if (bankAccountsData.length === 0) {
+                try {
+                    const purchaseBankResponse = await purchaseService.getBankAccounts?.(companyId);
+                    if (purchaseBankResponse?.success && purchaseBankResponse.data) {
+                        bankAccountsData = purchaseBankResponse.data;
+                    }
+                } catch (err) {
+                    console.warn('Could not load bank accounts from purchase service:', err.message);
+                }
+            }
+
+            // If still no data, try alternative methods
+            if (bankAccountsData.length === 0) {
+                try {
+                    // Try getting bank accounts from party service if available
+                    const partyBankResponse = await partyService.getBankAccounts?.(companyId);
+                    if (partyBankResponse?.success && partyBankResponse.data) {
+                        bankAccountsData = partyBankResponse.data;
+                    }
+                } catch (err) {
+                    console.warn('Could not load bank accounts from party service:', err.message);
+                }
+            }
+
+            // Normalize bank account data
+            const normalizedBankAccounts = bankAccountsData.map(account => ({
+                id: account._id || account.id,
+                _id: account._id || account.id,
+                bankName: account.bankName || account.name || 'Unknown Bank',
+                accountName: account.accountName || account.holderName || 'Unknown Account',
+                accountNumber: account.accountNumber || '',
+                currentBalance: parseFloat(account.currentBalance || account.balance || 0),
+                balance: parseFloat(account.currentBalance || account.balance || 0),
+                ifscCode: account.ifscCode || account.ifsc || '',
+                branchName: account.branchName || account.branch || '',
+                accountType: account.accountType || 'current',
+                isActive: account.isActive !== false
+            }));
+
+            setBankAccounts(normalizedBankAccounts);
+
+        } catch (error) {
+            console.error('Error loading bank accounts:', error);
+            // Set empty array on error to prevent undefined issues
+            setBankAccounts([]);
+        } finally {
+            setIsLoadingBankAccounts(false);
+        }
+    };
+
+    // Currency formatter
     const formatCurrency = (amount) => {
         const numericAmount = parseFloat(amount) || 0;
         return numericAmount.toLocaleString('en-IN', {
@@ -121,7 +202,7 @@ function Parties() {
         });
     };
 
-    // Helper function to normalize party data
+    // Normalize party data
     const normalizeParty = (party) => {
         return {
             id: party._id || party.id,
@@ -139,21 +220,17 @@ function Parties() {
             companyName: party.companyName || '',
             gstNumber: party.gstNumber || '',
             country: party.country || 'INDIA',
-
-            // Address fields
             homeAddressLine: party.homeAddress?.addressLine || party.homeAddressLine || '',
             homePincode: party.homeAddress?.pincode || party.homePincode || '',
             homeState: party.homeAddress?.state || party.homeState || '',
             homeDistrict: party.homeAddress?.district || party.homeDistrict || '',
             homeTaluka: party.homeAddress?.taluka || party.homeTaluka || '',
-
             deliveryAddressLine: party.deliveryAddress?.addressLine || party.deliveryAddressLine || '',
             deliveryPincode: party.deliveryAddress?.pincode || party.deliveryPincode || '',
             deliveryState: party.deliveryAddress?.state || party.deliveryState || '',
             deliveryDistrict: party.deliveryAddress?.district || party.deliveryDistrict || '',
             deliveryTaluka: party.deliveryAddress?.taluka || party.deliveryTaluka || '',
             sameAsHomeAddress: party.sameAsHomeAddress || false,
-
             phoneNumbers: party.phoneNumbers || [],
             isActive: party.isActive !== false,
             createdAt: party.createdAt,
@@ -161,7 +238,7 @@ function Parties() {
         };
     };
 
-    // Helper function to get transaction type based on payment data
+    // Get transaction type
     const getTransactionType = (paymentType, paymentMethod) => {
         if (paymentType === 'payment_in') {
             return 'Receipt Voucher';
@@ -171,15 +248,76 @@ function Parties() {
         return paymentMethod === 'cash' ? 'Cash Transaction' : 'Bank Transaction';
     };
 
-    // **ENHANCED: Load transactions with allocation details**
-    const loadTransactions = async (partyId, options = {}) => {
-        if (!partyId) {
-            setTransactions([]);
-            return;
+    // Toast notification handler
+    const addToast = (message, type = 'info') => {
+        switch (type) {
+            case 'success':
+                setSuccess(message);
+                break;
+            case 'error':
+                setError(message);
+                break;
+            case 'warning':
+                setError(message);
+                break;
+            default:
+                break;
         }
+    };
 
-        if (!companyId) {
-            setError('Company ID is required. Please select a company.');
+    // Enhanced transaction handlers
+    const handleTransactionUpdated = async (updatedTransactionData) => {
+        try {
+            if (selectedParty && companyId) {
+                await loadTransactions(selectedParty._id || selectedParty.id);
+                await loadPaymentSummary(selectedParty._id || selectedParty.id);
+                // Reload bank accounts to get updated balances
+                await loadBankAccounts();
+            }
+
+            setSuccess('Transaction updated successfully!');
+            setTransactionRefreshTrigger(prev => prev + 1);
+
+        } catch (error) {
+            setError('Failed to refresh after transaction update: ' + error.message);
+        }
+    };
+
+    const handleTransactionDeleted = async (transaction, reason = '') => {
+        try {
+            if (!companyId) {
+                throw new Error('Company ID is required');
+            }
+
+            const result = await paymentService.deleteTransaction(
+                transaction._id || transaction.id,
+                reason || 'Deleted by user'
+            );
+
+            if (result.success) {
+                if (selectedParty) {
+                    await loadTransactions(selectedParty._id || selectedParty.id);
+                    await loadPaymentSummary(selectedParty._id || selectedParty.id);
+                    await loadParties({ page: currentPage });
+                    // Reload bank accounts to get updated balances
+                    await loadBankAccounts();
+                }
+
+                setSuccess(`Transaction deleted successfully: ${result.message}`);
+                setTransactionRefreshTrigger(prev => prev + 1);
+
+            } else {
+                throw new Error(result.message || 'Failed to delete transaction');
+            }
+
+        } catch (error) {
+            setError('Failed to delete transaction: ' + error.message);
+        }
+    };
+
+    // Load transactions with allocations
+    const loadTransactions = async (partyId, options = {}) => {
+        if (!partyId || !companyId) {
             setTransactions([]);
             return;
         }
@@ -200,12 +338,12 @@ function Parties() {
                 sortOrder: options.sortOrder || 'desc'
             };
 
-            // **ENHANCED: Use the updated payment service method**
             const response = await paymentService.getPartyPaymentHistory(companyId, partyId, filters);
 
             if (response.success) {
                 const transformedTransactions = (response.data || response.payments || []).map(payment => ({
                     id: payment._id || payment.id,
+                    _id: payment._id || payment.id,
                     type: getTransactionType(payment.type || payment.paymentType, payment.paymentMethod),
                     number: payment.paymentNumber || payment.transactionId,
                     date: new Date(payment.paymentDate).toLocaleDateString('en-GB'),
@@ -219,12 +357,22 @@ function Parties() {
                     createdAt: payment.createdAt,
                     paymentDate: payment.paymentDate,
                     originalPayment: payment,
-
-                    // **NEW: Include allocation details if available**
                     invoiceAllocations: payment.invoiceAllocations || [],
                     hasAllocations: (payment.invoiceAllocations || []).length > 0,
                     allocatedAmount: (payment.invoiceAllocations || []).reduce((sum, alloc) => sum + (alloc.allocatedAmount || 0), 0),
-                    remainingAmount: payment.remainingAmount || 0
+                    remainingAmount: payment.remainingAmount || 0,
+                    // ✅ Enhanced bank information extraction
+                    bankAccountId: payment.bankAccountId || payment.bankAccount?._id || payment.bankAccount?.id,
+                    bankName: payment.bankName || payment.bankAccount?.bankName || payment.bankDetails?.bankName,
+                    bankAccountName: payment.bankAccountName || payment.bankAccount?.accountName || payment.bankDetails?.accountName,
+                    bankAccountNumber: payment.bankAccountNumber || payment.bankAccount?.accountNumber || payment.bankDetails?.accountNumber,
+                    bankBalance: payment.bankBalance || payment.bankAccount?.currentBalance || 0,
+                    bankAccount: payment.bankAccount,
+                    bankDetails: payment.bankDetails,
+                    // Employee information
+                    employeeName: payment.employeeName || '',
+                    employeeId: payment.employeeId || '',
+                    partyName: payment.partyName || selectedParty?.name || ''
                 }));
 
                 const sortedTransactions = transformedTransactions.sort((a, b) => {
@@ -246,7 +394,6 @@ function Parties() {
                 throw new Error(response.message || 'Failed to load transactions');
             }
         } catch (error) {
-            console.error('❌ Error loading transactions:', error);
             setError('Failed to load transactions: ' + error.message);
             setTransactions([]);
         } finally {
@@ -254,7 +401,7 @@ function Parties() {
         }
     };
 
-    // **NEW: Load payment summary when party is selected**
+    // Load payment summary
     const loadPaymentSummary = async (partyId) => {
         if (!partyId || !companyId) return;
 
@@ -264,12 +411,11 @@ function Parties() {
                 setPaymentSummary(response.data);
             }
         } catch (error) {
-            console.error('Error loading payment summary:', error);
-            // Don't show error to user for summary loading
+            // Silent fail for summary loading
         }
     };
 
-    // Load parties from backend
+    // ✅ Enhanced load parties with proper sort key mapping
     const loadParties = async (options = {}) => {
         if (!companyId) {
             setError('Company ID is required. Please select a company.');
@@ -288,19 +434,30 @@ function Parties() {
 
             const searchString = String(searchValue).trim();
 
+            // ✅ Map frontend sort key to backend key
+            const frontendSortKey = sortConfig.key || 'createdAt';
+            const backendSortKey = mapSortKey(frontendSortKey);
+
             const filters = {
                 page: parseInt(options.page || currentPage, 10),
                 limit: parseInt(partiesPerPage, 10),
                 search: searchString,
                 partyType: options.partyType || (partyTypeFilter === 'all' ? null : partyTypeFilter),
-                sortBy: String(sortConfig.key || 'createdAt'),
+                sortBy: String(backendSortKey), // Use mapped sort key
                 sortOrder: String(sortConfig.direction || 'desc')
             };
 
+            // Clean up undefined values
             Object.keys(filters).forEach(key => {
                 if (filters[key] === undefined) {
                     delete filters[key];
                 }
+            });
+
+            console.log('🔄 Loading parties with filters:', {
+                frontendSortKey,
+                backendSortKey,
+                filters
             });
 
             const response = await partyService.getParties(companyId, filters);
@@ -331,29 +488,26 @@ function Parties() {
         }
     };
 
-    // Search useEffect
+    // Search effect
     useEffect(() => {
         if (companyId) {
             const searchTimeout = setTimeout(() => {
                 setCurrentPage(1);
-
                 let searchValue = searchQuery;
                 if (searchValue === undefined || searchValue === null) {
                     searchValue = '';
                 }
                 const searchString = String(searchValue).trim();
-
                 loadParties({
                     search: searchString,
                     page: 1
                 });
             }, 500);
-
             return () => clearTimeout(searchTimeout);
         }
     }, [searchQuery, companyId]);
 
-    // Filter/sort useEffect
+    // Filter/sort effect
     useEffect(() => {
         if (companyId) {
             setCurrentPage(1);
@@ -364,7 +518,7 @@ function Parties() {
         }
     }, [partyTypeFilter, sortConfig, companyId]);
 
-    // Handle delete party
+    // Delete party handler
     const handleDeleteParty = async (party) => {
         if (!window.confirm(`Are you sure you want to delete "${party.name}"?`)) {
             return;
@@ -402,40 +556,41 @@ function Parties() {
                 throw new Error(response.message || 'Failed to delete party');
             }
         } catch (error) {
-            console.error('❌ Error deleting party:', error);
             setError('Failed to delete party: ' + error.message);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Initial load
+    // ✅ Enhanced initial load effect with bank accounts
     useEffect(() => {
         if (companyId) {
             loadParties();
+            loadBankAccounts();
         }
     }, [companyId]);
 
-    // Reload transactions when search query changes
+    // Transaction search effect
     useEffect(() => {
         if (selectedParty && companyId && transactionSearchQuery !== undefined) {
             const searchTimeout = setTimeout(() => {
                 loadTransactions(selectedParty._id || selectedParty.id, { page: 1 });
             }, 500);
-
             return () => clearTimeout(searchTimeout);
         }
     }, [transactionSearchQuery, companyId]);
 
-    // Reload transactions when refresh trigger changes
+    // Transaction refresh effect
     useEffect(() => {
         if (selectedParty && companyId && transactionRefreshTrigger > 0) {
             loadTransactions(selectedParty._id || selectedParty.id);
             loadPaymentSummary(selectedParty._id || selectedParty.id);
+            // Also refresh bank accounts to get updated balances
+            loadBankAccounts();
         }
     }, [transactionRefreshTrigger, companyId]);
 
-    // Clear alerts after 5 seconds
+    // Clear alerts effect
     useEffect(() => {
         if (error || success) {
             const timer = setTimeout(() => {
@@ -446,16 +601,28 @@ function Parties() {
         }
     }, [error, success]);
 
-    // Handle sorting
-    const handleSort = (key) => {
+    // ✅ Enhanced sorting handler with proper key mapping
+    const handleSort = (frontendKey) => {
         let direction = 'asc';
-        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+
+        // Map frontend key to backend key for comparison
+        const backendKey = mapSortKey(frontendKey);
+
+        if (sortConfig.key === backendKey && sortConfig.direction === 'asc') {
             direction = 'desc';
         }
-        setSortConfig({ key, direction });
+
+        console.log('🔄 Sort change:', {
+            frontendKey,
+            backendKey,
+            currentKey: sortConfig.key,
+            newDirection: direction
+        });
+
+        setSortConfig({ key: backendKey, direction });
     };
 
-    // **ENHANCED: Handle party selection with payment summary loading**
+    // Party selection handler
     const handlePartySelect = (party) => {
         const normalizedParty = normalizeParty(party);
         setSelectedParty(normalizedParty);
@@ -466,9 +633,12 @@ function Parties() {
         }
     };
 
-    // Get sort icon for a specific column
-    const getSortIcon = (columnKey) => {
-        if (sortConfig.key !== columnKey) {
+    // ✅ Enhanced sort icon helper with proper key mapping
+    const getSortIcon = (frontendColumnKey) => {
+        // Map frontend display key to backend sort key
+        const backendKey = mapSortKey(frontendColumnKey);
+
+        if (sortConfig.key !== backendKey) {
             return faSort;
         }
         return sortConfig.direction === 'asc' ? faSortUp : faSortDown;
@@ -485,13 +655,12 @@ function Parties() {
         setEditingParty(null);
     };
 
-    // Handle edit party
     const handleEditParty = (party) => {
         setEditingParty(normalizeParty(party));
         setShowAddModal(true);
     };
 
-    // Handle save party with backend integration
+    // Save party handler
     const handleSaveParty = async (partyData, isQuickAdd = false, isEdit = false) => {
         try {
             const normalizedParty = normalizeParty(partyData);
@@ -511,7 +680,6 @@ function Parties() {
             } else {
                 setParties(prevParties => [normalizedParty, ...prevParties]);
                 setTotalParties(prev => prev + 1);
-
                 setSelectedParty(normalizedParty);
 
                 if (isQuickAdd) {
@@ -524,36 +692,40 @@ function Parties() {
             handleCloseModal();
 
         } catch (error) {
-            console.error('❌ Error saving party:', error);
             setError('Error saving party: ' + error.message);
         }
     };
 
-    // Handle refresh parties
+    // Refresh parties handler
     const handleRefreshParties = () => {
         if (companyId) {
             setCurrentPage(1);
             loadParties({ page: 1 });
+            loadBankAccounts(); // Also refresh bank accounts
         }
     };
 
-    // Handle payment actions
-    const handlePayIn = () => {
+    // Enhanced PayIn/PayOut handlers with duplicate support
+    const handlePayIn = (duplicateData = null) => {
         if (selectedParty) {
+            if (duplicateData) {
+                setPayInData(duplicateData);
+            }
             setShowPayIn(true);
         }
     };
 
-    const handlePayOut = () => {
+    const handlePayOut = (duplicateData = null) => {
         if (selectedParty) {
+            if (duplicateData) {
+                setPayOutData(duplicateData);
+            }
             setShowPayOut(true);
         }
     };
 
-    // ✅ ENHANCED: Handle payment recorded callback with bank transaction details
+    // Enhanced payment recorded handler
     const handlePaymentRecorded = (paymentData, updatedParty) => {
-        console.log('💰 Payment recorded with data:', paymentData);
-
         if (updatedParty) {
             const normalizedUpdatedParty = normalizeParty(updatedParty);
 
@@ -570,12 +742,12 @@ function Parties() {
             }
         }
 
-        // ✅ ENHANCED: Show detailed success message with bank transaction details
+        // Enhanced success message
         const paymentType = paymentData.type === 'payment_in' ? 'received' : 'made';
         let successMessage = `✅ Payment of ₹${paymentData.amount?.toLocaleString()} ${paymentType} successfully!`;
         successMessage += `\n• Payment Number: ${paymentData.paymentNumber}`;
 
-        // ✅ NEW: Add bank transaction details if available
+        // Bank transaction details
         if (paymentData.bankTransactionCreated && paymentData.bankTransaction) {
             successMessage += `\n\n🏦 Bank Transaction:`;
             successMessage += `\n• Transaction #: ${paymentData.bankTransaction.transactionNumber}`;
@@ -594,7 +766,7 @@ function Parties() {
             successMessage += `\n\n💵 Cash Payment - No bank transaction created`;
         }
 
-        // Add allocation details if available
+        // Allocation details
         if (paymentData.invoicesUpdated > 0) {
             successMessage += `\n\n📋 ${paymentData.invoicesUpdated} invoice(s) updated`;
 
@@ -608,29 +780,24 @@ function Parties() {
                 successMessage += `\n\n💰 Remaining: ₹${paymentData.remainingAmount.toLocaleString()} credited to account`;
             }
         } else if (paymentData.paymentMethod !== 'cash') {
-            // For advance payments with bank transactions
             successMessage += `\n\n💰 Advance payment processed via bank`;
         }
 
         setSuccess(successMessage);
         setShowPayIn(false);
         setShowPayOut(false);
-
-        // Refresh transactions to show the new payment
         setTransactionRefreshTrigger(prev => prev + 1);
+
+        // Refresh bank accounts to show updated balances
+        loadBankAccounts();
     };
 
-    // **NEW: Handle viewing payment allocation details**
+    // View payment allocations handler
     const handleViewPaymentAllocations = async (paymentId) => {
         try {
-            console.log('🔍 Viewing payment allocations for:', paymentId);
             const response = await paymentService.getPaymentAllocations(paymentId);
 
             if (response.success) {
-                // You can show this in a modal or expand the transaction row
-                console.log('Payment Allocation Details:', response.data);
-
-                // For now, just show an alert with the details
                 const allocations = response.data.allocations || [];
                 if (allocations.length > 0) {
                     let message = `💰 Payment Allocation Details:\n\n`;
@@ -657,12 +824,11 @@ function Parties() {
                 }
             }
         } catch (error) {
-            console.error('❌ Error fetching payment allocations:', error);
             setError('Failed to load payment allocation details');
         }
     };
 
-    // Handle pagination
+    // Pagination handler
     const handlePageChange = (newPage) => {
         setCurrentPage(newPage);
         if (companyId) {
@@ -670,30 +836,25 @@ function Parties() {
         }
     };
 
-    // PartyHeader event handlers
+    // Placeholder handlers for PartyHeader
     const handleAddSale = () => {
         // TODO: Implement add sale functionality
-        console.log('Add Sale clicked for party:', selectedParty?.name);
     };
 
     const handleAddPurchase = () => {
         // TODO: Implement add purchase functionality
-        console.log('Add Purchase clicked for party:', selectedParty?.name);
     };
 
     const handleMoreOptions = () => {
         // TODO: Implement more options
-        console.log('More Options clicked');
     };
 
     const handleSettings = () => {
         // TODO: Implement settings
-        console.log('Settings clicked');
     };
 
     const handleExportParties = () => {
         // TODO: Implement export functionality
-        console.log('Export Parties clicked');
     };
 
     // Early return if no company ID
@@ -715,7 +876,7 @@ function Parties() {
 
     return (
         <div className="parties-layout bg-light min-vh-100" style={{ fontSize: '13px' }}>
-            {/* Party Header Component */}
+            {/* Party Header */}
             <PartyHeader
                 activeType={partyTypeFilter}
                 onTypeChange={setPartyTypeFilter}
@@ -732,7 +893,7 @@ function Parties() {
                 onExportParties={handleExportParties}
             />
 
-            {/* Error/Success Alerts */}
+            {/* Alerts */}
             {error && (
                 <Alert variant="danger" className="m-3 mb-0" dismissible onClose={() => setError('')}>
                     <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -746,13 +907,21 @@ function Parties() {
                 </Alert>
             )}
 
+            {/* ✅ Bank Accounts Loading Alert */}
+            {isLoadingBankAccounts && (
+                <Alert variant="info" className="m-3 mb-0">
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+                    Loading bank accounts...
+                </Alert>
+            )}
+
             {/* Main Content */}
             <Container fluid className="p-0">
                 <Row className="g-0" style={{ height: 'calc(100vh - 160px)' }}>
-                    {/* Left Sidebar - Parties List */}
+                    {/* Parties List Sidebar */}
                     <Col xl={3} lg={4} md={5} className="bg-white border-end">
                         <div className="h-100 d-flex flex-column">
-                            {/* Search Party */}
+                            {/* Search */}
                             <div className="p-2 border-bottom bg-light">
                                 <InputGroup size="sm">
                                     <InputGroup.Text className="bg-white border-end-0 rounded-start-pill">
@@ -769,7 +938,7 @@ function Parties() {
                                 </InputGroup>
                             </div>
 
-                            {/* Parties List Header */}
+                            {/* List Header */}
                             <div className="bg-light border-bottom px-2 py-1">
                                 <Row className="align-items-center">
                                     <Col>
@@ -804,7 +973,7 @@ function Parties() {
                                 </Row>
                             </div>
 
-                            {/* Parties List with Scroll */}
+                            {/* Parties List */}
                             <div
                                 className="flex-grow-1 overflow-auto"
                                 style={{
@@ -909,7 +1078,7 @@ function Parties() {
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Party Actions Dropdown */}
+                                                                {/* Party Actions */}
                                                                 <div onClick={(e) => e.stopPropagation()}>
                                                                     <Dropdown align="end">
                                                                         <Dropdown.Toggle
@@ -946,7 +1115,7 @@ function Parties() {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Balance Amount */}
+                                                            {/* Balance */}
                                                             <div className="mt-1">
                                                                 <span
                                                                     className={`fw-bold small ${isSelected
@@ -1009,7 +1178,7 @@ function Parties() {
                                 </div>
                             )}
 
-                            {/* Bottom Contact Info */}
+                            {/* Contact Info */}
                             <div className="p-2 border-top bg-light">
                                 <Card className="border-0 bg-success bg-opacity-10">
                                     <Card.Body className="p-2 text-center">
@@ -1024,7 +1193,7 @@ function Parties() {
                         </div>
                     </Col>
 
-                    {/* Right Content Area - Party Details with TransactionTable */}
+                    {/* Party Details with Transactions */}
                     <Col xl={9} lg={8} md={7}>
                         {selectedParty ? (
                             <div className="h-100 bg-white">
@@ -1054,7 +1223,7 @@ function Parties() {
                                                         </Button>
                                                     </h5>
 
-                                                    {/* **NEW: Payment Summary Display** */}
+                                                    {/* Payment Summary */}
                                                     {paymentSummary.totalTransactions > 0 && (
                                                         <div className="mb-2">
                                                             <Row className="g-2">
@@ -1116,7 +1285,7 @@ function Parties() {
                                                     <Button
                                                         variant="outline-success"
                                                         size="sm"
-                                                        onClick={handlePayIn}
+                                                        onClick={() => handlePayIn()}
                                                         className="px-3"
                                                         style={{ fontSize: '12px' }}
                                                     >
@@ -1126,7 +1295,7 @@ function Parties() {
                                                     <Button
                                                         variant="outline-danger"
                                                         size="sm"
-                                                        onClick={handlePayOut}
+                                                        onClick={() => handlePayOut()}
                                                         className="px-3"
                                                         style={{ fontSize: '12px' }}
                                                     >
@@ -1139,7 +1308,7 @@ function Parties() {
                                     </Row>
                                 </div>
 
-                                {/* TransactionTable Component with Enhanced Props */}
+                                {/* Transaction Table */}
                                 <div className="p-3 h-100 overflow-hidden">
                                     <TransactionTable
                                         selectedParty={selectedParty}
@@ -1154,10 +1323,16 @@ function Parties() {
                                         formatCurrency={formatCurrency}
                                         refreshTrigger={transactionRefreshTrigger}
                                         companyId={companyId}
-                                        // **NEW: Enhanced props for allocation support**
                                         onViewAllocations={handleViewPaymentAllocations}
                                         showAllocationDetails={true}
                                         paymentSummary={paymentSummary}
+                                        // ✅ Enhanced props with proper bank accounts
+                                        onTransactionUpdated={handleTransactionUpdated}
+                                        onTransactionDeleted={handleTransactionDeleted}
+                                        addToast={addToast}
+                                        bankAccounts={bankAccounts}
+                                        currentUser={currentCompany}
+                                        isLoadingBankAccounts={isLoadingBankAccounts}
                                     />
                                 </div>
                             </div>
@@ -1178,7 +1353,7 @@ function Parties() {
                 </Row>
             </Container>
 
-            {/* Add Party Modal */}
+            {/* Modals */}
             <AddNewParty
                 show={showAddModal}
                 onHide={handleCloseModal}
@@ -1188,25 +1363,34 @@ function Parties() {
                 companyId={companyId}
             />
 
-            {/* Payment Modals */}
             <PayIn
                 show={showPayIn}
-                onHide={() => setShowPayIn(false)}
+                onHide={() => {
+                    setShowPayIn(false);
+                    setPayInData(null);
+                }}
                 party={selectedParty}
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
                 companyId={companyId}
-                currentUser={currentCompany} // ✅ This should ideally be actual user data
+                currentUser={currentCompany}
+                duplicateData={payInData}
+                bankAccounts={bankAccounts}
             />
 
             <PayOut
                 show={showPayOut}
-                onHide={() => setShowPayOut(false)}
+                onHide={() => {
+                    setShowPayOut(false);
+                    setPayOutData(null);
+                }}
                 party={selectedParty}
                 onPaymentRecorded={handlePaymentRecorded}
                 currentCompany={currentCompany}
                 companyId={companyId}
-                currentUser={currentCompany} // ✅ This should ideally be actual user data
+                currentUser={currentCompany}
+                duplicateData={payOutData}
+                bankAccounts={bankAccounts}
             />
 
             {/* Loading Overlay */}

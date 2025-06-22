@@ -89,6 +89,25 @@ apiClient.interceptors.response.use(
 
 class PartyService {
     /**
+     * Map frontend sort keys to backend expected keys
+     * @param {string} frontendKey - Frontend sort key
+     * @returns {string} Backend sort key
+     */
+    mapSortKey(frontendKey) {
+        const sortKeyMapping = {
+            'balance': 'currentBalance',
+            'name': 'name',
+            'createdAt': 'createdAt',
+            'updatedAt': 'updatedAt',
+            'partyType': 'partyType',
+            'creditLimit': 'creditLimit',
+            'gstType': 'gstType'
+        };
+
+        return sortKeyMapping[frontendKey] || frontendKey;
+    }
+
+    /**
      * Validate company context before making requests
      * @returns {Object} Company validation result
      */
@@ -270,11 +289,11 @@ class PartyService {
     }
 
     /**
-   * Get all parties with pagination and filtering
-   * @param {string|Object} companyIdOrFilters - Company ID or filters object (for backward compatibility)
-   * @param {Object} filters - Filter options (when companyId is provided as first param)
-   * @returns {Promise<Object>} Parties data with pagination
-   */
+     * Get all parties with pagination and filtering
+     * @param {string|Object} companyIdOrFilters - Company ID or filters object (for backward compatibility)
+     * @param {Object} filters - Filter options (when companyId is provided as first param)
+     * @returns {Promise<Object>} Parties data with pagination
+     */
     async getParties(companyIdOrFilters = {}, filters = {}) {
         try {
             let actualFilters = {};
@@ -311,12 +330,15 @@ class PartyService {
                 companyId = companyValidation.companyId;
             }
 
+            // ✅ Map the sort key to backend expected format
+            const mappedSortBy = this.mapSortKey(String(sortBy));
+
             // Build request parameters
             const params = {
                 page: parseInt(page, 10),
                 limit: parseInt(limit, 10),
                 type: partyType || type || 'all',
-                sortBy: String(sortBy),
+                sortBy: mappedSortBy, // Use mapped sort key
                 sortOrder: String(sortOrder),
                 companyId: companyId
             };
@@ -331,6 +353,7 @@ class PartyService {
                     params.search = searchString;
                 }
             }
+
             const response = await apiClient.get('/api/parties', { params });
             return response.data;
 
@@ -490,36 +513,6 @@ class PartyService {
     }
 
     /**
-     * Delete party
-     * @param {string} partyId - Party ID
-     * @returns {Promise<Object>} Deletion confirmation
-     */
-    async deleteParty(partyId) {
-        try {
-            if (!partyId) {
-                throw new Error('Party ID is required');
-            }
-
-            // Validate company context
-            const companyValidation = this.validateCompanyContext();
-            if (!companyValidation.isValid) {
-                throw new Error(companyValidation.error);
-            }
-
-            // Add company ID as query param as fallback
-            const params = {
-                companyId: companyValidation.companyId
-            };
-
-            const response = await apiClient.delete(`/api/parties/${partyId}`, { params });
-            return response.data;
-
-        } catch (error) {
-            throw error;
-        }
-    }
-
-    /**
      * Search parties
      * @param {string} query - Search query
      * @param {string} type - Party type filter (optional)
@@ -623,6 +616,22 @@ class PartyService {
     }
 
     /**
+     * Get valid sort keys for frontend reference
+     * @returns {Object} Frontend to backend sort key mapping
+     */
+    getValidSortKeys() {
+        return {
+            'balance': 'currentBalance',
+            'name': 'name',
+            'createdAt': 'createdAt',
+            'updatedAt': 'updatedAt',
+            'partyType': 'partyType',
+            'creditLimit': 'creditLimit',
+            'gstType': 'gstType'
+        };
+    }
+
+    /**
      * Validate party data before sending to backend
      * @param {Object} partyData - Party data to validate
      * @returns {Object} Validation result
@@ -680,6 +689,129 @@ class PartyService {
             isValid: errors.length === 0,
             errors
         };
+    }
+
+    /**
+     * Format party data for display (normalize different data structures)
+     * @param {Object} partyData - Raw party data from backend
+     * @returns {Object} Normalized party data
+     */
+    formatPartyForDisplay(partyData) {
+        if (!partyData) return null;
+
+        return {
+            id: partyData._id || partyData.id,
+            name: partyData.name || '',
+            partyType: partyData.partyType || 'customer',
+            phoneNumber: partyData.phoneNumber || partyData.phone || '',
+            email: partyData.email || '',
+            companyName: partyData.companyName || '',
+
+            // Financial fields
+            currentBalance: partyData.currentBalance || partyData.balance || 0,
+            creditLimit: partyData.creditLimit || 0,
+            openingBalance: partyData.openingBalance || 0,
+
+            // GST fields
+            gstNumber: partyData.gstNumber || '',
+            gstType: partyData.gstType || 'unregistered',
+
+            // Address fields
+            homeAddressLine: partyData.homeAddressLine || '',
+            homePincode: partyData.homePincode || '',
+            homeState: partyData.homeState || '',
+            homeDistrict: partyData.homeDistrict || '',
+            homeTaluka: partyData.homeTaluka || '',
+
+            deliveryAddressLine: partyData.deliveryAddressLine || '',
+            deliveryPincode: partyData.deliveryPincode || '',
+            deliveryState: partyData.deliveryState || '',
+            deliveryDistrict: partyData.deliveryDistrict || '',
+            deliveryTaluka: partyData.deliveryTaluka || '',
+            sameAsHomeAddress: partyData.sameAsHomeAddress || false,
+
+            // Phone numbers array
+            phoneNumbers: partyData.phoneNumbers || [],
+
+            // Metadata
+            country: partyData.country || 'INDIA',
+            createdAt: partyData.createdAt,
+            updatedAt: partyData.updatedAt,
+            companyId: partyData.companyId
+        };
+    }
+
+    /**
+     * Bulk operations for parties
+     * @param {Array} partyIds - Array of party IDs
+     * @param {string} operation - Operation type ('delete', 'export', etc.)
+     * @param {Object} options - Additional options
+     * @returns {Promise<Object>} Operation result
+     */
+    async bulkOperation(partyIds, operation, options = {}) {
+        try {
+            if (!Array.isArray(partyIds) || partyIds.length === 0) {
+                throw new Error('Party IDs array is required');
+            }
+
+            // Validate company context
+            const companyValidation = this.validateCompanyContext();
+            if (!companyValidation.isValid) {
+                throw new Error(companyValidation.error);
+            }
+
+            const requestData = {
+                partyIds,
+                operation,
+                options,
+                companyId: companyValidation.companyId
+            };
+
+            const response = await apiClient.post('/api/parties/bulk', requestData);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ PartyService.bulkOperation error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Export parties to CSV/Excel
+     * @param {Object} filters - Export filters
+     * @param {string} format - Export format ('csv', 'excel')
+     * @returns {Promise<Blob>} File blob for download
+     */
+    async exportParties(filters = {}, format = 'csv') {
+        try {
+            // Validate company context
+            const companyValidation = this.validateCompanyContext();
+            if (!companyValidation.isValid) {
+                throw new Error(companyValidation.error);
+            }
+
+            const params = {
+                ...filters,
+                format,
+                companyId: companyValidation.companyId
+            };
+
+            // Map sort key if present
+            if (params.sortBy) {
+                params.sortBy = this.mapSortKey(params.sortBy);
+            }
+
+            const response = await apiClient.get('/api/parties/export', {
+                params,
+                responseType: 'blob'
+            });
+
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ PartyService.exportParties error:', error);
+            throw error;
+        }
     }
 }
 

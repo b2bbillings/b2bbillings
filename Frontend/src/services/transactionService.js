@@ -5,7 +5,6 @@ class TransactionService {
         this.baseURL = API_BASE_URL;
     }
 
-    // Helper method to get auth headers
     getAuthHeaders() {
         const token = localStorage.getItem('token') ||
             localStorage.getItem('authToken') ||
@@ -20,19 +19,12 @@ class TransactionService {
         };
     }
 
-    // ✅ FIXED: Enhanced helper method for API calls with better error handling
     async apiCall(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
         const config = {
             headers: this.getAuthHeaders(),
             ...options
         };
-
-        console.log('🔗 Transaction API Call:', {
-            url,
-            method: config.method || 'GET',
-            headers: config.headers
-        });
 
         try {
             const response = await fetch(url, config);
@@ -46,23 +38,14 @@ class TransactionService {
             }
 
             if (!response.ok) {
-                console.error('❌ Transaction API Error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    data: data,
-                    url: endpoint
-                });
-
                 let errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
 
-                // Enhanced error handling
                 switch (response.status) {
                     case 400:
                         errorMessage = data.message || 'Invalid transaction data provided';
                         break;
                     case 401:
                         errorMessage = 'Authentication required. Please login again.';
-                        // Clear invalid tokens
                         localStorage.removeItem('token');
                         localStorage.removeItem('authToken');
                         sessionStorage.removeItem('token');
@@ -97,69 +80,31 @@ class TransactionService {
                 throw error;
             }
 
-            // Log successful responses with summary
-            console.log('✅ Transaction API Success:', {
-                endpoint,
-                dataType: Array.isArray(data?.data) ? `Array(${data.data.length})` : typeof data?.data,
-                success: data?.success !== false
-            });
-
             return data;
 
         } catch (error) {
-            // ✅ FIXED: Better error handling for network errors
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                console.error('❌ Network Error - API might be down:', {
-                    endpoint,
-                    baseURL: this.baseURL,
-                    error: error.message
-                });
-
                 const networkError = new Error('Unable to connect to server. Please check your internet connection.');
                 networkError.status = 0;
                 networkError.isNetworkError = true;
                 throw networkError;
             }
-
-            // Enhance error logging
-            console.error('❌ Transaction API Error:', {
-                endpoint,
-                error: error.message,
-                status: error.status,
-                stack: error.stack?.split('\n')[0]
-            });
             throw error;
         }
     }
 
-    // ==================== ENHANCED TRANSACTION CRUD OPERATIONS ====================
-
-    /**
-   * ✅ FIXED: Create a new transaction with enhanced validation and proper field mapping
-   */
+    // Create transaction with validation
     async createTransaction(companyId, transactionData) {
         try {
-            console.log('💳 Creating transaction:', { companyId, transactionData });
-
-            // Enhanced validation
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
 
-            // ✅ CRITICAL FIX: Only require bank account for non-cash payments
             const isCashPayment = transactionData.paymentMethod === 'cash' ||
                 transactionData.paymentType === 'Cash' ||
                 transactionData.cashPayment === true;
 
-            console.log('💰 Payment type analysis:', {
-                paymentMethod: transactionData.paymentMethod,
-                paymentType: transactionData.paymentType,
-                cashPayment: transactionData.cashPayment,
-                isCashPayment: isCashPayment,
-                hasBankAccountId: !!transactionData.bankAccountId
-            });
-
-            // ✅ FIXED: Only validate bank account for non-cash payments
+            // Validate bank account for non-cash payments
             if (!isCashPayment && !transactionData.bankAccountId) {
                 throw new Error('Bank account ID is required for non-cash payments');
             }
@@ -169,28 +114,23 @@ class TransactionService {
                 throw new Error('Valid amount greater than 0 is required');
             }
 
-            // ✅ FIXED: Ensure required fields are present
             if (!transactionData.description?.trim()) {
                 throw new Error('Transaction description is required');
             }
 
-            // ✅ FIXED: Clean and prepare transaction data with proper field mapping
+            // Prepare clean transaction data
             const cleanTransactionData = {
-                // Core required fields
                 companyId,
                 amount: amount,
                 transactionType: transactionData.transactionType || 'payment_in',
                 paymentMethod: transactionData.paymentMethod || 'cash',
                 description: transactionData.description.trim(),
-
-                // ✅ FIXED: Use proper field names that backend expects
                 transactionDate: transactionData.transactionDate || new Date().toISOString(),
                 status: transactionData.status || 'completed',
 
-                // ✅ CONDITIONAL: Only include bank account for non-cash payments
+                // Bank account for non-cash payments
                 ...(transactionData.bankAccountId && !isCashPayment && {
                     bankAccountId: transactionData.bankAccountId,
-                    // Include bank account details
                     bankAccountName: transactionData.bankAccountName,
                     bankName: transactionData.bankName,
                     accountNumber: transactionData.accountNumber,
@@ -198,21 +138,21 @@ class TransactionService {
                     branchName: transactionData.branchName
                 }),
 
-                // ✅ CASH PAYMENT: Add cash-specific fields
+                // Cash payment fields
                 ...(isCashPayment && {
                     isCashTransaction: true,
                     cashAmount: amount,
                     cashTransactionType: transactionData.direction === 'out' ? 'cash_out' : 'cash_in'
                 }),
 
-                // Party information (if available)
+                // Party information
                 ...(transactionData.partyId && {
                     partyId: transactionData.partyId,
                     partyName: transactionData.partyName?.trim() || '',
                     partyType: transactionData.partyType || ''
                 }),
 
-                // Reference information (if available)
+                // Reference information
                 ...(transactionData.referenceId && {
                     referenceId: transactionData.referenceId,
                     referenceType: transactionData.referenceType || 'payment',
@@ -230,58 +170,33 @@ class TransactionService {
                     transactionReference: transactionData.transactionId.trim()
                 }),
 
-                // UPI specific
                 ...(transactionData.upiTransactionId && {
                     upiTransactionId: transactionData.upiTransactionId.trim()
                 }),
 
-                // Payment terms (if applicable)
-                ...(transactionData.dueDate && {
-                    dueDate: transactionData.dueDate
-                }),
-                ...(transactionData.creditDays && {
-                    creditDays: parseInt(transactionData.creditDays) || 0
-                }),
-
-                // Additional metadata
+                // Additional fields
                 notes: transactionData.notes?.trim() || '',
-
-                // Invoice/Form specific fields
                 ...(transactionData.invoiceNumber && {
                     invoiceNumber: transactionData.invoiceNumber.trim()
                 }),
                 ...(transactionData.formType && {
-                    sourceType: transactionData.formType // Backend might expect 'sourceType' instead of 'formType'
+                    sourceType: transactionData.formType
                 }),
                 ...(transactionData.createdBy && {
                     createdBy: transactionData.createdBy
                 }),
-
-                // Direction (if not already set by transaction type)
                 ...(transactionData.direction && {
                     direction: transactionData.direction
                 })
             };
 
-            // ✅ FIXED: Remove empty strings, null values, and undefined values
+            // Remove empty values
             Object.keys(cleanTransactionData).forEach(key => {
                 const value = cleanTransactionData[key];
                 if (value === '' || value === null || value === undefined) {
                     delete cleanTransactionData[key];
                 }
             });
-
-            console.log('📤 Clean transaction data prepared:', {
-                hasRequiredFields: !!(cleanTransactionData.companyId && cleanTransactionData.amount && cleanTransactionData.description),
-                isCashPayment: isCashPayment,
-                hasBankAccount: !!cleanTransactionData.bankAccountId,
-                paymentMethod: cleanTransactionData.paymentMethod,
-                transactionType: cleanTransactionData.transactionType,
-                fieldsCount: Object.keys(cleanTransactionData).length
-            });
-
-            // ✅ DEBUG: Log the exact payload being sent
-            console.log('📤 Exact payload being sent to backend:', JSON.stringify(cleanTransactionData, null, 2));
 
             const response = await this.apiCall(`/companies/${companyId}/transactions`, {
                 method: 'POST',
@@ -292,13 +207,6 @@ class TransactionService {
                 body: JSON.stringify(cleanTransactionData)
             });
 
-            console.log('✅ Transaction created successfully:', {
-                transactionId: response.data?.transactionId || response.data?._id,
-                amount: response.data?.amount,
-                paymentMethod: response.data?.paymentMethod,
-                isCashPayment: isCashPayment
-            });
-
             return {
                 success: true,
                 data: response.data || response,
@@ -306,30 +214,15 @@ class TransactionService {
             };
 
         } catch (error) {
-            console.error('❌ Error creating transaction:', error);
-
-            // ✅ ENHANCED: Better error messages for validation errors
             let errorMessage = error.message || 'Failed to create transaction';
 
             if (errorMessage.includes('Validation failed')) {
                 errorMessage = 'Transaction validation failed. Please check all required fields are provided.';
-
-                // Log more details for debugging
-                console.error('🔍 Validation Error Debug:', {
-                    originalPayload: transactionData,
-                    isCashPayment: transactionData.paymentMethod === 'cash' || transactionData.paymentType === 'Cash',
-                    hasAmount: !!transactionData.amount,
-                    hasDescription: !!transactionData.description,
-                    hasCompanyId: !!companyId,
-                    paymentMethod: transactionData.paymentMethod,
-                    transactionType: transactionData.transactionType
-                });
             }
 
             if (errorMessage.includes('Bank account ID is required') &&
                 (transactionData.paymentMethod === 'cash' || transactionData.paymentType === 'Cash')) {
                 errorMessage = 'Cash payment processing failed. Backend configuration issue detected.';
-                console.error('🚨 BACKEND ISSUE: Cash payment is being rejected due to bank account requirement');
             }
 
             return {
@@ -340,59 +233,143 @@ class TransactionService {
             };
         }
     }
-    /**
-     * ✅ FIXED: Get all transactions for a company with enhanced filtering
-     */
+
+    // Update transaction
+    async updateTransaction(transactionId, updateData) {
+        try {
+            if (!transactionId) {
+                throw new Error('Transaction ID is required');
+            }
+
+            if (!updateData.amount || parseFloat(updateData.amount) <= 0) {
+                throw new Error('Valid amount is required');
+            }
+
+            if (!updateData.paymentMethod) {
+                throw new Error('Payment method is required');
+            }
+
+            if (!updateData.paymentDate) {
+                throw new Error('Payment date is required');
+            }
+
+            const updatePayload = {
+                amount: parseFloat(updateData.amount),
+                paymentMethod: updateData.paymentMethod,
+                paymentDate: this.formatDateForAPI(updateData.paymentDate),
+                reference: updateData.reference || '',
+                notes: updateData.notes || '',
+                status: updateData.status || 'completed'
+            };
+
+            // Add bank account if not cash payment
+            if (updateData.paymentMethod !== 'cash' && updateData.bankAccountId) {
+                updatePayload.bankAccountId = updateData.bankAccountId;
+            }
+
+            if (updateData.clearingDate) {
+                updatePayload.clearingDate = this.formatDateForAPI(updateData.clearingDate);
+            }
+
+            const response = await this.apiCall(`/payments/transactions/${transactionId}`, {
+                method: 'PUT',
+                body: JSON.stringify(updatePayload)
+            });
+
+            if (response.success) {
+                return {
+                    success: true,
+                    data: {
+                        transaction: response.data || response.transaction,
+                        bankTransactionUpdated: response.bankTransactionUpdated || false,
+                        changes: response.changes || {},
+                        updatedAt: new Date().toISOString()
+                    },
+                    message: response.message || 'Transaction updated successfully'
+                };
+            } else {
+                throw new Error(response.message || 'Failed to update transaction');
+            }
+
+        } catch (error) {
+            throw new Error(error.message || 'Failed to update transaction');
+        }
+    }
+
+    // Delete/Cancel transaction
+    async deleteTransaction(transactionId, reason = '') {
+        try {
+            if (!transactionId) {
+                throw new Error('Transaction ID is required');
+            }
+
+            const deletePayload = {
+                reason: reason || 'Transaction deleted by user'
+            };
+
+            const response = await this.apiCall(`/payments/transactions/${transactionId}`, {
+                method: 'DELETE',
+                body: JSON.stringify(deletePayload)
+            });
+
+            if (response.success) {
+                return {
+                    success: true,
+                    data: {
+                        transactionId: response.data.transactionId,
+                        paymentNumber: response.data.paymentNumber,
+                        status: response.data.status,
+                        cancelReason: response.data.cancelReason,
+                        cancelledAt: response.data.cancelledAt
+                    },
+                    message: response.message || 'Transaction cancelled successfully'
+                };
+            } else {
+                throw new Error(response.message || 'Failed to cancel transaction');
+            }
+
+        } catch (error) {
+            throw new Error(error.message || 'Failed to cancel transaction');
+        }
+    }
+
+    // Get all transactions with filters
     async getTransactions(companyId, filters = {}) {
         try {
-            console.log('📋 Getting transactions:', { companyId, filters });
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
 
-            // ✅ FIXED: Validate company ID format
             if (typeof companyId !== 'string' || companyId.length < 10) {
                 throw new Error(`Invalid company ID format: ${companyId}`);
             }
 
-            // Build query parameters with proper encoding
+            // Build query parameters
             const queryParams = new URLSearchParams();
-
-            // Pagination
             queryParams.append('page', filters.page || 1);
             queryParams.append('limit', filters.limit || 50);
 
-            // Sorting
             if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
             if (filters.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
-
-            // Filtering
             if (filters.transactionType) queryParams.append('transactionType', filters.transactionType);
             if (filters.direction) queryParams.append('direction', filters.direction);
             if (filters.status) queryParams.append('status', filters.status);
             if (filters.paymentMethod) queryParams.append('paymentMethod', filters.paymentMethod);
             if (filters.bankAccountId) queryParams.append('bankAccountId', filters.bankAccountId);
             if (filters.partyId) queryParams.append('partyId', filters.partyId);
-
-            // Date filtering
             if (filters.dateFrom) queryParams.append('dateFrom', this.formatDateForAPI(filters.dateFrom));
             if (filters.dateTo) queryParams.append('dateTo', this.formatDateForAPI(filters.dateTo));
             if (filters.startDate) queryParams.append('startDate', this.formatDateForAPI(filters.startDate));
             if (filters.endDate) queryParams.append('endDate', this.formatDateForAPI(filters.endDate));
-
-            // Search
             if (filters.search) queryParams.append('search', filters.search);
 
-            // ✅ FIXED: Enhanced API call with proper error handling
             const response = await this.apiCall(`/companies/${companyId}/transactions?${queryParams}`, {
                 headers: {
                     ...this.getAuthHeaders(),
-                    'x-company-id': companyId  // ✅ Add as header backup
+                    'x-company-id': companyId
                 }
             });
 
-            // ✅ FIXED: Better response handling
             const transactions = response.data?.transactions || response.data || [];
             const pagination = response.data?.pagination || {};
 
@@ -414,18 +391,6 @@ class TransactionService {
             };
 
         } catch (error) {
-            console.error('❌ Error getting transactions:', error);
-
-            // ✅ ENHANCED: Better error logging for debugging
-            if (error.status === 400 && error.message?.includes('Company ID')) {
-                console.error('🔍 Company ID Issue Debug:', {
-                    providedCompanyId: companyId,
-                    companyIdType: typeof companyId,
-                    companyIdLength: companyId?.length,
-                    filters: filters
-                });
-            }
-
             return {
                 success: false,
                 data: {
@@ -438,13 +403,9 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ FIXED: Get transaction by ID
-     */
+    // Get transaction by ID
     async getTransactionById(companyId, transactionId) {
         try {
-            console.log('🔍 Getting transaction by ID:', { companyId, transactionId });
-
             if (!companyId || !transactionId) {
                 throw new Error('Company ID and Transaction ID are required');
             }
@@ -463,7 +424,6 @@ class TransactionService {
             };
 
         } catch (error) {
-            console.error('❌ Error getting transaction:', error);
             return {
                 success: false,
                 data: null,
@@ -472,18 +432,13 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ FIXED: Get transactions for a specific bank account
-     */
+    // Get bank account transactions
     async getBankAccountTransactions(companyId, bankAccountId, filters = {}) {
         try {
-            console.log('🏦 Getting bank account transactions:', { companyId, bankAccountId, filters });
-
             if (!companyId || !bankAccountId) {
                 throw new Error('Company ID and Bank Account ID are required');
             }
 
-            // Add bankAccountId to filters and use main getTransactions method
             const bankFilters = {
                 ...filters,
                 bankAccountId: bankAccountId
@@ -492,7 +447,6 @@ class TransactionService {
             return await this.getTransactions(companyId, bankFilters);
 
         } catch (error) {
-            console.error('❌ Error getting bank account transactions:', error);
             return {
                 success: false,
                 data: {
@@ -505,13 +459,9 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ FIXED: Get enhanced transaction summary
-     */
+    // Get transaction summary
     async getTransactionSummary(companyId, options = {}) {
         try {
-            console.log('📊 Getting transaction summary:', { companyId, options });
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
@@ -532,7 +482,6 @@ class TransactionService {
                 }
             });
 
-            // Transform summary data
             const summaryData = response.data?.summary || response.data || {};
 
             const enhancedSummary = {
@@ -540,14 +489,10 @@ class TransactionService {
                 totalOut: summaryData.totalOut || 0,
                 netAmount: summaryData.netAmount || (summaryData.totalIn || 0) - (summaryData.totalOut || 0),
                 totalTransactions: summaryData.totalTransactions || 0,
-
-                // Transaction type breakdown
                 totalSales: summaryData.totalSales || 0,
                 totalPurchases: summaryData.totalPurchases || 0,
                 totalPaymentsIn: summaryData.totalPaymentsIn || 0,
                 totalPaymentsOut: summaryData.totalPaymentsOut || 0,
-
-                // Period info
                 period: options.period || 'month',
                 dateRange: {
                     from: options.dateFrom || options.startDate,
@@ -564,7 +509,6 @@ class TransactionService {
             };
 
         } catch (error) {
-            console.error('❌ Error getting transaction summary:', error);
             return {
                 success: false,
                 data: {
@@ -580,50 +524,26 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ NEW: Create Payment In Transaction (Customer pays us)
-     * @param {string} companyId - Company ID
-     * @param {Object} paymentData - Payment data
-     * @returns {Promise<Object>} API response
-     */
-    /**
- * ✅ FIXED: Create Payment In Transaction (Customer pays us)
- */
+    // Create payment in transaction
     async createPaymentInTransaction(companyId, paymentData) {
         try {
-            console.log('💰 Creating Payment In transaction:', { companyId, paymentData });
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
 
-            // ✅ FIXED: Ensure proper transaction data structure
             const transactionData = {
                 ...paymentData,
                 direction: 'in',
                 transactionType: 'payment_in',
                 companyId,
-                // ✅ FIXED: Ensure description is present
                 description: paymentData.description ||
                     `Payment from ${paymentData.partyName || 'Customer'} for ${paymentData.referenceNumber || 'invoice'}`,
-                // ✅ FIXED: Ensure amount is a number
                 amount: parseFloat(paymentData.amount) || 0
             };
 
-            console.log('📋 Payment In transaction data:', {
-                hasDescription: !!transactionData.description,
-                hasAmount: !!transactionData.amount,
-                hasCompanyId: !!transactionData.companyId,
-                transactionType: transactionData.transactionType,
-                direction: transactionData.direction,
-                paymentMethod: transactionData.paymentMethod
-            });
-
-            // Use the enhanced createTransaction method
             return await this.createTransaction(companyId, transactionData);
 
         } catch (error) {
-            console.error('❌ Error creating Payment In transaction:', error);
             return {
                 success: false,
                 data: null,
@@ -633,16 +553,9 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ NEW: Create Payment Out Transaction (We pay supplier)  
-     * @param {string} companyId - Company ID
-     * @param {Object} paymentData - Payment data
-     * @returns {Promise<Object>} API response
-     */
+    // Create payment out transaction
     async createPaymentOutTransaction(companyId, paymentData) {
         try {
-            console.log('💸 Creating Payment Out transaction:', { companyId, paymentData });
-
             if (!companyId) {
                 throw new Error('Company ID is required');
             }
@@ -654,11 +567,9 @@ class TransactionService {
                 companyId
             };
 
-            // Use your existing createTransaction method
             return await this.createTransaction(companyId, transactionData);
 
         } catch (error) {
-            console.error('❌ Error creating Payment Out transaction:', error);
             return {
                 success: false,
                 data: null,
@@ -668,9 +579,7 @@ class TransactionService {
         }
     }
 
-    /**
-     * ✅ NEW: Get payment methods list
-     */
+    // Get payment methods
     getPaymentMethods() {
         return [
             { value: 'cash', label: 'Cash' },
@@ -684,9 +593,7 @@ class TransactionService {
         ];
     }
 
-    /**
-     * ✅ NEW: Get transaction types list
-     */
+    // Get transaction types
     getTransactionTypes() {
         return [
             { value: 'payment_in', label: 'Payment In' },
@@ -700,12 +607,7 @@ class TransactionService {
         ];
     }
 
-
-    // ==================== ENHANCED UTILITY METHODS ====================
-
-    /**
-     * ✅ FIXED: Enhanced currency formatting
-     */
+    // Utility methods
     formatCurrency(amount, options = {}) {
         const {
             currency = 'INR',
@@ -727,24 +629,18 @@ class TransactionService {
 
             return formattedAmount;
         } catch (error) {
-            console.warn('Error formatting currency:', error);
             return `₹${amount || 0}`;
         }
     }
 
-    /**
-     * ✅ FIXED: Enhanced date formatting for API calls
-     */
     formatDateForAPI(date) {
         if (!date) return null;
 
         try {
             if (typeof date === 'string') {
-                // Check if it's already in ISO format
                 if (date.includes('T')) {
                     return date.split('T')[0];
                 }
-                // Check if it's already in YYYY-MM-DD format
                 if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
                     return date;
                 }
@@ -752,20 +648,15 @@ class TransactionService {
 
             const dateObj = new Date(date);
             if (isNaN(dateObj.getTime())) {
-                console.warn('Invalid date provided:', date);
                 return null;
             }
 
             return dateObj.toISOString().split('T')[0];
         } catch (error) {
-            console.warn('Error formatting date:', date, error);
             return null;
         }
     }
 
-    /**
-     * ✅ FIXED: Format date for display
-     */
     formatDateForDisplay(date, options = {}) {
         if (!date) return 'N/A';
 
@@ -784,30 +675,23 @@ class TransactionService {
                 ...(timeStyle && { timeStyle })
             });
         } catch (error) {
-            console.warn('Error formatting date for display:', date, error);
             return 'Invalid Date';
         }
     }
 
-    /**
-     * ✅ FIXED: Test API connection and service health
-     */
+    // Test API connection
     async testConnection() {
         try {
-            console.log('🔧 Testing transaction service connection...');
-
             const response = await this.apiCall('/health', {
                 method: 'GET'
             });
 
-            console.log('✅ Transaction service connection test successful');
             return {
                 success: true,
                 message: 'Transaction service connected successfully',
                 data: response
             };
         } catch (error) {
-            console.error('❌ Transaction service connection test failed:', error);
             return {
                 success: false,
                 message: error.message || 'Connection test failed',
@@ -817,5 +701,4 @@ class TransactionService {
     }
 }
 
-// ✅ FIXED: Export single instance
 export default new TransactionService();

@@ -1,743 +1,884 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Container, Row, Col, Card } from 'react-bootstrap';
-import { useParams } from 'react-router-dom';
-import GSTToggle from './SalesForm/GSTToggle';
-import CustomerSection from './SalesForm/CustomerSection';
-import InvoiceDetails from './SalesForm/InvoiceDetails';
-import ItemsTableWithTotals from './SalesForm/itemsTableWithTotals';
-import './SalesForm.css';
+import React, {useState, useEffect, useMemo, useCallback} from "react";
+import {
+  Container,
+  Row,
+  Col,
+  Card,
+  Button,
+  Badge,
+  Spinner,
+  Alert,
+} from "react-bootstrap";
+import {useParams, useNavigate} from "react-router-dom";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+import {
+  faFileInvoice,
+  faFileAlt,
+  faArrowLeft,
+  faEdit,
+  faSave,
+  faSpinner,
+  faExclamationTriangle,
+  faQuoteLeft,
+} from "@fortawesome/free-solid-svg-icons";
+
+import SalesFormHeader from "./SalesForm/SalesFormHeader";
+import SalesInvoiceFormSection from "./SalesForm/SalesInvoiceFormSection";
+import salesService from "../../../../services/salesService";
+import "./SalesForm.css";
 
 function SalesForm({
-    onSave,
-    onCancel,
-    onExit,
-    inventoryItems = [],
-    categories = [],
-    onAddItem,
-    mode = 'invoices',
-    documentType = 'invoice',
-    formType = 'sales',
-    pageTitle,
-    addToast // ✅ ADDED: Required prop for toast notifications
+  onSave,
+  onCancel,
+  onExit,
+  inventoryItems = [],
+  categories = [],
+  onAddItem,
+  mode = "invoices",
+  documentType = "invoice",
+  formType = "sales",
+  pageTitle,
+  addToast,
+  editMode = false,
+  existingTransaction = null,
+  transactionId = null,
+  companyId: propCompanyId,
+  currentUser,
+  currentCompany,
+  isOnline = true,
+  orderType,
+  quotationService,
+  show = true,
+  onHide,
 }) {
-    // Get companyId from URL params
-    const { companyId } = useParams();
+  const {companyId: urlCompanyId} = useParams();
+  const navigate = useNavigate();
+  const [localCompanyId, setLocalCompanyId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [initializing, setInitializing] = useState(false);
+  const [initializationComplete, setInitializationComplete] = useState(false);
 
-    // Alternative: Get companyId from localStorage if not in URL
-    const [localCompanyId, setLocalCompanyId] = useState(null);
-
-    // ✅ FIXED: Improved mode detection with proper formType handling
-    const isQuotationsMode = mode === 'quotations' || documentType === 'quotation' || formType === 'quotation';
-
-    // ✅ ADDED: Determine effective formType for ItemsTableWithTotals
-    const getEffectiveFormType = () => {
-        if (isQuotationsMode) {
-            return 'quotation';
-        }
-        return formType === 'purchase' ? 'purchase' : 'sales';
-    };
-
-    // ✅ ADDED: Default toast function if not provided
-    const defaultAddToast = useCallback((message, type = 'info') => {
-        console.log(`🍞 Toast (${type}):`, message);
-        // Fallback to alert if no toast system available
-        if (type === 'error') {
-            alert(`Error: ${message}`);
-        }
-    }, []);
-
-    const effectiveAddToast = addToast || defaultAddToast;
-
-    useEffect(() => {
-        if (!companyId) {
-            // Try to get companyId from localStorage
-            const storedCompanyId = localStorage.getItem('selectedCompanyId') ||
-                localStorage.getItem('companyId') ||
-                sessionStorage.getItem('companyId');
-
-            console.log(`🏢 ${isQuotationsMode ? 'QuotationForm' : 'SalesForm'} - CompanyId from storage:`, storedCompanyId);
-            setLocalCompanyId(storedCompanyId);
-        }
-    }, [companyId, isQuotationsMode]);
-
-    // Use companyId from params, fallback to localStorage
-    const effectiveCompanyId = companyId || localCompanyId;
-
-    // Generate document number function based on mode
-    const generateDocumentNumber = (invoiceType = 'non-gst') => {
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const random = Math.floor(1000 + Math.random() * 9000);
-
-        if (isQuotationsMode) {
-            // Quotation numbering
-            if (invoiceType === 'gst') {
-                return `QUO-GST-${year}${month}${day}-${random}`;
-            } else {
-                return `QUO-${year}${month}${day}-${random}`;
-            }
-        } else {
-            // Invoice numbering
-            if (invoiceType === 'gst') {
-                return `GST-${year}${month}${day}-${random}`;
-            } else {
-                return `INV-${year}${month}${day}-${random}`;
-            }
-        }
-    };
-
-    // Dynamic field labels based on mode
-    const getFieldLabels = () => {
-        return isQuotationsMode
-            ? {
-                documentName: 'Quotation',
-                documentNumber: 'Quotation Number',
-                documentDate: 'Quote Date',
-                documentAction: 'Create Quotation',
-                shareAction: 'Share Quotation',
-                saveAction: 'Save Quotation',
-                customerLabel: 'Quote For',
-                notesPlaceholder: 'Add quotation notes, terms & conditions...'
-            }
-            : {
-                documentName: 'Invoice',
-                documentNumber: 'Invoice Number',
-                documentDate: 'Invoice Date',
-                documentAction: 'Create Invoice',
-                shareAction: 'Share Invoice',
-                saveAction: 'Save Invoice',
-                customerLabel: 'Bill To',
-                notesPlaceholder: 'Add invoice notes, payment terms...'
-            };
-    };
-
-    const labels = getFieldLabels();
-
-    // Initialize form data state
-    const [formData, setFormData] = useState({
-        gstEnabled: true,
-        invoiceType: 'gst',
-        customer: null,
-        mobileNumber: '',
-        invoiceNumber: generateDocumentNumber('gst'),
-        invoiceDate: new Date().toISOString().split('T')[0],
-        items: [],
-        paymentMethod: 'cash',
-        notes: '',
-        // Quotation-specific fields
-        quotationValidity: isQuotationsMode ? 30 : undefined,
-        quotationStatus: isQuotationsMode ? 'draft' : undefined,
-        convertedToInvoice: isQuotationsMode ? false : undefined,
-        documentMode: isQuotationsMode ? 'quotation' : 'invoice'
-    });
-
-    // Create empty item function
-    const createEmptyItem = () => {
-        return {
-            id: Date.now() + Math.random(),
-            itemRef: null,
-            itemName: '',
-            itemCode: '',
-            hsnCode: '',
-            quantity: '',
-            unit: 'PCS',
-            pricePerUnit: '',
-            discountPercent: 0,
-            discountAmount: 0,
-            cgstAmount: 0,
-            sgstAmount: 0,
-            igst: 0,
-            taxRate: formData.gstEnabled ? 18 : 0,
-            amount: 0,
-            category: '',
-            currentStock: 0,
-            minStockLevel: 0,
-            taxMode: 'without-tax'
-        };
-    };
-
-    // Initialize items after formData is set
-    useEffect(() => {
-        if (formData.items.length === 0) {
-            setFormData(prev => ({
-                ...prev,
-                items: [createEmptyItem()]
-            }));
-        }
-    }, [formData.gstEnabled]);
-
-    // Handle invoice type change with mode awareness
-    const handleInvoiceTypeChange = (newType) => {
-        console.log(`📋 Changing ${labels.documentName.toLowerCase()} type to:`, newType);
-
-        const gstEnabled = newType === 'gst';
-        const newDocumentNumber = generateDocumentNumber(newType);
-
-        setFormData(prev => {
-            const updatedItems = prev.items.map(item => ({
-                ...item,
-                taxRate: gstEnabled ? (item.taxRate || 18) : 0,
-                cgstAmount: gstEnabled ? item.cgstAmount : 0,
-                sgstAmount: gstEnabled ? item.sgstAmount : 0,
-                igst: gstEnabled ? item.igst : 0,
-                taxAmount: gstEnabled ? item.taxAmount : 0
-            }));
-
-            return {
-                ...prev,
-                invoiceType: newType,
-                gstEnabled,
-                invoiceNumber: newDocumentNumber,
-                items: updatedItems
-            };
-        });
-    };
-
-    // Handle GST toggle change with mode awareness
-    const handleGSTToggleChange = (enabled) => {
-        console.log(`🔄 GST Toggle changed to:`, enabled, `for ${labels.documentName.toLowerCase()}`);
-
-        const newInvoiceType = enabled ? 'gst' : 'non-gst';
-        const newDocumentNumber = generateDocumentNumber(newInvoiceType);
-
-        setFormData(prev => {
-            const updatedItems = prev.items.map(item => ({
-                ...item,
-                taxRate: enabled ? (item.taxRate || 18) : 0,
-                cgstAmount: enabled ? item.cgstAmount : 0,
-                sgstAmount: enabled ? item.sgstAmount : 0,
-                igst: enabled ? item.igst : 0,
-                taxAmount: enabled ? item.taxAmount : 0
-            }));
-
-            return {
-                ...prev,
-                gstEnabled: enabled,
-                invoiceType: newInvoiceType,
-                invoiceNumber: newDocumentNumber,
-                items: updatedItems
-            };
-        });
-    };
-
-    // Update form data helper
-    const updateFormData = (field, value) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value
-        }));
-    };
-
-    // Handle items change with proper validation
-    const handleItemsChange = (newItems) => {
-        console.log(`🔄 ${labels.documentName} items updated:`, newItems.length);
-        updateFormData('items', newItems);
-    };
-
-    // Enhanced validation function with mode awareness
-    const validateForm = () => {
-        const errors = [];
-
-        // Company validation
-        if (!effectiveCompanyId) {
-            errors.push('Company selection is required');
-        }
-
-        // Customer validation - more flexible for quotations
-        if (!isQuotationsMode && !formData.customer && !formData.mobileNumber) {
-            errors.push(`Please select a customer or enter mobile number for ${labels.documentName.toLowerCase()}`);
-        }
-
-        // Document number validation
-        if (!formData.invoiceNumber) {
-            errors.push(`${labels.documentNumber} is required`);
-        }
-
-        // Document date validation
-        if (!formData.invoiceDate) {
-            errors.push(`${labels.documentDate} is required`);
-        } else {
-            const documentDate = new Date(formData.invoiceDate);
-            const today = new Date();
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(today.getFullYear() - 1);
-
-            if (documentDate > today) {
-                errors.push(`${labels.documentDate} cannot be in the future`);
-            }
-
-            if (documentDate < oneYearAgo) {
-                errors.push(`${labels.documentDate} cannot be more than one year old`);
-            }
-        }
-
-        // Quotation-specific validations
-        if (isQuotationsMode) {
-            if (formData.quotationValidity && (formData.quotationValidity < 1 || formData.quotationValidity > 365)) {
-                errors.push('Quotation validity must be between 1 and 365 days');
-            }
-        }
-
-        // Items validation
-        const validItems = formData.items.filter(item =>
-            item.itemName &&
-            parseFloat(item.quantity) > 0 &&
-            parseFloat(item.pricePerUnit) > 0
-        );
-
-        if (validItems.length === 0) {
-            errors.push(`Please add at least one valid item with name, quantity, and price for ${labels.documentName.toLowerCase()}`);
-        }
-
-        return errors;
-    };
-
-    // Enhanced save handler
-    const handleSave = (invoiceDataFromTable) => {
-        console.log(`📥 ${labels.documentName}Form received data:`, invoiceDataFromTable);
-
-        const errors = validateForm();
-
-        if (errors.length > 0) {
-            const errorMessage = `Please fix the following errors in your ${labels.documentName.toLowerCase()}:\n\n` + errors.join('\n');
-            effectiveAddToast(errorMessage, 'error');
-            return Promise.resolve({
-                success: false,
-                error: 'Validation failed',
-                message: errors.join('; ')
-            });
-        }
-
-        const itemsToSave = invoiceDataFromTable?.items || formData.items.filter(item =>
-            item.itemName &&
-            parseFloat(item.quantity) > 0 &&
-            parseFloat(item.pricePerUnit) > 0
-        );
-
-        // Proper customer handling for backend
-        let customerData = null;
-        let customerName = 'Cash Customer';
-        let customerMobile = '';
-
-        if (formData.customer && formData.customer.id) {
-            customerData = formData.customer.id;
-            customerName = formData.customer.name || 'Customer';
-            customerMobile = formData.customer.mobile || formData.mobileNumber || '';
-        } else if (formData.customer && formData.customer._id) {
-            customerData = formData.customer._id;
-            customerName = formData.customer.name || 'Customer';
-            customerMobile = formData.customer.mobile || formData.mobileNumber || '';
-        } else {
-            customerName = 'Cash Customer';
-            customerMobile = formData.mobileNumber || '';
-        }
-
-        // Transform items to backend format
-        const transformedItems = itemsToSave.map(item => ({
-            itemName: item.itemName,
-            itemCode: item.itemCode || '',
-            hsnCode: item.hsnCode || '0000',
-            quantity: parseFloat(item.quantity) || 1,
-            unit: item.unit || 'PCS',
-            pricePerUnit: parseFloat(item.pricePerUnit) || 0,
-            taxRate: parseFloat(item.taxRate) || (formData.gstEnabled ? 18 : 0),
-            discountPercent: parseFloat(item.discountPercent) || 0,
-            discountAmount: parseFloat(item.discountAmount) || 0,
-            category: item.category || '',
-            itemRef: item.itemRef || null,
-            amount: parseFloat(item.amount) || (parseFloat(item.quantity) * parseFloat(item.pricePerUnit))
-        }));
-
-        // Get payment data from invoiceDataFromTable
-        const paymentInfo = invoiceDataFromTable?.paymentData || invoiceDataFromTable?.paymentInfo;
-
-        // Build proper backend data structure
-        const saleData = {
-            companyId: effectiveCompanyId,
-            customer: customerData,
-            customerName: customerName,
-            customerMobile: customerMobile,
-            invoiceNumber: formData.invoiceNumber,
-            invoiceDate: formData.invoiceDate,
-            invoiceType: formData.gstEnabled ? 'gst' : 'non-gst',
-            gstEnabled: formData.gstEnabled,
-            taxMode: 'without-tax',
-            priceIncludesTax: false,
-            items: transformedItems,
-            payment: paymentInfo ? {
-                method: paymentInfo.paymentType || paymentInfo.method || 'cash',
-                paidAmount: parseFloat(paymentInfo.amount) || 0,
-                status: paymentInfo.status || 'pending',
-                bankAccountId: paymentInfo.bankAccountId || null,
-                bankAccountName: paymentInfo.bankAccountName || null,
-                reference: paymentInfo.reference || '',
-                notes: paymentInfo.notes || ''
-            } : {
-                method: 'cash',
-                paidAmount: 0,
-                status: 'pending'
-            },
-            notes: formData.notes || '',
-            status: isQuotationsMode ? 'draft' : 'completed',
-            // Quotation-specific fields
-            ...(isQuotationsMode && {
-                documentType: 'quotation',
-                quotationValidity: formData.quotationValidity || 30,
-                quotationStatus: formData.quotationStatus || 'draft'
-            })
-        };
-
-        console.log(`💾 Saving ${labels.documentName.toLowerCase()} with backend format:`, {
-            companyId: saleData.companyId,
-            customer: saleData.customer,
-            customerName: saleData.customerName,
-            itemCount: saleData.items.length,
-            paymentAmount: saleData.payment.paidAmount,
-            paymentMethod: saleData.payment.method,
-            gstEnabled: saleData.gstEnabled,
-            invoiceNumber: saleData.invoiceNumber,
-            taxMode: saleData.taxMode,
-            hasCustomerId: !!saleData.customer,
-            isQuotation: isQuotationsMode
-        });
-
-        // Call onSave with proper error handling
-        if (onSave) {
-            try {
-                const result = onSave(saleData);
-                console.log('📨 onSave called with result:', result);
-
-                if (result && typeof result.then === 'function') {
-                    return result.then(successResult => {
-                        console.log(`✅ Async ${labels.documentName.toLowerCase()} save completed:`, successResult);
-                        effectiveAddToast(`${labels.documentName} saved successfully!`, 'success');
-                        return {
-                            success: true,
-                            data: successResult.data || successResult,
-                            message: successResult.message || `${labels.documentName} saved successfully`,
-                            invoiceNumber: saleData.invoiceNumber,
-                            originalResult: successResult
-                        };
-                    }).catch(error => {
-                        console.error(`❌ Error in async ${labels.documentName.toLowerCase()} onSave:`, error);
-                        effectiveAddToast(`Error saving ${labels.documentName.toLowerCase()}: ${error.message}`, 'error');
-                        return {
-                            success: false,
-                            error: error.message || 'Save operation failed',
-                            data: null
-                        };
-                    });
-                } else {
-                    console.log(`✅ Sync ${labels.documentName.toLowerCase()} save completed:`, result);
-                    effectiveAddToast(`${labels.documentName} saved successfully!`, 'success');
-                    return Promise.resolve({
-                        success: true,
-                        data: result || saleData,
-                        message: `${labels.documentName} saved successfully`,
-                        invoiceNumber: saleData.invoiceNumber,
-                        originalResult: result
-                    });
-                }
-            } catch (error) {
-                console.error(`❌ Error in ${labels.documentName.toLowerCase()} onSave:`, error);
-                effectiveAddToast(`Error saving ${labels.documentName.toLowerCase()}: ${error.message}`, 'error');
-                return Promise.resolve({
-                    success: false,
-                    error: error.message || 'Save operation failed',
-                    data: null
-                });
-            }
-        } else {
-            console.warn(`⚠️ No onSave handler provided for ${labels.documentName.toLowerCase()}`);
-            effectiveAddToast('No save handler provided', 'error');
-            return Promise.resolve({
-                success: false,
-                error: 'No save handler provided',
-                data: null
-            });
-        }
-    };
-
-    // Handle share with mode awareness
-    const handleShare = () => {
-        const errors = validateForm();
-
-        if (errors.length > 0) {
-            const errorMessage = `Please complete the ${labels.documentName.toLowerCase()} before sharing:\n\n` + errors.join('\n');
-            effectiveAddToast(errorMessage, 'warning');
-            return;
-        }
-
-        const shareData = {
-            companyId: effectiveCompanyId,
-            documentNumber: formData.invoiceNumber,
-            documentType: isQuotationsMode ? 'quotation' : 'invoice',
-            invoiceNumber: formData.invoiceNumber,
-            invoiceType: formData.invoiceType,
-            customer: formData.customer || { name: 'Cash Customer', phone: formData.mobileNumber },
-            itemCount: formData.items.filter(item => item.itemName).length,
-            mode: mode,
-            isQuotation: isQuotationsMode
-        };
-
-        console.log(`📤 Sharing ${labels.documentName.toLowerCase()}:`, shareData);
-        effectiveAddToast(`${labels.documentName} ${formData.invoiceNumber} ready to share!`, 'info');
-    };
-
-    // Handle adding new item from ItemsTable
-    const handleAddItem = async (productData) => {
-        try {
-            console.log(`📦 Adding new product for ${labels.documentName.toLowerCase()}:`, productData);
-
-            if (onAddItem) {
-                const result = await onAddItem(productData);
-                if (result !== false) {
-                    console.log('✅ Product added successfully');
-                    effectiveAddToast('Product added successfully', 'success');
-                    return result;
-                }
-            } else {
-                console.log('✅ Product added (simulated):', productData.name);
-                effectiveAddToast('Product added successfully', 'success');
-                return { id: Date.now(), ...productData };
-            }
-        } catch (error) {
-            console.error('❌ Error adding product:', error);
-            effectiveAddToast(`Error adding product: ${error.message}`, 'error');
-            return false;
-        }
-    };
-
-    // Auto-save draft functionality with mode awareness
-    useEffect(() => {
-        if (formData.invoiceNumber && effectiveCompanyId) {
-            const draftKey = `${isQuotationsMode ? 'quotation' : 'invoice'}_draft_${effectiveCompanyId}_${formData.invoiceNumber}`;
-            const draftData = {
-                ...formData,
-                companyId: effectiveCompanyId,
-                documentType: isQuotationsMode ? 'quotation' : 'invoice',
-                lastSaved: new Date().toISOString()
-            };
-
-            try {
-                localStorage.setItem(draftKey, JSON.stringify(draftData));
-            } catch (error) {
-                console.warn('Could not save draft:', error);
-            }
-        }
-
-        return () => {
-            try {
-                const keyPrefix = isQuotationsMode ? 'quotation_draft_' : 'invoice_draft_';
-                const keys = Object.keys(localStorage).filter(key => key.startsWith(keyPrefix));
-                if (keys.length > 10) {
-                    keys.slice(0, -10).forEach(key => localStorage.removeItem(key));
-                }
-            } catch (error) {
-                console.warn('Could not cleanup drafts:', error);
-            }
-        };
-    }, [formData, effectiveCompanyId, isQuotationsMode]);
-
-    // Show loading state if no companyId is available
-    if (!effectiveCompanyId) {
-        return (
-            <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
-                <Container fluid className="py-3 px-4">
-                    <Card className="border-warning">
-                        <Card.Body className="text-center py-5">
-                            <div className="text-warning mb-3">
-                                <i className="fas fa-exclamation-triangle fa-3x"></i>
-                            </div>
-                            <h5 className="text-warning">Company Not Selected</h5>
-                            <p className="text-muted">
-                                Please select a company to create {isQuotationsMode ? 'quotations' : 'sales invoices'}.
-                            </p>
-                            <div className="mt-3">
-                                <small className="text-muted">
-                                    Debug Info:<br />
-                                    URL CompanyId: {companyId || 'Not found'}<br />
-                                    Storage CompanyId: {localCompanyId || 'Not found'}<br />
-                                    Current URL: {window.location.pathname}<br />
-                                    Mode: {mode}, Document Type: {documentType}
-                                </small>
-                            </div>
-                        </Card.Body>
-                    </Card>
-                </Container>
-            </div>
-        );
-    }
+  // Get effective company ID
+  const getEffectiveCompanyId = useCallback(() => {
+    const candidates = [
+      propCompanyId,
+      urlCompanyId,
+      localCompanyId,
+      currentCompany?._id,
+      currentCompany?.id,
+      currentUser?.companyId,
+      currentUser?.company?._id,
+      currentUser?.company?.id,
+      localStorage.getItem("selectedCompanyId"),
+      localStorage.getItem("companyId"),
+      sessionStorage.getItem("companyId"),
+    ];
 
     return (
-        <div className="sales-form-wrapper" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }} data-mode={mode}>
-            <Container fluid className="py-3 px-4">
-                {/* Compact Header Section */}
-                <div className="mb-3">
-                    <GSTToggle
-                        gstEnabled={formData.gstEnabled}
-                        invoiceType={formData.invoiceType}
-                        onChange={handleGSTToggleChange}
-                        mode={mode}
-                        documentType={documentType}
-                        documentName={labels.documentName}
-                    />
-                </div>
-
-                {/* Customer and Document Details Row */}
-                <Row className="g-3 mb-3">
-                    <Col lg={6}>
-                        <Card className="h-100 border-0 shadow-sm">
-                            <Card.Body className="p-3">
-                                <CustomerSection
-                                    customer={formData.customer}
-                                    mobileNumber={formData.mobileNumber}
-                                    onCustomerChange={(customer) => updateFormData('customer', customer)}
-                                    onMobileChange={(mobile) => updateFormData('mobileNumber', mobile)}
-                                    isSupplierMode={false}
-                                    companyId={effectiveCompanyId}
-                                    mode={mode}
-                                    documentType={documentType}
-                                    customerLabel={labels.customerLabel}
-                                />
-                            </Card.Body>
-                        </Card>
-                    </Col>
-                    <Col lg={6}>
-                        <Card className="h-100 border-0 shadow-sm">
-                            <Card.Body className="p-3">
-                                <InvoiceDetails
-                                    invoiceNumber={formData.invoiceNumber}
-                                    invoiceDate={formData.invoiceDate}
-                                    invoiceType={formData.invoiceType}
-                                    onInvoiceNumberChange={(number) => updateFormData('invoiceNumber', number)}
-                                    onInvoiceDateChange={(date) => updateFormData('invoiceDate', date)}
-                                    mode={mode}
-                                    documentType={documentType}
-                                    documentNumberLabel={labels.documentNumber}
-                                    documentDateLabel={labels.documentDate}
-                                    quotationValidity={formData.quotationValidity}
-                                    onQuotationValidityChange={(validity) => updateFormData('quotationValidity', validity)}
-                                />
-                            </Card.Body>
-                        </Card>
-                    </Col>
-                </Row>
-
-                <div className="mb-3">
-                    <ItemsTableWithTotals
-                        items={formData.items}
-                        onItemsChange={handleItemsChange}
-                        categories={categories}
-                        inventoryItems={inventoryItems}
-                        companyId={effectiveCompanyId}
-                        gstEnabled={formData.gstEnabled}
-                        formType={getEffectiveFormType()} // ✅ FIXED: Use proper formType
-                        onSave={handleSave}
-                        onShare={handleShare}
-                        onCancel={onCancel}
-                        selectedCustomer={formData.customer}
-                        selectedSupplier={null}
-                        invoiceNumber={formData.invoiceNumber}
-                        invoiceDate={formData.invoiceDate}
-                        userId={null}
-                        mode={mode}
-                        documentType={documentType}
-                        addToast={effectiveAddToast} // ✅ FIXED: Pass addToast function
-                        documentLabels={labels}
-                    />
-                </div>
-
-                {/* Debug section */}
-                {process.env.NODE_ENV === 'development' && (
-                    <div className="mb-3">
-                        <Card className={`border-${isQuotationsMode ? 'warning' : 'info'} bg-opacity-10`}
-                            style={{ backgroundColor: isQuotationsMode ? 'rgba(255, 193, 7, 0.1)' : 'rgba(13, 202, 240, 0.1)' }}>
-                            <Card.Body className="p-3">
-                                <h6 className={`text-${isQuotationsMode ? 'warning' : 'info'} mb-2`}>
-                                    🔧 Debug - {labels.documentName}Form State
-                                </h6>
-                                <Row className="small text-muted">
-                                    <Col md={3}>
-                                        <div><strong>Form Data:</strong></div>
-                                        <div>Mode: {mode}</div>
-                                        <div>Document Type: {documentType}</div>
-                                        <div>Form Type: {getEffectiveFormType()}</div>
-                                        <div>Is Quotations Mode: {isQuotationsMode ? 'Yes' : 'No'}</div>
-                                        <div>GST Enabled: {formData.gstEnabled ? 'Yes' : 'No'}</div>
-                                        <div>Invoice Type: {formData.invoiceType}</div>
-                                        <div>Company ID: {effectiveCompanyId}</div>
-                                    </Col>
-                                    <Col md={3}>
-                                        <div><strong>Document Info:</strong></div>
-                                        <div>Number: {formData.invoiceNumber}</div>
-                                        <div>Date: {formData.invoiceDate}</div>
-                                        <div>Document Mode: {formData.documentMode}</div>
-                                        {isQuotationsMode && (
-                                            <>
-                                                <div>Validity: {formData.quotationValidity} days</div>
-                                                <div>Status: {formData.quotationStatus}</div>
-                                            </>
-                                        )}
-                                    </Col>
-                                    <Col md={3}>
-                                        <div><strong>Customer Info:</strong></div>
-                                        <div>Customer: {formData.customer?.name || 'None'}</div>
-                                        <div>Customer ID: {formData.customer?.id || formData.customer?._id || 'None'}</div>
-                                        <div>Mobile: {formData.mobileNumber || 'None'}</div>
-                                        <div>Label: {labels.customerLabel}</div>
-                                    </Col>
-                                    <Col md={3}>
-                                        <div><strong>Items:</strong></div>
-                                        <div>Total Items: {formData.items.length}</div>
-                                        <div>Valid Items: {formData.items.filter(item => item.itemName).length}</div>
-                                        <div>Component: ItemsTableWithTotals</div>
-                                        <div>Effective Form Type: {getEffectiveFormType()}</div>
-                                        <div>AddToast: {addToast ? 'Provided' : 'Default'}</div>
-                                    </Col>
-                                </Row>
-                                <div className="mt-2 pt-2 border-top">
-                                    <strong>Backend Data Preview:</strong>
-                                    <div className="small">
-                                        Customer ID: {formData.customer?.id || formData.customer?._id || 'null'} |
-                                        Customer Name: {formData.customer?.name || 'Cash Customer'} |
-                                        Tax Mode: without-tax |
-                                        Price Includes Tax: false |
-                                        Document Type: {isQuotationsMode ? 'quotation' : 'invoice'}
-                                    </div>
-                                </div>
-                            </Card.Body>
-                        </Card>
-                    </div>
-                )}
-            </Container>
-
-            {/* Mode-specific styles */}
-            <style jsx>{`
-                .sales-form-wrapper[data-mode="quotations"] {
-                    --primary-color: #17a2b8;
-                    --primary-rgb: 23, 162, 184;
-                    --secondary-color: #20c997;
-                }
-
-                .sales-form-wrapper[data-mode="invoices"] {
-                    --primary-color: #6c63ff;
-                    --primary-rgb: 108, 99, 255;
-                    --secondary-color: #9c88ff;
-                }
-
-                .sales-form-wrapper[data-mode="quotations"] .card {
-                    border-left: 4px solid var(--primary-color) !important;
-                }
-
-                .sales-form-wrapper[data-mode="quotations"] .card-header {
-                    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.1) 0%, rgba(var(--primary-rgb), 0.05) 100%);
-                }
-            `}</style>
-        </div>
+      candidates.find((id) => id && id !== "null" && id !== "undefined") || null
     );
+  }, [
+    propCompanyId,
+    urlCompanyId,
+    localCompanyId,
+    currentCompany,
+    currentUser,
+  ]);
+
+  const effectiveCompanyId = getEffectiveCompanyId();
+
+  // Determine if quotations mode
+  const isQuotationsMode = useMemo(() => {
+    return (
+      mode === "quotations" ||
+      documentType === "quotation" ||
+      formType === "quotation" ||
+      orderType === "quotation"
+    );
+  }, [mode, documentType, formType, orderType]);
+
+  // Default toast function
+  const defaultAddToast = useCallback((message, type = "info") => {
+    if (type === "error") {
+      alert(`Error: ${message}`);
+    } else {
+      console.log(`${type.toUpperCase()}: ${message}`);
+    }
+  }, []);
+
+  const effectiveAddToast = addToast || defaultAddToast;
+
+  // Initialize company ID from storage if needed
+  useEffect(() => {
+    if (!propCompanyId && !urlCompanyId && !localCompanyId) {
+      const storedCompanyId =
+        localStorage.getItem("selectedCompanyId") ||
+        localStorage.getItem("companyId") ||
+        sessionStorage.getItem("companyId") ||
+        currentCompany?.id ||
+        currentCompany?._id ||
+        currentUser?.companyId ||
+        currentUser?.company?._id ||
+        currentUser?.company?.id;
+
+      if (
+        storedCompanyId &&
+        storedCompanyId !== "null" &&
+        storedCompanyId !== "undefined"
+      ) {
+        setLocalCompanyId(storedCompanyId);
+      }
+    }
+  }, [
+    propCompanyId,
+    urlCompanyId,
+    currentCompany,
+    currentUser,
+    localCompanyId,
+  ]);
+
+  // Generate document number
+  const generateDocumentNumber = (invoiceType = "non-gst") => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const day = date.getDate().toString().padStart(2, "0");
+    const random = Math.floor(1000 + Math.random() * 9000);
+
+    if (isQuotationsMode) {
+      const companyPrefix = currentCompany?.code || "QT";
+      return invoiceType === "gst"
+        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
+        : `${companyPrefix}-${year}${month}${day}-${random}`;
+    } else {
+      const companyPrefix = currentCompany?.code || "INV";
+      return invoiceType === "gst"
+        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
+        : `${companyPrefix}-${year}${month}${day}-${random}`;
+    }
+  };
+
+  // Get field labels
+  const getFieldLabels = () => {
+    return isQuotationsMode
+      ? {
+          documentName: "Quotation",
+          documentNamePlural: "Quotations",
+          documentNumber: "Quotation Number",
+          documentDate: "Quote Date",
+          documentAction: editMode ? "Update Quotation" : "Create Quotation",
+          shareAction: "Share Quotation",
+          saveAction: editMode ? "Update Quotation" : "Save Quotation",
+          customerLabel: "Quote For",
+          notesPlaceholder:
+            "Add quotation notes, terms & conditions, validity period...",
+          emptyStateMessage:
+            "Start by adding products or services for this quotation",
+          successMessage: editMode
+            ? "Quotation updated successfully!"
+            : "Quotation created successfully!",
+          validationMessage: "Please complete the quotation details",
+        }
+      : {
+          documentName: "Invoice",
+          documentNamePlural: "Invoices",
+          documentNumber: "Invoice Number",
+          documentDate: "Invoice Date",
+          documentAction: editMode ? "Update Invoice" : "Create Invoice",
+          shareAction: "Share Invoice",
+          saveAction: editMode ? "Update Invoice" : "Save Invoice",
+          customerLabel: "Bill To",
+          notesPlaceholder: "Add invoice notes, payment terms, due date...",
+          emptyStateMessage:
+            "Start by adding products or services for this invoice",
+          successMessage: editMode
+            ? "Invoice updated successfully!"
+            : "Invoice created successfully!",
+          validationMessage: "Please complete the invoice details",
+        };
+  };
+
+  const labels = getFieldLabels();
+
+  // Initialize form data
+  const [formData, setFormData] = useState(() => {
+    const initialCompanyId = getEffectiveCompanyId();
+
+    return {
+      gstEnabled: true,
+      invoiceType: "gst",
+      taxMode: "without-tax",
+      priceIncludesTax: false,
+      customer: null,
+      mobileNumber: "",
+      invoiceNumber: generateDocumentNumber("gst"),
+      invoiceDate: new Date().toISOString().split("T")[0],
+      items: [],
+      paymentMethod: "cash",
+      paymentData: null,
+      notes: "",
+      quotationValidity: isQuotationsMode ? 30 : undefined,
+      quotationStatus: isQuotationsMode ? "draft" : undefined,
+      quotationExpiryDate: isQuotationsMode
+        ? (() => {
+            const date = new Date();
+            date.setDate(date.getDate() + 30);
+            return date.toISOString().split("T")[0];
+          })()
+        : undefined,
+      convertedToInvoice: isQuotationsMode ? false : undefined,
+      documentMode: isQuotationsMode ? "quotation" : "invoice",
+      createdBy: currentUser?.name || currentUser?.email || "System",
+      companyId: initialCompanyId,
+      termsAndConditions: isQuotationsMode
+        ? "This quotation is valid for 30 days from the date of issue."
+        : "",
+    };
+  });
+
+  // Update form data function
+  const updateFormData = useCallback(
+    (field, value) => {
+      setFormData((prev) => {
+        const updated = {...prev, [field]: value};
+        if (!updated.companyId) {
+          updated.companyId = effectiveCompanyId;
+        }
+        return updated;
+      });
+    },
+    [effectiveCompanyId]
+  );
+
+  // Update company ID when it changes
+  useEffect(() => {
+    const currentEffectiveCompanyId = getEffectiveCompanyId();
+    if (
+      currentEffectiveCompanyId &&
+      currentEffectiveCompanyId !== formData.companyId
+    ) {
+      setFormData((prev) => ({
+        ...prev,
+        companyId: currentEffectiveCompanyId,
+      }));
+    }
+  }, [effectiveCompanyId, formData.companyId, getEffectiveCompanyId]);
+
+  // Load transaction for editing
+  useEffect(() => {
+    if (editMode && existingTransaction && !initializationComplete) {
+      initializeFormFromTransaction(existingTransaction);
+    } else if (editMode && !existingTransaction && transactionId) {
+      loadTransactionById(transactionId);
+    } else if (editMode && !existingTransaction) {
+      setInitializing(false);
+      setInitializationComplete(true);
+      effectiveAddToast("No transaction data provided for editing", "error");
+    } else if (!editMode && !initializationComplete) {
+      setInitializing(false);
+      setInitializationComplete(true);
+    }
+  }, [
+    editMode,
+    existingTransaction,
+    transactionId,
+    initializationComplete,
+    isQuotationsMode,
+  ]);
+
+  // Load transaction by ID
+  const loadTransactionById = async (id) => {
+    setInitializing(true);
+    try {
+      let result;
+      if (isQuotationsMode && quotationService) {
+        result = await quotationService.getQuotation(id);
+      } else {
+        result = await salesService.getInvoice(id);
+      }
+
+      if (result?.success && result.data) {
+        await initializeFormFromTransaction(result.data);
+      } else {
+        throw new Error(`Failed to load ${labels.documentName.toLowerCase()}`);
+      }
+    } catch (error) {
+      effectiveAddToast(
+        `Error loading ${labels.documentName.toLowerCase()}: ${error.message}`,
+        "error"
+      );
+      setInitializing(false);
+      setInitializationComplete(true);
+    }
+  };
+
+  // Initialize form from transaction data
+  const initializeFormFromTransaction = useCallback(
+    async (transaction) => {
+      if (initializationComplete) return;
+
+      setInitializing(true);
+
+      try {
+        if (!transaction) {
+          throw new Error("No transaction data provided");
+        }
+
+        // Transform customer data
+        let transformedCustomer = null;
+        if (transaction.customer && typeof transaction.customer === "object") {
+          transformedCustomer = {
+            id: transaction.customer._id || transaction.customer.id,
+            _id: transaction.customer._id || transaction.customer.id,
+            name:
+              transaction.customer.name ||
+              transaction.customer.customerName ||
+              "",
+            mobile:
+              transaction.customer.mobile || transaction.customer.phone || "",
+            email: transaction.customer.email || "",
+            address: transaction.customer.address || "",
+            gstNumber: transaction.customer.gstNumber || "",
+          };
+        } else if (transaction.customerId || transaction.customerName) {
+          transformedCustomer = {
+            id: transaction.customerId,
+            _id: transaction.customerId,
+            name: transaction.customerName || "",
+            mobile:
+              transaction.customerMobile || transaction.mobileNumber || "",
+            email: transaction.customerEmail || "",
+            address: transaction.customerAddress || "",
+            gstNumber: transaction.customerGstNumber || "",
+          };
+        }
+
+        // Transform items data
+        const transformedItems = (transaction.items || []).map(
+          (item, index) => {
+            const quantity = parseFloat(item.quantity || item.qty || 0);
+            const pricePerUnit = parseFloat(
+              item.pricePerUnit || item.price || item.rate || 0
+            );
+            const taxRate = parseFloat(item.taxRate || item.gstRate || 18);
+
+            const subtotal = quantity * pricePerUnit;
+            const discountAmount = parseFloat(item.discountAmount || 0);
+            const taxableAmount = subtotal - discountAmount;
+            const taxAmount = (taxableAmount * taxRate) / 100;
+            const cgstAmount = taxAmount / 2;
+            const sgstAmount = taxAmount / 2;
+            const totalAmount = taxableAmount + taxAmount;
+
+            return {
+              id: item.id || item._id || `item-${index}-${Date.now()}`,
+              itemRef: item.itemRef || item.productId,
+              itemName: item.itemName || item.productName || item.name || "",
+              itemCode: item.itemCode || item.productCode || "",
+              hsnCode: item.hsnCode || item.hsnNumber || "0000",
+              quantity: quantity,
+              unit: item.unit || "PCS",
+              pricePerUnit: pricePerUnit,
+              taxRate: taxRate,
+              discountPercent: parseFloat(item.discountPercent || 0),
+              discountAmount: discountAmount,
+              taxableAmount: taxableAmount,
+              cgstAmount: cgstAmount,
+              sgstAmount: sgstAmount,
+              igst: parseFloat(item.igst || 0),
+              amount: totalAmount,
+              category: item.category || "",
+              currentStock: parseFloat(item.currentStock || 0),
+              taxMode: item.taxMode || transaction.taxMode || "without-tax",
+              priceIncludesTax: Boolean(
+                item.priceIncludesTax || transaction.priceIncludesTax
+              ),
+              selectedProduct: item.itemRef
+                ? {
+                    id: item.itemRef,
+                    name: item.itemName || item.productName,
+                    sellPrice: pricePerUnit,
+                    gstRate: taxRate,
+                    hsnCode: item.hsnCode || "0000",
+                  }
+                : null,
+            };
+          }
+        );
+
+        // Transform payment data
+        let paymentData = null;
+        if (transaction.payment || transaction.paymentData) {
+          const payment = transaction.payment || transaction.paymentData;
+          paymentData = {
+            paymentType: payment.method || payment.paymentType || "cash",
+            method: payment.method || payment.paymentType || "cash",
+            amount: parseFloat(payment.paidAmount || payment.amount || 0),
+            paidAmount: parseFloat(payment.paidAmount || payment.amount || 0),
+            pendingAmount: parseFloat(
+              payment.pendingAmount || payment.balanceAmount || 0
+            ),
+            status: payment.status || "pending",
+            paymentDate: payment.paymentDate || transaction.invoiceDate,
+            reference: payment.reference || "",
+            dueDate: payment.dueDate || null,
+            creditDays: payment.creditDays || 0,
+          };
+        }
+
+        // Create new form data
+        const newFormData = {
+          invoiceNumber:
+            transaction.invoiceNumber ||
+            transaction.quotationNumber ||
+            transaction.documentNumber ||
+            transaction.number ||
+            "",
+
+          invoiceDate: (() => {
+            const dateValue =
+              transaction.invoiceDate ||
+              transaction.quotationDate ||
+              transaction.date ||
+              transaction.documentDate;
+            if (dateValue) {
+              try {
+                return new Date(dateValue).toISOString().split("T")[0];
+              } catch (e) {
+                return new Date().toISOString().split("T")[0];
+              }
+            }
+            return new Date().toISOString().split("T")[0];
+          })(),
+
+          customer: transformedCustomer,
+          mobileNumber:
+            transaction.customerMobile ||
+            transaction.mobileNumber ||
+            transformedCustomer?.mobile ||
+            "",
+
+          items: transformedItems,
+
+          gstEnabled:
+            transaction.gstEnabled !== false &&
+            (transaction.invoiceType === "gst" ||
+              transformedItems.some((item) => item.taxRate > 0)),
+          invoiceType:
+            transaction.invoiceType ||
+            (transaction.gstEnabled !== false ? "gst" : "non-gst"),
+          taxMode: transaction.taxMode || "without-tax",
+          priceIncludesTax: Boolean(transaction.priceIncludesTax),
+
+          paymentMethod: paymentData?.paymentType || "cash",
+          paymentData: paymentData,
+
+          notes: transaction.notes || transaction.description || "",
+          termsAndConditions: transaction.termsAndConditions || "",
+
+          status: transaction.status || "draft",
+          quotationValidity:
+            transaction.quotationValidity ||
+            (isQuotationsMode ? 30 : undefined),
+          quotationStatus:
+            transaction.quotationStatus ||
+            (isQuotationsMode ? "draft" : undefined),
+          quotationExpiryDate:
+            transaction.quotationExpiryDate ||
+            (isQuotationsMode
+              ? (() => {
+                  const date = new Date(
+                    transaction.quotationDate || transaction.invoiceDate
+                  );
+                  date.setDate(
+                    date.getDate() + (transaction.quotationValidity || 30)
+                  );
+                  return date.toISOString().split("T")[0];
+                })()
+              : undefined),
+          convertedToInvoice: transaction.convertedToInvoice || false,
+
+          documentMode: isQuotationsMode ? "quotation" : "invoice",
+          createdBy: transaction.createdBy || currentUser?.name || "System",
+          companyId: effectiveCompanyId,
+        };
+
+        setFormData((prev) => ({...prev, ...newFormData}));
+      } catch (error) {
+        effectiveAddToast(
+          `Error loading ${labels.documentName.toLowerCase()}: ${
+            error.message
+          }`,
+          "error"
+        );
+      } finally {
+        setInitializing(false);
+        setInitializationComplete(true);
+      }
+    },
+    [
+      effectiveAddToast,
+      labels.documentName,
+      isQuotationsMode,
+      initializationComplete,
+      currentUser,
+      effectiveCompanyId,
+    ]
+  );
+
+  // Simple save handler - just pass through to service
+  const handleSave = useCallback(
+    async (invoiceDataFromTable) => {
+      if (saving) {
+        return {
+          success: true,
+          isDuplicate: true,
+          message: "Save operation already in progress",
+        };
+      }
+
+      try {
+        setSaving(true);
+
+        let result;
+
+        if (editMode && transactionId) {
+          if (isQuotationsMode && quotationService) {
+            result = await quotationService.updateQuotation(
+              transactionId,
+              invoiceDataFromTable
+            );
+          } else {
+            result = await salesService.updateInvoice(
+              transactionId,
+              invoiceDataFromTable
+            );
+          }
+        } else {
+          if (isQuotationsMode && quotationService) {
+            result = await quotationService.createQuotation(
+              invoiceDataFromTable
+            );
+          } else {
+            result = await salesService.createInvoice(invoiceDataFromTable);
+          }
+        }
+
+        if (result?.success || result?.data || result?._id || result?.id) {
+          const responseData = result.data || result;
+
+          effectiveAddToast(
+            `${labels.successMessage} Amount: ₹${
+              responseData.total ||
+              responseData.grandTotal ||
+              responseData.amount ||
+              invoiceDataFromTable.totals?.finalTotal ||
+              0
+            }`,
+            "success"
+          );
+
+          // Navigate to appropriate page
+          setTimeout(() => {
+            if (isQuotationsMode) {
+              navigate(`/companies/${effectiveCompanyId}/sales?tab=quotations`);
+            } else {
+              navigate(`/companies/${effectiveCompanyId}/sales`);
+            }
+          }, 1500);
+
+          return {
+            success: true,
+            data: responseData,
+            message: labels.successMessage,
+          };
+        } else {
+          throw new Error(result?.message || "Save operation failed");
+        }
+      } catch (error) {
+        if (
+          error.message?.includes("already in progress") ||
+          error.message?.includes("duplicate")
+        ) {
+          return {
+            success: true,
+            isDuplicate: true,
+            message: labels.successMessage,
+          };
+        }
+
+        const errorMessage = `Error ${
+          editMode ? "updating" : "saving"
+        } ${labels.documentName.toLowerCase()}: ${error.message}`;
+
+        effectiveAddToast(errorMessage, "error");
+
+        return {
+          success: false,
+          error: error.message,
+          message: errorMessage,
+        };
+      } finally {
+        setTimeout(() => setSaving(false), 1000);
+      }
+    },
+    [
+      saving,
+      editMode,
+      transactionId,
+      isQuotationsMode,
+      quotationService,
+      labels,
+      effectiveAddToast,
+      navigate,
+      effectiveCompanyId,
+    ]
+  );
+
+  // Simple share handler
+  const handleShare = () => {
+    effectiveAddToast(
+      `${labels.documentName} ${formData.invoiceNumber} ready to share!`,
+      "info"
+    );
+  };
+
+  // Page configuration
+  const pageConfig = useMemo(() => {
+    const baseConfig = {
+      invoice: {
+        title: editMode ? "Edit Sales Invoice" : "Create Sales Invoice",
+        icon: faFileInvoice,
+        color: "primary",
+      },
+      quotation: {
+        title: editMode ? "Edit Quotation" : "Create Quotation",
+        icon: faQuoteLeft,
+        color: "info",
+      },
+    };
+
+    return (
+      baseConfig[isQuotationsMode ? "quotation" : "invoice"] ||
+      baseConfig.invoice
+    );
+  }, [isQuotationsMode, editMode]);
+
+  // Company validation
+  if (!effectiveCompanyId) {
+    return (
+      <div
+        className="sales-form-wrapper"
+        style={{backgroundColor: "#f8f9fa", minHeight: "100vh"}}
+      >
+        <Container fluid className="py-3 px-4">
+          <Alert variant="warning" className="text-center">
+            <FontAwesomeIcon
+              icon={faExclamationTriangle}
+              size="2x"
+              className="mb-3"
+            />
+            <h5>Company Not Selected</h5>
+            <p>
+              Please select a company to {editMode ? "edit" : "create"}{" "}
+              {labels.documentNamePlural.toLowerCase()}.
+            </p>
+            <Button variant="secondary" onClick={onCancel || onHide}>
+              {onCancel ? "Back to List" : "Close"}
+            </Button>
+            <Button
+              variant="primary"
+              className="ms-2"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </Button>
+          </Alert>
+        </Container>
+      </div>
+    );
+  }
+
+  // Online validation
+  if (!isOnline) {
+    return (
+      <div
+        className="sales-form-wrapper"
+        style={{backgroundColor: "#f8f9fa", minHeight: "100vh"}}
+      >
+        <Container fluid className="py-3 px-4">
+          <Alert variant="warning" className="text-center">
+            <FontAwesomeIcon
+              icon={faExclamationTriangle}
+              size="2x"
+              className="mb-3"
+            />
+            <h5>No Internet Connection</h5>
+            <p>
+              {labels.documentNamePlural} require an internet connection to save
+              data.
+            </p>
+          </Alert>
+        </Container>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (initializing) {
+    return (
+      <div
+        className="sales-form-wrapper"
+        style={{backgroundColor: "#f8f9fa", minHeight: "100vh"}}
+      >
+        <Container fluid className="py-3 px-4">
+          <Card>
+            <Card.Body className="text-center py-5">
+              <Spinner animation="border" variant="primary" className="mb-3" />
+              <h5>Loading {labels.documentName}...</h5>
+              <p className="text-muted">
+                Please wait while we load the{" "}
+                {labels.documentName.toLowerCase()} data.
+              </p>
+            </Card.Body>
+          </Card>
+        </Container>
+      </div>
+    );
+  }
+
+  // Edit mode validation
+  if (editMode && !existingTransaction && initializationComplete) {
+    return (
+      <div
+        className="sales-form-wrapper"
+        style={{backgroundColor: "#f8f9fa", minHeight: "100vh"}}
+      >
+        <Container fluid className="py-3 px-4">
+          <Alert variant="danger" className="text-center">
+            <FontAwesomeIcon
+              icon={faExclamationTriangle}
+              size="2x"
+              className="mb-3"
+            />
+            <h5>Transaction Data Missing</h5>
+            <p>
+              Unable to load transaction data for editing. Please try again.
+            </p>
+            <Button variant="secondary" onClick={onCancel || onHide}>
+              {onCancel ? "Back to List" : "Close"}
+            </Button>
+          </Alert>
+        </Container>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="sales-form-wrapper"
+      style={{backgroundColor: "#f8f9fa", minHeight: "100vh"}}
+      data-mode={mode}
+    >
+      <Container fluid className="py-3 px-4">
+        {/* Header Component */}
+        <div className="mb-3">
+          <SalesFormHeader
+            formData={formData}
+            onFormDataChange={updateFormData}
+            companyId={effectiveCompanyId}
+            currentUser={currentUser}
+            currentCompany={currentCompany}
+            addToast={effectiveAddToast}
+            errors={{}}
+            disabled={saving}
+            mode={mode}
+            documentType={documentType}
+            isQuotationsMode={isQuotationsMode}
+            labels={labels}
+          />
+        </div>
+
+        {/* Main Form Component */}
+        <div className="mb-3">
+          <SalesInvoiceFormSection
+            formData={formData}
+            onFormDataChange={updateFormData}
+            companyId={effectiveCompanyId}
+            currentUser={currentUser}
+            currentCompany={currentCompany}
+            addToast={effectiveAddToast}
+            onSave={handleSave}
+            onCancel={onCancel || onHide}
+            onShare={handleShare}
+            errors={{}}
+            disabled={saving}
+            mode={mode}
+            documentType={documentType}
+            isQuotationsMode={isQuotationsMode}
+            editMode={editMode}
+            saving={saving}
+            labels={labels}
+          />
+        </div>
+      </Container>
+
+      {/* Loading Overlay */}
+      {saving && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{zIndex: 2000}}
+        >
+          <div className="text-center text-white">
+            <Spinner animation="border" size="lg" className="mb-3" />
+            <h5>
+              {editMode ? "Updating" : "Saving"} {labels.documentName}...
+            </h5>
+            <p>
+              Please wait while we {editMode ? "update" : "save"} your changes.
+            </p>
+            {editMode && transactionId && <small>ID: {transactionId}</small>}
+          </div>
+        </div>
+      )}
+
+      {/* Custom Styles */}
+      <style jsx>{`
+        .sales-form-wrapper[data-mode="quotations"] {
+          --primary-color: #17a2b8;
+          --primary-rgb: 23, 162, 184;
+          --secondary-color: #20c997;
+        }
+
+        .sales-form-wrapper[data-mode="invoices"] {
+          --primary-color: #6c63ff;
+          --primary-rgb: 108, 99, 255;
+          --secondary-color: #9c88ff;
+        }
+
+        .sales-form-wrapper[data-mode="quotations"] .card {
+          border-left: 4px solid var(--primary-color) !important;
+        }
+
+        .sales-form-wrapper[data-mode="quotations"] .card-header {
+          background: linear-gradient(
+            135deg,
+            rgba(var(--primary-rgb), 0.1) 0%,
+            rgba(var(--primary-rgb), 0.05) 100%
+          );
+        }
+
+        .sales-form-wrapper[data-mode="quotations"] .btn-primary {
+          background-color: var(--primary-color);
+          border-color: var(--primary-color);
+        }
+
+        .sales-form-wrapper[data-mode="quotations"] .text-primary {
+          color: var(--primary-color) !important;
+        }
+      `}</style>
+    </div>
+  );
 }
 
 export default SalesForm;

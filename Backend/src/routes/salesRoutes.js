@@ -27,115 +27,23 @@ const validateCompany = (req, res, next) => {
     next();
 };
 
-// ==================== BASIC CRUD ROUTES ====================
+// ==================== UTILITY ROUTES (Must come FIRST) ====================
 
 /**
- * @route   POST /api/sales
- * @desc    Create a new sale/invoice
+ * @route   GET /api/sales/next-invoice-number
+ * @desc    Get next available invoice number
  * @access  Private
  */
-router.post('/', authenticate, validateRequest, saleController.createSale);
+router.get('/next-invoice-number', authenticate, validateCompany, saleController.getNextInvoiceNumber);
 
 /**
- * @route   GET /api/sales
- * @desc    Get all sales with pagination and filters
+ * @route   POST /api/sales/validate-stock
+ * @desc    Validate stock availability for items
  * @access  Private
  */
-router.get('/', authenticate, validateCompany, saleController.getAllSales);
+router.post('/validate-stock', authenticate, validateRequest, saleController.validateStock);
 
-// ==================== NEW: DUE DATE MANAGEMENT ROUTES ====================
-
-/**
- * @route   GET /api/sales/overdue
- * @desc    Get overdue sales
- * @access  Private
- */
-router.get('/overdue', authenticate, validateCompany, saleController.getOverdueSales);
-
-/**
- * @route   GET /api/sales/due-today
- * @desc    Get sales due today
- * @access  Private
- */
-router.get('/due-today', authenticate, validateCompany, saleController.getSalesDueToday);
-
-/**
- * @route   PUT /api/sales/:id/due-date
- * @desc    Update payment due date
- * @access  Private
- */
-router.put('/:id/due-date', authenticate, validateRequest, saleController.updatePaymentDueDate);
-
-/**
- * @route   GET /api/sales/payment-summary-overdue
- * @desc    Get payment summary with overdue analysis
- * @access  Private
- */
-router.get('/payment-summary-overdue', authenticate, validateCompany, saleController.getPaymentSummaryWithOverdue);
-
-// ==================== INDIVIDUAL SALE ROUTES ====================
-
-/**
- * @route   GET /api/sales/:id
- * @desc    Get sale by ID with full details
- * @access  Private
- */
-router.get('/:id', authenticate, validateRequest, saleController.getSaleById);
-
-/**
- * @route   PUT /api/sales/:id
- * @desc    Update sale (only draft sales can be updated)
- * @access  Private
- */
-router.put('/:id', authenticate, validateRequest, saleController.updateSale);
-
-/**
- * @route   DELETE /api/sales/:id
- * @desc    Cancel sale (soft delete)
- * @access  Private
- */
-router.delete('/:id', authenticate, validateRequest, saleController.deleteSale);
-
-// ==================== STATUS MANAGEMENT ROUTES ====================
-
-/**
- * @route   PATCH /api/sales/:id/complete
- * @desc    Mark sale as completed
- * @access  Private
- */
-router.patch('/:id/complete', authenticate, validateRequest, saleController.completeSale);
-
-/**
- * @route   PATCH /api/sales/:id/cancel
- * @desc    Cancel a sale
- * @access  Private
- */
-router.patch('/:id/cancel', authenticate, validateRequest, saleController.deleteSale);
-
-// ==================== PAYMENT ROUTES ====================
-
-/**
- * @route   POST /api/sales/:id/payment
- * @desc    Add payment to a sale
- * @access  Private
- */
-router.post('/:id/payment', authenticate, validateRequest, saleController.addPayment);
-
-/**
- * @route   POST /api/sales/:id/payments
- * @desc    Add payment to a sale (alternative endpoint)
- * @access  Private
- */
-router.post('/:id/payments', authenticate, validateRequest, saleController.addPayment);
-
-/**
- * @route   GET /api/sales/:id/payment-status
- * @desc    Get payment status of a sale
- * @access  Private
- */
-router.get('/:id/payment-status', authenticate, validateRequest, saleController.getPaymentStatus);
-
-// ==================== REPORTING ROUTES ====================
+// ==================== REPORTING ROUTES (Must come BEFORE /:id routes) ====================
 
 /**
  * @route   GET /api/sales/reports/today
@@ -181,21 +89,28 @@ router.get('/analytics/top-items', authenticate, validateCompany, saleController
  */
 router.get('/analytics/customer-stats', authenticate, validateCompany, saleController.getCustomerStats);
 
-// ==================== UTILITY ROUTES ====================
+// ==================== DUE DATE MANAGEMENT ROUTES ====================
 
 /**
- * @route   GET /api/sales/next-invoice-number
- * @desc    Get next available invoice number
+ * @route   GET /api/sales/overdue
+ * @desc    Get overdue sales
  * @access  Private
  */
-router.get('/next-invoice-number', authenticate, validateCompany, saleController.getNextInvoiceNumber);
+router.get('/overdue', authenticate, validateCompany, saleController.getOverdueSales);
 
 /**
- * @route   POST /api/sales/validate-stock
- * @desc    Validate stock availability for items
+ * @route   GET /api/sales/due-today
+ * @desc    Get sales due today
  * @access  Private
  */
-router.post('/validate-stock', authenticate, validateRequest, saleController.validateStock);
+router.get('/due-today', authenticate, validateCompany, saleController.getSalesDueToday);
+
+/**
+ * @route   GET /api/sales/payment-summary-overdue
+ * @desc    Get payment summary with overdue analysis
+ * @access  Private
+ */
+router.get('/payment-summary-overdue', authenticate, validateCompany, saleController.getPaymentSummaryWithOverdue);
 
 // ==================== EXPORT ROUTES ====================
 
@@ -205,5 +120,92 @@ router.post('/validate-stock', authenticate, validateRequest, saleController.val
  * @access  Private
  */
 router.get('/export/csv', authenticate, validateCompany, saleController.exportCSV);
+
+// ==================== BASIC CRUD ROUTES ====================
+
+/**
+ * @route   POST /api/sales
+ * @desc    Create a new sale/invoice
+ * @access  Private
+ */
+router.post('/', authenticate, validateRequest, saleController.createSale);
+
+/**
+ * @route   GET /api/sales
+ * @desc    Get all sales with pagination and filters
+ * @access  Private
+ */
+router.get('/', authenticate, validateCompany, saleController.getAllSales);
+
+// ==================== INDIVIDUAL SALE ROUTES (Must come AFTER specific routes) ====================
+
+/**
+ * @route   GET /api/sales/:id
+ * @desc    Get sale by ID with full details
+ * @access  Private
+ */
+router.get('/:id', authenticate, validateRequest, saleController.getSaleById);
+
+/**
+ * @route   PUT /api/sales/:id
+ * @desc    Update sale (only draft sales can be updated)
+ * @access  Private
+ */
+router.put('/:id', authenticate, validateRequest, saleController.updateSale);
+
+/**
+ * @route   DELETE /api/sales/:id
+ * @desc    Cancel sale (soft delete)
+ * @access  Private
+ */
+router.delete('/:id', authenticate, validateRequest, saleController.deleteSale);
+
+// ==================== STATUS MANAGEMENT ROUTES ====================
+
+/**
+ * @route   PATCH /api/sales/:id/complete
+ * @desc    Mark sale as completed
+ * @access  Private
+ */
+router.patch('/:id/complete', authenticate, validateRequest, saleController.completeSale);
+
+/**
+ * @route   PATCH /api/sales/:id/cancel
+ * @desc    Cancel a sale (alternative endpoint)
+ * @access  Private
+ */
+router.patch('/:id/cancel', authenticate, validateRequest, saleController.deleteSale);
+
+// ==================== DUE DATE UPDATE ROUTE ====================
+
+/**
+ * @route   PUT /api/sales/:id/due-date
+ * @desc    Update payment due date
+ * @access  Private
+ */
+router.put('/:id/due-date', authenticate, validateRequest, saleController.updatePaymentDueDate);
+
+// ==================== PAYMENT ROUTES ====================
+
+/**
+ * @route   POST /api/sales/:id/payment
+ * @desc    Add payment to a sale
+ * @access  Private
+ */
+router.post('/:id/payment', authenticate, validateRequest, saleController.addPayment);
+
+/**
+ * @route   POST /api/sales/:id/payments
+ * @desc    Add payment to a sale (alternative endpoint)
+ * @access  Private
+ */
+router.post('/:id/payments', authenticate, validateRequest, saleController.addPayment);
+
+/**
+ * @route   GET /api/sales/:id/payment-status
+ * @desc    Get payment status of a sale
+ * @access  Private
+ */
+router.get('/:id/payment-status', authenticate, validateRequest, saleController.getPaymentStatus);
 
 module.exports = router;

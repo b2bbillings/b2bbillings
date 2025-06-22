@@ -1,5 +1,5 @@
 /**
- * 🧮 ItemsTable Calculation & Logic Functions
+ * ItemsTable Calculation & Logic Functions
  * Handles all calculations, tax logic, and business rules
  */
 
@@ -10,7 +10,7 @@ import {
     faArrowUp
 } from '@fortawesome/free-solid-svg-icons';
 
-// ✅ Enhanced totals calculation with proper field mapping for TotalSection
+// Enhanced totals calculation with proper field mapping
 export const calculateTotals = (items, gstEnabled = true) => {
     let totalQuantity = 0;
     let totalDiscountAmount = 0;
@@ -20,19 +20,7 @@ export const calculateTotals = (items, gstEnabled = true) => {
     let totalAmount = 0;
     let totalTaxableAmount = 0;
 
-    console.log('🧮 Calculating totals for items:', {
-        itemCount: items.length,
-        gstEnabled,
-        items: items.map(item => ({
-            name: item.itemName,
-            taxMode: item.taxMode,
-            priceIncludesTax: item.priceIncludesTax,
-            amount: item.amount,
-            taxableAmount: item.taxableAmount
-        }))
-    });
-
-    items.forEach((item, index) => {
+    items.forEach((item) => {
         const quantity = parseFloat(item.quantity) || 0;
         const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
         const amount = parseFloat(item.amount) || 0;
@@ -48,75 +36,47 @@ export const calculateTotals = (items, gstEnabled = true) => {
             totalSgstAmount += sgstAmount;
             totalAmount += amount;
             totalTaxableAmount += taxableAmount;
-
-            console.log(`📊 Item ${index + 1} contribution:`, {
-                itemName: item.itemName,
-                quantity,
-                amount,
-                taxableAmount,
-                cgstAmount,
-                sgstAmount
-            });
         }
     });
 
     const totalTax = totalCgstAmount + totalSgstAmount;
 
-    // ✅ Return totals in both formats - for ItemsTable display AND TotalSection
+    // Return totals in both formats for compatibility
     const calculatedTotals = {
-        // For ItemsTable display (existing format)
+        // For ItemsTable display
         totalQuantity: parseFloat(totalQuantity.toFixed(2)),
         totalDiscountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
         totalCgstAmount: parseFloat(totalCgstAmount.toFixed(2)),
         totalSgstAmount: parseFloat(totalSgstAmount.toFixed(2)),
         totalAmount: parseFloat(totalAmount.toFixed(2)),
 
-        // ✅ For TotalSection compatibility (matching expected field names)
-        subtotal: parseFloat(totalTaxableAmount.toFixed(2)), // Use taxable amount as subtotal
-        totalCGST: parseFloat(totalCgstAmount.toFixed(2)), // Maps cgstAmount → totalCGST
-        totalSGST: parseFloat(totalSgstAmount.toFixed(2)), // Maps sgstAmount → totalSGST
+        // For TotalSection compatibility
+        subtotal: parseFloat(totalTaxableAmount.toFixed(2)),
+        totalCGST: parseFloat(totalCgstAmount.toFixed(2)),
+        totalSGST: parseFloat(totalSgstAmount.toFixed(2)),
         totalTax: parseFloat(totalTax.toFixed(2)),
         finalTotal: parseFloat(totalAmount.toFixed(2)),
 
-        // ✅ NEW: For better TotalSection display logic
+        // For better display logic
         withTaxTotal: gstEnabled ? parseFloat(totalAmount.toFixed(2)) : 0,
         withoutTaxTotal: parseFloat(totalTaxableAmount.toFixed(2)),
         totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2))
     };
 
-    console.log('✅ Final totals calculated:', calculatedTotals);
     return calculatedTotals;
 };
 
-// FIXED: Enhanced calculation function with better debugging
+// Enhanced calculation function with proper tax mode handling
 export const calculateItemTotals = (item, index, allItems, changedField = null, gstEnabled = true, globalTaxMode = 'without-tax') => {
-    console.log(`🧮 CALCULATION START for item ${index + 1}:`, {
-        itemName: item.itemName,
-        quantity: item.quantity,
-        pricePerUnit: item.pricePerUnit,
-        itemTaxMode: item.taxMode,
-        globalTaxMode: globalTaxMode,
-        itemPriceIncludesTax: item.priceIncludesTax,
-        gstEnabled,
-        changedField
-    });
-
-    // FIXED: Get item-specific tax mode with proper fallback logic
+    // Get item-specific tax mode with proper fallback logic
     const itemTaxMode = item.taxMode || globalTaxMode;
 
-    // FIXED: Determine if price includes tax using both fields for compatibility
+    // Determine if price includes tax using both fields for compatibility
     let priceIncludesTax;
     if (item.priceIncludesTax !== undefined) {
-        // Use explicit priceIncludesTax if set (from backend/database)
         priceIncludesTax = item.priceIncludesTax;
-        console.log(`📋 Using explicit priceIncludesTax from item:`, priceIncludesTax);
     } else {
-        // Fall back to taxMode for frontend logic
         priceIncludesTax = itemTaxMode === 'with-tax';
-        console.log(`📋 Derived priceIncludesTax from taxMode:`, {
-            itemTaxMode,
-            priceIncludesTax
-        });
     }
 
     // Parse values
@@ -124,20 +84,10 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
     const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
     const discountPercent = parseFloat(item.discountPercent) || 0;
     const discountAmount = parseFloat(item.discountAmount) || 0;
-    const taxRate = parseFloat(item.taxRate || item.gstRate) || 18; // Default 18% GST
-
-    console.log(`📊 CALCULATION INPUTS for item ${index + 1}:`, {
-        itemTaxMode,
-        priceIncludesTax,
-        taxRate,
-        pricePerUnit,
-        quantity,
-        gstEnabled
-    });
+    const taxRate = parseFloat(item.taxRate || item.gstRate) || 18;
 
     // Early return if no quantity or price
     if (quantity <= 0 || pricePerUnit <= 0) {
-        console.log(`⚠️ Skipping calculation - invalid quantity or price`);
         return {
             ...item,
             taxMode: itemTaxMode,
@@ -151,9 +101,9 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
     }
 
     // Calculate line total before discount
-    let lineTotalBeforeDiscount = quantity * pricePerUnit;
+    const lineTotalBeforeDiscount = quantity * pricePerUnit;
 
-    // Apply discount
+    // Apply discount to the line total
     let totalDiscountAmount = 0;
     if (changedField === 'discountPercent') {
         totalDiscountAmount = (lineTotalBeforeDiscount * discountPercent) / 100;
@@ -165,14 +115,8 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
         totalDiscountAmount = discountAmount;
     }
 
-    // Line total after discount (but before tax calculation)
+    // Line total after discount
     const lineTotalAfterDiscount = Math.max(0, lineTotalBeforeDiscount - totalDiscountAmount);
-
-    console.log(`💰 PRE-TAX CALCULATION for item ${index + 1}:`, {
-        lineTotalBeforeDiscount,
-        totalDiscountAmount,
-        lineTotalAfterDiscount
-    });
 
     let taxableAmount = 0;
     let cgstAmount = 0;
@@ -182,11 +126,8 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
 
     if (gstEnabled && taxRate > 0) {
         if (priceIncludesTax) {
-            // FIXED: WITH TAX MODE - Extract tax from entered price
-            console.log(`🟢 WITH TAX MODE CALCULATION for item ${index + 1}:`);
-
-            // When price includes tax, we need to extract the tax amount
-            // Formula: taxableAmount = totalAmount / (1 + taxRate/100)
+            // WITH TAX MODE - Extract tax from the discounted amount
+            // When price includes tax, the lineTotalAfterDiscount IS the final amount
             const taxMultiplier = 1 + (taxRate / 100);
             taxableAmount = lineTotalAfterDiscount / taxMultiplier;
 
@@ -197,26 +138,9 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
 
             // Final amount is the discounted amount (tax already included)
             finalAmount = lineTotalAfterDiscount;
-
-            console.log(`📈 WITH TAX BREAKDOWN for item ${index + 1}:`, {
-                lineTotalAfterDiscount,
-                taxMultiplier,
-                taxableAmount,
-                totalTaxAmount,
-                cgstAmount,
-                sgstAmount,
-                finalAmount,
-                verificationCheck: {
-                    taxableAmountPlusTax: taxableAmount + totalTaxAmount,
-                    shouldEqualFinalAmount: finalAmount,
-                    matches: Math.abs((taxableAmount + totalTaxAmount) - finalAmount) < 0.01
-                }
-            });
         } else {
-            // FIXED: WITHOUT TAX MODE - Add tax to entered price
-            console.log(`🔵 WITHOUT TAX MODE CALCULATION for item ${index + 1}:`);
-
-            // When price excludes tax, we add tax to the amount
+            // WITHOUT TAX MODE - Add tax to the discounted amount  
+            // When price excludes tax, the lineTotalAfterDiscount is the taxable amount
             taxableAmount = lineTotalAfterDiscount;
 
             const totalTaxAmount = (taxableAmount * taxRate) / 100;
@@ -226,19 +150,6 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
 
             // Final amount includes the added tax
             finalAmount = taxableAmount + totalTaxAmount;
-
-            console.log(`📈 WITHOUT TAX BREAKDOWN for item ${index + 1}:`, {
-                taxableAmount,
-                totalTaxAmount,
-                cgstAmount,
-                sgstAmount,
-                finalAmount,
-                verificationCheck: {
-                    taxableAmountPlusTax: taxableAmount + totalTaxAmount,
-                    shouldEqualFinalAmount: finalAmount,
-                    matches: Math.abs((taxableAmount + totalTaxAmount) - finalAmount) < 0.01
-                }
-            });
         }
     } else {
         // No GST calculation
@@ -247,14 +158,9 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
         cgstAmount = 0;
         sgstAmount = 0;
         igstAmount = 0;
-
-        console.log(`❌ NO GST CALCULATION for item ${index + 1}:`, {
-            taxableAmount,
-            finalAmount
-        });
     }
 
-    // FIXED: Update the item object with calculated values and ensure both fields are set
+    // Update the item object with calculated values
     const updatedItem = {
         ...item,
         // Ensure both taxMode and priceIncludesTax are set for compatibility
@@ -271,38 +177,25 @@ export const calculateItemTotals = (item, index, allItems, changedField = null, 
         amount: parseFloat(finalAmount.toFixed(2)),
         totalTaxAmount: parseFloat((cgstAmount + sgstAmount + igstAmount).toFixed(2)),
 
-        // Backend compatibility fields (matching Sale model)
-        itemAmount: parseFloat(finalAmount.toFixed(2)), // Sale model uses itemAmount
-        cgst: parseFloat(cgstAmount.toFixed(2)),        // Sale model uses cgst
-        sgst: parseFloat(sgstAmount.toFixed(2)),        // Sale model uses sgst
-        igst: parseFloat(igstAmount.toFixed(2))         // Sale model uses igst
+        // Backend compatibility fields
+        itemAmount: parseFloat(finalAmount.toFixed(2)),
+        cgst: parseFloat(cgstAmount.toFixed(2)),
+        sgst: parseFloat(sgstAmount.toFixed(2)),
+        igst: parseFloat(igstAmount.toFixed(2))
     };
 
     // Update the items array
     allItems[index] = updatedItem;
 
-    console.log(`✅ CALCULATION COMPLETE for item ${index + 1}:`, {
-        itemName: item.itemName,
-        finalResults: {
-            taxMode: itemTaxMode,
-            priceIncludesTax,
-            pricePerUnit,
-            quantity,
-            taxableAmount,
-            totalTax: cgstAmount + sgstAmount,
-            finalAmount
-        },
-        calculationMode: priceIncludesTax ? 'TAX_INCLUDED_IN_PRICE' : 'TAX_ADDED_TO_PRICE'
-    });
-
     return updatedItem;
 };
-// ✅ Round off calculations for TotalSection integration
+
+// Round off calculations
 export const calculateRoundOff = (baseTotal, roundOffEnabled = false, roundOff = 0) => {
     return roundOffEnabled ? baseTotal + (parseFloat(roundOff) || 0) : baseTotal;
 };
 
-// ✅ Search and suggestions logic
+// Search and suggestions logic
 export const searchItemsLogic = async (itemService, companyId, query, rowIndex, setters) => {
     const { setItemSuggestions, setShowItemSuggestions, setSearchNotFound, setSearchLoading } = setters;
 
@@ -344,7 +237,6 @@ export const searchItemsLogic = async (itemService, companyId, query, rowIndex, 
             }
         }
     } catch (error) {
-        console.error('❌ Error searching items:', error);
         setItemSuggestions(prev => ({ ...prev, [rowIndex]: [] }));
         setShowItemSuggestions(prev => ({ ...prev, [rowIndex]: false }));
         if (query.length >= 2) {
@@ -355,12 +247,12 @@ export const searchItemsLogic = async (itemService, companyId, query, rowIndex, 
     }
 };
 
-// ✅ Item suggestion selection logic
+// Item suggestion selection logic
 export const handleItemSuggestionSelection = (rowIndex, item, items, calculateItemTotals, callbacks) => {
     const { onItemsChange, setItemSearches, setShowItemSuggestions, setSearchNotFound, setSearchLoading } = callbacks;
 
     const newItems = [...items];
-    const taxRate = item.gstRate || 18; // Default to 18% if not specified
+    const taxRate = item.gstRate || 18;
 
     newItems[rowIndex] = {
         ...newItems[rowIndex],
@@ -386,14 +278,9 @@ export const handleItemSuggestionSelection = (rowIndex, item, items, calculateIt
     onItemsChange(newItems);
 };
 
-// ✅ Global tax mode change logic
+// Global tax mode change logic
 export const handleGlobalTaxModeChange = (mode, items, calculateItemTotals, onItemsChange) => {
-    console.log('🏷️ Global tax mode change logic:', {
-        mode,
-        itemCount: items.length
-    });
-
-    const newItems = items.map((item, index) => ({
+    const newItems = items.map((item) => ({
         ...item,
         taxMode: mode,
         priceIncludesTax: mode === 'with-tax'
@@ -403,21 +290,11 @@ export const handleGlobalTaxModeChange = (mode, items, calculateItemTotals, onIt
         calculateItemTotals(item, index, newItems, 'taxMode');
     });
 
-    console.log('✅ Global tax mode change complete:', {
-        mode,
-        updatedItems: newItems.map(item => ({
-            name: item.itemName,
-            taxMode: item.taxMode,
-            priceIncludesTax: item.priceIncludesTax,
-            amount: item.amount
-        }))
-    });
-
     onItemsChange(newItems);
     return mode;
 };
 
-// ✅ Validation logic
+// Validation logic
 export const validateItems = (items, gstEnabled = true) => {
     const validationErrors = [];
 
@@ -449,7 +326,7 @@ export const validateItems = (items, gstEnabled = true) => {
     };
 };
 
-// ✅ NEW: Form configuration for different form types
+// Form configuration for different form types
 export const getFormConfig = () => {
     return {
         sales: {
@@ -471,7 +348,7 @@ export const getFormConfig = () => {
             modalHeader: 'bg-success',
             buttonVariant: 'success',
             actionText: 'Receive Payment',
-            successMessage: (paymentType, partyName) => `✅ Payment received successfully via ${paymentType} from ${partyName}!`
+            successMessage: (paymentType, partyName) => `Payment received successfully via ${paymentType} from ${partyName}!`
         },
         purchase: {
             formIcon: faTruck,
@@ -492,12 +369,12 @@ export const getFormConfig = () => {
             modalHeader: 'bg-primary',
             buttonVariant: 'primary',
             actionText: 'Make Payment',
-            successMessage: (paymentType, partyName) => `✅ Payment made successfully via ${paymentType} to ${partyName}!`
+            successMessage: (paymentType, partyName) => `Payment made successfully via ${paymentType} to ${partyName}!`
         }
     };
 };
 
-// ✅ NEW: Calculate grid layout for responsive display
+// Calculate grid layout for responsive display
 export const calculateGridLayout = (hasValidItems, gstEnabled, totalTax) => {
     const hasPaymentButton = hasValidItems;
     const hasTaxBreakdown = gstEnabled && totalTax > 0;
@@ -517,12 +394,12 @@ export const calculateGridLayout = (hasValidItems, gstEnabled, totalTax) => {
     }
 };
 
-// ✅ NEW: Grid layout calculation logic (duplicate of above for compatibility)
+// Grid layout calculation logic
 export const getGridLayout = (hasValidItems, gstEnabled, totalTax) => {
     return calculateGridLayout(hasValidItems, gstEnabled, totalTax);
 };
 
-// ✅ NEW: Round off calculation logic
+// Round off calculation logic
 export const calculateRoundOffValue = (amount, roundOffEnabled = false) => {
     if (!roundOffEnabled || amount === 0) return { roundedAmount: amount, roundOffValue: 0 };
 
@@ -535,7 +412,7 @@ export const calculateRoundOffValue = (amount, roundOffEnabled = false) => {
     };
 };
 
-// ✅ NEW: Payment validation logic
+// Payment validation logic
 export const validatePaymentData = (paymentData, finalTotal, bankAccounts) => {
     const errors = [];
 
@@ -581,30 +458,30 @@ export const validatePaymentData = (paymentData, finalTotal, bankAccounts) => {
     };
 };
 
-// ✅ NEW: Payment success message builder
+// Payment success message builder
 export const buildPaymentSuccessMessage = (config, paymentData, invoiceNumber, bankAccounts) => {
     let successMsg = `${config.successMessage(paymentData.paymentType, paymentData.partyName)}\n\n`;
-    successMsg += `💰 Amount: ₹${formatCurrency(paymentData.paymentAmount)}\n`;
-    successMsg += `📋 Invoice: ${invoiceNumber || 'N/A'}\n`;
+    successMsg += `Amount: ₹${formatCurrency(paymentData.paymentAmount)}\n`;
+    successMsg += `Invoice: ${invoiceNumber || 'N/A'}\n`;
 
     if (paymentData.bankAccountId) {
         const selectedBank = bankAccounts.find(b => b._id === paymentData.bankAccountId);
         if (selectedBank) {
-            successMsg += `🏦 Bank: ${selectedBank.bankName} (${selectedBank.accountNumber})\n`;
+            successMsg += `Bank: ${selectedBank.bankName} (${selectedBank.accountNumber})\n`;
         }
     }
 
     if (paymentData.isPartialPayment) {
-        successMsg += `⚠️ Remaining: ₹${formatCurrency(paymentData.remainingAmount)}\n`;
+        successMsg += `Remaining: ₹${formatCurrency(paymentData.remainingAmount)}\n`;
         if (paymentData.nextPaymentDate) {
-            successMsg += `📅 Next Payment: ${paymentData.nextPaymentDate}`;
+            successMsg += `Next Payment: ${paymentData.nextPaymentDate}`;
         }
     }
 
     return successMsg;
 };
 
-// ✅ Utility functions
+// Utility functions
 export const formatCurrency = (amount) => {
     const value = Number(amount) || 0;
     return value.toLocaleString('en-IN', {
@@ -644,7 +521,7 @@ export const getColumnWidths = (gstEnabled) => {
 
 export const unitOptions = ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM'];
 
-// ✅ NEW: Enhanced round-off calculation with complete logic
+// Enhanced round-off calculation with complete logic
 export const calculateFinalTotalWithRoundOff = (totals, gstEnabled = true, roundOffEnabled = false) => {
     // Get base total based on GST mode
     const baseTotal = gstEnabled
@@ -667,11 +544,11 @@ export const calculateFinalTotalWithRoundOff = (totals, gstEnabled = true, round
         baseTotal,
         finalTotal: roundedAmount,
         roundOffValue,
-        isRounded: Math.abs(roundOffValue) > 0.001 // Consider values > 0.001 as rounded
+        isRounded: Math.abs(roundOffValue) > 0.001
     };
 };
 
-// ✅ NEW: Get round-off display information
+// Get round-off display information
 export const getRoundOffDisplayInfo = (roundOffCalculation, gstEnabled = true) => {
     const { baseTotal, finalTotal, roundOffValue, isRounded } = roundOffCalculation;
 
@@ -687,7 +564,7 @@ export const getRoundOffDisplayInfo = (roundOffCalculation, gstEnabled = true) =
     };
 };
 
-// ✅ Enhanced payment breakdown calculation
+// Enhanced payment breakdown calculation
 export const calculatePaymentBreakdown = (totals, gstEnabled, roundOffEnabled = false) => {
     const roundOffCalculation = calculateFinalTotalWithRoundOff(totals, gstEnabled, roundOffEnabled);
 
@@ -701,7 +578,7 @@ export const calculatePaymentBreakdown = (totals, gstEnabled, roundOffEnabled = 
     };
 };
 
-// FIXED: Default empty item creator with both fields
+// Default empty item creator
 export const createEmptyItem = () => ({
     id: Date.now() + Math.random(),
     itemRef: null,
@@ -716,23 +593,23 @@ export const createEmptyItem = () => ({
     cgstAmount: 0,
     sgstAmount: 0,
     igst: 0,
-    taxRate: 18, // Default 18% GST
+    taxRate: 18,
     amount: 0,
     category: '',
     currentStock: 0,
     minStockLevel: 0,
-    // FIXED: Include both fields for compatibility
-    taxMode: 'without-tax',        // Frontend field
-    priceIncludesTax: false,       // Backend field (Sale model)
+    // Include both fields for compatibility
+    taxMode: 'without-tax',
+    priceIncludesTax: false,
     // Backend compatibility fields
-    itemAmount: 0,                 // Sale model field
-    cgst: 0,                       // Sale model field
-    sgst: 0,                       // Sale model field
-    lineNumber: 1,                 // Sale model field
-    taxableAmount: 0               // For calculation tracking
+    itemAmount: 0,
+    cgst: 0,
+    sgst: 0,
+    lineNumber: 1,
+    taxableAmount: 0
 });
 
-// ✅ Export all functions as default object for easy importing
+// Export all functions as default object
 export default {
     calculateTotals,
     calculateItemTotals,

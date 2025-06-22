@@ -1256,6 +1256,498 @@ class PaymentService {
 
         return allocatedInvoices;
     }
+
+    // Update the updateTransaction method in paymentService.js
+    async updateTransaction(transactionId, updateData) {
+        try {
+            if (!transactionId) {
+                throw new Error('Transaction ID is required');
+            }
+
+            // Validate required fields
+            if (!updateData.amount || parseFloat(updateData.amount) <= 0) {
+                throw new Error('Valid amount is required');
+            }
+
+            if (!updateData.paymentMethod) {
+                throw new Error('Payment method is required');
+            }
+
+            if (!updateData.paymentDate) {
+                throw new Error('Payment date is required');
+            }
+
+            // Prepare update payload
+            const updatePayload = {
+                amount: parseFloat(updateData.amount),
+                paymentMethod: updateData.paymentMethod,
+                paymentDate: this.formatDateForAPI(updateData.paymentDate),
+                reference: updateData.reference || '',
+                notes: updateData.notes || '',
+                status: updateData.status || 'completed',
+                adjustInvoiceAllocations: updateData.adjustInvoiceAllocations !== false, // Default to true
+                employeeName: updateData.employeeName || '',
+                employeeId: updateData.employeeId || ''
+            };
+
+            // Add bank account if provided and not cash
+            if (updateData.paymentMethod !== 'cash' && updateData.bankAccountId) {
+                updatePayload.bankAccountId = updateData.bankAccountId;
+            }
+
+            // Add clearing date for cheque payments
+            if (updateData.clearingDate) {
+                updatePayload.clearingDate = this.formatDateForAPI(updateData.clearingDate);
+            }
+
+            console.log('🔄 Sending transaction update request:', {
+                transactionId: transactionId,
+                payload: updatePayload
+            });
+
+            const response = await this.apiCall(`/payments/transactions/${transactionId}`, {
+                method: 'PUT',
+                body: JSON.stringify(updatePayload)
+            });
+
+            console.log('✅ Transaction update response:', response);
+
+            if (response.success) {
+                // Enhanced response handling
+                const transaction = response.data || response.transaction;
+                const changes = response.changes || {};
+                const invoiceAllocationUpdates = response.invoiceAllocationUpdates || [];
+                const warnings = response.warnings || [];
+
+                let successMessage = response.message || 'Transaction updated successfully';
+
+                // Add allocation update info to message
+                if (invoiceAllocationUpdates.length > 0) {
+                    successMessage += `. ${invoiceAllocationUpdates.length} invoice allocation(s) updated.`;
+                }
+
+                // Add bank update info
+                if (response.bankTransactionUpdated) {
+                    successMessage += ' Bank account balances adjusted.';
+                }
+
+                // Add warnings if any
+                if (warnings.length > 0) {
+                    console.warn('⚠️ Transaction update warnings:', warnings);
+                }
+
+                return {
+                    success: true,
+                    data: {
+                        transaction: transaction,
+                        changes: changes,
+                        bankTransactionUpdated: response.bankTransactionUpdated || false,
+                        invoiceAllocationsUpdated: response.invoiceAllocationsUpdated || false,
+                        invoiceAllocationUpdates: invoiceAllocationUpdates,
+                        bankAccount: response.bankAccount || null,
+                        updatedAt: new Date().toISOString()
+                    },
+                    message: successMessage,
+                    warnings: warnings,
+                    details: {
+                        amountChanged: changes.amountChanged || false,
+                        paymentMethodChanged: changes.paymentMethodChanged || false,
+                        bankAccountChanged: changes.bankAccountChanged || false,
+                        originalAmount: changes.originalAmount || 0,
+                        newAmount: changes.newAmount || 0,
+                        amountDifference: changes.amountDifference || 0,
+                        invoiceAllocationsAdjusted: changes.invoiceAllocationsAdjusted || 0
+                    }
+                };
+            } else {
+                throw new Error(response.message || 'Failed to update transaction');
+            }
+
+        } catch (error) {
+            console.error('❌ Transaction update error:', error);
+            throw new Error(error.message || 'Failed to update transaction');
+        }
+    }
+
+    // Delete/Cancel Transaction
+    async deleteTransaction(transactionId, reason = '') {
+        try {
+            if (!transactionId) {
+                throw new Error('Transaction ID is required');
+            }
+
+            const deletePayload = {
+                reason: reason || 'Transaction deleted by user'
+            };
+
+            const response = await this.apiCall(`/payments/transactions/${transactionId}`, {
+                method: 'DELETE',
+                body: JSON.stringify(deletePayload)
+            });
+
+            if (response.success) {
+                return {
+                    success: true,
+                    data: {
+                        transactionId: response.data.transactionId,
+                        paymentNumber: response.data.paymentNumber,
+                        status: response.data.status,
+                        cancelReason: response.data.cancelReason,
+                        cancelledAt: response.data.cancelledAt
+                    },
+                    message: response.message || 'Transaction cancelled successfully'
+                };
+            } else {
+                throw new Error(response.message || 'Failed to cancel transaction');
+            }
+
+        } catch (error) {
+            throw new Error(error.message || 'Failed to cancel transaction');
+        }
+    }
+
+    // Get Transaction Details
+    async getTransactionDetails(transactionId) {
+        try {
+            if (!transactionId) {
+                throw new Error('Transaction ID is required');
+            }
+
+            const response = await this.apiCall(`/payments/${transactionId}`, {
+                method: 'GET'
+            });
+
+            if (response.success) {
+                return {
+                    success: true,
+                    data: response.data.payment || response.data,
+                    message: response.message || 'Transaction details retrieved successfully'
+                };
+            } else {
+                throw new Error(response.message || 'Failed to fetch transaction details');
+            }
+
+        } catch (error) {
+            throw new Error(error.message || 'Failed to fetch transaction details');
+        }
+    }
+
+    // Validate Transaction Update Data
+    validateTransactionUpdate(updateData) {
+        const errors = [];
+
+        if (!updateData.amount || parseFloat(updateData.amount) <= 0) {
+            errors.push('Valid amount is required');
+        }
+
+        if (!updateData.paymentMethod) {
+            errors.push('Payment method is required');
+        }
+
+        const validPaymentMethods = ['cash', 'bank_transfer', 'cheque', 'card', 'upi', 'other'];
+        if (!validPaymentMethods.includes(updateData.paymentMethod)) {
+            errors.push('Invalid payment method');
+        }
+
+        if (!updateData.paymentDate) {
+            errors.push('Payment date is required');
+        }
+
+        // Validate date format
+        if (updateData.paymentDate) {
+            const date = new Date(updateData.paymentDate);
+            if (isNaN(date.getTime())) {
+                errors.push('Invalid payment date format');
+            }
+        }
+
+        // Bank account required for non-cash payments
+        if (updateData.paymentMethod !== 'cash' && !updateData.bankAccountId) {
+            errors.push('Bank account is required for non-cash payments');
+        }
+
+        // Validate amount range
+        const amount = parseFloat(updateData.amount);
+        if (amount > 10000000) { // 1 crore limit
+            errors.push('Amount cannot exceed ₹1,00,00,000');
+        }
+
+        // Validate clearing date for cheque
+        if (updateData.paymentMethod === 'cheque' && updateData.clearingDate) {
+            const clearingDate = new Date(updateData.clearingDate);
+            const paymentDate = new Date(updateData.paymentDate);
+            if (clearingDate < paymentDate) {
+                errors.push('Clearing date cannot be before payment date');
+            }
+        }
+
+        if (errors.length > 0) {
+            throw new Error(`Validation failed: ${errors.join(', ')}`);
+        }
+
+        return true;
+    }
+
+    // Format Transaction Update Data
+    formatTransactionUpdateData(formData) {
+        return {
+            amount: parseFloat(formData.amount || 0),
+            paymentMethod: formData.paymentMethod || 'cash',
+            paymentDate: this.formatDateForAPI(formData.paymentDate || new Date()),
+            reference: (formData.reference || '').trim(),
+            notes: (formData.notes || '').trim(),
+            status: formData.status || 'completed',
+            bankAccountId: formData.bankAccountId || null,
+            clearingDate: formData.clearingDate ? this.formatDateForAPI(formData.clearingDate) : null
+        };
+    }
+
+    // Get Transaction Update Summary
+    getTransactionUpdateSummary(originalData, updatedData) {
+        const changes = [];
+        const summary = {
+            hasChanges: false,
+            changedFields: [],
+            originalValues: {},
+            newValues: {},
+            impactSummary: []
+        };
+
+        // Check amount change
+        if (parseFloat(originalData.amount) !== parseFloat(updatedData.amount)) {
+            changes.push('Amount');
+            summary.originalValues.amount = parseFloat(originalData.amount);
+            summary.newValues.amount = parseFloat(updatedData.amount);
+            summary.impactSummary.push(
+                `Amount changed from ₹${originalData.amount.toLocaleString('en-IN')} to ₹${updatedData.amount.toLocaleString('en-IN')}`
+            );
+        }
+
+        // Check payment method change
+        if (originalData.paymentMethod !== updatedData.paymentMethod) {
+            changes.push('Payment Method');
+            summary.originalValues.paymentMethod = originalData.paymentMethod;
+            summary.newValues.paymentMethod = updatedData.paymentMethod;
+            summary.impactSummary.push(
+                `Payment method changed from ${originalData.paymentMethod} to ${updatedData.paymentMethod}`
+            );
+        }
+
+        // Check date change
+        const originalDate = new Date(originalData.paymentDate).toDateString();
+        const newDate = new Date(updatedData.paymentDate).toDateString();
+        if (originalDate !== newDate) {
+            changes.push('Payment Date');
+            summary.originalValues.paymentDate = originalData.paymentDate;
+            summary.newValues.paymentDate = updatedData.paymentDate;
+            summary.impactSummary.push(
+                `Payment date changed from ${originalDate} to ${newDate}`
+            );
+        }
+
+        // Check bank account change
+        if (originalData.bankAccountId !== updatedData.bankAccountId) {
+            changes.push('Bank Account');
+            summary.originalValues.bankAccountId = originalData.bankAccountId;
+            summary.newValues.bankAccountId = updatedData.bankAccountId;
+            summary.impactSummary.push('Bank account updated - balances will be adjusted');
+        }
+
+        // Check reference change
+        if ((originalData.reference || '') !== (updatedData.reference || '')) {
+            changes.push('Reference');
+            summary.originalValues.reference = originalData.reference;
+            summary.newValues.reference = updatedData.reference;
+        }
+
+        // Check notes change
+        if ((originalData.notes || '') !== (updatedData.notes || '')) {
+            changes.push('Notes');
+            summary.originalValues.notes = originalData.notes;
+            summary.newValues.notes = updatedData.notes;
+        }
+
+        // Check status change
+        if (originalData.status !== updatedData.status) {
+            changes.push('Status');
+            summary.originalValues.status = originalData.status;
+            summary.newValues.status = updatedData.status;
+            summary.impactSummary.push(
+                `Status changed from ${originalData.status} to ${updatedData.status}`
+            );
+        }
+
+        summary.hasChanges = changes.length > 0;
+        summary.changedFields = changes;
+
+        return summary;
+    }
+
+    // Get Editable Transaction Fields
+    getEditableTransactionFields(transaction) {
+        const editableFields = {
+            amount: true,
+            paymentMethod: true,
+            paymentDate: true,
+            reference: true,
+            notes: true,
+            bankAccountId: true,
+            clearingDate: true,
+            status: true
+        };
+
+        const restrictions = [];
+
+        // Check if transaction is cancelled
+        if (transaction.status === 'cancelled') {
+            Object.keys(editableFields).forEach(field => {
+                editableFields[field] = false;
+            });
+            restrictions.push('Transaction is cancelled and cannot be edited');
+            return { editableFields, restrictions };
+        }
+
+        // Check if transaction is very old (more than 30 days)
+        const transactionDate = new Date(transaction.paymentDate || transaction.createdAt);
+        const daysDiff = (new Date() - transactionDate) / (1000 * 60 * 60 * 24);
+
+        if (daysDiff > 30) {
+            restrictions.push('Transaction is older than 30 days - some restrictions may apply');
+        }
+
+        // Check if transaction has allocations
+        if (transaction.invoiceAllocations && transaction.invoiceAllocations.length > 0) {
+            restrictions.push('Transaction has invoice allocations - amount changes may affect linked invoices');
+        }
+
+        // Check if transaction is part of reconciled bank statement
+        if (transaction.isReconciled) {
+            editableFields.amount = false;
+            editableFields.paymentMethod = false;
+            editableFields.bankAccountId = false;
+            restrictions.push('Transaction is reconciled - financial details cannot be changed');
+        }
+
+        return { editableFields, restrictions };
+    }
+
+    // Prepare Transaction for Edit
+    prepareTransactionForEdit(transaction) {
+        return {
+            id: transaction._id || transaction.id,
+            transactionId: transaction._id || transaction.id,
+            amount: parseFloat(transaction.amount || 0),
+            paymentMethod: transaction.paymentMethod || 'cash',
+            paymentDate: transaction.paymentDate ?
+                new Date(transaction.paymentDate).toISOString().split('T')[0] :
+                new Date().toISOString().split('T')[0],
+            reference: transaction.reference || '',
+            notes: transaction.notes || '',
+            status: transaction.status || 'completed',
+            bankAccountId: transaction.bankAccountId || '',
+            clearingDate: transaction.clearingDate ?
+                new Date(transaction.clearingDate).toISOString().split('T')[0] : '',
+
+            // Additional info for form
+            paymentNumber: transaction.paymentNumber || transaction.number,
+            partyName: transaction.partyName,
+            partyId: transaction.partyId,
+            type: transaction.type || transaction.paymentType,
+            originalAmount: parseFloat(transaction.amount || 0),
+            originalPaymentMethod: transaction.paymentMethod || 'cash',
+            createdAt: transaction.createdAt,
+            updatedAt: transaction.updatedAt
+        };
+    }
+
+    // Handle Transaction Update Success
+    handleTransactionUpdateSuccess(updateResult) {
+        const { data, message } = updateResult;
+
+        let successMessage = message || 'Transaction updated successfully';
+
+        if (data.changes) {
+            const changedFields = Object.keys(data.changes).filter(key =>
+                key.endsWith('Changed') && data.changes[key]
+            ).map(key => key.replace('Changed', ''));
+
+            if (changedFields.length > 0) {
+                successMessage += `. Updated: ${changedFields.join(', ')}`;
+            }
+        }
+
+        if (data.bankTransactionUpdated) {
+            successMessage += '. Bank account balances have been adjusted.';
+        }
+
+        return {
+            success: true,
+            message: successMessage,
+            transaction: data.transaction,
+            changes: data.changes || {},
+            bankTransactionUpdated: data.bankTransactionUpdated || false,
+            updatedAt: data.updatedAt || new Date().toISOString()
+        };
+    }
+
+    // Handle Transaction Delete Success
+    handleTransactionDeleteSuccess(deleteResult) {
+        const { data, message } = deleteResult;
+
+        return {
+            success: true,
+            message: message || 'Transaction cancelled successfully',
+            transactionId: data.transactionId,
+            paymentNumber: data.paymentNumber,
+            cancelledAt: data.cancelledAt,
+            cancelReason: data.cancelReason
+        };
+    }
+
+    // Get Transaction Action Permissions
+    getTransactionActionPermissions(transaction, userRole = 'user') {
+        const permissions = {
+            canView: true,
+            canEdit: true,
+            canDelete: true,
+            canDuplicate: true,
+            restrictions: []
+        };
+
+        // Check transaction status
+        if (transaction.status === 'cancelled') {
+            permissions.canEdit = false;
+            permissions.canDelete = false;
+            permissions.restrictions.push('Transaction is already cancelled');
+        }
+
+        // Check transaction age
+        const transactionDate = new Date(transaction.paymentDate || transaction.createdAt);
+        const daysDiff = (new Date() - transactionDate) / (1000 * 60 * 60 * 24);
+
+        if (daysDiff > 90) {
+            if (userRole !== 'admin') {
+                permissions.canEdit = false;
+                permissions.canDelete = false;
+                permissions.restrictions.push('Transaction is older than 90 days - admin access required');
+            }
+        }
+
+        // Check if reconciled
+        if (transaction.isReconciled) {
+            permissions.canEdit = false;
+            permissions.canDelete = false;
+            permissions.restrictions.push('Transaction is reconciled and cannot be modified');
+        }
+
+        // Check if has allocations
+        if (transaction.invoiceAllocations && transaction.invoiceAllocations.length > 0) {
+            permissions.restrictions.push('Transaction has invoice allocations - changes may affect linked invoices');
+        }
+
+        return permissions;
+    }
+
 }
 
 const paymentService = new PaymentService();

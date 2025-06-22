@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
-// ✅ UPDATED: Import all controller functions including the new one
 const {
     createPaymentIn,
     createPaymentOut,
@@ -11,12 +10,14 @@ const {
     getPartyPaymentSummary,
     cancelPayment,
     getPendingInvoicesForPayment,
-    getPendingPurchaseInvoicesForPayment  // ✅ NEW: Added this import
+    getPendingPurchaseInvoicesForPayment,
+    getPaymentAllocations,
+    updateTransaction,
+    deleteTransaction
 } = require('../controllers/paymentController');
 
-// Authentication middleware (replace with real auth)
+// Authentication middleware
 const auth = (req, res, next) => {
-    // TODO: Replace with actual JWT authentication
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
@@ -27,8 +28,6 @@ const auth = (req, res, next) => {
     }
 
     try {
-        // TODO: Verify JWT token here
-        // For now, using placeholder user data
         req.user = {
             id: '507f1f77bcf86cd799439011',
             email: 'user@example.com',
@@ -44,82 +43,37 @@ const auth = (req, res, next) => {
     }
 };
 
-// Validation middleware for payment creation
+// Payment validation
 const validatePayment = [
-    body('partyId')
-        .isMongoId()
-        .withMessage('Invalid party ID'),
-    body('amount')
-        .isFloat({ min: 0.01 })
-        .withMessage('Amount must be greater than 0'),
-    body('paymentMethod')
-        .isIn(['cash', 'bank_transfer', 'cheque', 'card', 'upi', 'other'])
-        .withMessage('Invalid payment method'),
-    body('paymentDate')
-        .optional()
-        .isISO8601()
-        .withMessage('Invalid payment date'),
-    body('paymentType')
-        .optional()
-        .isIn(['advance', 'pending'])
-        .withMessage('Invalid payment type'),
-    body('saleOrderId')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid sale order ID'),
-    // ✅ NEW: Add validation for purchase invoice fields
-    body('purchaseInvoiceId')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid purchase invoice ID'),
-    body('purchaseInvoiceAllocations')
-        .optional()
-        .isArray()
-        .withMessage('Purchase invoice allocations must be an array'),
-    body('purchaseInvoiceAllocations.*.purchaseInvoiceId')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid purchase invoice ID in allocations'),
-    body('purchaseInvoiceAllocations.*.allocatedAmount')
-        .optional()
-        .isFloat({ min: 0.01 })
-        .withMessage('Allocated amount must be greater than 0'),
-    body('bankAccountId')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid bank account ID'),
-    body('reference')
-        .optional()
-        .isLength({ max: 100 })
-        .withMessage('Reference too long'),
-    body('notes')
-        .optional()
-        .isLength({ max: 500 })
-        .withMessage('Notes too long'),
-    body('employeeName')
-        .optional()
-        .isLength({ max: 100 })
-        .withMessage('Employee name too long'),
-    body('companyId')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid company ID')
+    body('partyId').isMongoId().withMessage('Invalid party ID'),
+    body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+    body('paymentMethod').isIn(['cash', 'bank_transfer', 'cheque', 'card', 'upi']).withMessage('Invalid payment method'),
+    body('paymentDate').optional().isISO8601().withMessage('Invalid payment date'),
+    body('bankAccountId').optional().isMongoId().withMessage('Invalid bank account ID'),
+    body('reference').optional().isLength({ max: 100 }).withMessage('Reference too long'),
+    body('notes').optional().isLength({ max: 500 }).withMessage('Notes too long'),
+    body('companyId').optional().isMongoId().withMessage('Invalid company ID')
 ];
 
-// Validation for payment cancellation
+// Transaction update validation
+const validateTransactionUpdate = [
+    body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+    body('paymentMethod').isIn(['cash', 'bank_transfer', 'cheque', 'card', 'upi']).withMessage('Invalid payment method'),
+    body('paymentDate').isISO8601().withMessage('Payment date is required'),
+    body('status').optional().isIn(['completed', 'pending', 'failed', 'cancelled']).withMessage('Invalid status'),
+    body('bankAccountId').optional().isMongoId().withMessage('Invalid bank account ID'),
+    body('reference').optional().isLength({ max: 100 }).withMessage('Reference too long'),
+    body('notes').optional().isLength({ max: 500 }).withMessage('Notes too long')
+];
+
 const validateCancelPayment = [
-    body('reason')
-        .optional()
-        .isLength({ max: 500 })
-        .withMessage('Reason too long')
+    body('reason').optional().isLength({ max: 500 }).withMessage('Reason too long')
 ];
 
-// Async handler wrapper
 const asyncHandler = (fn) => (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
 };
 
-// Validation error handler middleware
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -136,152 +90,33 @@ const handleValidationErrors = (req, res, next) => {
     next();
 };
 
-// ================================
-// 📋 PENDING INVOICES ROUTES
-// ================================
+// Pending invoices routes
+router.get('/pending-invoices/:partyId', auth, asyncHandler(getPendingInvoicesForPayment));
+router.get('/pending-purchase-invoices/:partyId', auth, asyncHandler(getPendingPurchaseInvoicesForPayment));
 
-// Get pending sales invoices for payment (PayIn - Customer payments)
-router.get('/pending-invoices/:partyId',
-    auth,
-    asyncHandler(getPendingInvoicesForPayment)
-);
+// Payment creation routes
+router.post('/pay-in', auth, validatePayment, handleValidationErrors, asyncHandler(createPaymentIn));
+router.post('/pay-out', auth, validatePayment, handleValidationErrors, asyncHandler(createPaymentOut));
 
-// ✅ NEW: Get pending purchase invoices for payment (PayOut - Supplier payments)
-router.get('/pending-purchase-invoices/:partyId',
-    auth,
-    asyncHandler(getPendingPurchaseInvoicesForPayment)
-);
+// Payment retrieval routes
+router.get('/', auth, asyncHandler(getPayments));
+router.get('/:paymentId', auth, asyncHandler(getPaymentById));
 
-// ================================
-// 💰 PAYMENT CREATION ROUTES
-// ================================
+// Party summary route
+router.get('/party/:partyId/summary', auth, asyncHandler(getPartyPaymentSummary));
 
-// Create Payment In (Customer pays us)
-router.post('/pay-in',
-    auth,
-    validatePayment,
-    handleValidationErrors,
-    asyncHandler(createPaymentIn)
-);
+// Payment allocation routes
+router.get('/:paymentId/allocations', auth, asyncHandler(getPaymentAllocations));
 
-// Create Payment Out (We pay supplier)
-router.post('/pay-out',
-    auth,
-    validatePayment,
-    handleValidationErrors,
-    asyncHandler(createPaymentOut)
-);
+// Transaction management routes
+router.put('/transactions/:transactionId', auth, validateTransactionUpdate, handleValidationErrors, asyncHandler(updateTransaction));
+router.delete('/transactions/:transactionId', auth, asyncHandler(deleteTransaction));
 
-// ================================
-// 📊 PAYMENT RETRIEVAL ROUTES
-// ================================
+// Payment cancellation route
+router.patch('/:paymentId/cancel', auth, validateCancelPayment, handleValidationErrors, asyncHandler(cancelPayment));
 
-// Get all payments with filtering and pagination
-router.get('/',
-    auth,
-    asyncHandler(getPayments)
-);
-
-// Get specific payment by ID
-router.get('/:paymentId',
-    auth,
-    asyncHandler(getPaymentById)
-);
-
-// ================================
-// 📈 PARTY SUMMARY ROUTES
-// ================================
-
-// Get party payment summary
-router.get('/party/:partyId/summary',
-    auth,
-    asyncHandler(getPartyPaymentSummary)
-);
-
-// ================================
-// 🔧 PAYMENT MANAGEMENT ROUTES
-// ================================
-
-// Cancel payment with reason
-router.patch('/:paymentId/cancel',
-    auth,
-    validateCancelPayment,
-    handleValidationErrors,
-    asyncHandler(cancelPayment)
-);
-
-// ✅ NEW: Get payment allocation details for sales invoices (PayIn)
-router.get('/:paymentId/allocations',
-    auth,
-    asyncHandler(async (req, res) => {
-        try {
-            const { paymentId } = req.params;
-
-            // This would be implemented in your controller
-            // For now, return a placeholder response
-            res.json({
-                success: true,
-                data: {
-                    payment: { _id: paymentId },
-                    allocations: [],
-                    totalAllocatedAmount: 0,
-                    remainingAmount: 0
-                },
-                message: 'Payment allocation details retrieved'
-            });
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: 'Failed to get payment allocations',
-                error: error.message
-            });
-        }
-    })
-);
-
-// ✅ NEW: Get payment allocation details for purchase invoices (PayOut)
-router.get('/:paymentId/purchase-invoice-allocations',
-    auth,
-    asyncHandler(async (req, res) => {
-        try {
-            const { paymentId } = req.params;
-
-            // This would be implemented in your controller
-            // For now, return a placeholder response
-            res.json({
-                success: true,
-                data: {
-                    payment: { _id: paymentId },
-                    allocations: [],
-                    totalAllocatedAmount: 0,
-                    remainingAmount: 0
-                },
-                message: 'Payment allocation details retrieved'
-            });
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: 'Failed to get payment allocations',
-                error: error.message
-            });
-        }
-    })
-);
-
-// ================================
-// ❌ ERROR HANDLING MIDDLEWARE
-// ================================
-
-// Enhanced error handler for payment routes
+// Error handling middleware
 router.use((error, req, res, next) => {
-    console.error('❌ Payment Route Error:', {
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-        url: req.url,
-        method: req.method,
-        timestamp: new Date().toISOString()
-    });
-
     // Validation errors
     if (error.name === 'ValidationError') {
         return res.status(400).json({
@@ -289,106 +124,59 @@ router.use((error, req, res, next) => {
             message: 'Validation Error',
             errors: Object.values(error.errors).map(err => ({
                 field: err.path,
-                message: err.message,
-                value: err.value
+                message: err.message
             }))
         });
     }
 
-    // MongoDB Cast errors (invalid ObjectId)
+    // Invalid ObjectId
     if (error.name === 'CastError') {
         return res.status(400).json({
             success: false,
             message: 'Invalid ID format',
-            error: `Invalid ${error.path}: ${error.value}`,
             field: error.path
         });
     }
 
-    // MongoDB Duplicate key errors
+    // Duplicate key
     if (error.code === 11000) {
         const field = Object.keys(error.keyValue)[0];
-        const value = error.keyValue[field];
         return res.status(409).json({
             success: false,
             message: 'Duplicate entry',
-            error: `${field} '${value}' already exists`,
-            field: field,
-            value: value
+            field: field
         });
     }
 
-    // Authentication errors
+    // Auth errors
     if (error.name === 'UnauthorizedError' || error.status === 401) {
         return res.status(401).json({
             success: false,
-            message: 'Authentication required',
-            error: 'Please login to access this resource'
+            message: 'Authentication required'
         });
     }
 
-    // Authorization errors
-    if (error.status === 403) {
-        return res.status(403).json({
-            success: false,
-            message: 'Access denied',
-            error: 'You do not have permission to perform this action'
-        });
-    }
-
-    // Not found errors
+    // Not found
     if (error.status === 404) {
         return res.status(404).json({
             success: false,
-            message: 'Resource not found',
-            error: error.message || 'The requested resource could not be found'
+            message: 'Resource not found'
         });
     }
 
-    // Rate limiting errors
-    if (error.status === 429) {
-        return res.status(429).json({
-            success: false,
-            message: 'Too many requests',
-            error: 'Please try again later'
-        });
-    }
-
-    // Default server error
+    // Default error
     res.status(error.status || 500).json({
         success: false,
-        message: 'Payment system error',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-        errorId: new Date().getTime(),
-        ...(process.env.NODE_ENV === 'development' && {
-            stack: error.stack?.split('\n').slice(0, 10),
-            route: req.route?.path,
-            originalUrl: req.originalUrl
-        })
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
     });
 });
 
-// ================================
-// 📍 ROUTE NOT FOUND HANDLER
-// ================================
-
-// Handle unmatched payment routes
+// Route not found handler
 router.use('*', (req, res) => {
     res.status(404).json({
         success: false,
         message: 'Payment route not found',
-        availableRoutes: [
-            'GET /payments/pending-invoices/:partyId - Get pending sales invoices for PayIn',
-            'GET /payments/pending-purchase-invoices/:partyId - Get pending purchase invoices for PayOut', // ✅ NEW
-            'POST /payments/pay-in - Create payment in (customer pays us)',
-            'POST /payments/pay-out - Create payment out (we pay supplier)',
-            'GET /payments - Get all payments',
-            'GET /payments/:paymentId - Get payment by ID',
-            'GET /payments/party/:partyId/summary - Get party payment summary',
-            'GET /payments/:paymentId/allocations - Get sales invoice allocation details', // ✅ NEW
-            'GET /payments/:paymentId/purchase-invoice-allocations - Get purchase invoice allocation details', // ✅ NEW
-            'PATCH /payments/:paymentId/cancel - Cancel payment'
-        ],
         requestedUrl: req.originalUrl,
         method: req.method
     });

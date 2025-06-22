@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Row, Col, Form, Spinner, Button } from 'react-bootstrap';
+import { Row, Col, Form, Spinner, Button, Card } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUserPlus, faUser, faSpinner, faRefresh } from '@fortawesome/free-solid-svg-icons';
+import { faUserPlus, faUser, faSpinner, faRefresh, faCalendarAlt, faFileInvoice, faTruck, faTag } from '@fortawesome/free-solid-svg-icons';
 import partyService from '../../../../services/partyService';
 import purchaseOrderService from '../../../../services/purchaseOrderService';
 import authService from '../../../../services/authService';
@@ -38,7 +38,6 @@ function PurchaseOrderFormHeader({
     const isSelectingPartyRef = useRef(false);
     const searchTimeoutRef = useRef(null);
 
-    // ✅ UPDATED: Field refs for keyboard navigation - following sales order structure
     const fieldRefs = useRef({
         gstType: null,
         deliveryDate: null,
@@ -71,12 +70,10 @@ function PurchaseOrderFormHeader({
             }
 
             setUserError('Unable to fetch user information');
-            addToast?.('Unable to fetch user information. Some features may be limited.', 'warning');
             return null;
 
         } catch (error) {
             setUserError(error.message || 'Failed to fetch user information');
-            addToast?.('Failed to fetch user information', 'error');
             return null;
         } finally {
             setIsLoadingUser(false);
@@ -104,7 +101,6 @@ function PurchaseOrderFormHeader({
         }
     };
 
-    // ✅ UPDATED: Show only employee name without ID - following sales order structure
     const getUserDisplayInfo = () => {
         const user = currentUser || propCurrentUser;
 
@@ -127,7 +123,7 @@ function PurchaseOrderFormHeader({
 
         if (formData.employeeName) {
             return {
-                displayText: formData.employeeName, // ✅ Only show name
+                displayText: formData.employeeName,
                 isLoading: false,
                 hasUser: true,
                 user: user
@@ -136,7 +132,7 @@ function PurchaseOrderFormHeader({
 
         if (user?.name) {
             return {
-                displayText: user.name, // ✅ Only show name
+                displayText: user.name,
                 isLoading: false,
                 hasUser: true,
                 user: user
@@ -194,21 +190,9 @@ function PurchaseOrderFormHeader({
                 }
             } else {
                 setParties([]);
-                addToast?.('Failed to load suppliers: ' + (response.message || 'Unknown error'), 'error');
             }
         } catch (error) {
             setParties([]);
-
-            let errorMessage = 'Failed to load suppliers';
-            if (error.code === 'NETWORK_ERROR') {
-                errorMessage = 'Network error. Please check your connection.';
-            } else if (error.status === 401) {
-                errorMessage = 'Authentication expired. Please login again.';
-            } else if (error.message) {
-                errorMessage = `Failed to load suppliers: ${error.message}`;
-            }
-
-            addToast?.(errorMessage, 'error');
         } finally {
             setIsLoadingParties(false);
         }
@@ -259,7 +243,6 @@ function PurchaseOrderFormHeader({
 
             if (response.success && response.data?.nextOrderNumber) {
                 onFormDataChange('purchaseOrderNumber', response.data.nextOrderNumber);
-                addToast?.('Purchase order number generated successfully', 'success');
             } else {
                 const now = new Date();
                 const year = now.getFullYear().toString().slice(-2);
@@ -271,7 +254,6 @@ function PurchaseOrderFormHeader({
 
                 const fallbackNumber = `PO-${year}${month}${day}-${hours}${minutes}${seconds}`;
                 onFormDataChange('purchaseOrderNumber', fallbackNumber);
-                addToast?.('Generated fallback purchase order number', 'info');
             }
         } catch (error) {
             const timestamp = Date.now().toString();
@@ -279,13 +261,11 @@ function PurchaseOrderFormHeader({
             const emergencyNumber = `PO-${timestamp.slice(-8)}-${randomNum}`;
 
             onFormDataChange('purchaseOrderNumber', emergencyNumber);
-            addToast?.('Generated emergency purchase order number', 'warning');
         } finally {
             setIsGeneratingOrderNumber(false);
         }
     };
 
-    // ✅ UPDATED: Keyboard navigation helper with sales order structure
     const focusNextField = (currentField) => {
         const fieldOrder = ['gstType', 'deliveryDate', 'partyName', 'purchaseDate'];
         const currentIndex = fieldOrder.indexOf(currentField);
@@ -298,7 +278,6 @@ function PurchaseOrderFormHeader({
                 if (nextFieldRef.select) nextFieldRef.select();
             }
         } else {
-            // Move to first product input
             const firstProductInput = document.querySelector('[data-product-input="0"]');
             if (firstProductInput) {
                 firstProductInput.focus();
@@ -306,7 +285,6 @@ function PurchaseOrderFormHeader({
         }
     };
 
-    // Enhanced keyboard handler
     const handleFieldKeyDown = (e, fieldName) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -322,7 +300,6 @@ function PurchaseOrderFormHeader({
                         handlePartySelect(filteredParties[selectedPartySuggestionIndex]);
                         return;
                     } else if (selectedPartySuggestionIndex === filteredParties.length) {
-                        // Add new party option
                         handleAddNewParty();
                         return;
                     }
@@ -333,7 +310,6 @@ function PurchaseOrderFormHeader({
         }
     };
 
-    // Enhanced party search keyboard handler
     const handlePartySearchKeyDown = (e) => {
         if (!showPartySuggestions) {
             handleFieldKeyDown(e, 'partyName');
@@ -420,11 +396,8 @@ function PurchaseOrderFormHeader({
         setShowAddPartyModal(false);
         setShowPartySuggestions(false);
 
-        addToast?.(`Supplier "${formattedParty.name}" created and selected successfully!`, 'success');
-
         setTimeout(() => {
             isSelectingPartyRef.current = false;
-            // ✅ Focus on purchase date after party creation
             const purchaseDateRef = fieldRefs.current.purchaseDate;
             if (purchaseDateRef) {
                 purchaseDateRef.focus();
@@ -531,7 +504,6 @@ function PurchaseOrderFormHeader({
 
         setTimeout(() => {
             isSelectingPartyRef.current = false;
-            // ✅ Auto-focus on purchase date after party selection
             const purchaseDateRef = fieldRefs.current.purchaseDate;
             if (purchaseDateRef) {
                 purchaseDateRef.focus();
@@ -580,355 +552,435 @@ function PurchaseOrderFormHeader({
 
     const userDisplayInfo = getUserDisplayInfo();
 
-    // ✅ STANDARDIZED INPUT STYLES - following sales order structure
+    // Theme-consistent styling
     const inputStyle = {
         borderColor: '#000',
         fontSize: '13px',
         padding: '10px 14px',
-        height: '42px' // ✅ Consistent height for all inputs
+        height: '42px',
+        borderWidth: '2px',
+        borderRadius: '8px',
+        fontWeight: '500'
     };
 
     const getInputStyleWithError = (fieldName) => ({
         ...inputStyle,
-        borderColor: errors[fieldName] ? '#dc3545' : '#000'
+        borderColor: errors[fieldName] ? '#dc3545' : '#000',
+        backgroundColor: errors[fieldName] ? '#fff5f5' : 'white'
     });
 
+    const labelStyle = {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        marginBottom: '8px',
+        color: '#2c3e50'
+    };
+
+    const cardStyle = {
+        border: '3px solid #000',
+        borderRadius: '12px',
+        backgroundColor: 'white',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+    };
+
     return (
-        <div className="purchase-order-form-header">
-            {/* ✅ RESTRUCTURED LAYOUT - following sales order structure */}
-            <Row className="mb-3">
-                {/* Left Column */}
-                <Col md={6}>
-                    <Form.Group className="mb-3">
-                        <Form.Label className="fw-bold text-danger" style={{ fontSize: '14px' }}>
-                            GST / Non GST *
-                        </Form.Label>
-                        <Form.Select
-                            ref={el => fieldRefs.current.gstType = el}
-                            value={formData.gstType || 'gst'}
-                            onChange={(e) => handleInputChange('gstType', e.target.value)}
-                            onKeyDown={(e) => handleFieldKeyDown(e, 'gstType')}
-                            className="border-2"
-                            style={{
-                                ...getInputStyleWithError('gstType'),
-                                backgroundColor: formData.gstType === 'gst' ? '#e8f5e8' : '#fff3e0'
-                            }}
-                            disabled={disabled}
-                            isInvalid={!!errors.gstType}
-                        >
-                            <option value="gst">GST</option>
-                            <option value="non-gst">Non GST</option>
-                        </Form.Select>
-                        {errors.gstType && (
-                            <Form.Control.Feedback type="invalid" style={{ fontSize: '12px' }}>
-                                {errors.gstType}
-                            </Form.Control.Feedback>
-                        )}
-                        <Form.Text className="text-info" style={{ fontSize: '12px' }}>
-                            {formData.gstType === 'gst' ? '✅ GST will be calculated' : '⚠️ GST will not be applied'}
-                        </Form.Text>
-                    </Form.Group>
+        <div className="purchase-order-form-header mb-4">
+            {/* Header Section */}
+            <Card className="mb-4" style={cardStyle}>
+                <Card.Header className="bg-light border-bottom-3" style={{ borderBottomColor: '#000', padding: '15px 20px' }}>
+                    <div className="d-flex align-items-center">
+                        <FontAwesomeIcon icon={faFileInvoice} className="me-3 text-primary" size="lg" />
+                        <h5 className="mb-0 fw-bold text-dark">Purchase Order Details</h5>
+                    </div>
+                </Card.Header>
+                <Card.Body className="p-4">
+                    <Row className="g-4">
+                        {/* Left Column */}
+                        <Col md={6}>
+                            <Form.Group className="mb-4">
+                                <Form.Label className="d-flex align-items-center" style={labelStyle}>
+                                    <FontAwesomeIcon icon={faTag} className="me-2 text-primary" />
+                                    GST / Non GST *
+                                </Form.Label>
+                                <Form.Select
+                                    ref={el => fieldRefs.current.gstType = el}
+                                    value={formData.gstType || 'gst'}
+                                    onChange={(e) => handleInputChange('gstType', e.target.value)}
+                                    onKeyDown={(e) => handleFieldKeyDown(e, 'gstType')}
+                                    style={{
+                                        ...getInputStyleWithError('gstType'),
+                                        backgroundColor: formData.gstType === 'gst' ? '#e8f5e8' : '#fff3e0',
+                                        cursor: 'pointer'
+                                    }}
+                                    disabled={disabled}
+                                    isInvalid={!!errors.gstType}
+                                >
+                                    <option value="gst">✅ GST Applicable</option>
+                                    <option value="non-gst">❌ Non-GST</option>
+                                </Form.Select>
+                                {errors.gstType && (
+                                    <Form.Control.Feedback type="invalid" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                        {errors.gstType}
+                                    </Form.Control.Feedback>
+                                )}
+                                <Form.Text className="text-info fw-bold" style={{ fontSize: '12px' }}>
+                                    {formData.gstType === 'gst' ? '✅ GST will be calculated on items' : '⚠️ No GST will be applied'}
+                                </Form.Text>
+                            </Form.Group>
 
-                    <Form.Group className="mb-3">
-                        <Form.Label className="fw-bold text-danger" style={{ fontSize: '14px' }}>
-                            Expected Delivery Date
-                        </Form.Label>
-                        <Form.Control
-                            ref={el => fieldRefs.current.deliveryDate = el}
-                            type="date"
-                            value={formData.deliveryDate || ''}
-                            onChange={(e) => handleInputChange('deliveryDate', e.target.value)}
-                            onKeyDown={(e) => handleFieldKeyDown(e, 'deliveryDate')}
-                            className="border-2"
-                            style={{
-                                ...getInputStyleWithError('deliveryDate'),
-                                cursor: 'pointer'
-                            }}
-                            disabled={disabled}
-                            isInvalid={!!errors.deliveryDate}
-                            min={new Date().toISOString().split('T')[0]}
-                        />
-                        {errors.deliveryDate && (
-                            <Form.Control.Feedback type="invalid" style={{ fontSize: '12px' }}>
-                                {errors.deliveryDate}
-                            </Form.Control.Feedback>
-                        )}
-                    </Form.Group>
+                            <Form.Group className="mb-4">
+                                <Form.Label className="d-flex align-items-center" style={labelStyle}>
+                                    <FontAwesomeIcon icon={faTruck} className="me-2 text-warning" />
+                                    Expected Delivery Date
+                                </Form.Label>
+                                <Form.Control
+                                    ref={el => fieldRefs.current.deliveryDate = el}
+                                    type="date"
+                                    value={formData.deliveryDate || ''}
+                                    onChange={(e) => handleInputChange('deliveryDate', e.target.value)}
+                                    onKeyDown={(e) => handleFieldKeyDown(e, 'deliveryDate')}
+                                    style={{
+                                        ...getInputStyleWithError('deliveryDate'),
+                                        cursor: 'pointer'
+                                    }}
+                                    disabled={disabled}
+                                    isInvalid={!!errors.deliveryDate}
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
+                                {errors.deliveryDate && (
+                                    <Form.Control.Feedback type="invalid" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                        {errors.deliveryDate}
+                                    </Form.Control.Feedback>
+                                )}
+                                <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                    📅 When do you expect delivery from supplier?
+                                </Form.Text>
+                            </Form.Group>
 
-                    {/* ✅ MOVED: Party section below delivery date - following sales order structure */}
-                    <Form.Group className="position-relative">
-                        <Form.Label className="fw-bold text-danger" style={{ fontSize: '14px' }}>
-                            Select Supplier *
-                        </Form.Label>
+                            <Form.Group className="position-relative">
+                                <Form.Label className="d-flex align-items-center" style={{ ...labelStyle, color: '#dc3545' }}>
+                                    <FontAwesomeIcon icon={faUserPlus} className="me-2 text-danger" />
+                                    Select Supplier *
+                                </Form.Label>
 
-                        <div className="position-relative">
-                            <Form.Control
-                                ref={el => {
-                                    partyInputRef.current = el;
-                                    fieldRefs.current.partyName = el;
-                                }}
-                                type="text"
-                                value={partySearchTerm}
-                                onChange={(e) => handlePartySearchChange(e.target.value)}
-                                onKeyDown={handlePartySearchKeyDown}
-                                onFocus={handlePartyInputFocus}
-                                onBlur={handlePartyInputBlur}
-                                className="border-2"
-                                style={getInputStyleWithError('partyName')}
-                                placeholder="Search supplier..."
-                                disabled={disabled || isLoadingParties}
-                                isInvalid={!!errors.partyName}
-                            />
+                                <div className="position-relative">
+                                    <Form.Control
+                                        ref={el => {
+                                            partyInputRef.current = el;
+                                            fieldRefs.current.partyName = el;
+                                        }}
+                                        type="text"
+                                        value={partySearchTerm}
+                                        onChange={(e) => handlePartySearchChange(e.target.value)}
+                                        onKeyDown={handlePartySearchKeyDown}
+                                        onFocus={handlePartyInputFocus}
+                                        onBlur={handlePartyInputBlur}
+                                        style={getInputStyleWithError('partyName')}
+                                        placeholder="🔍 Search supplier name or phone..."
+                                        disabled={disabled || isLoadingParties}
+                                        isInvalid={!!errors.partyName}
+                                    />
 
-                            {isLoadingParties && (
-                                <div className="position-absolute top-50 end-0 translate-middle-y me-2">
-                                    <Spinner size="sm" />
+                                    {isLoadingParties && (
+                                        <div className="position-absolute top-50 end-0 translate-middle-y me-3">
+                                            <Spinner size="sm" className="text-primary" />
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
 
-                        {/* ✅ COMPACT: Party suggestions dropdown - following sales order structure */}
-                        {showPartySuggestions && partySearchTerm.length >= 2 && !formData.selectedParty && (
-                            <div
-                                className="position-absolute w-100 bg-white border border-2 rounded mt-1 shadow-lg"
-                                style={{
-                                    zIndex: 1000,
-                                    maxHeight: '200px', // ✅ Reduced height
-                                    overflowY: 'auto',
-                                    borderColor: '#000'
-                                }}
-                            >
-                                {filteredParties.length > 0 && (
-                                    filteredParties.slice(0, 5).map((party, index) => ( // ✅ Show only 5 parties
+                                {showPartySuggestions && partySearchTerm.length >= 2 && !formData.selectedParty && (
+                                    <div
+                                        className="position-absolute w-100 bg-white border-3 rounded-3 mt-2 shadow-lg"
+                                        style={{
+                                            zIndex: 1000,
+                                            maxHeight: '250px',
+                                            overflowY: 'auto',
+                                            borderColor: '#000 !important'
+                                        }}
+                                    >
+                                        {filteredParties.length > 0 && (
+                                            filteredParties.slice(0, 5).map((party, index) => (
+                                                <div
+                                                    key={party.id}
+                                                    className={`p-3 border-bottom cursor-pointer ${selectedPartySuggestionIndex === index ? 'bg-primary text-white' : 'hover-bg-light'}`}
+                                                    style={{
+                                                        fontSize: '13px',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s ease',
+                                                        borderRadius: selectedPartySuggestionIndex === index ? '8px' : '0'
+                                                    }}
+                                                    onClick={() => handlePartySelect(party)}
+                                                    onMouseEnter={() => setSelectedPartySuggestionIndex(index)}
+                                                >
+                                                    <div className={`fw-bold mb-1 ${selectedPartySuggestionIndex === index ? 'text-white' : 'text-primary'}`} style={{ fontSize: '14px' }}>
+                                                        🏢 {party.name}
+                                                    </div>
+                                                    {party.phone && (
+                                                        <div className={`${selectedPartySuggestionIndex === index ? 'text-light' : 'text-muted'}`} style={{ fontSize: '12px' }}>
+                                                            📞 {party.phone}
+                                                        </div>
+                                                    )}
+                                                    {party.gstNumber && (
+                                                        <div className={`${selectedPartySuggestionIndex === index ? 'text-light' : 'text-info'}`} style={{ fontSize: '11px' }}>
+                                                            🏷️ GST: {party.gstNumber}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        )}
+
                                         <div
-                                            key={party.id}
-                                            className={`p-2 border-bottom cursor-pointer ${selectedPartySuggestionIndex === index ? 'bg-primary text-white' : ''}`} // ✅ Reduced padding
+                                            className={`p-3 cursor-pointer border-top-3 ${selectedPartySuggestionIndex === filteredParties.length ? 'bg-success text-white' : 'bg-light'}`}
                                             style={{
-                                                fontSize: '12px', // ✅ Smaller font
+                                                fontSize: '13px',
                                                 cursor: 'pointer',
-                                                transition: 'background-color 0.2s'
+                                                transition: 'all 0.2s ease',
+                                                borderTopColor: '#000 !important'
                                             }}
-                                            onClick={() => handlePartySelect(party)}
-                                            onMouseEnter={() => setSelectedPartySuggestionIndex(index)}
+                                            onClick={handleAddNewParty}
+                                            onMouseEnter={() => setSelectedPartySuggestionIndex(filteredParties.length)}
                                         >
-                                            <div className={`fw-bold ${selectedPartySuggestionIndex === index ? 'text-white' : 'text-primary'}`} style={{ fontSize: '13px' }}>
-                                                {party.name}
-                                            </div>
-                                            <div className={selectedPartySuggestionIndex === index ? 'text-light' : 'text-muted'} style={{ fontSize: '11px' }}>
-                                                {party.phone && <span>📞 {party.phone}</span>}
+                                            <div className="text-center">
+                                                <FontAwesomeIcon
+                                                    icon={faUserPlus}
+                                                    className={`me-2 ${selectedPartySuggestionIndex === filteredParties.length ? 'text-white' : 'text-success'}`}
+                                                />
+                                                <span className={`fw-bold ${selectedPartySuggestionIndex === filteredParties.length ? 'text-white' : 'text-success'}`} style={{ fontSize: '13px' }}>
+                                                    ➕ Add New Supplier
+                                                </span>
                                             </div>
                                         </div>
-                                    ))
+                                    </div>
                                 )}
 
-                                <div
-                                    className={`p-2 cursor-pointer bg-light border-top ${selectedPartySuggestionIndex === filteredParties.length ? 'bg-primary text-white' : ''}`} // ✅ Reduced padding
+                                {formData.selectedParty && formData.partyName && (
+                                    <div className="mt-3 p-3 bg-success bg-opacity-10 border-3 rounded-3" style={{ borderColor: '#28a745' }}>
+                                        <div className="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <div className="fw-bold text-success mb-1" style={{ fontSize: '14px' }}>
+                                                    ✅ {formData.partyName}
+                                                </div>
+                                                {formData.partyPhone && (
+                                                    <div className="text-muted" style={{ fontSize: '12px' }}>
+                                                        📞 {formData.partyPhone}
+                                                    </div>
+                                                )}
+                                                {formData.partyGstNumber && (
+                                                    <div className="text-info" style={{ fontSize: '11px' }}>
+                                                        🏷️ GST: {formData.partyGstNumber}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <Button
+                                                variant="outline-danger"
+                                                size="sm"
+                                                onClick={clearPartySelection}
+                                                disabled={disabled}
+                                                title="Clear selection"
+                                                style={{
+                                                    fontSize: '12px',
+                                                    padding: '6px 12px',
+                                                    borderWidth: '2px',
+                                                    fontWeight: 'bold'
+                                                }}
+                                            >
+                                                ✕ Clear
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {errors.partyName && (
+                                    <div className="invalid-feedback d-block fw-bold" style={{ fontSize: '12px' }}>
+                                        ⚠️ {errors.partyName}
+                                    </div>
+                                )}
+                            </Form.Group>
+                        </Col>
+
+                        {/* Right Column */}
+                        <Col md={6}>
+                            <Form.Group className="mb-4">
+                                <Form.Label className="d-flex align-items-center" style={{ ...labelStyle, color: '#dc3545' }}>
+                                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-danger" />
+                                    Purchase Date *
+                                </Form.Label>
+                                <Form.Control
+                                    ref={el => fieldRefs.current.purchaseDate = el}
+                                    type="date"
+                                    value={formData.purchaseDate || new Date().toISOString().split('T')[0]}
+                                    onChange={(e) => handleInputChange('purchaseDate', e.target.value)}
+                                    onKeyDown={(e) => handleFieldKeyDown(e, 'purchaseDate')}
                                     style={{
-                                        fontSize: '12px', // ✅ Smaller font
-                                        cursor: 'pointer',
-                                        transition: 'background-color 0.2s'
+                                        ...getInputStyleWithError('purchaseDate'),
+                                        cursor: 'pointer'
                                     }}
-                                    onClick={handleAddNewParty}
-                                    onMouseEnter={() => setSelectedPartySuggestionIndex(filteredParties.length)}
-                                >
-                                    <div className="text-center">
-                                        <FontAwesomeIcon
-                                            icon={faUserPlus}
-                                            className={`me-1 ${selectedPartySuggestionIndex === filteredParties.length ? 'text-white' : 'text-success'}`}
-                                        />
-                                        <span className={`fw-bold ${selectedPartySuggestionIndex === filteredParties.length ? 'text-white' : 'text-success'}`} style={{ fontSize: '12px' }}>
-                                            Add New Supplier
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ✅ COMPACT: Selected party display - following sales order structure */}
-                        {formData.selectedParty && formData.partyName && (
-                            <div className="mt-2 p-2 bg-light border-2 rounded" style={{ borderColor: '#28a745' }}> {/* ✅ Reduced padding and margin */}
-                                <div className="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <div className="fw-bold text-success" style={{ fontSize: '13px' }}>✅ {formData.partyName}</div> {/* ✅ Smaller text */}
-                                        {formData.partyPhone && (
-                                            <div className="text-muted" style={{ fontSize: '11px' }}>📞 {formData.partyPhone}</div>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-outline-danger"
-                                        onClick={clearPartySelection}
-                                        disabled={disabled}
-                                        title="Clear selection"
-                                        style={{ fontSize: '11px', padding: '4px 8px' }} // ✅ Smaller button
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {errors.partyName && (
-                            <div className="invalid-feedback d-block" style={{ fontSize: '12px' }}>
-                                {errors.partyName}
-                            </div>
-                        )}
-                    </Form.Group>
-                </Col>
-
-                {/* Right Column */}
-                <Col md={6}>
-                    <Form.Group className="mb-3">
-                        <Form.Label className="fw-bold text-danger" style={{ fontSize: '14px' }}>
-                            Purchase Date *
-                        </Form.Label>
-                        <Form.Control
-                            ref={el => fieldRefs.current.purchaseDate = el}
-                            type="date"
-                            value={formData.purchaseDate || new Date().toISOString().split('T')[0]}
-                            onChange={(e) => handleInputChange('purchaseDate', e.target.value)}
-                            onKeyDown={(e) => handleFieldKeyDown(e, 'purchaseDate')}
-                            className="border-2"
-                            style={getInputStyleWithError('purchaseDate')}
-                            disabled={disabled}
-                            isInvalid={!!errors.purchaseDate}
-                        />
-                        {errors.purchaseDate && (
-                            <Form.Control.Feedback type="invalid" style={{ fontSize: '12px' }}>
-                                {errors.purchaseDate}
-                            </Form.Control.Feedback>
-                        )}
-                    </Form.Group>
-
-                    <Form.Group className="mb-3">
-                        <Form.Label className="fw-bold text-danger" style={{ fontSize: '14px' }}>
-                            Purchase Order No. *
-                            {!formData.purchaseOrderNumber && (
-                                <Button
-                                    variant="link"
-                                    size="sm"
-                                    className="p-0 ms-2 text-decoration-none"
-                                    style={{ fontSize: '12px' }}
-                                    onClick={generateOrderNumber}
-                                    disabled={isGeneratingOrderNumber}
-                                >
-                                    Generate Now
-                                </Button>
-                            )}
-                        </Form.Label>
-                        <div className="position-relative">
-                            <Form.Control
-                                type="text"
-                                value={formData.purchaseOrderNumber || ''}
-                                className="border-2"
-                                style={{
-                                    ...getInputStyleWithError('purchaseOrderNumber'),
-                                    backgroundColor: isGeneratingOrderNumber ? '#f8f9fa' : '#e9ecef'
-                                }}
-                                disabled
-                                readOnly
-                                isInvalid={!!errors.purchaseOrderNumber}
-                                placeholder={isGeneratingOrderNumber ? "Auto-generating..." : "Will be generated automatically"}
-                            />
-                            {isGeneratingOrderNumber && (
-                                <div className="position-absolute top-50 end-0 translate-middle-y me-2">
-                                    <Spinner size="sm" />
-                                </div>
-                            )}
-                        </div>
-                        {formData.purchaseOrderNumber && (
-                            <Form.Text className="text-success" style={{ fontSize: '12px' }}>
-                                ✅ Purchase order number generated successfully
-                            </Form.Text>
-                        )}
-                        {errors.purchaseOrderNumber && (
-                            <Form.Control.Feedback type="invalid" style={{ fontSize: '12px' }}>
-                                {errors.purchaseOrderNumber}
-                            </Form.Control.Feedback>
-                        )}
-                    </Form.Group>
-
-                    <Form.Group>
-                        <Form.Label className="fw-bold text-danger d-flex align-items-center" style={{ fontSize: '14px' }}>
-                            <FontAwesomeIcon icon={faUser} className="me-2" />
-                            Employee *
-                            {userError && (
-                                <Button
-                                    variant="link"
-                                    size="sm"
-                                    className="p-0 ms-2 text-decoration-none"
-                                    style={{ fontSize: '12px' }}
-                                    onClick={retryUserFetch}
-                                    disabled={isLoadingUser}
-                                    title="Retry fetching user information"
-                                >
-                                    <FontAwesomeIcon icon={faRefresh} className="me-1" />
-                                    Retry
-                                </Button>
-                            )}
-                        </Form.Label>
-
-                        <div className="position-relative">
-                            <Form.Control
-                                type="text"
-                                value={userDisplayInfo.displayText}
-                                className={`border-2 ${userDisplayInfo.hasUser ? 'bg-light' : 'bg-warning bg-opacity-25'}`}
-                                style={{
-                                    ...inputStyle, // ✅ Using standardized style
-                                    borderColor: errors.employeeName ? '#dc3545' : (userDisplayInfo.hasUser ? '#28a745' : '#ffc107')
-                                }}
-                                readOnly
-                                disabled={disabled}
-                                isInvalid={!!errors.employeeName}
-                                placeholder={isLoadingUser ? "Loading user..." : "User information will appear here"}
-                            />
-
-                            {isLoadingUser && (
-                                <div className="position-absolute top-50 end-0 translate-middle-y me-2">
-                                    <Spinner size="sm" />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ✅ UPDATED: Show only employee name in feedback - following sales order structure */}
-                        {userDisplayInfo.hasUser && !isLoadingUser && (
-                            <Form.Text className="text-success d-block" style={{ fontSize: '12px' }}>
-                                ✅ Employee: {userDisplayInfo.displayText}
-                                {userDisplayInfo.user?.role && (
-                                    <span className="ms-2 badge bg-success bg-opacity-25 text-success">
-                                        {userDisplayInfo.user.role}
-                                    </span>
+                                    disabled={disabled}
+                                    isInvalid={!!errors.purchaseDate}
+                                />
+                                {errors.purchaseDate && (
+                                    <Form.Control.Feedback type="invalid" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                        {errors.purchaseDate}
+                                    </Form.Control.Feedback>
                                 )}
-                            </Form.Text>
-                        )}
+                                <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                    📅 Date of purchase order creation
+                                </Form.Text>
+                            </Form.Group>
 
-                        {isLoadingUser && (
-                            <Form.Text className="text-info d-block" style={{ fontSize: '12px' }}>
-                                <FontAwesomeIcon icon={faSpinner} className="me-1" spin />
-                                Loading user information...
-                            </Form.Text>
-                        )}
+                            <Form.Group className="mb-4">
+                                <Form.Label className="d-flex align-items-center justify-content-between" style={{ ...labelStyle, color: '#dc3545' }}>
+                                    <span>
+                                        <FontAwesomeIcon icon={faFileInvoice} className="me-2 text-danger" />
+                                        Purchase Order No. *
+                                    </span>
+                                    {!formData.purchaseOrderNumber && (
+                                        <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            onClick={generateOrderNumber}
+                                            disabled={isGeneratingOrderNumber}
+                                            style={{
+                                                fontSize: '11px',
+                                                padding: '4px 8px',
+                                                borderWidth: '2px',
+                                                fontWeight: 'bold'
+                                            }}
+                                        >
+                                            {isGeneratingOrderNumber ? (
+                                                <>
+                                                    <Spinner size="sm" className="me-1" />
+                                                    Generating...
+                                                </>
+                                            ) : (
+                                                '🔄 Generate Now'
+                                            )}
+                                        </Button>
+                                    )}
+                                </Form.Label>
+                                <div className="position-relative">
+                                    <Form.Control
+                                        type="text"
+                                        value={formData.purchaseOrderNumber || ''}
+                                        style={{
+                                            ...getInputStyleWithError('purchaseOrderNumber'),
+                                            backgroundColor: isGeneratingOrderNumber ? '#f8f9fa' : '#e9ecef',
+                                            fontWeight: 'bold',
+                                            color: formData.purchaseOrderNumber ? '#28a745' : '#6c757d'
+                                        }}
+                                        disabled
+                                        readOnly
+                                        isInvalid={!!errors.purchaseOrderNumber}
+                                        placeholder={isGeneratingOrderNumber ? "🔄 Auto-generating order number..." : "📋 Order number will be generated automatically"}
+                                    />
+                                    {isGeneratingOrderNumber && (
+                                        <div className="position-absolute top-50 end-0 translate-middle-y me-3">
+                                            <Spinner size="sm" className="text-primary" />
+                                        </div>
+                                    )}
+                                </div>
+                                {formData.purchaseOrderNumber && (
+                                    <Form.Text className="text-success fw-bold" style={{ fontSize: '12px' }}>
+                                        ✅ Order number: <strong>{formData.purchaseOrderNumber}</strong>
+                                    </Form.Text>
+                                )}
+                                {errors.purchaseOrderNumber && (
+                                    <Form.Control.Feedback type="invalid" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                        {errors.purchaseOrderNumber}
+                                    </Form.Control.Feedback>
+                                )}
+                            </Form.Group>
 
-                        {userError && !isLoadingUser && (
-                            <Form.Text className="text-warning d-block" style={{ fontSize: '12px' }}>
-                                ⚠️ {userError}. Click "Retry" to fetch again.
-                            </Form.Text>
-                        )}
+                            <Form.Group>
+                                <Form.Label className="d-flex align-items-center justify-content-between" style={{ ...labelStyle, color: '#dc3545' }}>
+                                    <span>
+                                        <FontAwesomeIcon icon={faUser} className="me-2 text-danger" />
+                                        Employee *
+                                    </span>
+                                    {userError && (
+                                        <Button
+                                            variant="outline-warning"
+                                            size="sm"
+                                            onClick={retryUserFetch}
+                                            disabled={isLoadingUser}
+                                            title="Retry fetching user information"
+                                            style={{
+                                                fontSize: '11px',
+                                                padding: '4px 8px',
+                                                borderWidth: '2px',
+                                                fontWeight: 'bold'
+                                            }}
+                                        >
+                                            <FontAwesomeIcon icon={faRefresh} className="me-1" />
+                                            🔄 Retry
+                                        </Button>
+                                    )}
+                                </Form.Label>
 
-                        {!userDisplayInfo.hasUser && !isLoadingUser && !userError && (
-                            <Form.Text className="text-muted d-block" style={{ fontSize: '12px' }}>
-                                ℹ️ User information will be auto-filled when available
-                            </Form.Text>
-                        )}
+                                <div className="position-relative">
+                                    <Form.Control
+                                        type="text"
+                                        value={userDisplayInfo.displayText}
+                                        style={{
+                                            ...inputStyle,
+                                            borderColor: errors.employeeName ? '#dc3545' : (userDisplayInfo.hasUser ? '#28a745' : '#ffc107'),
+                                            backgroundColor: userDisplayInfo.hasUser ? '#e8f5e8' : '#fff3e0',
+                                            fontWeight: 'bold',
+                                            color: userDisplayInfo.hasUser ? '#155724' : '#856404'
+                                        }}
+                                        readOnly
+                                        disabled={disabled}
+                                        isInvalid={!!errors.employeeName}
+                                        placeholder={isLoadingUser ? "🔄 Loading user information..." : "👤 Employee information will appear here"}
+                                    />
 
-                        {errors.employeeName && (
-                            <Form.Control.Feedback type="invalid" style={{ fontSize: '12px' }}>
-                                {errors.employeeName}
-                            </Form.Control.Feedback>
-                        )}
-                    </Form.Group>
-                </Col>
-            </Row>
+                                    {isLoadingUser && (
+                                        <div className="position-absolute top-50 end-0 translate-middle-y me-3">
+                                            <Spinner size="sm" className="text-primary" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {userDisplayInfo.hasUser && !isLoadingUser && (
+                                    <Form.Text className="text-success fw-bold d-block" style={{ fontSize: '12px' }}>
+                                        ✅ Employee: <strong>{userDisplayInfo.displayText}</strong>
+                                        {userDisplayInfo.user?.role && (
+                                            <span className="ms-2 badge bg-success" style={{ fontSize: '10px' }}>
+                                                {userDisplayInfo.user.role}
+                                            </span>
+                                        )}
+                                    </Form.Text>
+                                )}
+
+                                {isLoadingUser && (
+                                    <Form.Text className="text-info fw-bold d-block" style={{ fontSize: '12px' }}>
+                                        <FontAwesomeIcon icon={faSpinner} className="me-1" spin />
+                                        🔄 Loading user information...
+                                    </Form.Text>
+                                )}
+
+                                {userError && !isLoadingUser && (
+                                    <Form.Text className="text-warning fw-bold d-block" style={{ fontSize: '12px' }}>
+                                        ⚠️ {userError}. Click "Retry" to fetch again.
+                                    </Form.Text>
+                                )}
+
+                                {!userDisplayInfo.hasUser && !isLoadingUser && !userError && (
+                                    <Form.Text className="text-muted fw-bold d-block" style={{ fontSize: '12px' }}>
+                                        ℹ️ User information will be auto-filled when available
+                                    </Form.Text>
+                                )}
+
+                                {errors.employeeName && (
+                                    <Form.Control.Feedback type="invalid" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                        ⚠️ {errors.employeeName}
+                                    </Form.Control.Feedback>
+                                )}
+                            </Form.Group>
+                        </Col>
+                    </Row>
+                </Card.Body>
+            </Card>
 
             {showAddPartyModal && (
                 <AddNewParty

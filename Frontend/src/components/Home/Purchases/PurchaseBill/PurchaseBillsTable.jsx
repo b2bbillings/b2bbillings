@@ -18,8 +18,11 @@ import {
     faCheck,
     faClipboardList,
     faPaperPlane,
-    faInbox
+    faInbox,
+    faDownload,
+    faExchangeAlt
 } from '@fortawesome/free-solid-svg-icons';
+import UniversalViewModal from '../../../Common/UniversalViewModal';
 
 function PurchaseBillsTable({
     purchases = [],
@@ -28,6 +31,8 @@ function PurchaseBillsTable({
     onDeletePurchase,
     onPrintPurchase,
     onSharePurchase,
+    onDownloadPurchase,
+    onConvertPurchase,
     onMarkAsOrdered,
     onMarkAsReceived,
     onCompletePurchase,
@@ -39,6 +44,10 @@ function PurchaseBillsTable({
 }) {
     const [searchQuery, setSearchQuery] = useState('');
 
+    // ✅ NEW: View Modal States
+    const [showViewModal, setShowViewModal] = useState(false);
+    const [selectedTransaction, setSelectedTransaction] = useState(null);
+
     // ✅ SMART: Auto-detect view configuration
     const getViewConfig = () => {
         if (isPurchaseOrderView) {
@@ -46,6 +55,7 @@ function PurchaseBillsTable({
                 defaultTitle: "Purchase Orders",
                 defaultSearchPlaceholder: "Search orders, suppliers, items...",
                 numberLabel: "Order No",
+                documentType: "purchase-order",
                 actionLabels: {
                     markOrdered: "Send Order",
                     markReceived: "Mark Received",
@@ -57,6 +67,7 @@ function PurchaseBillsTable({
                 defaultTitle: "Purchase Bills",
                 defaultSearchPlaceholder: "Search bills, suppliers, items...",
                 numberLabel: "Bill No",
+                documentType: "purchase-invoice",
                 actionLabels: {
                     markOrdered: "Mark Ordered",
                     markReceived: "Mark Received",
@@ -77,10 +88,53 @@ function PurchaseBillsTable({
         purchase.purchaseNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.billNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        purchase.purchaseOrderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.purchaseStatus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         purchase.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // ✅ NEW: Enhanced view handler
+    const handleViewTransaction = (purchase) => {
+        setSelectedTransaction(purchase);
+        setShowViewModal(true);
+        if (onViewPurchase) {
+            onViewPurchase(purchase);
+        }
+    };
+
+    // ✅ NEW: Modal action handlers
+    const handleModalEdit = (transaction) => {
+        setShowViewModal(false);
+        if (onEditPurchase) {
+            onEditPurchase(transaction);
+        }
+    };
+
+    const handleModalConvert = (transaction) => {
+        setShowViewModal(false);
+        if (onConvertPurchase) {
+            onConvertPurchase(transaction);
+        }
+    };
+
+    const handleModalPrint = (transaction) => {
+        if (onPrintPurchase) {
+            onPrintPurchase(transaction);
+        }
+    };
+
+    const handleModalDownload = (transaction) => {
+        if (onDownloadPurchase) {
+            onDownloadPurchase(transaction);
+        }
+    };
+
+    const handleModalShare = (transaction) => {
+        if (onSharePurchase) {
+            onSharePurchase(transaction);
+        }
+    };
 
     // ✅ ENHANCED: Better currency formatting
     const formatCurrency = (amount) => {
@@ -125,6 +179,7 @@ function PurchaseBillsTable({
         // ✅ ENHANCED: More comprehensive amount extraction with nested totals
         const totalAmount = parseFloat(
             fullObj.totals?.finalTotal ||
+            fullObj.totals?.grandTotal ||
             fullObj.finalTotal ||
             fullObj.grandTotal ||
             fullObj.totalAmount ||
@@ -135,6 +190,7 @@ function PurchaseBillsTable({
             fullObj.billAmount ||
             fullObj.orderAmount ||
             purchase.totals?.finalTotal ||
+            purchase.totals?.grandTotal ||
             purchase.finalTotal ||
             purchase.grandTotal ||
             purchase.totalAmount ||
@@ -209,9 +265,11 @@ function PurchaseBillsTable({
                     const itemTotal = parseFloat(
                         item.total ||
                         item.amount ||
-                        item.itemAmount || // ✅ NEW: From your data structure
+                        item.itemAmount ||
+                        item.totalAmount ||
                         item.lineTotal ||
-                        (item.quantity * item.pricePerUnit) || // ✅ NEW: From your data structure
+                        (item.quantity * item.pricePerUnit) ||
+                        (item.quantity * item.price) ||
                         (item.quantity * item.rate) ||
                         0
                     );
@@ -243,6 +301,7 @@ function PurchaseBillsTable({
             fullObj.billNo ||
             fullObj.orderNumber ||
             fullObj.orderNo ||
+            fullObj.purchaseOrderNumber ||
             fullObj.quotationNumber ||
             fullObj.quotationNo ||
             fullObj.invoiceNumber ||
@@ -253,6 +312,7 @@ function PurchaseBillsTable({
             purchase.billNo ||
             purchase.orderNumber ||
             purchase.orderNo ||
+            purchase.purchaseOrderNumber ||
             purchase.quotationNumber ||
             purchase.quotationNo ||
             purchase.invoiceNumber ||
@@ -305,18 +365,18 @@ function PurchaseBillsTable({
             purchase.isGstBill ||
             false;
 
-        // ✅ FIXED: Enhanced payment method extraction to handle nested payment object
-        const paymentMethod = fullObj.payment?.method ||        // ✅ PRIORITY: Check nested payment.method first
+        // ✅ ENHANCED: Payment method extraction to handle nested payment object
+        const paymentMethod = fullObj.payment?.method ||
             fullObj.paymentType ||
             fullObj.paymentMethod ||
             fullObj.paymentMode ||
             fullObj.paymentMethodType ||
-            purchase.payment?.method ||                          // ✅ PRIORITY: Check nested payment.method in purchase
+            purchase.payment?.method ||
             purchase.paymentType ||
             purchase.paymentMethod ||
             purchase.paymentMode ||
             purchase.paymentMethodType ||
-            'cash'; // Default to 'cash' instead of calculating
+            'cash';
 
         const items = fullObj.items ||
             fullObj.purchaseItems ||
@@ -336,7 +396,7 @@ function PurchaseBillsTable({
             supplierName,
             supplierMobile,
             gstEnabled,
-            paymentMethod, // This will now have the actual payment type from nested payment.method
+            paymentMethod,
             items
         };
 
@@ -359,17 +419,14 @@ function PurchaseBillsTable({
             totalSGST = parseFloat(fullObj.totalSGST || fullObj.sgstAmount || 0);
             totalIGST = parseFloat(fullObj.totalIGST || fullObj.igstAmount || 0);
         } else if (fullObj.taxBreakup) {
-            // Check if tax breakup is available
             totalCGST = parseFloat(fullObj.taxBreakup.cgst || 0);
             totalSGST = parseFloat(fullObj.taxBreakup.sgst || 0);
             totalIGST = parseFloat(fullObj.taxBreakup.igst || 0);
         } else if (fullObj.totals) {
-            // Check if totals object has tax information
             totalCGST = parseFloat(fullObj.totals.totalCGST || fullObj.totals.cgst || 0);
             totalSGST = parseFloat(fullObj.totals.totalSGST || fullObj.totals.sgst || 0);
             totalIGST = parseFloat(fullObj.totals.totalIGST || fullObj.totals.igst || 0);
         } else if (items && items.length > 0) {
-            // Calculate from items
             items.forEach(item => {
                 totalCGST += parseFloat(
                     item.cgstAmount ||
@@ -437,12 +494,9 @@ function PurchaseBillsTable({
     const getPaymentType = (purchase) => {
         const values = extractPurchaseValues(purchase);
 
-        // Get the direct payment method from data
         let paymentType = values.paymentMethod;
 
-        // If no payment method is found, determine based on balance/status
         if (!paymentType || paymentType === 'credit' || paymentType === 'unpaid') {
-            // ✅ NEW: Check payment status from nested object
             const paymentStatus = purchase.payment?.status || purchase.fullObject?.payment?.status;
 
             if (paymentStatus === 'partial') {
@@ -458,12 +512,11 @@ function PurchaseBillsTable({
             }
         }
 
-        // ✅ ENHANCED: Updated payment method mapping with underscore handling
         const paymentMethodMap = {
             'cash': 'Cash',
             'bank': 'Bank Transfer',
             'banktransfer': 'Bank Transfer',
-            'bank_transfer': 'Bank Transfer',      // ✅ NEW: Handle underscore format
+            'bank_transfer': 'Bank Transfer',
             'bank transfer': 'Bank Transfer',
             'online': 'Online',
             'upi': 'UPI',
@@ -484,9 +537,8 @@ function PurchaseBillsTable({
             'paid': 'Cash'
         };
 
-        // Convert to lowercase for mapping, then return the mapped value
         const mappedPaymentType = paymentMethodMap[paymentType?.toLowerCase()] ||
-            paymentType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || // ✅ NEW: Handle underscores and capitalize
+            paymentType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) ||
             'Cash';
         return mappedPaymentType;
     };
@@ -499,7 +551,6 @@ function PurchaseBillsTable({
         let displayAmount = values.totalAmount;
         let displayBalance = values.balanceAmount;
 
-        // If we have tax amounts but no total, calculate total with tax
         if (displayAmount === 0 && (taxAmounts.totalCGST > 0 || taxAmounts.totalSGST > 0)) {
             const items = values.items;
             if (items && items.length > 0) {
@@ -510,7 +561,6 @@ function PurchaseBillsTable({
             }
         }
 
-        // If balance is still 0 but we have amount, balance equals amount (unpaid)
         if (displayBalance === 0 && displayAmount > 0 && values.paidAmount === 0) {
             displayBalance = displayAmount;
         }
@@ -529,25 +579,25 @@ function PurchaseBillsTable({
     const getPaymentTypeVariant = (purchase) => {
         const paymentType = getPaymentType(purchase);
         switch (paymentType?.toLowerCase()) {
-            case 'cash': return 'success';           // Green
+            case 'cash': return 'success';
             case 'bank transfer':
             case 'online':
             case 'upi':
             case 'neft':
             case 'rtgs':
-            case 'imps': return 'info';              // Blue
-            case 'credit': return 'warning';         // Orange
-            case 'partial': return 'secondary';      // Gray
+            case 'imps': return 'info';
+            case 'credit': return 'warning';
+            case 'partial': return 'secondary';
             case 'cheque':
-            case 'check': return 'primary';          // Purple
+            case 'check': return 'primary';
             case 'card':
             case 'credit card':
-            case 'debit card': return 'info';        // Blue
+            case 'debit card': return 'info';
             case 'wallet':
             case 'paytm':
             case 'google pay':
-            case 'phonepe': return 'success';        // Green
-            default: return 'light';                 // Light gray
+            case 'phonepe': return 'success';
+            default: return 'light';
         }
     };
 
@@ -592,6 +642,14 @@ function PurchaseBillsTable({
             case 'received': return 'success';
             default: return 'light';
         }
+    };
+
+    // ✅ NEW: Helper function to check if purchase order can be converted
+    const canConvertToInvoice = (purchase) => {
+        return isPurchaseOrderView &&
+            !purchase.convertedToInvoice &&
+            purchase.status !== 'converted' &&
+            purchase.status !== 'cancelled';
     };
 
     return (
@@ -647,7 +705,6 @@ function PurchaseBillsTable({
                                                 <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
                                             </div>
                                         </th>
-                                        {/* ✅ UPDATED: Dynamic column header */}
                                         <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
                                             <div className="d-flex align-items-center">
                                                 <span>{config.numberLabel}</span>
@@ -731,16 +788,17 @@ function PurchaseBillsTable({
                                         </tr>
                                     ) : (
                                         filteredPurchases.map((purchase, index) => {
-                                            // ✅ FIXED: Extract values properly with enhanced logic
                                             const values = extractPurchaseValues(purchase);
-
-                                            // ✅ FIXED: Calculate display amounts
                                             const displayAmounts = calculateDisplayAmounts(purchase);
 
                                             return (
-                                                <tr key={purchase.id || purchase._id || index} className="purchase-transaction-row">
+                                                <tr key={purchase.id || purchase._id || index}
+                                                    className="purchase-transaction-row"
+                                                    style={{ cursor: 'pointer' }}
+                                                    onClick={() => handleViewTransaction(purchase)}>
+
                                                     {/* Date - Ultra Compact */}
-                                                    <td className="border-0 pys-2">
+                                                    <td className="border-0 py-2">
                                                         <div className="date-info">
                                                             <span className="text-dark fw-medium" style={{ fontSize: '0.75rem' }}>
                                                                 {formatDate(values.purchaseDate)}
@@ -796,9 +854,9 @@ function PurchaseBillsTable({
                                                         <Badge
                                                             bg={getPaymentTypeVariant(purchase)}
                                                             className="px-1 py-1 payment-badge"
-                                                            style={{ fontSize: '0.55rem' }} // Slightly smaller font to fit longer names
+                                                            style={{ fontSize: '0.55rem' }}
                                                             text={getPaymentTypeVariant(purchase) === 'light' ? 'dark' : 'white'}
-                                                            title={getPaymentType(purchase)} // Tooltip for full name
+                                                            title={getPaymentType(purchase)}
                                                         >
                                                             {getPaymentType(purchase).length > 8
                                                                 ? getPaymentType(purchase).substring(0, 8) + '...'
@@ -849,7 +907,7 @@ function PurchaseBillsTable({
                                                         </div>
                                                     </td>
 
-                                                    {/* Total Amount - Use calculated display amount */}
+                                                    {/* Total Amount */}
                                                     <td className="border-0 py-2 text-end">
                                                         <div className="amount-info">
                                                             <span className="fw-bold text-primary" style={{ fontSize: '0.8rem' }}>
@@ -863,7 +921,7 @@ function PurchaseBillsTable({
                                                         </div>
                                                     </td>
 
-                                                    {/* Balance - Use calculated display balance */}
+                                                    {/* Balance */}
                                                     <td className="border-0 py-2 text-end">
                                                         <div className="balance-info">
                                                             <span className={`fw-bold ${displayAmounts.balance > 0 ? 'text-danger' : 'text-success'}`}
@@ -884,18 +942,39 @@ function PurchaseBillsTable({
                                                     </td>
 
                                                     {/* Actions - Ultra Compact */}
-                                                    <td className="border-0 py-2 text-center">
+                                                    <td className="border-0 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                         <div className="d-flex gap-1 align-items-center justify-content-center">
+                                                            {/* Quick Convert Button for Purchase Orders */}
+                                                            {canConvertToInvoice(purchase) && (
+                                                                <Button
+                                                                    variant="outline-success"
+                                                                    size="sm"
+                                                                    className="action-btn"
+                                                                    title="Convert to Purchase Invoice"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onConvertPurchase && onConvertPurchase(purchase);
+                                                                    }}
+                                                                    disabled={isLoading}
+                                                                >
+                                                                    <FontAwesomeIcon icon={faExchangeAlt} style={{ fontSize: '0.6rem' }} />
+                                                                </Button>
+                                                            )}
+
                                                             <Button
                                                                 variant="outline-primary"
                                                                 size="sm"
                                                                 className="action-btn"
                                                                 title="Print"
-                                                                onClick={() => onPrintPurchase(purchase)}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onPrintPurchase && onPrintPurchase(purchase);
+                                                                }}
                                                                 disabled={isLoading}
                                                             >
                                                                 <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.6rem' }} />
                                                             </Button>
+
                                                             <Dropdown>
                                                                 <Dropdown.Toggle
                                                                     variant="outline-secondary"
@@ -903,27 +982,55 @@ function PurchaseBillsTable({
                                                                     className="action-btn dropdown-toggle-no-caret"
                                                                     title="More"
                                                                     disabled={isLoading}
+                                                                    onClick={(e) => e.stopPropagation()}
                                                                 >
                                                                     <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.6rem' }} />
                                                                 </Dropdown.Toggle>
                                                                 <Dropdown.Menu align="end" className="shadow-lg border-0 dropdown-menu-enhanced">
                                                                     <Dropdown.Item
-                                                                        onClick={() => onViewPurchase(purchase)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleViewTransaction(purchase);
+                                                                        }}
                                                                         className="dropdown-item-enhanced"
                                                                     >
                                                                         <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
-                                                                        View
+                                                                        View Details
                                                                     </Dropdown.Item>
                                                                     <Dropdown.Item
-                                                                        onClick={() => onEditPurchase(purchase)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            onEditPurchase && onEditPurchase(purchase);
+                                                                        }}
                                                                         className="dropdown-item-enhanced"
                                                                     >
                                                                         <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
                                                                         Edit
                                                                     </Dropdown.Item>
+
+                                                                    {/* Convert to Invoice Option in Dropdown */}
+                                                                    {canConvertToInvoice(purchase) && (
+                                                                        <>
+                                                                            <Dropdown.Divider />
+                                                                            <Dropdown.Item
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    onConvertPurchase && onConvertPurchase(purchase);
+                                                                                }}
+                                                                                className="dropdown-item-enhanced text-success"
+                                                                            >
+                                                                                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                                                                                Convert to Invoice
+                                                                            </Dropdown.Item>
+                                                                        </>
+                                                                    )}
+
                                                                     {values.currentStatus === 'draft' && (
                                                                         <Dropdown.Item
-                                                                            onClick={() => onMarkAsOrdered(purchase)}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onMarkAsOrdered && onMarkAsOrdered(purchase);
+                                                                            }}
                                                                             className="dropdown-item-enhanced"
                                                                         >
                                                                             <FontAwesomeIcon
@@ -935,7 +1042,10 @@ function PurchaseBillsTable({
                                                                     )}
                                                                     {(values.currentStatus === 'ordered' || values.currentStatus === 'sent') && (
                                                                         <Dropdown.Item
-                                                                            onClick={() => onMarkAsReceived(purchase)}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onMarkAsReceived && onMarkAsReceived(purchase);
+                                                                            }}
                                                                             className="dropdown-item-enhanced"
                                                                         >
                                                                             <FontAwesomeIcon
@@ -947,7 +1057,10 @@ function PurchaseBillsTable({
                                                                     )}
                                                                     {values.currentStatus === 'received' && (
                                                                         <Dropdown.Item
-                                                                            onClick={() => onCompletePurchase(purchase)}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onCompletePurchase && onCompletePurchase(purchase);
+                                                                            }}
                                                                             className="dropdown-item-enhanced"
                                                                         >
                                                                             <FontAwesomeIcon icon={faCheck} className="me-2 text-success" />
@@ -955,7 +1068,20 @@ function PurchaseBillsTable({
                                                                         </Dropdown.Item>
                                                                     )}
                                                                     <Dropdown.Item
-                                                                        onClick={() => onSharePurchase(purchase)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            onDownloadPurchase && onDownloadPurchase(purchase);
+                                                                        }}
+                                                                        className="dropdown-item-enhanced"
+                                                                    >
+                                                                        <FontAwesomeIcon icon={faDownload} className="me-2 text-info" />
+                                                                        Download
+                                                                    </Dropdown.Item>
+                                                                    <Dropdown.Item
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            onSharePurchase && onSharePurchase(purchase);
+                                                                        }}
                                                                         className="dropdown-item-enhanced"
                                                                     >
                                                                         <FontAwesomeIcon icon={faShare} className="me-2 text-info" />
@@ -963,7 +1089,10 @@ function PurchaseBillsTable({
                                                                     </Dropdown.Item>
                                                                     <Dropdown.Divider />
                                                                     <Dropdown.Item
-                                                                        onClick={() => onDeletePurchase(purchase)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            onDeletePurchase && onDeletePurchase(purchase);
+                                                                        }}
                                                                         className="dropdown-item-enhanced text-danger"
                                                                     >
                                                                         <FontAwesomeIcon icon={faTrash} className="me-2" />
@@ -1002,7 +1131,19 @@ function PurchaseBillsTable({
                     </div>
                 </div>
             </div>
-            {/* Ultra Compact Table Styles - Purple Theme */}
+
+            {/* ✅ NEW: Universal View Modal */}
+            <UniversalViewModal
+                show={showViewModal}
+                onHide={() => setShowViewModal(false)}
+                transaction={selectedTransaction}
+                documentType={config.documentType}
+                onEdit={handleModalEdit}
+                onPrint={handleModalPrint}
+                onDownload={handleModalDownload}
+                onShare={handleModalShare}
+                onConvert={handleModalConvert}
+            />
             <style>
                 {`
                 .purchase-bills-table-container {

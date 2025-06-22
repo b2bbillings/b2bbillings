@@ -21,7 +21,7 @@ function PurchaseOrderFormProductSelection({
     const [isLoadingProducts, setIsLoadingProducts] = useState(false);
     const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
-    // ✅ NEW: Main product form modal state
+    // Main product form modal state
     const [showProductFormModal, setShowProductFormModal] = useState(false);
     const [currentEditingIndex, setCurrentEditingIndex] = useState(null);
     const [tempFormData, setTempFormData] = useState({
@@ -57,13 +57,22 @@ function PurchaseOrderFormProductSelection({
     const isSelectingProductRef = useRef(false);
     const searchTimeoutRef = useRef(null);
 
-    // ✅ STANDARDIZED INPUT STYLES
+    // Theme-consistent styling
     const inputStyle = {
         borderColor: '#000',
         fontSize: '13px',
         padding: '10px 14px',
         height: '42px',
-        borderWidth: '2px'
+        borderWidth: '2px',
+        borderRadius: '8px',
+        fontWeight: '500'
+    };
+
+    const cardStyle = {
+        border: '3px solid #000',
+        borderRadius: '12px',
+        backgroundColor: 'white',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
     };
 
     // Load products from backend
@@ -132,9 +141,6 @@ function PurchaseOrderFormProductSelection({
                 setShowProductSuggestions(true);
             }
             setSelectedSuggestionIndex(-1);
-            if (searchTerm.length >= 2) {
-                addToast?.('Failed to search products: ' + error.message, 'error');
-            }
         } finally {
             setIsLoadingProducts(false);
         }
@@ -161,7 +167,7 @@ function PurchaseOrderFormProductSelection({
         };
     }, [productSearchTerms, companyId]);
 
-    // ✅ NEW: Handle opening product form modal
+    // Handle opening product form modal
     const handleAddProductClick = () => {
         setCurrentEditingIndex(null);
         setTempFormData({
@@ -186,7 +192,7 @@ function PurchaseOrderFormProductSelection({
         setShowProductFormModal(true);
     };
 
-    // ✅ NEW: Handle editing existing product
+    // Handle editing existing product
     const handleEditProduct = (index) => {
         const item = formData.items[index];
         setCurrentEditingIndex(index);
@@ -195,7 +201,7 @@ function PurchaseOrderFormProductSelection({
         setShowProductFormModal(true);
     };
 
-    // ✅ NEW: Handle product search in modal
+    // Handle product search in modal
     const handleProductSearchChange = (value) => {
         if (isSelectingProductRef.current) {
             return;
@@ -227,7 +233,7 @@ function PurchaseOrderFormProductSelection({
         });
     };
 
-    // ✅ NEW: Handle product selection in modal
+    // Handle product selection in modal
     const handleProductSelect = (product) => {
         isSelectingProductRef.current = true;
 
@@ -237,7 +243,7 @@ function PurchaseOrderFormProductSelection({
             productName: product.name,
             productCode: product.code,
             description: product.description,
-            price: product.purchasePrice.toString(), // Use purchase price for purchase orders
+            price: product.purchasePrice.toString(),
             purchasePrice: product.purchasePrice.toString(),
             sellingPrice: product.sellingPrice.toString(),
             gstRate: product.gstRate,
@@ -250,7 +256,6 @@ function PurchaseOrderFormProductSelection({
         setShowProductSuggestions(false);
         setSelectedSuggestionIndex(-1);
 
-        // Show description modal if product has description
         if (product.description) {
             setTempDescription(product.description);
             setTimeout(() => {
@@ -263,12 +268,11 @@ function PurchaseOrderFormProductSelection({
         }, 300);
     };
 
-    // ✅ NEW: Handle form field changes in modal
+    // Handle form field changes in modal
     const handleTempFormChange = (field, value) => {
         setTempFormData(prev => {
             const updated = { ...prev, [field]: value };
 
-            // Recalculate totals if quantity, price, or gstMode changes
             if (['quantity', 'price', 'gstMode', 'gstRate'].includes(field)) {
                 calculateItemTotal(updated);
             }
@@ -306,7 +310,7 @@ function PurchaseOrderFormProductSelection({
         itemData.totalAmount = Math.round(totalAmount * 100) / 100;
     };
 
-    // ✅ NEW: Handle save and add another
+    // Handle save and add another
     const handleSaveAndAdd = () => {
         if (!validateTempForm()) return;
 
@@ -325,7 +329,6 @@ function PurchaseOrderFormProductSelection({
         }
 
         onFormDataChange('items', updatedItems);
-        addToast?.('Product added successfully!', 'success');
 
         // Reset form for next product
         setTempFormData({
@@ -350,7 +353,7 @@ function PurchaseOrderFormProductSelection({
         setCurrentEditingIndex(null);
     };
 
-    // ✅ NEW: Handle save and exit
+    // Handle save and exit
     const handleSaveAndExit = () => {
         if (!validateTempForm()) return;
 
@@ -364,10 +367,8 @@ function PurchaseOrderFormProductSelection({
         if (currentEditingIndex !== null) {
             updatedItems = [...currentItems];
             updatedItems[currentEditingIndex] = newItem;
-            addToast?.('Product updated successfully!', 'success');
         } else {
             updatedItems = [...currentItems, newItem];
-            addToast?.('Product added successfully!', 'success');
         }
 
         onFormDataChange('items', updatedItems);
@@ -375,30 +376,26 @@ function PurchaseOrderFormProductSelection({
         setCurrentEditingIndex(null);
     };
 
-    // ✅ NEW: Validate temp form
+    // Validate temp form
     const validateTempForm = () => {
         if (!tempFormData.productName?.trim()) {
-            addToast?.('Please select or enter a product name', 'error');
             return false;
         }
         if (!tempFormData.quantity || parseFloat(tempFormData.quantity) <= 0) {
-            addToast?.('Please enter a valid quantity', 'error');
             return false;
         }
         if (!tempFormData.price || parseFloat(tempFormData.price) <= 0) {
-            addToast?.('Please enter a valid purchase price', 'error');
             return false;
         }
         return true;
     };
 
-    // ✅ NEW: Handle removing product from list
+    // Handle removing product from list
     const handleRemoveProduct = (index) => {
         const currentItems = formData.items || [];
         if (currentItems.length > 0) {
             const updatedItems = currentItems.filter((_, i) => i !== index);
             onFormDataChange('items', updatedItems);
-            addToast?.('Product removed successfully!', 'success');
         }
     };
 
@@ -431,8 +428,6 @@ function PurchaseOrderFormProductSelection({
 
     // Handle new item saved
     const handleNewItemSaved = (newItem) => {
-        addToast?.('New item created successfully!', 'success');
-
         const formattedProduct = {
             id: newItem._id || newItem.id,
             name: newItem.name || newItem.itemName || 'New Product',
@@ -523,97 +518,101 @@ function PurchaseOrderFormProductSelection({
 
     return (
         <>
-
             <div className="purchase-order-form-product-section">
-                {/* ✅ FIXED: Add Product Button - Always visible */}
-                <div className="mb-4">
-                    <Row>
-                        <Col md={8}>
+                {/* Header Section with Add Button */}
+                <Card className="mb-4" style={cardStyle}>
+                    <Card.Header className="bg-light border-bottom-3" style={{ borderBottomColor: '#000', padding: '15px 20px' }}>
+                        <div className="d-flex align-items-center justify-content-between">
+                            <div className="d-flex align-items-center">
+                                <FontAwesomeIcon icon={faShoppingCart} className="me-3 text-primary" size="lg" />
+                                <div>
+                                    <h5 className="mb-0 fw-bold text-dark">Purchase Products</h5>
+                                    {items.length > 0 && items.some(item => item.productName) && (
+                                        <small className="text-muted">
+                                            {items.filter(item => item.productName).length} product{items.filter(item => item.productName).length !== 1 ? 's' : ''} added
+                                        </small>
+                                    )}
+                                </div>
+                            </div>
                             <Button
-                                variant="warning"
-                                size="lg"
+                                variant="primary"
+                                size="sm"
                                 onClick={handleAddProductClick}
                                 disabled={disabled}
-                                className="w-100"
                                 style={{
-                                    backgroundColor: '#ffc107',
+                                    backgroundColor: '#007bff',
                                     borderColor: '#000',
-                                    color: '#000',
-                                    fontSize: '16px',
+                                    color: 'white',
+                                    fontSize: '13px',
                                     fontWeight: 'bold',
-                                    padding: '12px 24px',
-                                    borderWidth: '2px'
+                                    padding: '8px 16px',
+                                    borderWidth: '2px',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                                 }}
                             >
                                 <FontAwesomeIcon icon={faPlus} className="me-2" />
-                                Add Product to Purchase
+                                Add Product
                             </Button>
-                        </Col>
-                        {/* ✅ FIXED: Only show product count if there are valid products */}
-                        {items.length > 0 && items.some(item => item.productName) && (
-                            <Col md={4}>
-                                <div className="text-center text-muted d-flex align-items-center justify-content-center h-100">
-                                    <div>
-                                        <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-                                        <strong>{items.filter(item => item.productName).length}</strong> {items.filter(item => item.productName).length === 1 ? 'Product' : 'Products'} Added
-                                    </div>
-                                </div>
-                            </Col>
-                        )}
-                    </Row>
-                </div>
+                        </div>
+                    </Card.Header>
 
-                {/* ✅ FIXED: Only show products table if there are valid items with product names */}
-                {items.length > 0 && items.some(item => item.productName) && (
-                    <Card className="mb-4 border-2" style={{ borderColor: '#000' }}>
-                        <Card.Header className="bg-warning bg-opacity-10 border-bottom-2" style={{ borderBottomColor: '#000' }}>
-                            <h5 className="mb-0">
-                                <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-                                Purchase Products ({items.filter(item => item.productName).length})
-                            </h5>
-                        </Card.Header>
-                        <Card.Body className="p-0">
+                    {/* Products Table or Empty State */}
+                    <Card.Body className="p-0">
+                        {items.length > 0 && items.some(item => item.productName) ? (
                             <Table responsive hover className="mb-0">
-                                <thead className="bg-warning bg-opacity-10">
+                                <thead className="bg-light border-bottom-2" style={{ borderBottomColor: '#000' }}>
                                     <tr>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>#</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Product</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Qty</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Purchase Price</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>GST</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Total</th>
-                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px' }}>Actions</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>#</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>Product Details</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>Quantity</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>Purchase Price</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>GST</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>Total</th>
+                                        <th style={{ fontSize: '13px', fontWeight: 'bold', padding: '12px', borderColor: '#000' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {items.filter(item => item.productName).map((item, index) => (
-                                        <tr key={item.id || index}>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                {index + 1}
+                                        <tr key={item.id || index} style={{ borderColor: '#000' }}>
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <Badge bg="secondary" style={{ fontSize: '11px' }}>
+                                                    {index + 1}
+                                                </Badge>
                                             </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
                                                 <div>
-                                                    <strong>{item.productName}</strong>
+                                                    <div className="fw-bold text-dark">{item.productName}</div>
                                                     {item.productCode && (
-                                                        <Badge bg="secondary" className="ms-2" style={{ fontSize: '10px' }}>
+                                                        <Badge bg="info" className="me-2" style={{ fontSize: '10px' }}>
                                                             {item.productCode}
                                                         </Badge>
                                                     )}
+                                                    {item.unit && (
+                                                        <Badge bg="secondary" style={{ fontSize: '10px' }}>
+                                                            {item.unit}
+                                                        </Badge>
+                                                    )}
+                                                    {item.description && (
+                                                        <div className="text-muted mt-1" style={{ fontSize: '11px' }}>
+                                                            {item.description.length > 50
+                                                                ? `${item.description.substring(0, 50)}...`
+                                                                : item.description}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                {item.description && (
-                                                    <div className="text-muted" style={{ fontSize: '11px', marginTop: '2px' }}>
-                                                        {item.description.length > 50
-                                                            ? `${item.description.substring(0, 50)}...`
-                                                            : item.description}
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <div className="text-center">
+                                                    <div className="fw-bold text-primary" style={{ fontSize: '14px' }}>
+                                                        {item.quantity}
                                                     </div>
-                                                )}
+                                                    <small className="text-muted">{item.unit || 'pcs'}</small>
+                                                </div>
                                             </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                {item.quantity} {item.unit}
-                                            </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                <div>
-                                                    <Badge bg="warning" text="dark" style={{ fontSize: '10px' }}>
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <div className="text-center">
+                                                    <Badge bg="warning" text="dark" className="mb-1" style={{ fontSize: '10px' }}>
                                                         Purchase
                                                     </Badge>
                                                     <div className="fw-bold text-warning">
@@ -621,38 +620,48 @@ function PurchaseOrderFormProductSelection({
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                {formData.gstType === 'gst' ? (
-                                                    <div>
-                                                        <Badge
-                                                            bg={item.gstMode === 'include' ? 'success' : 'warning'}
-                                                            style={{ fontSize: '10px' }}
-                                                        >
-                                                            {item.gstMode === 'include' ? 'Inc' : 'Exc'}
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <div className="text-center">
+                                                    {formData.gstType === 'gst' ? (
+                                                        <>
+                                                            <Badge
+                                                                bg={item.gstMode === 'include' ? 'success' : 'warning'}
+                                                                className="mb-1"
+                                                                style={{ fontSize: '10px' }}
+                                                            >
+                                                                {item.gstMode === 'include' ? 'Inc' : 'Exc'} {item.gstRate}%
+                                                            </Badge>
+                                                            <div className="fw-bold text-success">
+                                                                ₹{(item.gstAmount || 0).toFixed(2)}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <Badge bg="secondary" style={{ fontSize: '10px' }}>
+                                                            No GST
                                                         </Badge>
-                                                        <div style={{ fontSize: '11px' }}>
-                                                            ₹{(item.gstAmount || 0).toFixed(2)}
-                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <div className="text-center">
+                                                    <div className="fw-bold text-success" style={{ fontSize: '15px' }}>
+                                                        ₹{(item.totalAmount || 0).toFixed(2)}
                                                     </div>
-                                                ) : (
-                                                    <Badge bg="secondary" style={{ fontSize: '10px' }}>
-                                                        No GST
-                                                    </Badge>
-                                                )}
+                                                </div>
                                             </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                <strong className="text-success">
-                                                    ₹{(item.totalAmount || 0).toFixed(2)}
-                                                </strong>
-                                            </td>
-                                            <td style={{ padding: '12px', fontSize: '13px' }}>
-                                                <div className="d-flex gap-2">
+                                            <td style={{ padding: '12px', fontSize: '13px', borderColor: '#000' }}>
+                                                <div className="d-flex gap-1 justify-content-center">
                                                     <Button
                                                         variant="outline-primary"
                                                         size="sm"
                                                         onClick={() => handleEditProduct(items.indexOf(item))}
                                                         disabled={disabled}
                                                         title="Edit product"
+                                                        style={{
+                                                            borderWidth: '2px',
+                                                            fontSize: '11px',
+                                                            padding: '4px 8px'
+                                                        }}
                                                     >
                                                         <FontAwesomeIcon icon={faEdit} />
                                                     </Button>
@@ -662,6 +671,11 @@ function PurchaseOrderFormProductSelection({
                                                         onClick={() => handleRemoveProduct(items.indexOf(item))}
                                                         disabled={disabled}
                                                         title="Remove product"
+                                                        style={{
+                                                            borderWidth: '2px',
+                                                            fontSize: '11px',
+                                                            padding: '4px 8px'
+                                                        }}
                                                     >
                                                         <FontAwesomeIcon icon={faTrash} />
                                                     </Button>
@@ -671,48 +685,46 @@ function PurchaseOrderFormProductSelection({
                                     ))}
                                 </tbody>
                             </Table>
-                        </Card.Body>
-                    </Card>
-                )}
+                        ) : (
+                            <div className="text-center text-muted py-5">
+                                <FontAwesomeIcon icon={faBoxOpen} size="3x" className="mb-3 opacity-50" />
+                                <h5 className="text-muted mb-2">No Products Added Yet</h5>
+                                <p className="text-muted">
+                                    Click the "Add Product" button above to start adding products to your purchase order.
+                                </p>
+                            </div>
+                        )}
+                    </Card.Body>
+                </Card>
 
-                {/* ✅ FIXED: Only show description section if there are valid products */}
+                {/* Description Section - Only show if there are products */}
                 {items.length > 0 && items.some(item => item.productName) && (
-                    <Card className="mb-3 border-2" style={{ borderColor: '#000' }}>
-                        <Card.Body>
+                    <Card className="mb-3" style={cardStyle}>
+                        <Card.Body className="p-4">
                             <Form.Group>
-                                <Form.Label className="fw-bold" style={{ fontSize: '14px' }}>
+                                <Form.Label className="d-flex align-items-center fw-bold" style={{ fontSize: '14px', color: '#2c3e50' }}>
+                                    <FontAwesomeIcon icon={faEdit} className="me-2 text-primary" />
                                     Purchase Order Description
                                 </Form.Label>
                                 <Form.Control
                                     as="textarea"
-                                    rows={2}
+                                    rows={3}
                                     value={formData.purchaseDescription || ''}
                                     onChange={(e) => onFormDataChange('purchaseDescription', e.target.value)}
                                     style={inputStyle}
                                     placeholder="Enter purchase order description, terms & conditions..."
                                     disabled={disabled}
                                 />
-                                <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
-                                    This description will appear on the purchase order
+                                <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                    📝 This description will appear on the purchase order document
                                 </Form.Text>
                             </Form.Group>
                         </Card.Body>
                     </Card>
                 )}
-
-                {/* ✅ ENHANCED: Show helpful message when no valid products are added */}
-                {(!items.length || !items.some(item => item.productName)) && (
-                    <div className="text-center text-muted py-5">
-                        <FontAwesomeIcon icon={faBoxOpen} size="3x" className="mb-3 opacity-50" />
-                        <h5 className="text-muted">No Products Added Yet</h5>
-                        <p className="text-muted">
-                            Click the "Add Product to Purchase" button above to start adding products to your purchase order.
-                        </p>
-                    </div>
-                )}
             </div>
 
-            {/* ✅ NEW: Product Form Modal */}
+            {/* Product Form Modal */}
             <Modal
                 show={showProductFormModal}
                 onHide={() => setShowProductFormModal(false)}
@@ -720,20 +732,32 @@ function PurchaseOrderFormProductSelection({
                 centered
                 backdrop="static"
             >
-                <Modal.Header closeButton>
-                    <Modal.Title>
+                <Modal.Header
+                    closeButton
+                    className="border-bottom-3"
+                    style={{
+                        borderBottomColor: '#000',
+                        backgroundColor: '#f8f9fa'
+                    }}
+                >
+                    <Modal.Title className="fw-bold">
+                        <FontAwesomeIcon
+                            icon={currentEditingIndex !== null ? faEdit : faPlus}
+                            className="me-2 text-primary"
+                        />
                         {currentEditingIndex !== null ? 'Edit Purchase Product' : 'Add Purchase Product'}
                     </Modal.Title>
                 </Modal.Header>
-                <Modal.Body>
+                <Modal.Body className="p-4">
                     <Row>
                         {/* Product Selection */}
                         <Col md={6}>
                             <Form.Group className="mb-3 position-relative">
-                                <Form.Label className="fw-bold text-danger">
+                                <Form.Label className="fw-bold text-danger d-flex align-items-center" style={{ fontSize: '14px' }}>
+                                    <FontAwesomeIcon icon={faBox} className="me-2" />
                                     Select Product *
                                     {tempFormData.selectedProduct && (
-                                        <Badge bg="success" className="ms-2">
+                                        <Badge bg="success" className="ms-2" style={{ fontSize: '10px' }}>
                                             <FontAwesomeIcon icon={faCheck} className="me-1" />
                                             Selected
                                         </Badge>
@@ -752,7 +776,7 @@ function PurchaseOrderFormProductSelection({
                                             color: tempFormData.selectedProduct ? '#155724' : 'inherit',
                                             fontWeight: tempFormData.selectedProduct ? 'bold' : 'normal'
                                         }}
-                                        placeholder="Search product..."
+                                        placeholder="🔍 Search product..."
                                     />
 
                                     {isLoadingProducts && (
@@ -762,7 +786,7 @@ function PurchaseOrderFormProductSelection({
                                             transform: 'translateY(-50%)',
                                             zIndex: 10
                                         }}>
-                                            <Spinner size="sm" />
+                                            <Spinner size="sm" className="text-primary" />
                                         </div>
                                     )}
 
@@ -782,15 +806,12 @@ function PurchaseOrderFormProductSelection({
                                     {/* Product Suggestions */}
                                     {showProductSuggestions && !tempFormData.selectedProduct && (
                                         <div
-                                            className="position-absolute w-100 bg-white border rounded shadow-lg"
+                                            className="position-absolute w-100 bg-white border-3 rounded-3 mt-2 shadow-lg"
                                             style={{
                                                 zIndex: 9999,
                                                 maxHeight: '200px',
                                                 overflowY: 'auto',
-                                                top: '100%',
-                                                left: 0,
-                                                right: 0,
-                                                marginTop: '2px'
+                                                borderColor: '#000'
                                             }}
                                         >
                                             {products && products.length > 0 && (
@@ -798,19 +819,25 @@ function PurchaseOrderFormProductSelection({
                                                     {products.slice(0, 5).map((product, productIndex) => (
                                                         <div
                                                             key={product.id}
-                                                            className={`p-2 border-bottom cursor-pointer ${selectedSuggestionIndex === productIndex ? 'bg-primary text-white' : ''}`}
-                                                            style={{ cursor: 'pointer' }}
+                                                            className={`p-3 border-bottom cursor-pointer ${selectedSuggestionIndex === productIndex ? 'bg-primary text-white' : 'hover-bg-light'}`}
+                                                            style={{
+                                                                fontSize: '13px',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
                                                             onMouseDown={(e) => {
                                                                 e.preventDefault();
                                                                 handleProductSelect(product);
                                                             }}
                                                             onMouseEnter={() => setSelectedSuggestionIndex(productIndex)}
                                                         >
-                                                            <div className="fw-bold">{product.name}</div>
-                                                            <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                                                                <span className="text-warning fw-bold">Purchase: ₹{product.purchasePrice.toFixed(2)}</span>
-                                                                <span className="ms-2 text-success">Sale: ₹{product.sellingPrice.toFixed(2)}</span>
-                                                                <span className="ms-2 text-info">Stock: {product.stock}</span>
+                                                            <div className={`fw-bold mb-1 ${selectedSuggestionIndex === productIndex ? 'text-white' : 'text-primary'}`} style={{ fontSize: '14px' }}>
+                                                                📦 {product.name}
+                                                            </div>
+                                                            <div className={selectedSuggestionIndex === productIndex ? 'text-light' : 'text-muted'} style={{ fontSize: '12px' }}>
+                                                                <span className="me-3">💰 Purchase: ₹{product.purchasePrice.toFixed(2)}</span>
+                                                                <span className="me-3">📊 Stock: {product.stock}</span>
+                                                                {product.code && <span>🏷️ {product.code}</span>}
                                                             </div>
                                                         </div>
                                                     ))}
@@ -822,15 +849,23 @@ function PurchaseOrderFormProductSelection({
                                                 productSearchTerms.length >= 2 &&
                                                 !isLoadingProducts && (
                                                     <div
-                                                        className="p-2 cursor-pointer bg-success bg-opacity-10"
-                                                        style={{ cursor: 'pointer' }}
+                                                        className="p-3 cursor-pointer bg-success bg-opacity-10 border-top-3"
+                                                        style={{
+                                                            fontSize: '13px',
+                                                            cursor: 'pointer',
+                                                            borderTopColor: '#000'
+                                                        }}
                                                         onMouseDown={(e) => {
                                                             e.preventDefault();
                                                             handleAddNewItemClick(productSearchTerms);
                                                         }}
                                                     >
-                                                        <FontAwesomeIcon icon={faPlus} className="text-success me-2" />
-                                                        Add "{productSearchTerms}"
+                                                        <div className="text-center">
+                                                            <FontAwesomeIcon icon={faPlus} className="text-success me-2" />
+                                                            <span className="fw-bold text-success">
+                                                                ➕ Add "{productSearchTerms}" as new product
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 )}
                                         </div>
@@ -842,7 +877,9 @@ function PurchaseOrderFormProductSelection({
                         {/* Quantity */}
                         <Col md={3}>
                             <Form.Group className="mb-3">
-                                <Form.Label className="fw-bold text-danger">Quantity *</Form.Label>
+                                <Form.Label className="fw-bold text-danger d-flex align-items-center" style={{ fontSize: '14px' }}>
+                                    📊 Quantity *
+                                </Form.Label>
                                 <Form.Control
                                     type="number"
                                     value={tempFormData.quantity || ''}
@@ -854,8 +891,8 @@ function PurchaseOrderFormProductSelection({
                                     data-modal-quantity-input
                                 />
                                 {tempFormData.unit && (
-                                    <Form.Text className="text-muted">
-                                        Unit: {tempFormData.unit}
+                                    <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                        📦 Unit: {tempFormData.unit}
                                     </Form.Text>
                                 )}
                             </Form.Group>
@@ -864,8 +901,8 @@ function PurchaseOrderFormProductSelection({
                         {/* Purchase Price */}
                         <Col md={3}>
                             <Form.Group className="mb-3">
-                                <Form.Label className="fw-bold text-danger">
-                                    Purchase Price *
+                                <Form.Label className="fw-bold text-danger d-flex align-items-center" style={{ fontSize: '14px' }}>
+                                    💰 Purchase Price *
                                     <Badge bg="warning" text="dark" className="ms-2" style={{ fontSize: '10px' }}>
                                         Purchase
                                     </Badge>
@@ -896,7 +933,7 @@ function PurchaseOrderFormProductSelection({
                                         step="0.01"
                                     />
                                 </div>
-                                <Form.Text className="text-warning" style={{ fontSize: '12px' }}>
+                                <Form.Text className="text-warning fw-bold" style={{ fontSize: '12px' }}>
                                     💰 Purchase price for this order
                                 </Form.Text>
                             </Form.Group>
@@ -907,22 +944,24 @@ function PurchaseOrderFormProductSelection({
                         {/* GST Mode */}
                         <Col md={4}>
                             <Form.Group className="mb-3">
-                                <Form.Label className="fw-bold">GST Mode</Form.Label>
+                                <Form.Label className="fw-bold d-flex align-items-center" style={{ fontSize: '14px', color: '#2c3e50' }}>
+                                    🏷️ GST Mode
+                                </Form.Label>
                                 <Form.Select
                                     value={tempFormData.gstMode || 'exclude'}
                                     onChange={(e) => handleTempFormChange('gstMode', e.target.value)}
                                     style={{
                                         ...inputStyle,
-                                        backgroundColor: formData.gstType === 'gst' ? '#FFD700' : '#f8f9fa',
+                                        backgroundColor: formData.gstType === 'gst' ? '#e8f5e8' : '#f8f9fa',
                                         opacity: formData.gstType === 'non-gst' ? 0.6 : 1
                                     }}
                                     disabled={formData.gstType === 'non-gst'}
                                 >
-                                    <option value="include">GST Include</option>
-                                    <option value="exclude">GST Exclude</option>
+                                    <option value="include">✅ GST Include</option>
+                                    <option value="exclude">❌ GST Exclude</option>
                                 </Form.Select>
-                                <Form.Text className="text-muted">
-                                    Rate: {formData.gstType === 'gst' ? `${tempFormData.gstRate || 18}%` : 'No GST'}
+                                <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                    🏷️ Rate: {formData.gstType === 'gst' ? `${tempFormData.gstRate || 18}%` : 'No GST'}
                                 </Form.Text>
                             </Form.Group>
                         </Col>
@@ -930,7 +969,8 @@ function PurchaseOrderFormProductSelection({
                         {/* Description */}
                         <Col md={8}>
                             <Form.Group className="mb-3">
-                                <Form.Label className="fw-bold">
+                                <Form.Label className="fw-bold d-flex align-items-center" style={{ fontSize: '14px', color: '#2c3e50' }}>
+                                    <FontAwesomeIcon icon={faEdit} className="me-2" />
                                     Description
                                 </Form.Label>
                                 <Form.Control
@@ -941,8 +981,8 @@ function PurchaseOrderFormProductSelection({
                                     style={inputStyle}
                                     placeholder="Enter product description..."
                                 />
-                                <Form.Text className="text-muted" style={{ fontSize: '12px' }}>
-                                    Optional: Add product details, specifications, or notes
+                                <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                                    📝 Optional: Add product details, specifications, or notes
                                 </Form.Text>
                             </Form.Group>
                         </Col>
@@ -950,31 +990,31 @@ function PurchaseOrderFormProductSelection({
 
                     {/* Product Info Display */}
                     {tempFormData.selectedProduct && (
-                        <Alert variant="warning" className="mb-3">
+                        <Alert variant="info" className="mb-3" style={{ borderColor: '#000', borderWidth: '2px' }}>
                             <Row>
                                 <Col md={3}>
-                                    <strong>Code:</strong> {tempFormData.productCode || 'N/A'}
+                                    <strong>🏷️ Code:</strong> {tempFormData.productCode || 'N/A'}
                                 </Col>
                                 <Col md={3}>
-                                    <strong>Stock:</strong> {tempFormData.availableStock} {tempFormData.unit}
+                                    <strong>📦 Stock:</strong> {tempFormData.availableStock} {tempFormData.unit}
                                 </Col>
                                 <Col md={3}>
-                                    <strong>Purchase:</strong> ₹{parseFloat(tempFormData.purchasePrice || tempFormData.price || 0).toFixed(2)}
+                                    <strong>💰 Purchase:</strong> ₹{parseFloat(tempFormData.purchasePrice || tempFormData.price || 0).toFixed(2)}
                                 </Col>
                                 <Col md={3}>
-                                    <strong>Selling:</strong> ₹{parseFloat(tempFormData.sellingPrice || 0).toFixed(2)}
+                                    <strong>💵 Selling:</strong> ₹{parseFloat(tempFormData.sellingPrice || 0).toFixed(2)}
                                 </Col>
                             </Row>
                             <Row className="mt-2">
                                 <Col md={4}>
-                                    <strong>GST:</strong> ₹{(tempFormData.gstAmount || 0).toFixed(2)}
+                                    <strong>🏷️ GST:</strong> ₹{(tempFormData.gstAmount || 0).toFixed(2)}
                                 </Col>
                                 <Col md={4}>
-                                    <strong>Subtotal:</strong> ₹{(tempFormData.subtotal || 0).toFixed(2)}
+                                    <strong>📊 Subtotal:</strong> ₹{(tempFormData.subtotal || 0).toFixed(2)}
                                 </Col>
                                 {tempFormData.hsnNumber && (
                                     <Col md={4}>
-                                        <strong>HSN:</strong> {tempFormData.hsnNumber}
+                                        <strong>🔢 HSN:</strong> {tempFormData.hsnNumber}
                                     </Col>
                                 )}
                             </Row>
@@ -982,32 +1022,44 @@ function PurchaseOrderFormProductSelection({
                     )}
 
                     {/* Total Display */}
-                    <div className="text-center mb-3">
-                        <h4 className="text-success">
-                            Total: ₹{(tempFormData.totalAmount || 0).toFixed(2)}
+                    <div className="text-center mb-3 p-3 bg-success bg-opacity-10 rounded-3" style={{ border: '2px solid #28a745' }}>
+                        <h4 className="text-success fw-bold mb-0">
+                            💰 Total: ₹{(tempFormData.totalAmount || 0).toFixed(2)}
                         </h4>
                     </div>
                 </Modal.Body>
-                <Modal.Footer>
+                <Modal.Footer className="border-top-3" style={{ borderTopColor: '#000' }}>
                     <Button
                         variant="outline-secondary"
                         onClick={() => setShowProductFormModal(false)}
+                        style={{
+                            borderWidth: '2px',
+                            fontWeight: 'bold'
+                        }}
                     >
+                        <FontAwesomeIcon icon={faTimes} className="me-2" />
                         Cancel
                     </Button>
                     <Button
                         variant="success"
                         onClick={handleSaveAndAdd}
                         disabled={!tempFormData.productName || !tempFormData.quantity || !tempFormData.price}
+                        style={{
+                            borderWidth: '2px',
+                            fontWeight: 'bold'
+                        }}
                     >
                         <FontAwesomeIcon icon={faPlus} className="me-2" />
                         Save & Add Another
                     </Button>
                     <Button
-                        variant="warning"
+                        variant="primary"
                         onClick={handleSaveAndExit}
                         disabled={!tempFormData.productName || !tempFormData.quantity || !tempFormData.price}
-                        style={{ color: '#000', fontWeight: 'bold' }}
+                        style={{
+                            borderWidth: '2px',
+                            fontWeight: 'bold'
+                        }}
                     >
                         <FontAwesomeIcon icon={faSave} className="me-2" />
                         Save & Exit
@@ -1022,13 +1074,16 @@ function PurchaseOrderFormProductSelection({
                 centered
                 backdrop="static"
             >
-                <Modal.Header closeButton>
-                    <Modal.Title>Product Description</Modal.Title>
+                <Modal.Header closeButton className="border-bottom-3" style={{ borderBottomColor: '#000' }}>
+                    <Modal.Title className="fw-bold">
+                        <FontAwesomeIcon icon={faEdit} className="me-2 text-primary" />
+                        Product Description
+                    </Modal.Title>
                 </Modal.Header>
-                <Modal.Body>
+                <Modal.Body className="p-4">
                     <Form.Group>
-                        <Form.Label className="fw-bold">
-                            Description for: <span className="text-primary">{tempFormData.productName}</span>
+                        <Form.Label className="fw-bold d-flex align-items-center" style={{ fontSize: '14px' }}>
+                            📝 Description for: <span className="text-primary ms-2">{tempFormData.productName}</span>
                         </Form.Label>
                         <Form.Control
                             ref={descriptionTextareaRef}
@@ -1048,17 +1103,25 @@ function PurchaseOrderFormProductSelection({
                                 }
                             }}
                         />
-                        <Form.Text className="text-muted">
-                            Press Ctrl+Enter to save, Escape to skip
+                        <Form.Text className="text-muted fw-bold" style={{ fontSize: '12px' }}>
+                            ⌨️ Press Ctrl+Enter to save, Escape to skip
                         </Form.Text>
                     </Form.Group>
                 </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="outline-secondary" onClick={handleDescriptionModalSkip}>
+                <Modal.Footer className="border-top-3" style={{ borderTopColor: '#000' }}>
+                    <Button
+                        variant="outline-secondary"
+                        onClick={handleDescriptionModalSkip}
+                        style={{ borderWidth: '2px', fontWeight: 'bold' }}
+                    >
                         <FontAwesomeIcon icon={faTimes} className="me-2" />
                         Skip
                     </Button>
-                    <Button variant="primary" onClick={handleDescriptionModalSave}>
+                    <Button
+                        variant="primary"
+                        onClick={handleDescriptionModalSave}
+                        style={{ borderWidth: '2px', fontWeight: 'bold' }}
+                    >
                         <FontAwesomeIcon icon={faCheck} className="me-2" />
                         Save & Continue
                     </Button>
