@@ -727,75 +727,99 @@ function PurchaseInvoiceFormSection({
           }
         : null;
 
-      // ✅ FIXED: Transform data using purchaseService format with all required fields
+      // In the handleSavePurchase function, update the data preparation section:
+
+      // ✅ FIXED: Enhanced purchase data preparation with proper validation
       const purchaseDataForService = {
-        // ✅ Required: Basic purchase info
-        companyId: validCompanyId, // Ensure this is always present
-        purchaseNumber: formData.invoiceNumber || `PB-${Date.now()}`,
-        purchaseDate:
-          formData.invoiceDate || new Date().toISOString().split("T")[0],
-        gstEnabled: Boolean(formData.gstEnabled),
+        // ✅ CRITICAL: Ensure companyId is always present and valid
+        companyId: validCompanyId,
 
-        // ✅ Required: Supplier info - using multiple formats for compatibility
-        supplier: supplierData,
-        supplierName: supplierData?.name || "",
-        supplierMobile: supplierData?.mobile || formData.mobileNumber || "",
-        supplierId: supplierData?.id || null,
-        supplierEmail: supplierData?.email || "",
-        supplierAddress: supplierData?.address || "",
-        supplierGstNumber: supplierData?.gstNumber || "",
+        // ✅ CRITICAL: Supplier information - use customer field which contains supplier data
+        customer: formData.customer, // This contains the supplier data
+        supplier: formData.customer
+          ? {
+              id: formData.customer.id || formData.customer._id,
+              _id: formData.customer.id || formData.customer._id,
+              name:
+                formData.customer.name || formData.customer.businessName || "",
+              mobile: formData.customer.mobile || formData.customer.phone || "",
+              email: formData.customer.email || "",
+              address: formData.customer.address || "",
+              gstNumber: formData.customer.gstNumber || "",
+            }
+          : null,
 
-        // ✅ Required: Items data - ensure proper format
+        // ✅ Additional supplier fields for backend compatibility
+        supplierName:
+          formData.customer?.name || formData.customer?.businessName || "",
+        supplierMobile:
+          formData.customer?.mobile || formData.customer?.phone || "",
+        supplierEmail: formData.customer?.email || "",
+        supplierAddress: formData.customer?.address || "",
+        supplierGstNumber: formData.customer?.gstNumber || "",
+        supplierId: formData.customer?.id || formData.customer?._id || null,
+
+        // ✅ Legacy party fields
+        partyName:
+          formData.customer?.name || formData.customer?.businessName || "",
+        partyPhone: formData.customer?.mobile || formData.customer?.phone || "",
+        partyEmail: formData.customer?.email || "",
+        partyAddress: formData.customer?.address || "",
+        mobileNumber:
+          formData.customer?.mobile || formData.customer?.phone || "",
+
+        // ✅ CRITICAL: Items with proper validation and structure
         items: validItemsForValidation.map((item, index) => ({
-          // Item identification
+          // Basic item info
           itemRef: item.itemRef || item.selectedProduct || null,
-          itemName: item.itemName,
+          itemName: item.itemName?.trim() || "",
           itemCode: item.itemCode || "",
-          productName: item.itemName, // Backup field
-          name: item.itemName, // Another backup field
+          description: item.description || "",
 
           // Quantities and pricing
-          quantity: parseFloat(item.quantity),
+          quantity: parseFloat(item.quantity) || 0,
           unit: item.unit || "PCS",
-          pricePerUnit: parseFloat(item.pricePerUnit),
-          rate: parseFloat(item.pricePerUnit), // Backup field
-          price: parseFloat(item.pricePerUnit), // Another backup field
+          pricePerUnit: parseFloat(item.pricePerUnit) || 0,
 
           // Tax information
           hsnCode: item.hsnCode || "0000",
           taxRate: parseFloat(item.taxRate || 18),
-          gstRate: parseFloat(item.taxRate || 18), // Backup field
-          priceIncludesTax: item.taxMode === "with-tax",
           taxMode: item.taxMode || "without-tax",
+          priceIncludesTax: item.taxMode === "with-tax",
 
           // Discount
           discountPercent: parseFloat(item.discountPercent || 0),
           discountAmount: parseFloat(item.discountAmount || 0),
 
           // Tax amounts
-          cgst: parseFloat(item.cgstAmount || 0),
-          sgst: parseFloat(item.sgstAmount || 0),
-          cgstAmount: parseFloat(item.cgstAmount || 0), // Backup field
-          sgstAmount: parseFloat(item.sgstAmount || 0), // Backup field
-          igst: 0,
-          igstAmount: 0,
+          cgstAmount: parseFloat(item.cgstAmount || 0),
+          sgstAmount: parseFloat(item.sgstAmount || 0),
 
-          // Final amounts
+          // Final amount
+          amount: parseFloat(item.amount || 0),
           itemAmount: parseFloat(item.amount || 0),
-          amount: parseFloat(item.amount || 0), // Backup field
-          totalAmount: parseFloat(item.amount || 0), // Another backup field
 
           // Additional fields
           lineNumber: index + 1,
-          description: item.description || "",
-
-          // Calculation flags
-          taxableAmount: parseFloat(item.taxableAmount || 0),
-          useExactAmounts: true,
-          frontendCalculated: true,
+          category: item.category || "",
+          currentStock: parseFloat(item.currentStock || 0),
         })),
 
-        // ✅ Totals with multiple format support
+        // ✅ Document information
+        purchaseNumber: formData.invoiceNumber || `PB-${Date.now()}`,
+        invoiceNumber: formData.invoiceNumber || `PB-${Date.now()}`,
+        purchaseDate:
+          formData.invoiceDate || new Date().toISOString().split("T")[0],
+        invoiceDate:
+          formData.invoiceDate || new Date().toISOString().split("T")[0],
+
+        // ✅ Purchase configuration
+        gstEnabled: Boolean(formData.gstEnabled),
+        purchaseType: formData.gstEnabled ? "gst" : "non-gst",
+        globalTaxMode: "without-tax",
+        priceIncludesTax: false,
+
+        // ✅ Totals - ensure all required total fields are present
         totals: {
           subtotal: totals.subtotal || 0,
           totalDiscount: totals.totalDiscount || 0,
@@ -804,46 +828,107 @@ function PurchaseInvoiceFormSection({
           totalSGST: totals.totalSGST || 0,
           totalIGST: 0,
           finalTotal: displayTotal,
-          grandTotal: displayTotal, // Backup field
-          total: displayTotal, // Another backup field
-          amount: displayTotal, // Another backup field
+          grandTotal: displayTotal,
+          amount: displayTotal,
         },
 
-        // Payment data
+        // ✅ Top-level totals for compatibility
+        amount: displayTotal,
+        total: displayTotal,
+        finalTotal: displayTotal,
+        grandTotal: displayTotal,
+        subtotal: totals.subtotal || 0,
+        totalTax: totals.totalTax || 0,
+        totalDiscount: totals.totalDiscount || 0,
+
+        // ✅ Payment information
         paymentReceived: paymentData?.amount || 0,
-        paymentAmount: paymentData?.amount || 0, // Backup field
+        paymentAmount: paymentData?.amount || 0,
         paymentMethod: paymentData?.paymentMethod || "cash",
+        paymentType: paymentData?.paymentMethod || "cash",
         bankAccountId: paymentData?.bankAccountId || null,
         dueDate: paymentData?.dueDate || null,
         creditDays: paymentData?.creditDays || 0,
 
-        // Additional fields
+        // ✅ Payment data object
+        paymentData: paymentData || {},
+
+        // ✅ Additional fields
         notes: formData.notes || "",
-        description: formData.notes || "", // Backup field
         termsAndConditions: formData.termsAndConditions || "",
         status: isPurchaseOrdersMode ? "draft" : "completed",
 
-        // Round off
+        // ✅ Round off
         roundOff: roundOffValue || 0,
-        roundOffEnabled: roundOffEnabled,
+        roundOffEnabled: roundOffEnabled || false,
 
-        // Employee context
+        // ✅ Employee context
         employeeName: currentUser?.name || "",
         employeeId: currentUser?.id || currentUser?._id || "",
         createdBy: currentUser?.id || currentUser?._id || "",
-        createdByName: currentUser?.name || "",
 
-        // Purchase-specific fields
-        globalTaxMode: "without-tax", // Default for purchases
-        priceIncludesTax: false, // Default for purchases
-        invoiceType: formData.gstEnabled ? "gst" : "non-gst",
-        purchaseType: formData.gstEnabled ? "gst" : "non-gst", // Backup field
-
-        // Form metadata
+        // ✅ Form metadata
         formType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
         documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
         transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
       };
+
+      // ✅ Enhanced validation before sending to service
+      console.log("📋 Purchase data validation before service call:", {
+        hasCompanyId: !!purchaseDataForService.companyId,
+        hasSupplier: !!purchaseDataForService.customer,
+        supplierName: purchaseDataForService.supplierName,
+        itemsCount: purchaseDataForService.items?.length || 0,
+        firstItemName: purchaseDataForService.items?.[0]?.itemName,
+        totalAmount: purchaseDataForService.totals?.finalTotal,
+        paymentAmount: purchaseDataForService.paymentReceived,
+      });
+
+      // ✅ Comprehensive validation
+      if (!purchaseDataForService.companyId) {
+        throw new Error("Company ID is missing - cannot proceed");
+      }
+
+      if (!purchaseDataForService.customer && !isPurchaseOrdersMode) {
+        throw new Error(
+          "Supplier information is missing - please select a supplier"
+        );
+      }
+
+      if (!purchaseDataForService.supplierName && !isPurchaseOrdersMode) {
+        throw new Error(
+          "Supplier name is missing - please enter supplier details"
+        );
+      }
+
+      if (
+        !purchaseDataForService.items ||
+        purchaseDataForService.items.length === 0
+      ) {
+        throw new Error("No items provided - please add at least one item");
+      }
+
+      const invalidItems = purchaseDataForService.items.filter(
+        (item) =>
+          !item.itemName ||
+          !item.itemName.trim() ||
+          parseFloat(item.quantity) <= 0 ||
+          parseFloat(item.pricePerUnit) < 0
+      );
+
+      if (invalidItems.length > 0) {
+        throw new Error(
+          `Invalid items found: ${invalidItems.length} items have missing name, zero quantity, or invalid price`
+        );
+      }
+
+      if (purchaseDataForService.totals?.finalTotal <= 0) {
+        throw new Error(
+          "Invalid total amount - total must be greater than zero"
+        );
+      }
+
+      console.log("✅ All validations passed, sending to purchase service...");
 
       // ✅ Final validation before sending
       console.log("📋 Final purchase data validation:", {
@@ -1341,7 +1426,6 @@ function PurchaseInvoiceFormSection({
           </Col>
         </Row>
       </div>
-
       {hasValidItems && (
         <Card className="mb-4 border-2" style={{borderColor: "#000"}}>
           <Card.Header
@@ -1494,7 +1578,6 @@ function PurchaseInvoiceFormSection({
           </Card.Body>
         </Card>
       )}
-
       {hasValidItems && (
         <Card className="border-0 shadow-sm">
           <Card.Body className="p-4">
@@ -1730,7 +1813,6 @@ function PurchaseInvoiceFormSection({
           </Card.Body>
         </Card>
       )}
-
       {!hasValidItems && (
         <div className="text-center text-muted py-5">
           <FontAwesomeIcon
@@ -1745,7 +1827,6 @@ function PurchaseInvoiceFormSection({
           </p>
         </div>
       )}
-
       <Modal
         show={showProductFormModal}
         onHide={() => {
@@ -2230,33 +2311,259 @@ function PurchaseInvoiceFormSection({
         </Modal.Footer>
       </Modal>
 
+      {/* ✅ FIXED: Purchase-specific PaymentModal */}
       <PaymentModal
         show={showPaymentModal}
         onHide={() => setShowPaymentModal(false)}
-        currentConfig={currentConfig}
+        // ✅ FIXED: Purchase-specific configuration
+        currentConfig={{
+          ...currentConfig,
+          entityType: "supplier",
+          entityLabel: "Supplier",
+          formType: "purchase",
+          transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
+          paymentDirection: "outgoing", // Purchase payments are outgoing
+          mode: "purchase",
+        }}
+        // ✅ FIXED: Amount and totals
         finalTotalWithRoundOff={displayTotal}
-        paymentData={paymentData}
-        setPaymentData={setPaymentData}
-        handlePaymentAmountChange={handlePaymentAmountChange}
-        handlePaymentTypeChange={handlePaymentTypeChange}
-        handlePaymentSubmit={handlePaymentSubmit}
+        totalAmount={displayTotal}
+        // ✅ FIXED: Payment data with proper structure
+        paymentData={{
+          ...paymentData,
+          // Ensure bankAccountId is properly set
+          bankAccountId: paymentData?.bankAccountId || null,
+          amount: paymentData?.amount || 0,
+          paymentMethod: paymentData?.paymentMethod || "cash",
+          paymentType: paymentData?.paymentType || "Cash",
+          dueDate: paymentData?.dueDate || null,
+          creditDays: paymentData?.creditDays || 0,
+          notes: paymentData?.notes || "",
+          // Purchase-specific fields
+          supplier: formData.customer, // Supplier stored in customer field
+          supplierId: formData.customer?.id || formData.customer?._id,
+          supplierName:
+            formData.customer?.name || formData.customer?.businessName,
+          transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
+        }}
+        setPaymentData={(newPaymentData) => {
+          console.log("💳 Setting payment data:", newPaymentData);
+          setPaymentData(newPaymentData);
+        }}
+        // ✅ FIXED: Purchase-specific handlers
+        handlePaymentAmountChange={(amount) => {
+          console.log("💰 Payment amount change:", amount);
+          setPaymentData((prev) => ({
+            ...prev,
+            amount: parseFloat(amount) || 0,
+          }));
+        }}
+        handlePaymentTypeChange={(paymentType, paymentMethod) => {
+          console.log("💳 Payment type change:", {paymentType, paymentMethod});
+          setPaymentData((prev) => ({
+            ...prev,
+            paymentType: paymentType,
+            paymentMethod:
+              paymentMethod || paymentType?.toLowerCase() || "cash",
+            // Reset bank account if switching to cash
+            bankAccountId:
+              (paymentMethod || paymentType)?.toLowerCase() === "cash"
+                ? null
+                : prev.bankAccountId,
+          }));
+        }}
+        handlePaymentSubmit={async () => {
+          try {
+            console.log("🔄 Purchase payment submit:", paymentData);
+
+            // ✅ Enhanced validation for purchase payments
+            if (!paymentData.amount || paymentData.amount <= 0) {
+              addToast?.("Please enter a valid payment amount", "error");
+              return;
+            }
+
+            if (paymentData.amount > displayTotal) {
+              addToast?.(
+                "Payment amount cannot exceed the total amount",
+                "error"
+              );
+              return;
+            }
+
+            // ✅ Bank account validation for non-cash payments
+            if (
+              paymentData.paymentMethod !== "cash" &&
+              !paymentData.bankAccountId
+            ) {
+              addToast?.(
+                "Please select a bank account for non-cash payments",
+                "error"
+              );
+              return;
+            }
+
+            // ✅ Supplier validation for purchase orders
+            if (!isPurchaseOrdersMode && !formData.customer) {
+              addToast?.(
+                "Please select a supplier before adding payment",
+                "error"
+              );
+              return;
+            }
+
+            const result = await handlePaymentSubmit();
+
+            if (result?.success) {
+              console.log("✅ Payment submitted successfully:", result);
+              return result;
+            } else {
+              throw new Error(result?.message || "Payment submission failed");
+            }
+          } catch (error) {
+            console.error("❌ Payment submission error:", error);
+            addToast?.(`Payment error: ${error.message}`, "error");
+            throw error;
+          }
+        }}
         submittingPayment={submittingPayment}
-        bankAccounts={bankAccounts}
+        // ✅ FIXED: Bank accounts with proper loading state
+        bankAccounts={bankAccounts || []}
         loadingBankAccounts={loadingBankAccounts}
         retryLoadBankAccounts={retryLoadBankAccounts}
-        paymentHistory={paymentHistory}
-        totals={totals}
+        // ✅ Payment history (if available)
+        paymentHistory={paymentHistory || []}
+        // ✅ Invoice details
+        totals={{
+          ...totals,
+          finalTotal: displayTotal,
+          grandTotal: displayTotal,
+        }}
         gstEnabled={formData.gstEnabled}
         roundOffEnabled={roundOffEnabled}
         roundOffValue={roundOffValue}
         invoiceNumber={formData.invoiceNumber}
         invoiceDate={formData.invoiceDate}
         companyId={companyId}
+        // ✅ FIXED: Purchase-specific form type
         formType="purchase"
-        handleDueDateToggle={handleDueDateToggle}
-        handleCreditDaysChange={handleCreditDaysChange}
-        handleDueDateChange={handleDueDateChange}
-        handleBankAccountChange={handleBankAccountChange}
+        documentType={isPurchaseOrdersMode ? "purchase-order" : "purchase"}
+        // ✅ FIXED: Due date handlers with proper validation
+        handleDueDateToggle={(enabled) => {
+          console.log("📅 Due date toggle:", enabled);
+          setPaymentData((prev) => ({
+            ...prev,
+            hasDueDate: enabled,
+            dueDate: enabled ? prev.dueDate : null,
+            creditDays: enabled ? prev.creditDays : 0,
+          }));
+        }}
+        handleCreditDaysChange={(days) => {
+          console.log("📅 Credit days change:", days);
+          const creditDays = parseInt(days) || 0;
+
+          // Calculate due date from credit days
+          let dueDate = null;
+          if (creditDays > 0) {
+            const today = new Date();
+            dueDate = new Date(today);
+            dueDate.setDate(today.getDate() + creditDays);
+          }
+
+          setPaymentData((prev) => ({
+            ...prev,
+            creditDays: creditDays,
+            dueDate: dueDate ? dueDate.toISOString().split("T")[0] : null,
+          }));
+        }}
+        handleDueDateChange={(date) => {
+          console.log("📅 Due date change:", date);
+          setPaymentData((prev) => ({
+            ...prev,
+            dueDate: date,
+            creditDays: 0, // Reset credit days when manual date is set
+          }));
+        }}
+        handleBankAccountChange={(bankAccountId) => {
+          console.log("🏦 Bank account change:", bankAccountId);
+
+          // Find the selected bank account for additional details
+          const selectedAccount = bankAccounts.find(
+            (account) => (account.id || account._id) === bankAccountId
+          );
+
+          setPaymentData((prev) => ({
+            ...prev,
+            bankAccountId: bankAccountId,
+            bankAccountName:
+              selectedAccount?.accountName || selectedAccount?.name || "",
+            bankName: selectedAccount?.bankName || "",
+            accountNumber:
+              selectedAccount?.accountNumber ||
+              selectedAccount?.accountNo ||
+              "",
+            ifscCode: selectedAccount?.ifscCode || "",
+            branchName: selectedAccount?.branchName || "",
+          }));
+        }}
+        // ✅ FIXED: Entity information (supplier instead of customer)
+        entity={formData.customer} // Supplier data
+        entityType="supplier"
+        entityLabel="Supplier"
+        entityName={
+          formData.customer?.name || formData.customer?.businessName || ""
+        }
+        // ✅ Additional purchase-specific props
+        isPurchaseOrder={isPurchaseOrdersMode}
+        purchaseOrderMode={isPurchaseOrdersMode}
+        // ✅ User context
+        currentUser={currentUser}
+        // ✅ Validation helpers
+        validateBankAccount={(bankAccountId, paymentMethod) => {
+          if (paymentMethod === "cash") {
+            return {isValid: true};
+          }
+
+          if (!bankAccountId) {
+            return {
+              isValid: false,
+              error: "Please select a bank account for non-cash payments",
+            };
+          }
+
+          const account = bankAccounts.find(
+            (acc) => (acc.id || acc._id) === bankAccountId
+          );
+
+          if (!account) {
+            return {
+              isValid: false,
+              error: "Selected bank account not found",
+            };
+          }
+
+          if (account.isActive === false) {
+            return {
+              isValid: false,
+              error: "Selected bank account is inactive",
+            };
+          }
+
+          return {isValid: true, account};
+        }}
+        // ✅ Custom labels for purchase context
+        labels={{
+          modalTitle: isPurchaseOrdersMode
+            ? "Purchase Order Terms"
+            : "Purchase Payment",
+          amountLabel: isPurchaseOrdersMode ? "Order Amount" : "Payment Amount",
+          submitButton: isPurchaseOrdersMode
+            ? "Save Order Terms"
+            : "Save Payment",
+          bankAccountLabel: "Select Bank Account for Payment",
+          dueDateLabel: "Payment Due Date",
+          notesLabel: "Payment Notes",
+          paymentMethodLabel: "Payment Method",
+        }}
       />
     </div>
   );

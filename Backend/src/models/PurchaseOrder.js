@@ -1,313 +1,480 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // Payment History Schema (shared with Purchase and Sale models)
 const paymentHistorySchema = new mongoose.Schema({
-    amount: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    method: {
-        type: String,
-        enum: ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'credit', 'online', 'bank'],
-        default: 'cash'
-    },
-    reference: {
-        type: String,
-        trim: true,
-        default: ''
-    },
-    paymentDate: {
-        type: Date,
-        required: true,
-        default: Date.now
-    },
-    dueDate: {
-        type: Date,
-        default: null
-    },
-    notes: {
-        type: String,
-        trim: true,
-        default: ''
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    createdBy: {
-        type: String,
-        default: 'system'
-    }
+  amount: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  method: {
+    type: String,
+    enum: [
+      "cash",
+      "card",
+      "upi",
+      "bank_transfer",
+      "cheque",
+      "credit",
+      "online",
+      "bank",
+    ],
+    default: "cash",
+  },
+  reference: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  paymentDate: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+  dueDate: {
+    type: Date,
+    default: null,
+  },
+  notes: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  createdBy: {
+    type: String,
+    default: "system",
+  },
 });
 
 // Purchase Order Schema
-const purchaseOrderSchema = new mongoose.Schema({
+const purchaseOrderSchema = new mongoose.Schema(
+  {
     // Order Details
     orderNumber: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        index: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
     },
     orderDate: {
-        type: Date,
-        required: true,
-        default: Date.now
+      type: Date,
+      required: true,
+      default: Date.now,
     },
     orderType: {
-        type: String,
-        enum: ['purchase_order', 'purchase_quotation', 'proforma_purchase'],
-        default: 'purchase_order',
-        required: true
+      type: String,
+      enum: ["purchase_order", "purchase_quotation", "proforma_purchase"],
+      default: "purchase_order",
+      required: true,
     },
 
     // Validity and Delivery
     validUntil: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
     expectedDeliveryDate: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
     deliveryDate: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
 
     // Supplier Information (using Party model like customer)
     supplier: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Party',
-        required: true,
-        index: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Party",
+      required: true,
+      index: true,
     },
     supplierMobile: {
-        type: String,
-        trim: true
+      type: String,
+      trim: true,
     },
 
-    // ✅ ADDED: Complete GST and Tax Settings (aligned with SalesOrder model)
+    // GST and Tax Settings (aligned with SalesOrder model)
     gstEnabled: {
-        type: Boolean,
-        required: true,
-        default: true
+      type: Boolean,
+      required: true,
+      default: true,
     },
     gstType: {
-        type: String,
-        enum: ['gst', 'non-gst'],
-        default: 'gst'
+      type: String,
+      enum: ["gst", "non-gst"],
+      default: "gst",
     },
     taxMode: {
-        type: String,
-        enum: ['with-tax', 'without-tax'],
-        default: 'without-tax'
+      type: String,
+      enum: ["with-tax", "without-tax", "inclusive", "exclusive"],
+      default: "without-tax",
     },
     priceIncludesTax: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
 
     // Company reference
     companyId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Company',
-        required: true,
-        index: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
     },
 
-    // ✅ ENHANCED: Purchase Items Array with all frontend-compatible fields
-    items: [{
+    // ✅ ENHANCED: Bidirectional Order Relationship Fields
+    // When this purchase order creates a corresponding sales order in supplier's system
+    correspondingSalesOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SalesOrder",
+      default: null,
+    },
+    correspondingSalesOrderNumber: {
+      type: String,
+      default: null,
+    },
+
+    // When this purchase order was created from a sales order (source tracking)
+    sourceOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    sourceOrderNumber: {
+      type: String,
+      default: null,
+    },
+    sourceOrderType: {
+      type: String,
+      enum: {
+        values: ["sales-order", "quotation", "proforma-invoice", null],
+        message:
+          "sourceOrderType must be one of: sales-order, quotation, proforma-invoice, or null",
+      },
+      default: null,
+    },
+    sourceCompanyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+    },
+
+    // ✅ NEW: Auto-generation and sales order generation tracking
+    isAutoGenerated: {
+      type: Boolean,
+      default: false,
+    },
+    generatedFrom: {
+      type: String,
+      enum: ["sales_order", "manual", "import", "api"],
+      default: "manual",
+    },
+    generatedBy: {
+      type: String,
+      default: null,
+    },
+    generatedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ✅ NEW: Sales order generation tracking (when this PO generates a SO for another company)
+    autoGeneratedSalesOrder: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    salesOrderRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SalesOrder",
+      default: null,
+    },
+    salesOrderNumber: {
+      type: String,
+      default: null,
+    },
+    salesOrderGeneratedAt: {
+      type: Date,
+      default: null,
+    },
+    salesOrderGeneratedBy: {
+      type: String,
+      default: null,
+    },
+    targetCompanyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+    },
+
+    // Purchase Items Array with all frontend-compatible fields
+    items: [
+      {
         // Item Reference
         itemRef: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Item',
-            sparse: true
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Item",
+          sparse: true,
         },
         selectedProduct: {
-            type: String,
-            default: ''
+          type: String,
+          default: "",
         },
 
-        // ✅ ADDED: Item Details (both naming conventions for compatibility)
+        // Item Details (both naming conventions for compatibility)
         itemName: {
-            type: String,
-            required: true,
-            trim: true
+          type: String,
+          required: true,
+          trim: true,
         },
         productName: {
-            type: String,
-            trim: true
+          type: String,
+          trim: true,
         },
         itemCode: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
         },
         productCode: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
         },
         description: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
         },
         hsnCode: {
-            type: String,
-            trim: true,
-            default: '0000'
+          type: String,
+          trim: true,
+          default: "0000",
         },
         hsnNumber: {
-            type: String,
-            trim: true,
-            default: '0000'
+          type: String,
+          trim: true,
+          default: "0000",
         },
         category: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
         },
 
         // Quantity and Unit
         quantity: {
-            type: Number,
-            required: true,
-            min: 0.01
+          type: Number,
+          required: true,
+          min: 0.01,
         },
         unit: {
-            type: String,
-            enum: ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM', 'BAG', 'BTL', 'BUN', 'CAN', 'CTN', 'DOZ', 'DRM', 'FEW', 'GMS', 'GRS', 'KGS', 'KME', 'MLS', 'MTR', 'NOS', 'PAC', 'QTL', 'ROL', 'SET', 'SQF', 'SQM', 'TBS', 'TGM', 'THD', 'TON', 'TUB', 'UGS', 'UNT', 'YDS', 'OTH', 'pcs'],
-            default: 'PCS'
+          type: String,
+          enum: [
+            "NONE",
+            "KG",
+            "GM",
+            "LTR",
+            "ML",
+            "PCS",
+            "BOX",
+            "M",
+            "CM",
+            "BAG",
+            "BTL",
+            "BUN",
+            "CAN",
+            "CTN",
+            "DOZ",
+            "DRM",
+            "FEW",
+            "GMS",
+            "GRS",
+            "KGS",
+            "KME",
+            "MLS",
+            "MTR",
+            "NOS",
+            "PAC",
+            "QTL",
+            "ROL",
+            "SET",
+            "SQF",
+            "SQM",
+            "TBS",
+            "TGM",
+            "THD",
+            "TON",
+            "TUB",
+            "UGS",
+            "UNT",
+            "YDS",
+            "OTH",
+            "pcs",
+          ],
+          default: "PCS",
         },
 
-        // ✅ ADDED: Enhanced Pricing Details (multiple naming conventions)
+        // Enhanced Pricing Details (multiple naming conventions)
         pricePerUnit: {
-            type: Number,
-            required: true,
-            min: 0
+          type: Number,
+          required: true,
+          min: 0,
         },
         price: {
-            type: Number,
-            min: 0
+          type: Number,
+          min: 0,
+        },
+        rate: {
+          type: Number,
+          min: 0,
         },
         purchasePrice: {
-            type: Number,
-            min: 0
+          type: Number,
+          min: 0,
         },
         sellingPrice: {
-            type: Number,
-            min: 0
+          type: Number,
+          min: 0,
         },
         taxRate: {
-            type: Number,
-            default: 18,
-            min: 0,
-            max: 100
+          type: Number,
+          default: 18,
+          min: 0,
+          max: 100,
         },
         gstRate: {
-            type: Number,
-            default: 18,
-            min: 0,
-            max: 100
+          type: Number,
+          default: 18,
+          min: 0,
+          max: 100,
         },
         taxMode: {
-            type: String,
-            enum: ['with-tax', 'without-tax', 'include', 'exclude'],
-            default: 'without-tax'
+          type: String,
+          enum: [
+            "with-tax",
+            "without-tax",
+            "include",
+            "exclude",
+            "inclusive",
+            "exclusive",
+          ],
+          default: "without-tax",
         },
         gstMode: {
-            type: String,
-            enum: ['include', 'exclude'],
-            default: 'exclude'
+          type: String,
+          enum: ["include", "exclude"],
+          default: "exclude",
         },
         priceIncludesTax: {
-            type: Boolean,
-            default: false
+          type: Boolean,
+          default: false,
         },
 
-        // ✅ ADDED: Stock Info
+        // Stock Info
         availableStock: {
-            type: Number,
-            default: 0
+          type: Number,
+          default: 0,
         },
 
         // Discount Fields
         discountPercent: {
-            type: Number,
-            default: 0,
-            min: 0,
-            max: 100
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 100,
         },
         discountAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        discount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        discountType: {
+          type: String,
+          enum: ["percentage", "amount"],
+          default: "percentage",
         },
 
         // Tax Amounts
-        cgst: { type: Number, default: 0, min: 0 },
-        sgst: { type: Number, default: 0, min: 0 },
-        igst: { type: Number, default: 0, min: 0 },
-        cgstAmount: { type: Number, default: 0, min: 0 },
-        sgstAmount: { type: Number, default: 0, min: 0 },
-        igstAmount: { type: Number, default: 0, min: 0 },
+        cgst: {type: Number, default: 0, min: 0},
+        sgst: {type: Number, default: 0, min: 0},
+        igst: {type: Number, default: 0, min: 0},
+        cgstAmount: {type: Number, default: 0, min: 0},
+        sgstAmount: {type: Number, default: 0, min: 0},
+        igstAmount: {type: Number, default: 0, min: 0},
 
-        // ✅ ADDED: Calculated amounts (multiple naming conventions)
-        subtotal: { type: Number, default: 0, min: 0 },
-        taxableAmount: { type: Number, default: 0, min: 0 },
-        totalTaxAmount: { type: Number, default: 0, min: 0 },
-        gstAmount: { type: Number, default: 0, min: 0 },
+        // Calculated amounts (multiple naming conventions)
+        subtotal: {type: Number, default: 0, min: 0},
+        taxableAmount: {type: Number, default: 0, min: 0},
+        totalTaxAmount: {type: Number, default: 0, min: 0},
+        gstAmount: {type: Number, default: 0, min: 0},
 
-        // ✅ ADDED: Final amounts (multiple naming conventions)
-        amount: { type: Number, default: 0, min: 0 },
-        itemAmount: { type: Number, required: true, min: 0 },
-        totalAmount: { type: Number, default: 0, min: 0 },
+        // Final amounts (multiple naming conventions)
+        amount: {type: Number, default: 0, min: 0},
+        itemAmount: {type: Number, required: true, min: 0},
+        totalAmount: {type: Number, default: 0, min: 0},
 
         // Line ordering
-        lineNumber: { type: Number, required: true, min: 1 }
-    }],
+        lineNumber: {type: Number, required: true, min: 1},
+      },
+    ],
 
     // Totals Section (identical to Sale/SalesOrder model)
     totals: {
-        subtotal: { type: Number, required: true, default: 0 },
-        totalQuantity: { type: Number, default: 0 },
-        totalDiscount: { type: Number, default: 0 },
-        totalDiscountAmount: { type: Number, default: 0 },
-        totalTax: { type: Number, default: 0 },
-        totalCGST: { type: Number, default: 0 },
-        totalSGST: { type: Number, default: 0 },
-        totalIGST: { type: Number, default: 0 },
-        totalTaxableAmount: { type: Number, default: 0 },
-        finalTotal: { type: Number, required: true, min: 0 },
-        roundOff: { type: Number, default: 0 },
-        withTaxTotal: { type: Number, default: 0 },
-        withoutTaxTotal: { type: Number, default: 0 }
+      subtotal: {type: Number, required: true, default: 0},
+      totalQuantity: {type: Number, default: 0},
+      totalDiscount: {type: Number, default: 0},
+      totalDiscountAmount: {type: Number, default: 0},
+      totalTax: {type: Number, default: 0},
+      totalCGST: {type: Number, default: 0},
+      totalSGST: {type: Number, default: 0},
+      totalIGST: {type: Number, default: 0},
+      totalTaxableAmount: {type: Number, default: 0},
+      finalTotal: {type: Number, required: true, min: 0},
+      roundOff: {type: Number, default: 0},
+      withTaxTotal: {type: Number, default: 0},
+      withoutTaxTotal: {type: Number, default: 0},
     },
 
     // Payment Information (enhanced for partial payments)
     payment: {
-        method: {
-            type: String,
-            enum: ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'credit', 'online', 'bank'],
-            default: 'cash'
-        },
-        status: {
-            type: String,
-            enum: ['pending', 'partial', 'paid', 'cancelled', 'overdue'],
-            default: 'pending'
-        },
-        paidAmount: { type: Number, default: 0, min: 0 },
-        pendingAmount: { type: Number, default: 0, min: 0 },
-        advanceAmount: { type: Number, default: 0, min: 0 }, // Advance payment to supplier
-        paymentDate: { type: Date, default: Date.now },
-        dueDate: { type: Date, default: null, index: true },
-        creditDays: { type: Number, default: 0, min: 0 },
-        reference: { type: String, trim: true, default: '' },
-        notes: { type: String, trim: true, default: '' }
+      method: {
+        type: String,
+        enum: [
+          "cash",
+          "card",
+          "upi",
+          "bank_transfer",
+          "cheque",
+          "credit",
+          "online",
+          "bank",
+        ],
+        default: "cash",
+      },
+      status: {
+        type: String,
+        enum: ["pending", "partial", "paid", "cancelled", "overdue"],
+        default: "pending",
+      },
+      paidAmount: {type: Number, default: 0, min: 0},
+      pendingAmount: {type: Number, default: 0, min: 0},
+      advanceAmount: {type: Number, default: 0, min: 0}, // Advance payment to supplier
+      paymentDate: {type: Date, default: Date.now},
+      dueDate: {type: Date, default: null, index: true},
+      creditDays: {type: Number, default: 0, min: 0},
+      reference: {type: String, trim: true, default: ""},
+      notes: {type: String, trim: true, default: ""},
     },
 
     // Payment History
@@ -315,439 +482,1114 @@ const purchaseOrderSchema = new mongoose.Schema({
 
     // Order Status Management (Purchase-specific statuses)
     status: {
-        type: String,
-        enum: ['draft', 'sent', 'confirmed', 'received', 'partially_received', 'cancelled', 'completed'],
-        default: 'draft',
-        index: true
+      type: String,
+      enum: [
+        "draft",
+        "sent",
+        "confirmed",
+        "received",
+        "partially_received",
+        "cancelled",
+        "completed",
+      ],
+      default: "draft",
+      index: true,
     },
 
     // Conversion tracking (Purchase Order → Purchase Invoice)
     convertedToPurchaseInvoice: {
-        type: Boolean,
-        default: false,
-        index: true
+      type: Boolean,
+      default: false,
+      index: true,
     },
     purchaseInvoiceRef: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Purchase', // Assuming you have a Purchase model
-        default: null
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Purchase",
+      default: null,
     },
     purchaseInvoiceNumber: {
-        type: String,
-        default: null
+      type: String,
+      default: null,
     },
     convertedAt: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
     convertedBy: {
-        type: String,
-        default: null
+      type: String,
+      default: null,
     },
 
     // Priority and urgency
     priority: {
-        type: String,
-        enum: ['low', 'normal', 'high', 'urgent'],
-        default: 'normal'
+      type: String,
+      enum: ["low", "normal", "high", "urgent"],
+      default: "normal",
     },
 
     // Purchase-specific fields
     requiredBy: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
     departmentRef: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Department',
-        default: null
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      default: null,
     },
     approvedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        default: null
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
     approvedAt: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
 
     // Additional Information
-    notes: { type: String, trim: true, default: '' },
-    termsAndConditions: { type: String, trim: true, default: '' },
-    supplierNotes: { type: String, trim: true, default: '' },
-    internalNotes: { type: String, trim: true, default: '' },
+    notes: {type: String, trim: true, default: ""},
+    termsAndConditions: {type: String, trim: true, default: ""},
+    supplierNotes: {type: String, trim: true, default: ""},
+    internalNotes: {type: String, trim: true, default: ""},
 
     // Shipping and Delivery
     shippingAddress: {
-        street: { type: String, trim: true, default: '' },
-        city: { type: String, trim: true, default: '' },
-        state: { type: String, trim: true, default: '' },
-        zipCode: { type: String, trim: true, default: '' },
-        country: { type: String, trim: true, default: 'India' }
+      street: {type: String, trim: true, default: ""},
+      city: {type: String, trim: true, default: ""},
+      state: {type: String, trim: true, default: ""},
+      zipCode: {type: String, trim: true, default: ""},
+      country: {type: String, trim: true, default: "India"},
     },
 
+    // Round-off settings
+    roundOff: {type: Number, default: 0},
+    roundOffEnabled: {type: Boolean, default: false},
+
     // Metadata
-    createdBy: { type: String, default: 'system' },
-    lastModifiedBy: { type: String, default: 'system' }
-}, {
+    createdBy: {type: String, default: "system"},
+    lastModifiedBy: {type: String, default: "system"},
+  },
+  {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toJSON: {virtuals: true},
+    toObject: {virtuals: true},
+  }
+);
+
+// ✅ ENHANCED: INDEXES for better performance
+purchaseOrderSchema.index({companyId: 1, orderNumber: 1}, {unique: true});
+purchaseOrderSchema.index({companyId: 1, supplier: 1});
+purchaseOrderSchema.index({companyId: 1, orderDate: 1});
+purchaseOrderSchema.index({companyId: 1, status: 1});
+purchaseOrderSchema.index({companyId: 1, validUntil: 1});
+purchaseOrderSchema.index({"payment.status": 1});
+purchaseOrderSchema.index({"payment.dueDate": 1});
+purchaseOrderSchema.index({requiredBy: 1});
+// ✅ NEW: Indexes for bidirectional relationships
+purchaseOrderSchema.index({sourceOrderId: 1, sourceOrderType: 1});
+purchaseOrderSchema.index({correspondingSalesOrderId: 1});
+purchaseOrderSchema.index({sourceCompanyId: 1});
+purchaseOrderSchema.index({isAutoGenerated: 1});
+purchaseOrderSchema.index({generatedFrom: 1});
+purchaseOrderSchema.index({autoGeneratedSalesOrder: 1});
+purchaseOrderSchema.index({salesOrderRef: 1});
+purchaseOrderSchema.index({targetCompanyId: 1});
+purchaseOrderSchema.index({
+  convertedToPurchaseInvoice: 1,
+  purchaseInvoiceRef: 1,
 });
 
-// INDEXES
-purchaseOrderSchema.index({ companyId: 1, orderNumber: 1 }, { unique: true });
-purchaseOrderSchema.index({ companyId: 1, supplier: 1 });
-purchaseOrderSchema.index({ companyId: 1, orderDate: 1 });
-purchaseOrderSchema.index({ companyId: 1, status: 1 });
-purchaseOrderSchema.index({ companyId: 1, validUntil: 1 });
-purchaseOrderSchema.index({ 'payment.status': 1 });
-purchaseOrderSchema.index({ 'payment.dueDate': 1 });
-purchaseOrderSchema.index({ requiredBy: 1 });
-
-// VIRTUAL FIELDS
-purchaseOrderSchema.virtual('balanceAmount').get(function () {
-    const total = this.totals?.finalTotal || 0;
-    const paid = this.payment?.paidAmount || 0;
-    return Math.max(0, total - paid);
+// ✅ ENHANCED: VIRTUAL FIELDS
+purchaseOrderSchema.virtual("balanceAmount").get(function () {
+  const total = this.totals?.finalTotal || 0;
+  const paid = this.payment?.paidAmount || 0;
+  return Math.max(0, total - paid);
 });
 
-purchaseOrderSchema.virtual('isExpired').get(function () {
-    if (!this.validUntil) return false;
-    return new Date() > this.validUntil;
+purchaseOrderSchema.virtual("isExpired").get(function () {
+  if (!this.validUntil) return false;
+  return new Date() > this.validUntil;
 });
 
-purchaseOrderSchema.virtual('isOverdue').get(function () {
-    if (!this.payment?.dueDate || this.payment?.pendingAmount <= 0) return false;
-    return new Date() > this.payment.dueDate;
+purchaseOrderSchema.virtual("isOverdue").get(function () {
+  if (!this.payment?.dueDate || this.payment?.pendingAmount <= 0) return false;
+  return new Date() > this.payment.dueDate;
 });
 
-purchaseOrderSchema.virtual('isRequiredDatePassed').get(function () {
-    if (!this.requiredBy) return false;
-    return new Date() > this.requiredBy;
+purchaseOrderSchema.virtual("isRequiredDatePassed").get(function () {
+  if (!this.requiredBy) return false;
+  return new Date() > this.requiredBy;
+});
+
+// ✅ NEW: Virtual for bidirectional relationship status
+purchaseOrderSchema.virtual("hasCorrespondingSalesOrder").get(function () {
+  return !!(
+    this.correspondingSalesOrderId && this.correspondingSalesOrderNumber
+  );
+});
+
+purchaseOrderSchema.virtual("isFromSalesOrder").get(function () {
+  return !!(this.sourceOrderId && this.sourceOrderType && this.sourceCompanyId);
+});
+
+// ✅ NEW: Virtual for sales order generation status
+purchaseOrderSchema.virtual("hasGeneratedSalesOrder").get(function () {
+  return !!(this.autoGeneratedSalesOrder && this.salesOrderRef);
+});
+
+// ✅ NEW: Virtual for comprehensive tracking info
+purchaseOrderSchema.virtual("trackingInfo").get(function () {
+  return {
+    hasSource: this.isFromSalesOrder,
+    hasCorresponding: this.hasCorrespondingSalesOrder,
+    hasGeneratedSalesOrder: this.hasGeneratedSalesOrder,
+    isAutoGenerated: this.isAutoGenerated,
+    generatedFrom: this.generatedFrom,
+    convertedToPurchaseInvoice: this.convertedToPurchaseInvoice,
+    sourceChain: this.sourceOrderId
+      ? {
+          sourceOrderId: this.sourceOrderId,
+          sourceOrderNumber: this.sourceOrderNumber,
+          sourceOrderType: this.sourceOrderType,
+          sourceCompanyId: this.sourceCompanyId,
+        }
+      : null,
+    downstreamChain: this.correspondingSalesOrderId
+      ? {
+          correspondingSalesOrderId: this.correspondingSalesOrderId,
+          correspondingSalesOrderNumber: this.correspondingSalesOrderNumber,
+        }
+      : null,
+    generatedSalesOrder: this.autoGeneratedSalesOrder
+      ? {
+          salesOrderRef: this.salesOrderRef,
+          salesOrderNumber: this.salesOrderNumber,
+          targetCompanyId: this.targetCompanyId,
+          generatedAt: this.salesOrderGeneratedAt,
+          generatedBy: this.salesOrderGeneratedBy,
+        }
+      : null,
+  };
 });
 
 // ✅ ENHANCED: PRE-SAVE MIDDLEWARE with field synchronization
-purchaseOrderSchema.pre('save', function (next) {
-    // Auto-generate order number if not provided
-    if (this.isNew && !this.orderNumber) {
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+purchaseOrderSchema.pre("save", function (next) {
+  // Auto-generate order number if not provided
+  if (this.isNew && !this.orderNumber) {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
 
-        const prefix = this.orderType === 'purchase_quotation' ? 'PQU' :
-            this.orderType === 'proforma_purchase' ? 'PPO' : 'PO';
+    const prefix =
+      this.orderType === "purchase_quotation"
+        ? "PQU"
+        : this.orderType === "proforma_purchase"
+        ? "PPO"
+        : "PO";
 
-        this.orderNumber = `${prefix}-${year}${month}${day}-${Date.now().toString().slice(-4)}`;
+    this.orderNumber = `${prefix}-${year}${month}${day}-${Date.now()
+      .toString()
+      .slice(-4)}`;
+  }
+
+  // ✅ ENHANCED: Sync GST type and tax mode fields
+  if (this.gstType) {
+    this.gstEnabled = this.gstType === "gst";
+  }
+
+  if (this.taxMode) {
+    this.priceIncludesTax =
+      this.taxMode === "with-tax" || this.taxMode === "inclusive";
+  }
+
+  // ✅ NEW: Set generation metadata for auto-generated orders
+  if (this.isAutoGenerated && this.isNew) {
+    if (!this.generatedAt) {
+      this.generatedAt = new Date();
+    }
+    if (!this.generatedBy) {
+      this.generatedBy = "system";
+    }
+  }
+
+  // ✅ ENHANCED: Process items with field synchronization
+  this.items.forEach((item, index) => {
+    if (!item.lineNumber) item.lineNumber = index + 1;
+
+    // Sync product/item names
+    if (item.productName && !item.itemName) {
+      item.itemName = item.productName;
+    }
+    if (item.itemName && !item.productName) {
+      item.productName = item.itemName;
     }
 
-    // ✅ ADDED: Sync GST type and tax mode fields
-    if (this.gstType) {
-        this.gstEnabled = this.gstType === 'gst';
+    // Sync product/item codes
+    if (item.productCode && !item.itemCode) {
+      item.itemCode = item.productCode;
+    }
+    if (item.itemCode && !item.productCode) {
+      item.productCode = item.itemCode;
     }
 
-    if (this.taxMode) {
-        this.priceIncludesTax = this.taxMode === 'with-tax';
+    // Sync HSN numbers
+    if (item.hsnNumber && !item.hsnCode) {
+      item.hsnCode = item.hsnNumber;
+    }
+    if (item.hsnCode && !item.hsnNumber) {
+      item.hsnNumber = item.hsnCode;
     }
 
-    // ✅ ENHANCED: Process items with field synchronization
-    this.items.forEach((item, index) => {
-        if (!item.lineNumber) item.lineNumber = index + 1;
-
-        // Sync product/item names
-        if (item.productName && !item.itemName) {
-            item.itemName = item.productName;
-        }
-        if (item.itemName && !item.productName) {
-            item.productName = item.itemName;
-        }
-
-        // Sync product/item codes
-        if (item.productCode && !item.itemCode) {
-            item.itemCode = item.productCode;
-        }
-        if (item.itemCode && !item.productCode) {
-            item.productCode = item.itemCode;
-        }
-
-        // Sync HSN numbers
-        if (item.hsnNumber && !item.hsnCode) {
-            item.hsnCode = item.hsnNumber;
-        }
-        if (item.hsnCode && !item.hsnNumber) {
-            item.hsnNumber = item.hsnCode;
-        }
-
-        // Sync prices
-        if (item.price && !item.pricePerUnit) {
-            item.pricePerUnit = item.price;
-        }
-        if (item.pricePerUnit && !item.price) {
-            item.price = item.pricePerUnit;
-        }
-
-        // Sync GST rates
-        if (item.gstRate && !item.taxRate) {
-            item.taxRate = item.gstRate;
-        }
-        if (item.taxRate && !item.gstRate) {
-            item.gstRate = item.taxRate;
-        }
-
-        // Sync GST modes
-        if (item.gstMode) {
-            item.taxMode = item.gstMode === 'include' ? 'with-tax' : 'without-tax';
-            item.priceIncludesTax = item.gstMode === 'include';
-        }
-        if (item.taxMode && !item.gstMode) {
-            item.gstMode = item.taxMode === 'with-tax' ? 'include' : 'exclude';
-        }
-
-        // Sync item tax mode with parent
-        if (!item.taxMode) {
-            item.taxMode = this.taxMode || 'without-tax';
-            item.priceIncludesTax = item.taxMode === 'with-tax';
-        }
-
-        // Sync amounts
-        if (item.totalAmount && !item.amount) item.amount = item.totalAmount;
-        if (item.amount && !item.totalAmount) item.totalAmount = item.amount;
-        if (item.itemAmount && !item.amount) item.amount = item.itemAmount;
-        if (item.amount && !item.itemAmount) item.itemAmount = item.amount;
-
-        // Sync tax amounts
-        if (item.gstAmount && !item.totalTaxAmount) item.totalTaxAmount = item.gstAmount;
-        if (item.totalTaxAmount && !item.gstAmount) item.gstAmount = item.totalTaxAmount;
-    });
-
-    // Update payment status
-    if (this.payment && this.totals) {
-        const paidAmount = this.payment.paidAmount || 0;
-        const finalTotal = this.totals.finalTotal || 0;
-
-        this.payment.pendingAmount = Math.max(0, finalTotal - paidAmount);
-
-        if (paidAmount >= finalTotal && finalTotal > 0) {
-            this.payment.status = 'paid';
-        } else if (paidAmount > 0) {
-            this.payment.status = 'partial';
-        } else {
-            this.payment.status = 'pending';
-        }
+    // Sync prices
+    if (item.price && !item.pricePerUnit) {
+      item.pricePerUnit = item.price;
+    }
+    if (item.pricePerUnit && !item.price) {
+      item.price = item.pricePerUnit;
+    }
+    if (item.rate && !item.pricePerUnit) {
+      item.pricePerUnit = item.rate;
+    }
+    if (item.pricePerUnit && !item.rate) {
+      item.rate = item.pricePerUnit;
     }
 
-    next();
+    // Sync GST rates
+    if (item.gstRate && !item.taxRate) {
+      item.taxRate = item.gstRate;
+    }
+    if (item.taxRate && !item.gstRate) {
+      item.gstRate = item.taxRate;
+    }
+
+    // ✅ ENHANCED: Sync GST modes with better mapping
+    if (item.gstMode) {
+      item.taxMode = item.gstMode === "include" ? "with-tax" : "without-tax";
+      item.priceIncludesTax = item.gstMode === "include";
+    }
+    if (item.taxMode && !item.gstMode) {
+      item.gstMode =
+        item.taxMode === "with-tax" || item.taxMode === "inclusive"
+          ? "include"
+          : "exclude";
+    }
+
+    // Sync item tax mode with parent
+    if (!item.taxMode) {
+      item.taxMode = this.taxMode || "without-tax";
+      item.priceIncludesTax =
+        item.taxMode === "with-tax" || item.taxMode === "inclusive";
+    }
+
+    // Sync discount fields
+    if (item.discountPercent && !item.discount) {
+      item.discount = item.discountPercent;
+    }
+    if (item.discount && !item.discountPercent) {
+      item.discountPercent = item.discount;
+    }
+
+    // Sync amounts
+    if (item.totalAmount && !item.amount) item.amount = item.totalAmount;
+    if (item.amount && !item.totalAmount) item.totalAmount = item.amount;
+    if (item.itemAmount && !item.amount) item.amount = item.itemAmount;
+    if (item.amount && !item.itemAmount) item.itemAmount = item.amount;
+
+    // Sync tax amounts
+    if (item.gstAmount && !item.totalTaxAmount)
+      item.totalTaxAmount = item.gstAmount;
+    if (item.totalTaxAmount && !item.gstAmount)
+      item.gstAmount = item.totalTaxAmount;
+  });
+
+  // Update payment status
+  if (this.payment && this.totals) {
+    const paidAmount = this.payment.paidAmount || 0;
+    const finalTotal = this.totals.finalTotal || 0;
+
+    this.payment.pendingAmount = Math.max(0, finalTotal - paidAmount);
+
+    if (paidAmount >= finalTotal && finalTotal > 0) {
+      this.payment.status = "paid";
+    } else if (paidAmount > 0) {
+      this.payment.status = "partial";
+    } else {
+      this.payment.status = "pending";
+    }
+  }
+
+  next();
 });
 
-// INSTANCE METHODS
-purchaseOrderSchema.methods.addPayment = function (amount, method = 'cash', reference = '', notes = '') {
-    const currentPaid = this.payment?.paidAmount || 0;
-    const newPaidAmount = currentPaid + parseFloat(amount);
+// ✅ NEW: Post-save middleware for creating corresponding sales order
+purchaseOrderSchema.post("save", async function (doc) {
+  // Only create corresponding order for new purchase orders that are not auto-generated
+  if (doc.isNew && !doc.isAutoGenerated && doc.status !== "draft") {
+    try {
+      await doc.createCorrespondingSalesOrder();
+    } catch (error) {
+      console.error("❌ Failed to create corresponding sales order:", error);
+      // Don't throw error to avoid breaking the purchase order save
+    }
+  }
+});
 
-    this.payment = {
-        ...this.payment,
-        paidAmount: newPaidAmount,
-        method,
-        reference,
-        paymentDate: new Date(),
-        notes
-    };
+// Enhanced addPayment method
+purchaseOrderSchema.methods.addPayment = function (
+  amount,
+  method = "cash",
+  reference = "",
+  notes = ""
+) {
+  const currentPaid = this.payment?.paidAmount || 0;
+  const newPaidAmount = currentPaid + parseFloat(amount);
 
-    // Add to payment history
-    if (!this.paymentHistory) this.paymentHistory = [];
+  this.payment = {
+    ...this.payment,
+    paidAmount: newPaidAmount,
+    method,
+    reference,
+    paymentDate: new Date(),
+    notes,
+  };
 
-    this.paymentHistory.push({
-        amount: parseFloat(amount),
-        method,
-        reference,
-        paymentDate: new Date(),
-        notes,
-        createdAt: new Date()
+  // Add to payment history
+  if (!this.paymentHistory) this.paymentHistory = [];
+
+  this.paymentHistory.push({
+    amount: parseFloat(amount),
+    method,
+    reference,
+    paymentDate: new Date(),
+    notes,
+    createdAt: new Date(),
+  });
+
+  return this.save();
+};
+
+// ✅ NEW: Create corresponding sales order in supplier's system
+purchaseOrderSchema.methods.createCorrespondingSalesOrder = async function () {
+  try {
+    console.log(
+      "🔄 Creating corresponding sales order for purchase order:",
+      this.orderNumber
+    );
+
+    // Import models
+    const Company = mongoose.model("Company");
+    const SalesOrder = mongoose.model("SalesOrder");
+    const Party = mongoose.model("Party");
+
+    // Check if supplier has their own company account in the system
+    const supplierCompany = await Company.findOne({
+      $or: [{owner: this.supplier}, {"users.user": this.supplier}],
     });
 
-    return this.save();
+    if (!supplierCompany) {
+      console.log("ℹ️ Supplier does not have a company account in the system");
+      return null;
+    }
+
+    // Generate sales order number for supplier
+    const salesOrderNumber = await this.generateSalesOrderNumber(
+      supplierCompany._id
+    );
+
+    // Transform purchase order items to sales order format
+    const salesOrderItems = this.items.map((item) => ({
+      itemRef: item.itemRef,
+      itemName: item.itemName || item.productName,
+      itemCode: item.itemCode || item.productCode,
+      description: item.description,
+      quantity: item.quantity,
+      pricePerUnit: item.pricePerUnit || item.price || item.rate,
+      unit: item.unit,
+      discountPercent: item.discountPercent || item.discount || 0,
+      gstRate: item.gstRate || item.taxRate || 0,
+      amount:
+        item.amount ||
+        item.totalAmount ||
+        item.quantity * (item.pricePerUnit || item.price || item.rate),
+      lineNumber: item.lineNumber,
+    }));
+
+    // Get or create customer party (representing our company in supplier's system)
+    const customerParty = await this.getOrCreateCustomerInSupplierSystem(
+      supplierCompany._id
+    );
+
+    // ✅ ENHANCED: Create sales order data with bidirectional tracking
+    const salesOrderData = {
+      orderNumber: salesOrderNumber,
+      orderDate: this.orderDate,
+      orderType: "sales_order",
+      validUntil: this.validUntil,
+      expectedDeliveryDate: this.expectedDeliveryDate,
+
+      // Customer is our company
+      customer: customerParty._id,
+      customerMobile: "",
+
+      // Company is the supplier's company
+      companyId: supplierCompany._id,
+
+      // Copy items and totals
+      items: salesOrderItems,
+      totals: {
+        subtotal: this.totals.subtotal,
+        totalQuantity: this.totals.totalQuantity,
+        totalDiscount: this.totals.totalDiscount,
+        totalDiscountAmount: this.totals.totalDiscountAmount,
+        totalTax: this.totals.totalTax,
+        totalCGST: this.totals.totalCGST,
+        totalSGST: this.totals.totalSGST,
+        totalIGST: this.totals.totalIGST,
+        totalTaxableAmount: this.totals.totalTaxableAmount,
+        finalTotal: this.totals.finalTotal,
+        roundOff: this.totals.roundOff || 0,
+        withTaxTotal: this.totals.withTaxTotal,
+        withoutTaxTotal: this.totals.withoutTaxTotal,
+      },
+
+      // Payment information
+      payment: {
+        method: this.payment.method,
+        status: "pending",
+        paidAmount: 0,
+        pendingAmount: this.totals.finalTotal,
+        dueDate: this.payment.dueDate,
+        creditDays: this.payment.creditDays,
+      },
+
+      // GST and tax settings
+      gstEnabled: this.gstEnabled,
+      gstType: this.gstType,
+      taxMode: this.taxMode,
+      priceIncludesTax: this.priceIncludesTax,
+
+      // ✅ ENHANCED: Bidirectional reference to original purchase order
+      sourceOrderId: this._id,
+      sourceOrderNumber: this.orderNumber,
+      sourceOrderType: "purchase_order",
+      sourceCompanyId: this.companyId,
+
+      // Other details
+      notes: `Auto-generated from Purchase Order ${this.orderNumber}`,
+      termsAndConditions: this.termsAndConditions,
+      status: "received", // Set as received since it came from customer
+      priority: this.priority,
+
+      // System fields
+      createdBy: "system",
+      lastModifiedBy: "system",
+      isAutoGenerated: true,
+      generatedFrom: "purchase_order",
+      generatedBy: "system",
+      generatedAt: new Date(),
+    };
+
+    const salesOrder = new SalesOrder(salesOrderData);
+    await salesOrder.save();
+
+    // ✅ ENHANCED: Update this purchase order with reference to sales order
+    this.correspondingSalesOrderId = salesOrder._id;
+    this.correspondingSalesOrderNumber = salesOrder.orderNumber;
+    await this.save();
+
+    console.log(
+      "✅ Corresponding sales order created:",
+      salesOrder.orderNumber
+    );
+    return salesOrder;
+  } catch (error) {
+    console.error("❌ Error creating corresponding sales order:", error);
+    throw error;
+  }
+};
+
+// ✅ NEW: Generate sales order number for supplier's company
+purchaseOrderSchema.methods.generateSalesOrderNumber = async function (
+  supplierCompanyId
+) {
+  try {
+    const SalesOrder = mongoose.model("SalesOrder");
+
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    const prefix = "SO";
+
+    const todayStart = new Date(year, date.getMonth(), date.getDate());
+    const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+    const lastOrder = await SalesOrder.findOne({
+      companyId: supplierCompanyId,
+      orderDate: {$gte: todayStart, $lt: todayEnd},
+      orderNumber: new RegExp(`^${prefix}-${year}${month}${day}`),
+    }).sort({orderNumber: -1});
+
+    let sequence = 1;
+    if (lastOrder && lastOrder.orderNumber) {
+      const lastSequence = parseInt(lastOrder.orderNumber.split("-").pop());
+      if (!isNaN(lastSequence)) {
+        sequence = lastSequence + 1;
+      }
+    }
+
+    return `${prefix}-${year}${month}${day}-${String(sequence).padStart(
+      4,
+      "0"
+    )}`;
+  } catch (error) {
+    console.error("Error generating sales order number:", error);
+    return `SO-${Date.now()}`;
+  }
+};
+
+// ✅ NEW: Get or create customer party in supplier's system
+purchaseOrderSchema.methods.getOrCreateCustomerInSupplierSystem =
+  async function (supplierCompanyId) {
+    try {
+      const Party = mongoose.model("Party");
+      const Company = mongoose.model("Company");
+
+      // Get our company information
+      const ourCompany = await Company.findById(this.companyId);
+      if (!ourCompany) {
+        throw new Error("Source company not found");
+      }
+
+      // Try to find existing customer party for our company in supplier's system
+      let customerParty = await Party.findOne({
+        companyId: supplierCompanyId,
+        name: ourCompany.businessName,
+        type: "customer",
+      });
+
+      if (!customerParty) {
+        // Create new customer based on our company information
+        customerParty = new Party({
+          name: ourCompany.businessName,
+          mobile: ourCompany.phoneNumber || "",
+          email: ourCompany.email || "",
+          type: "customer",
+          partyType: "customer",
+          address: ourCompany.address || "",
+          gstNumber: ourCompany.gstin || "",
+          companyId: supplierCompanyId,
+          status: "active",
+          creditLimit: 0,
+          creditDays: 30,
+          currentBalance: 0,
+          openingBalance: 0,
+          sourceCompanyId: this.companyId, // Reference to our company
+          notes: `Auto-created from Purchase Order ${this.orderNumber}`,
+        });
+        await customerParty.save();
+      }
+
+      return customerParty;
+    } catch (error) {
+      console.error("Error creating customer in supplier system:", error);
+      throw error;
+    }
+  };
+
+// ✅ NEW: Get complete tracking chain
+purchaseOrderSchema.methods.getTrackingChain = async function () {
+  try {
+    const chain = [];
+
+    // Add source information if exists
+    if (this.isFromSalesOrder) {
+      const SalesOrder = mongoose.model("SalesOrder");
+      const sourceSO = await SalesOrder.findById(this.sourceOrderId).populate(
+        "customer",
+        "name mobile email"
+      );
+
+      if (sourceSO) {
+        chain.push({
+          step: 1,
+          type: "sales_order",
+          document: sourceSO,
+          description: `Source Sales Order: ${sourceSO.orderNumber}`,
+          companyId: sourceSO.companyId,
+        });
+      }
+    }
+
+    // Add current purchase order
+    chain.push({
+      step: chain.length + 1,
+      type: "purchase_order",
+      document: this,
+      description: `Purchase Order: ${this.orderNumber}`,
+      companyId: this.companyId,
+    });
+
+    // Add corresponding sales order if exists
+    if (this.hasCorrespondingSalesOrder) {
+      const SalesOrder = mongoose.model("SalesOrder");
+      const correspondingSO = await SalesOrder.findById(
+        this.correspondingSalesOrderId
+      ).populate("customer", "name mobile email");
+
+      if (correspondingSO) {
+        chain.push({
+          step: chain.length + 1,
+          type: "sales_order",
+          document: correspondingSO,
+          description: `Generated Sales Order: ${correspondingSO.orderNumber}`,
+          companyId: correspondingSO.companyId,
+        });
+      }
+    }
+
+    // Add generated sales order if exists (different from corresponding)
+    if (this.hasGeneratedSalesOrder && this.salesOrderRef) {
+      const SalesOrder = mongoose.model("SalesOrder");
+      const generatedSO = await SalesOrder.findById(
+        this.salesOrderRef
+      ).populate("customer", "name mobile email");
+
+      if (
+        generatedSO &&
+        !chain.find((item) => item.document._id.equals(generatedSO._id))
+      ) {
+        chain.push({
+          step: chain.length + 1,
+          type: "sales_order",
+          document: generatedSO,
+          description: `Generated Sales Order: ${generatedSO.orderNumber}`,
+          companyId: generatedSO.companyId,
+        });
+      }
+    }
+
+    // Add purchase invoice if converted
+    if (this.convertedToPurchaseInvoice && this.purchaseInvoiceRef) {
+      const Purchase = mongoose.model("Purchase");
+      const invoice = await Purchase.findById(this.purchaseInvoiceRef).populate(
+        "supplier",
+        "name mobile email"
+      );
+
+      if (invoice) {
+        chain.push({
+          step: chain.length + 1,
+          type: "purchase_invoice",
+          document: invoice,
+          description: `Converted to Purchase Invoice: ${invoice.invoiceNumber}`,
+          companyId: invoice.companyId,
+        });
+      }
+    }
+
+    return chain;
+  } catch (error) {
+    console.error("Error getting tracking chain:", error);
+    return [];
+  }
 };
 
 // Convert Purchase Order to Purchase Invoice
 purchaseOrderSchema.methods.convertToPurchaseInvoice = async function () {
-    if (this.convertedToPurchaseInvoice) {
-        throw new Error('Purchase order already converted to invoice');
-    }
+  if (this.convertedToPurchaseInvoice) {
+    throw new Error("Purchase order already converted to invoice");
+  }
 
-    try {
-        // Import Purchase model (assuming you have one)
-        const Purchase = require('./Purchase');
+  try {
+    // Import Purchase model
+    const Purchase = mongoose.model("Purchase");
 
-        // Generate purchase invoice number
-        const generatePurchaseInvoiceNumber = async (companyId) => {
-            const currentYear = new Date().getFullYear();
-            const prefix = `PINV-${currentYear}-`;
+    // Generate purchase invoice number
+    const generatePurchaseInvoiceNumber = async (companyId) => {
+      const currentDate = new Date();
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+      const day = String(currentDate.getDate()).padStart(2, "0");
 
-            const lastInvoice = await Purchase.findOne({
-                companyId: companyId,
-                invoiceNumber: { $regex: `^${prefix}` }
-            }).sort({ invoiceNumber: -1 });
+      const dateStr = `${year}${month}${day}`;
+      const prefix = `PINV-${dateStr}-`;
 
-            let nextNumber = 1;
-            if (lastInvoice && lastInvoice.invoiceNumber) {
-                const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-').pop());
-                if (!isNaN(lastNumber)) {
-                    nextNumber = lastNumber + 1;
-                }
-            }
+      const lastInvoice = await Purchase.findOne({
+        companyId: companyId,
+        invoiceNumber: {$regex: `^${prefix}`},
+      }).sort({invoiceNumber: -1});
 
-            return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
-        };
+      let nextNumber = 1;
+      if (lastInvoice && lastInvoice.invoiceNumber) {
+        const lastNumber = parseInt(lastInvoice.invoiceNumber.split("-").pop());
+        if (!isNaN(lastNumber)) {
+          nextNumber = lastNumber + 1;
+        }
+      }
 
-        const invoiceNumber = await generatePurchaseInvoiceNumber(this.companyId);
+      return `${prefix}${nextNumber.toString().padStart(4, "0")}`;
+    };
 
-        const purchaseInvoiceData = {
-            // Basic invoice info
-            invoiceNumber: invoiceNumber,
-            invoiceDate: new Date(),
-            invoiceType: this.gstEnabled ? 'gst' : 'non-gst',
+    const invoiceNumber = await generatePurchaseInvoiceNumber(this.companyId);
 
-            // Supplier info
-            supplier: this.supplier,
-            supplierMobile: this.supplierMobile,
+    // Convert items with proper field mapping
+    const convertedItems = this.items.map((item) => {
+      const itemObj = item.toObject ? item.toObject() : {...item};
+      delete itemObj._id;
 
-            // Tax settings
-            gstEnabled: this.gstEnabled,
-            gstType: this.gstType,
-            taxMode: this.taxMode,
-            priceIncludesTax: this.priceIncludesTax,
-            companyId: this.companyId,
+      return {
+        // Core item info
+        itemRef: itemObj.itemRef,
+        itemName: itemObj.itemName || itemObj.productName,
+        itemCode: itemObj.itemCode || itemObj.productCode,
+        hsnCode: itemObj.hsnCode || itemObj.hsnNumber || "0000",
+        description: itemObj.description || "",
+        category: itemObj.category || "",
 
-            // Items - create new items without _id
-            items: this.items.map(item => {
-                const itemObj = item.toObject ? item.toObject() : { ...item };
-                delete itemObj._id;
-                return itemObj;
-            }),
+        // Quantity and unit
+        quantity: itemObj.quantity,
+        unit: itemObj.unit === "pcs" ? "PCS" : itemObj.unit,
 
-            // Totals
-            totals: this.totals.toObject ? this.totals.toObject() : { ...this.totals },
+        // Pricing
+        pricePerUnit: itemObj.pricePerUnit || itemObj.price || itemObj.rate,
+        taxRate: itemObj.taxRate || itemObj.gstRate || 18,
 
-            // Payment info - transfer advance payments
-            payment: {
-                method: this.payment?.method || 'Credit',
-                status: 'pending',
-                paidAmount: this.payment?.advanceAmount || 0,
-                pendingAmount: (this.totals?.finalTotal || 0) - (this.payment?.advanceAmount || 0),
-                paymentDate: this.payment?.paymentDate || new Date(),
-                dueDate: this.payment?.dueDate,
-                creditDays: this.payment?.creditDays || 0,
-                reference: this.payment?.reference || '',
-                notes: this.payment?.notes || ''
-            },
+        // Tax mode conversion
+        taxMode:
+          itemObj.gstMode === "include" ||
+          itemObj.taxMode === "with-tax" ||
+          itemObj.taxMode === "inclusive"
+            ? "with-tax"
+            : "without-tax",
+        priceIncludesTax:
+          itemObj.gstMode === "include" ||
+          itemObj.taxMode === "with-tax" ||
+          itemObj.taxMode === "inclusive",
 
-            // Additional fields
-            notes: this.notes,
-            termsAndConditions: this.termsAndConditions,
-            status: 'completed',
+        // Discount
+        discountPercent: itemObj.discountPercent || itemObj.discount || 0,
+        discountAmount: itemObj.discountAmount || 0,
 
-            // Metadata
-            createdBy: 'system',
-            lastModifiedBy: 'system'
-        };
+        // Tax amounts
+        cgst: itemObj.cgst || 0,
+        sgst: itemObj.sgst || 0,
+        igst: itemObj.igst || 0,
+        cgstAmount: itemObj.cgstAmount || 0,
+        sgstAmount: itemObj.sgstAmount || 0,
+        igstAmount: itemObj.igstAmount || 0,
 
-        // Create the purchase invoice
-        const invoice = new Purchase(purchaseInvoiceData);
-        await invoice.save();
+        // Calculated amounts
+        taxableAmount: itemObj.taxableAmount || itemObj.subtotal || 0,
+        totalTaxAmount: itemObj.totalTaxAmount || itemObj.gstAmount || 0,
 
-        // Update this purchase order
-        this.convertedToPurchaseInvoice = true;
-        this.purchaseInvoiceRef = invoice._id;
-        this.purchaseInvoiceNumber = invoice.invoiceNumber;
-        this.convertedAt = new Date();
-        this.status = 'completed';
-        this.convertedBy = 'system';
+        // Final amount
+        amount: itemObj.amount || itemObj.totalAmount || itemObj.itemAmount,
+        itemAmount: itemObj.itemAmount || itemObj.totalAmount || itemObj.amount,
 
-        await this.save();
+        // Line number
+        lineNumber: itemObj.lineNumber,
+      };
+    });
 
-        return invoice;
+    // ✅ ENHANCED: Create purchase invoice data with bidirectional tracking
+    const purchaseInvoiceData = {
+      // Basic invoice info
+      invoiceNumber: invoiceNumber,
+      invoiceDate: new Date(),
+      invoiceType: this.gstEnabled ? "gst" : "non-gst",
 
-    } catch (error) {
-        throw new Error(`Failed to convert purchase order to invoice: ${error.message}`);
-    }
+      // Supplier info
+      supplier: this.supplier,
+      supplierMobile: this.supplierMobile,
+
+      // Tax settings
+      gstEnabled: this.gstEnabled,
+      gstType: this.gstType,
+      taxMode: this.taxMode,
+      priceIncludesTax: this.priceIncludesTax,
+      companyId: this.companyId,
+
+      // Items
+      items: convertedItems,
+
+      // Totals
+      totals: {
+        subtotal: this.totals?.subtotal || 0,
+        totalQuantity: this.totals?.totalQuantity || 0,
+        totalDiscount: this.totals?.totalDiscount || 0,
+        totalDiscountAmount: this.totals?.totalDiscountAmount || 0,
+        totalTax: this.totals?.totalTax || 0,
+        totalCGST: this.totals?.totalCGST || 0,
+        totalSGST: this.totals?.totalSGST || 0,
+        totalIGST: this.totals?.totalIGST || 0,
+        totalTaxableAmount: this.totals?.totalTaxableAmount || 0,
+        finalTotal: this.totals?.finalTotal || 0,
+        roundOff: this.totals?.roundOff || 0,
+        withTaxTotal: this.totals?.withTaxTotal || 0,
+        withoutTaxTotal: this.totals?.withoutTaxTotal || 0,
+      },
+
+      // Payment info - transfer advance payments
+      payment: {
+        method: this.payment?.method || "credit",
+        status:
+          (this.payment?.advanceAmount || 0) >= (this.totals?.finalTotal || 0)
+            ? "paid"
+            : (this.payment?.advanceAmount || 0) > 0
+            ? "partial"
+            : "pending",
+        paidAmount: this.payment?.advanceAmount || 0,
+        pendingAmount: Math.max(
+          0,
+          (this.totals?.finalTotal || 0) - (this.payment?.advanceAmount || 0)
+        ),
+        paymentDate: this.payment?.paymentDate || new Date(),
+        dueDate: this.payment?.dueDate,
+        creditDays: this.payment?.creditDays || 0,
+        reference:
+          this.payment?.reference ||
+          `Converted from ${this.orderType} ${this.orderNumber}`,
+        notes:
+          this.payment?.notes ||
+          `Converted from ${this.orderType} ${this.orderNumber}`,
+      },
+
+      // ✅ ENHANCED: Bidirectional tracking fields
+      sourceOrderId: this._id,
+      sourceOrderNumber: this.orderNumber,
+      sourceOrderType: this.orderType,
+      sourceCompanyId: this.companyId,
+      isAutoGenerated: false,
+      generatedFrom: "purchase_order",
+      convertedBy: this.convertedBy || "system",
+
+      // Additional fields
+      notes: this.notes
+        ? `${this.notes} | Converted from ${this.orderType} ${this.orderNumber}`
+        : `Converted from ${this.orderType} ${this.orderNumber}`,
+      termsAndConditions: this.termsAndConditions || "",
+
+      // Status
+      status: "active",
+
+      // Round-off
+      roundOff: this.roundOff || 0,
+      roundOffEnabled: this.roundOffEnabled || false,
+
+      // Metadata
+      createdBy: this.convertedBy || "system",
+      lastModifiedBy: this.convertedBy || "system",
+    };
+
+    // Create the purchase invoice
+    const invoice = new Purchase(purchaseInvoiceData);
+    await invoice.save();
+
+    // ✅ ENHANCED: Update this purchase order
+    this.convertedToPurchaseInvoice = true;
+    this.purchaseInvoiceRef = invoice._id;
+    this.purchaseInvoiceNumber = invoice.invoiceNumber;
+    this.convertedAt = new Date();
+    this.status = "completed";
+    this.convertedBy = this.convertedBy || "system";
+
+    await this.save();
+
+    return invoice;
+  } catch (error) {
+    throw new Error(
+      `Failed to convert purchase order to invoice: ${error.message}`
+    );
+  }
 };
 
+// ✅ ENHANCED: Additional instance methods
 purchaseOrderSchema.methods.markAsConfirmed = function () {
-    this.status = 'confirmed';
-    return this.save();
+  this.status = "confirmed";
+  return this.save();
 };
 
 purchaseOrderSchema.methods.markAsReceived = function () {
-    this.status = 'received';
-    this.deliveryDate = new Date();
-    return this.save();
+  this.status = "received";
+  this.deliveryDate = new Date();
+  return this.save();
 };
 
 purchaseOrderSchema.methods.markAsPartiallyReceived = function () {
-    this.status = 'partially_received';
-    return this.save();
+  this.status = "partially_received";
+  return this.save();
 };
 
 purchaseOrderSchema.methods.approve = function (approvedBy) {
-    this.approvedBy = approvedBy;
-    this.approvedAt = new Date();
-    this.status = 'confirmed';
-    return this.save();
+  this.approvedBy = approvedBy;
+  this.approvedAt = new Date();
+  this.status = "confirmed";
+  return this.save();
 };
 
 purchaseOrderSchema.methods.setDueDate = function (creditDays) {
-    if (!creditDays || creditDays <= 0) return this;
+  if (!creditDays || creditDays <= 0) return this;
 
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + parseInt(creditDays));
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + parseInt(creditDays));
 
-    this.payment.dueDate = dueDate;
-    this.payment.creditDays = parseInt(creditDays);
+  this.payment.dueDate = dueDate;
+  this.payment.creditDays = parseInt(creditDays);
 
-    return this;
+  return this;
 };
 
-// STATIC METHODS
+// ✅ ENHANCED: STATIC METHODS with bidirectional support
+
+// Existing static methods
 purchaseOrderSchema.statics.getPendingOrders = function (companyId) {
-    return this.find({
-        companyId,
-        status: { $in: ['draft', 'sent', 'confirmed'] },
-        convertedToPurchaseInvoice: false
-    }).populate('supplier', 'name mobile email');
+  return this.find({
+    companyId,
+    status: {$in: ["draft", "sent", "confirmed"]},
+    convertedToPurchaseInvoice: false,
+  }).populate("supplier", "name mobile email");
 };
 
 purchaseOrderSchema.statics.getExpiredOrders = function (companyId) {
-    return this.find({
-        companyId,
-        validUntil: { $lt: new Date() },
-        status: { $nin: ['completed', 'cancelled'] }
-    }).populate('supplier', 'name mobile email');
+  return this.find({
+    companyId,
+    validUntil: {$lt: new Date()},
+    status: {$nin: ["completed", "cancelled"]},
+  }).populate("supplier", "name mobile email");
 };
 
 purchaseOrderSchema.statics.getOrdersBySupplier = function (supplierId) {
-    return this.find({
-        supplier: supplierId,
-        status: { $ne: 'cancelled' }
-    }).sort({ orderDate: -1 });
+  return this.find({
+    supplier: supplierId,
+    status: {$ne: "cancelled"},
+  }).sort({orderDate: -1});
 };
 
-purchaseOrderSchema.statics.getOrdersRequiredByDate = function (companyId, date) {
-    return this.find({
-        companyId,
-        requiredBy: { $lte: date },
-        status: { $nin: ['completed', 'cancelled', 'received'] }
-    }).populate('supplier', 'name mobile email');
+purchaseOrderSchema.statics.getOrdersRequiredByDate = function (
+  companyId,
+  date
+) {
+  return this.find({
+    companyId,
+    requiredBy: {$lte: date},
+    status: {$nin: ["completed", "cancelled", "received"]},
+  }).populate("supplier", "name mobile email");
 };
 
 purchaseOrderSchema.statics.getOrdersAwaitingApproval = function (companyId) {
-    return this.find({
+  return this.find({
+    companyId,
+    status: "draft",
+    approvedBy: null,
+  }).populate("supplier", "name mobile email");
+};
+
+// ✅ NEW: Get auto-generated purchase orders (from sales orders)
+purchaseOrderSchema.statics.getAutoGeneratedOrders = function (companyId) {
+  return this.find({
+    companyId,
+    isAutoGenerated: true,
+    generatedFrom: "sales_order",
+  })
+    .populate("supplier", "name mobile email")
+    .sort({orderDate: -1});
+};
+
+// ✅ NEW: Get orders with corresponding sales orders
+purchaseOrderSchema.statics.getOrdersWithCorrespondingSO = function (
+  companyId
+) {
+  return this.find({
+    companyId,
+    correspondingSalesOrderId: {$exists: true, $ne: null},
+  })
+    .populate("supplier", "name mobile email")
+    .sort({orderDate: -1});
+};
+
+// ✅ NEW: Get orders created from specific sales order
+purchaseOrderSchema.statics.getOrdersFromSalesOrder = function (salesOrderId) {
+  return this.find({
+    sourceOrderId: salesOrderId,
+    sourceOrderType: "sales_order",
+  }).populate("supplier", "name mobile email");
+};
+
+// ✅ NEW: Get purchase orders that have generated sales orders
+purchaseOrderSchema.statics.getPurchaseOrdersWithGeneratedSO = function (
+  companyId
+) {
+  return this.find({
+    companyId,
+    autoGeneratedSalesOrder: true,
+    salesOrderRef: {$exists: true, $ne: null},
+  })
+    .populate("supplier", "name mobile email")
+    .sort({salesOrderGeneratedAt: -1});
+};
+
+// ✅ NEW: Get bidirectional analytics for company
+purchaseOrderSchema.statics.getBidirectionalAnalytics = async function (
+  companyId
+) {
+  try {
+    const [
+      totalOrders,
+      autoGeneratedOrders,
+      ordersWithCorrespondingSO,
+      ordersWithGeneratedSO,
+      convertedToPurchaseInvoices,
+      ordersFromSalesOrders,
+    ] = await Promise.all([
+      this.countDocuments({companyId}),
+      this.countDocuments({companyId, isAutoGenerated: true}),
+      this.countDocuments({
         companyId,
-        status: 'draft',
-        approvedBy: null
-    }).populate('supplier', 'name mobile email');
+        correspondingSalesOrderId: {$exists: true, $ne: null},
+      }),
+      this.countDocuments({
+        companyId,
+        autoGeneratedSalesOrder: true,
+      }),
+      this.countDocuments({companyId, convertedToPurchaseInvoice: true}),
+      this.countDocuments({companyId, sourceOrderType: "sales_order"}),
+    ]);
+
+    return {
+      totalOrders,
+      autoGeneratedOrders,
+      ordersWithCorrespondingSO,
+      ordersWithGeneratedSO,
+      convertedToPurchaseInvoices,
+      ordersFromSalesOrders,
+      bidirectionalCoverage:
+        totalOrders > 0
+          ? (
+              ((autoGeneratedOrders +
+                ordersWithCorrespondingSO +
+                ordersWithGeneratedSO) /
+                totalOrders) *
+              100
+            ).toFixed(2)
+          : 0,
+      conversionRate:
+        totalOrders > 0
+          ? ((convertedToPurchaseInvoices / totalOrders) * 100).toFixed(2)
+          : 0,
+      salesOrderGenerationRate:
+        totalOrders > 0
+          ? ((ordersWithGeneratedSO / totalOrders) * 100).toFixed(2)
+          : 0,
+    };
+  } catch (error) {
+    console.error("Error getting bidirectional analytics:", error);
+    throw error;
+  }
 };
 
 // Export the model
-module.exports = mongoose.model('PurchaseOrder', purchaseOrderSchema);
+module.exports = mongoose.model("PurchaseOrder", purchaseOrderSchema);

@@ -508,7 +508,6 @@ function SalesInvoiceFormSection({
     });
   };
 
-  // Handle payment submit with proper due date handling
   const handlePaymentSubmit = useCallback(async () => {
     try {
       const validation = itemsTableLogic.validatePaymentData(
@@ -534,6 +533,36 @@ function SalesInvoiceFormSection({
           createdAt: new Date().toISOString(),
         };
 
+        // ✅ Enhanced bank account handling
+        if (
+          data.bankAccountId &&
+          ["bank", "bank_transfer", "Bank Account"].includes(data.paymentMethod)
+        ) {
+          const selectedBankAccount = bankAccounts.find(
+            (acc) =>
+              acc._id === data.bankAccountId || acc.id === data.bankAccountId
+          );
+
+          if (selectedBankAccount) {
+            formatted.bankAccountId = data.bankAccountId;
+            formatted.bankAccountName =
+              selectedBankAccount.accountName || selectedBankAccount.name;
+            formatted.bankName = selectedBankAccount.bankName;
+            formatted.accountNumber = selectedBankAccount.accountNumber;
+
+            // ✅ Add bank info to notes if not already present
+            if (
+              !formatted.notes ||
+              !formatted.notes.includes(selectedBankAccount.bankName)
+            ) {
+              const bankInfo = `Bank: ${selectedBankAccount.bankName} | Account: ${selectedBankAccount.accountName} | A/C No: ${selectedBankAccount.accountNumber}`;
+              formatted.notes = formatted.notes
+                ? `${formatted.notes} | ${bankInfo}`
+                : bankInfo;
+            }
+          }
+        }
+
         // Handle due date properly
         if (data.dueDate) {
           if (data.dueDate instanceof Date) {
@@ -552,10 +581,6 @@ function SalesInvoiceFormSection({
         } else {
           formatted.dueDate = null;
           formatted.creditDays = 0;
-        }
-
-        if (data.bankAccountId) {
-          formatted.bankAccountId = data.bankAccountId;
         }
 
         if (data.notes) {
@@ -606,7 +631,7 @@ function SalesInvoiceFormSection({
     displayTotal,
     addToast,
     onFormDataChange,
-    bankAccounts,
+    bankAccounts, // ✅ Added bankAccounts dependency
     formData.invoiceNumber,
     companyId,
     mode,
@@ -614,7 +639,7 @@ function SalesInvoiceFormSection({
     setShowPaymentModal,
   ]);
 
-  // Handle save invoice function - Clean, no logs, proper due date handling
+  // ✅ UPDATED: Enhanced save invoice with better payment method normalization
   const handleSaveInvoice = useCallback(async () => {
     if (saving || isSubmitting || submissionRef.current) {
       return;
@@ -721,15 +746,48 @@ function SalesInvoiceFormSection({
         }
       );
 
-      // Enhanced payment data with proper due date handling
+      // ✅ ENHANCED: Payment method normalization function
+      const normalizePaymentMethod = (method) => {
+        if (!method) return "cash";
+
+        const methodStr = method.toString().toLowerCase();
+
+        const methodMappings = {
+          // Bank transfer variations - ✅ All map to "bank_transfer" for backend
+          "bank account": "bank_transfer",
+          bank_transfer: "bank_transfer",
+          banktransfer: "bank_transfer",
+          "bank transfer": "bank_transfer",
+          bank: "bank_transfer",
+          neft: "bank_transfer",
+          rtgs: "bank_transfer",
+          imps: "bank_transfer",
+
+          // Other payment methods
+          card: "card",
+          upi: "upi",
+          cash: "cash",
+          credit: "credit",
+          partial: "partial",
+        };
+
+        return methodMappings[methodStr] || "cash";
+      };
+
+      // ✅ ENHANCED: Payment data with proper normalization and bank account info
       const enhancedPaymentData =
         paymentData?.amount > 0
           ? (() => {
+              const normalizedMethod = normalizePaymentMethod(
+                paymentData.paymentMethod
+              );
+
               const payment = {
                 ...paymentData,
                 amount: parseFloat(paymentData.amount || 0),
-                paymentMethod: paymentData.paymentMethod || "cash",
-                paymentType: paymentData.paymentType || "Cash",
+                paymentMethod: normalizedMethod, // ✅ Use normalized method
+                paymentType: paymentData.paymentType || "Cash", // Keep original display type
+                method: normalizedMethod, // ✅ Backend compatibility
                 partyId: formData.customer?.id || formData.customer?._id,
                 partyName:
                   formData.customer?.name || formData.customer?.businessName,
@@ -742,6 +800,41 @@ function SalesInvoiceFormSection({
                 status: "completed",
                 relatedInvoiceTotal: displayTotal,
               };
+
+              // ✅ Enhanced bank account handling
+              if (
+                paymentData.bankAccountId &&
+                ["bank_transfer"].includes(normalizedMethod)
+              ) {
+                const selectedBankAccount = bankAccounts.find(
+                  (acc) =>
+                    acc._id === paymentData.bankAccountId ||
+                    acc.id === paymentData.bankAccountId
+                );
+
+                if (selectedBankAccount) {
+                  payment.bankAccountId = paymentData.bankAccountId;
+                  payment.bankAccountName =
+                    selectedBankAccount.accountName || selectedBankAccount.name;
+                  payment.bankName = selectedBankAccount.bankName;
+                  payment.accountNumber = selectedBankAccount.accountNumber;
+                  payment.ifscCode = selectedBankAccount.ifscCode;
+
+                  // ✅ Enhanced bank account metadata
+                  payment.bankAccountDetails = {
+                    id: selectedBankAccount._id || selectedBankAccount.id,
+                    name:
+                      selectedBankAccount.accountName ||
+                      selectedBankAccount.name,
+                    bankName: selectedBankAccount.bankName,
+                    accountNumber: selectedBankAccount.accountNumber,
+                    ifscCode: selectedBankAccount.ifscCode,
+                    balance:
+                      selectedBankAccount.currentBalance ||
+                      selectedBankAccount.balance,
+                  };
+                }
+              }
 
               // Proper due date handling
               if (paymentData.dueDate) {
@@ -770,10 +863,6 @@ function SalesInvoiceFormSection({
                 payment.creditDays = parseInt(paymentData.creditDays) || 0;
               }
 
-              if (paymentData.bankAccountId) {
-                payment.bankAccountId = paymentData.bankAccountId;
-              }
-
               if (paymentData.notes) {
                 payment.notes = paymentData.notes.trim();
               }
@@ -782,12 +871,15 @@ function SalesInvoiceFormSection({
             })()
           : null;
 
+      // ✅ ENHANCED: Transaction data with normalized payment method
       const transactionData = enhancedPaymentData
         ? {
             amount: enhancedPaymentData.amount,
-            paymentMethod: enhancedPaymentData.paymentMethod,
-            paymentType: enhancedPaymentData.paymentType,
+            paymentMethod: enhancedPaymentData.paymentMethod, // ✅ Normalized method
+            paymentType: enhancedPaymentData.paymentType, // ✅ Display type
+            method: enhancedPaymentData.method, // ✅ Backend compatibility
             bankAccountId: enhancedPaymentData.bankAccountId,
+            bankAccountDetails: enhancedPaymentData.bankAccountDetails,
             notes:
               enhancedPaymentData.notes ||
               `Payment for ${isQuotationsMode ? "quotation" : "invoice"} ${
@@ -907,6 +999,14 @@ function SalesInvoiceFormSection({
         return;
       }
 
+      console.log("💾 Saving invoice with normalized payment method:", {
+        originalPaymentMethod: paymentData?.paymentMethod,
+        normalizedPaymentMethod: enhancedPaymentData?.paymentMethod,
+        paymentType: enhancedPaymentData?.paymentType,
+        bankAccountId: enhancedPaymentData?.bankAccountId,
+        bankAccountDetails: enhancedPaymentData?.bankAccountDetails,
+      });
+
       const result = await onSave(invoiceDataFromTable);
 
       if (result?.success) {
@@ -1008,6 +1108,7 @@ function SalesInvoiceFormSection({
     currentUser,
     currentCompany,
     createTransactionWithInvoice,
+    bankAccounts, // ✅ Added bankAccounts dependency
   ]);
 
   // Item management functions
@@ -2085,7 +2186,6 @@ function SalesInvoiceFormSection({
           </Button>
         </Modal.Footer>
       </Modal>
-
       <PaymentModal
         show={showPaymentModal}
         onHide={() => setShowPaymentModal(false)}
@@ -2107,7 +2207,7 @@ function SalesInvoiceFormSection({
         roundOffValue={roundOffValue}
         invoiceNumber={formData.invoiceNumber}
         invoiceDate={formData.invoiceDate}
-        companyId={companyId}
+        companyId={companyId} // ✅ Added companyId prop
         formType={mode === "purchases" ? "purchase" : "sales"}
         handleDueDateToggle={handleDueDateToggle}
         handleCreditDaysChange={handleCreditDaysChange}

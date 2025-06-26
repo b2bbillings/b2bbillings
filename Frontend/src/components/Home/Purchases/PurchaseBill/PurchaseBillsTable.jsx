@@ -1,1575 +1,2122 @@
-import React, { useState } from 'react';
-import { Container, Row, Col, Button, Table, Badge, Dropdown, InputGroup, Form } from 'react-bootstrap';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import React, {useState, useCallback, useMemo} from "react";
 import {
-    faSearch,
-    faChartLine,
-    faFileExcel,
-    faPrint,
-    faSort,
-    faEllipsisV,
-    faEye,
-    faEdit,
-    faTrash,
-    faCopy,
-    faShare,
-    faShoppingCart,
-    faTruck,
-    faCheck,
-    faClipboardList,
-    faPaperPlane,
-    faInbox,
-    faDownload,
-    faExchangeAlt
-} from '@fortawesome/free-solid-svg-icons';
-import UniversalViewModal from '../../../Common/UniversalViewModal';
+  Container,
+  Row,
+  Col,
+  Button,
+  Table,
+  Badge,
+  Dropdown,
+  InputGroup,
+  Form,
+  Spinner,
+  Alert,
+} from "react-bootstrap";
+import {useNavigate, useLocation} from "react-router-dom";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+import {
+  faSearch,
+  faChartLine,
+  faFileExcel,
+  faPrint,
+  faSort,
+  faEllipsisV,
+  faEye,
+  faEdit,
+  faTrash,
+  faCopy,
+  faShare,
+  faShoppingCart,
+  faTruck,
+  faCheck,
+  faClipboardList,
+  faPaperPlane,
+  faInbox,
+  faDownload,
+  faExchangeAlt,
+  faFilter,
+  faPlus,
+  faSpinner, // ✅ Added faSpinner import
+} from "@fortawesome/free-solid-svg-icons";
+import purchaseOrderService from "../../../../services/purchaseOrderService";
+import purchaseService from "../../../../services/purchaseService";
 
 function PurchaseBillsTable({
-    purchases = [],
-    onViewPurchase,
-    onEditPurchase,
-    onDeletePurchase,
-    onPrintPurchase,
-    onSharePurchase,
-    onDownloadPurchase,
-    onConvertPurchase,
-    onMarkAsOrdered,
-    onMarkAsReceived,
-    onCompletePurchase,
-    isLoading = false,
-    // ✅ NEW: Purchase Order mode support
-    isPurchaseOrderView = false,
-    title,
-    searchPlaceholder
+  purchases = [],
+  onViewPurchase,
+  onEditPurchase,
+  onDeletePurchase,
+  onPrintPurchase,
+  onSharePurchase,
+  onDownloadPurchase,
+  onConvertPurchase,
+  onMarkAsOrdered,
+  onMarkAsReceived,
+  onCompletePurchase,
+  onDuplicatePurchase,
+  isLoading = false,
+  isPurchaseOrderView = false,
+  title,
+  searchPlaceholder,
+  companyId,
+  addToast,
+  currentUser,
+  currentCompany,
+  // ✅ Enhanced props for better functionality
+  searchTerm = "",
+  onSearchChange,
+  sortBy = "date",
+  sortOrder = "desc",
+  onSort,
+  filterStatus = "all",
+  onFilterChange,
+  showHeader = true,
+  enableActions = true,
+  enableBulkActions = false,
+  selectedPurchases = [],
+  onSelectionChange,
 }) {
-    const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
 
-    // ✅ NEW: View Modal States
-    const [showViewModal, setShowViewModal] = useState(false);
-    const [selectedTransaction, setSelectedTransaction] = useState(null);
+  // ✅ Enhanced state for view modal with additional features
+  const [viewModalShow, setViewModalShow] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState(null);
 
-    // ✅ SMART: Auto-detect view configuration
-    const getViewConfig = () => {
-        if (isPurchaseOrderView) {
-            return {
-                defaultTitle: "Purchase Orders",
-                defaultSearchPlaceholder: "Search orders, suppliers, items...",
-                numberLabel: "Order No",
-                documentType: "purchase-order",
-                actionLabels: {
-                    markOrdered: "Send Order",
-                    markReceived: "Mark Received",
-                    complete: "Complete Order"
-                }
-            };
-        } else {
-            return {
-                defaultTitle: "Purchase Bills",
-                defaultSearchPlaceholder: "Search bills, suppliers, items...",
-                numberLabel: "Bill No",
-                documentType: "purchase-invoice",
-                actionLabels: {
-                    markOrdered: "Mark Ordered",
-                    markReceived: "Mark Received",
-                    complete: "Complete Purchase"
-                }
-            };
-        }
-    };
+  // ✅ FIXED: Add better state management for delete operations
+  const [deletingPurchases, setDeletingPurchases] = useState(new Set());
 
-    const config = getViewConfig();
-    const displayTitle = title || config.defaultTitle;
-    const displaySearchPlaceholder = searchPlaceholder || config.defaultSearchPlaceholder;
+  // ✅ Local search and filter state if not provided
+  const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
+  const [localSortBy, setLocalSortBy] = useState(sortBy);
+  const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
+  const [localFilterStatus, setLocalFilterStatus] = useState(filterStatus);
 
-    // ✅ ENHANCED: Filter purchases with better search logic for both views
-    const filteredPurchases = purchases.filter(purchase =>
-        purchase.supplierName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.purchaseNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.purchaseNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.billNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.purchaseOrderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.purchaseStatus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        purchase.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+  const isPurchaseOrdersMode = useMemo(() => {
+    return (
+      isPurchaseOrderView ||
+      location.pathname.includes("/purchase-orders") ||
+      title?.toLowerCase().includes("order")
     );
+  }, [isPurchaseOrderView, location.pathname, title]);
 
-    // ✅ NEW: Enhanced view handler
-    const handleViewTransaction = (purchase) => {
-        setSelectedTransaction(purchase);
-        setShowViewModal(true);
-        if (onViewPurchase) {
-            onViewPurchase(purchase);
+  // ✅ Add this helper function near the top of the component (around line 50)
+  const getDocumentType = useCallback(
+    (purchase) => {
+      // Check various indicators to determine document type
+      if (
+        purchase.documentType === "purchase-order" ||
+        purchase.orderType === "purchase_order" ||
+        purchase.orderType === "purchase_quotation" ||
+        purchase.orderType === "proforma_purchase" ||
+        purchase.orderNumber ||
+        purchase.quotationNumber
+      ) {
+        return "purchase-order";
+      } else if (
+        purchase.documentType === "purchase-invoice" ||
+        purchase.invoiceNumber ||
+        purchase.billNumber ||
+        purchase.purchaseNumber
+      ) {
+        return "purchase-invoice";
+      }
+
+      // Default based on current mode
+      return isPurchaseOrdersMode ? "purchase-order" : "purchase-invoice";
+    },
+    [isPurchaseOrdersMode]
+  );
+  // In PurchaseBillsTable.jsx, update the getDocumentLabels function:
+
+  const getDocumentLabels = (documentType = null) => {
+    // If specific document type is passed, use it
+    if (documentType === "purchase-order") {
+      return {
+        documentName: "Purchase Order",
+        documentNamePlural: "Purchase Orders",
+        listPath: "purchase-orders",
+        editPath: "purchase-orders",
+        createPath: "purchase-orders/new",
+      };
+    } else if (documentType === "purchase-invoice") {
+      return {
+        documentName: "Purchase Invoice", // ✅ Changed from "Purchase Bill"
+        documentNamePlural: "Purchase Invoices", // ✅ Changed from "Purchase Bills"
+        listPath: "purchases",
+        editPath: "purchases",
+        createPath: "purchases/new",
+      };
+    }
+
+    // Default based on current mode/path
+    return isPurchaseOrdersMode
+      ? {
+          documentName: "Purchase Order",
+          documentNamePlural: "Purchase Orders",
+          listPath: "purchase-orders",
+          editPath: "purchase-orders",
+          createPath: "purchase-orders/new",
         }
-    };
-
-    // ✅ NEW: Modal action handlers
-    const handleModalEdit = (transaction) => {
-        setShowViewModal(false);
-        if (onEditPurchase) {
-            onEditPurchase(transaction);
-        }
-    };
-
-    const handleModalConvert = (transaction) => {
-        setShowViewModal(false);
-        if (onConvertPurchase) {
-            onConvertPurchase(transaction);
-        }
-    };
-
-    const handleModalPrint = (transaction) => {
-        if (onPrintPurchase) {
-            onPrintPurchase(transaction);
-        }
-    };
-
-    const handleModalDownload = (transaction) => {
-        if (onDownloadPurchase) {
-            onDownloadPurchase(transaction);
-        }
-    };
-
-    const handleModalShare = (transaction) => {
-        if (onSharePurchase) {
-            onSharePurchase(transaction);
-        }
-    };
-
-    // ✅ ENHANCED: Better currency formatting
-    const formatCurrency = (amount) => {
-        if (!amount && amount !== 0) return '₹0';
-
-        const numAmount = parseFloat(amount) || 0;
-
-        // Ultra compact currency formatting
-        if (numAmount >= 10000000) { // 1 crore
-            return `₹${(numAmount / 10000000).toFixed(1)}Cr`;
-        } else if (numAmount >= 100000) { // 1 lakh
-            return `₹${(numAmount / 100000).toFixed(1)}L`;
-        } else if (numAmount >= 1000) { // 1 thousand
-            return `₹${(numAmount / 1000).toFixed(1)}K`;
-        }
-        return `₹${Math.round(numAmount)}`;
-    };
-
-    // ✅ ENHANCED: Better date formatting
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-
-        try {
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return 'Invalid Date';
-
-            return date.toLocaleDateString('en-IN', {
-                day: '2-digit',
-                month: '2-digit'
-            }); // Only DD/MM format for compactness
-        } catch (error) {
-            console.warn('Date formatting error:', error);
-            return 'N/A';
-        }
-    };
-
-    // ✅ ENHANCED: Extract values for both Purchase Bills and Orders
-    const extractPurchaseValues = (purchase) => {
-        // Try to get values from fullObject first, then fall back to direct properties
-        const fullObj = purchase.fullObject || purchase;
-
-        // ✅ ENHANCED: More comprehensive amount extraction with nested totals
-        const totalAmount = parseFloat(
-            fullObj.totals?.finalTotal ||
-            fullObj.totals?.grandTotal ||
-            fullObj.finalTotal ||
-            fullObj.grandTotal ||
-            fullObj.totalAmount ||
-            fullObj.amount ||
-            fullObj.total ||
-            fullObj.netAmount ||
-            fullObj.invoiceAmount ||
-            fullObj.billAmount ||
-            fullObj.orderAmount ||
-            purchase.totals?.finalTotal ||
-            purchase.totals?.grandTotal ||
-            purchase.finalTotal ||
-            purchase.grandTotal ||
-            purchase.totalAmount ||
-            purchase.amount ||
-            purchase.total ||
-            purchase.netAmount ||
-            purchase.invoiceAmount ||
-            purchase.billAmount ||
-            purchase.orderAmount ||
-            0
-        );
-
-        // ✅ ENHANCED: Better balance amount extraction with nested payment object
-        const balanceAmount = parseFloat(
-            fullObj.payment?.pendingAmount ||
-            fullObj.payment?.balanceAmount ||
-            fullObj.balanceAmount ||
-            fullObj.pendingAmount ||
-            fullObj.balance ||
-            fullObj.payableAmount ||
-            fullObj.outstandingAmount ||
-            fullObj.dueAmount ||
-            fullObj.remainingAmount ||
-            purchase.payment?.pendingAmount ||
-            purchase.payment?.balanceAmount ||
-            purchase.balanceAmount ||
-            purchase.pendingAmount ||
-            purchase.balance ||
-            purchase.payableAmount ||
-            purchase.outstandingAmount ||
-            purchase.dueAmount ||
-            purchase.remainingAmount ||
-            0
-        );
-
-        // ✅ ENHANCED: Better paid amount extraction with nested payment object
-        const paidAmount = parseFloat(
-            fullObj.payment?.paidAmount ||
-            fullObj.payment?.amountPaid ||
-            fullObj.paidAmount ||
-            fullObj.amountPaid ||
-            fullObj.paymentReceived ||
-            fullObj.receivedAmount ||
-            purchase.payment?.paidAmount ||
-            purchase.payment?.amountPaid ||
-            purchase.paidAmount ||
-            purchase.amountPaid ||
-            purchase.paymentReceived ||
-            purchase.receivedAmount ||
-            0
-        );
-
-        // LOGIC: Calculate actual balance if not provided
-        let actualBalance = balanceAmount;
-
-        // If balance is not set but we have total and paid amounts
-        if (balanceAmount === 0 && totalAmount > 0) {
-            actualBalance = Math.max(0, totalAmount - paidAmount);
-        }
-
-        // If balance equals total and no payment received, it's unpaid
-        if (balanceAmount === totalAmount && paidAmount === 0) {
-            actualBalance = totalAmount;
-        }
-
-        // If we still don't have amounts, try to calculate from items
-        let calculatedTotal = totalAmount;
-        if (totalAmount === 0) {
-            const items = fullObj.items || purchase.items || [];
-            if (items.length > 0) {
-                calculatedTotal = items.reduce((sum, item) => {
-                    const itemTotal = parseFloat(
-                        item.total ||
-                        item.amount ||
-                        item.itemAmount ||
-                        item.totalAmount ||
-                        item.lineTotal ||
-                        (item.quantity * item.pricePerUnit) ||
-                        (item.quantity * item.price) ||
-                        (item.quantity * item.rate) ||
-                        0
-                    );
-                    return sum + itemTotal;
-                }, 0);
-            }
-        }
-
-        // ✅ ENHANCED: Date extraction for both bills and orders
-        const purchaseDate = fullObj.purchaseDate ||
-            fullObj.billDate ||
-            fullObj.orderDate ||
-            fullObj.quotationDate ||
-            fullObj.invoiceDate ||
-            fullObj.date ||
-            fullObj.createdAt ||
-            purchase.purchaseDate ||
-            purchase.billDate ||
-            purchase.orderDate ||
-            purchase.quotationDate ||
-            purchase.invoiceDate ||
-            purchase.date ||
-            purchase.createdAt;
-
-        // ✅ ENHANCED: Number extraction for both bills and orders
-        const purchaseNumber = fullObj.purchaseNumber ||
-            fullObj.purchaseNo ||
-            fullObj.billNumber ||
-            fullObj.billNo ||
-            fullObj.orderNumber ||
-            fullObj.orderNo ||
-            fullObj.purchaseOrderNumber ||
-            fullObj.quotationNumber ||
-            fullObj.quotationNo ||
-            fullObj.invoiceNumber ||
-            fullObj.invoiceNo ||
-            purchase.purchaseNumber ||
-            purchase.purchaseNo ||
-            purchase.billNumber ||
-            purchase.billNo ||
-            purchase.orderNumber ||
-            purchase.orderNo ||
-            purchase.purchaseOrderNumber ||
-            purchase.quotationNumber ||
-            purchase.quotationNo ||
-            purchase.invoiceNumber ||
-            purchase.invoiceNo;
-
-        // ✅ ENHANCED: Status extraction for both bills and orders
-        const currentStatus = fullObj.status ||
-            fullObj.purchaseStatus ||
-            fullObj.billStatus ||
-            fullObj.orderStatus ||
-            fullObj.quotationStatus ||
-            purchase.status ||
-            purchase.purchaseStatus ||
-            purchase.billStatus ||
-            purchase.orderStatus ||
-            purchase.quotationStatus ||
-            'draft';
-
-        const supplierName = fullObj.supplierName ||
-            fullObj.supplier?.name ||
-            fullObj.supplier?.businessName ||
-            fullObj.supplier?.companyName ||
-            fullObj.partyName ||
-            purchase.supplierName ||
-            purchase.supplier?.name ||
-            purchase.supplier?.businessName ||
-            purchase.supplier?.companyName ||
-            purchase.partyName ||
-            'Unknown Supplier';
-
-        const supplierMobile = fullObj.supplierMobile ||
-            fullObj.supplier?.mobile ||
-            fullObj.supplier?.phone ||
-            fullObj.partyMobile ||
-            purchase.supplierMobile ||
-            purchase.supplier?.mobile ||
-            purchase.supplier?.phone ||
-            purchase.partyMobile ||
-            '';
-
-        const gstEnabled = fullObj.gstEnabled ||
-            fullObj.purchaseType === 'gst' ||
-            fullObj.taxType === 'gst' ||
-            fullObj.taxMode === 'gst' ||
-            fullObj.isGstBill ||
-            purchase.gstEnabled ||
-            purchase.purchaseType === 'gst' ||
-            purchase.taxType === 'gst' ||
-            purchase.taxMode === 'gst' ||
-            purchase.isGstBill ||
-            false;
-
-        // ✅ ENHANCED: Payment method extraction to handle nested payment object
-        const paymentMethod = fullObj.payment?.method ||
-            fullObj.paymentType ||
-            fullObj.paymentMethod ||
-            fullObj.paymentMode ||
-            fullObj.paymentMethodType ||
-            purchase.payment?.method ||
-            purchase.paymentType ||
-            purchase.paymentMethod ||
-            purchase.paymentMode ||
-            purchase.paymentMethodType ||
-            'cash';
-
-        const items = fullObj.items ||
-            fullObj.purchaseItems ||
-            fullObj.orderItems ||
-            purchase.items ||
-            purchase.purchaseItems ||
-            purchase.orderItems ||
-            [];
-
-        const finalValues = {
-            totalAmount: calculatedTotal || totalAmount,
-            balanceAmount: actualBalance,
-            paidAmount,
-            purchaseDate,
-            purchaseNumber,
-            currentStatus,
-            supplierName,
-            supplierMobile,
-            gstEnabled,
-            paymentMethod,
-            items
+      : {
+          documentName: "Purchase Invoice", // ✅ Changed from "Purchase Bill"
+          documentNamePlural: "Purchase Invoices", // ✅ Changed from "Purchase Bills"
+          listPath: "purchases",
+          editPath: "purchases",
+          createPath: "purchases/new",
         };
+  };
 
-        return finalValues;
-    };
+  const labels = getDocumentLabels();
 
-    // ✅ ENHANCED: Better tax calculation with more fallbacks
-    const calculateTaxAmounts = (purchase) => {
-        const values = extractPurchaseValues(purchase);
-        const items = values.items;
-        let totalCGST = 0;
-        let totalSGST = 0;
-        let totalIGST = 0;
+  // ✅ Enhanced data transformation for consistent structure
+  const transformPurchaseForEdit = useCallback(
+    (purchase) => {
+      console.log("🔧 Transforming purchase for edit:", purchase);
 
-        const fullObj = purchase.fullObject || purchase;
+      // ✅ Transform items to ensure proper structure
+      const transformedItems = (purchase.items || []).map((item, index) => {
+        const quantity = parseFloat(item.quantity || item.qty || 1);
+        const pricePerUnit = parseFloat(
+          item.pricePerUnit ||
+            item.purchasePrice ||
+            item.costPrice ||
+            item.price ||
+            item.rate ||
+            item.unitPrice ||
+            0
+        );
+        const taxRate = parseFloat(item.taxRate || item.gstRate || 18);
 
-        // ENHANCED: Try multiple ways to get tax amounts
-        if (fullObj.totalCGST !== undefined || fullObj.totalSGST !== undefined || fullObj.totalIGST !== undefined) {
-            totalCGST = parseFloat(fullObj.totalCGST || fullObj.cgstAmount || 0);
-            totalSGST = parseFloat(fullObj.totalSGST || fullObj.sgstAmount || 0);
-            totalIGST = parseFloat(fullObj.totalIGST || fullObj.igstAmount || 0);
-        } else if (fullObj.taxBreakup) {
-            totalCGST = parseFloat(fullObj.taxBreakup.cgst || 0);
-            totalSGST = parseFloat(fullObj.taxBreakup.sgst || 0);
-            totalIGST = parseFloat(fullObj.taxBreakup.igst || 0);
-        } else if (fullObj.totals) {
-            totalCGST = parseFloat(fullObj.totals.totalCGST || fullObj.totals.cgst || 0);
-            totalSGST = parseFloat(fullObj.totals.totalSGST || fullObj.totals.sgst || 0);
-            totalIGST = parseFloat(fullObj.totals.totalIGST || fullObj.totals.igst || 0);
-        } else if (items && items.length > 0) {
-            items.forEach(item => {
-                totalCGST += parseFloat(
-                    item.cgstAmount ||
-                    item.cgst ||
-                    item.cgstValue ||
-                    item.cgstTotal ||
-                    0
-                );
-                totalSGST += parseFloat(
-                    item.sgstAmount ||
-                    item.sgst ||
-                    item.sgstValue ||
-                    item.sgstTotal ||
-                    0
-                );
-                totalIGST += parseFloat(
-                    item.igstAmount ||
-                    item.igst ||
-                    item.igstValue ||
-                    item.igstTotal ||
-                    0
-                );
-            });
-        }
-
-        return { totalCGST, totalSGST, totalIGST };
-    };
-
-    // ✅ ENHANCED: Transaction type for both bills and orders
-    const getTransactionType = (purchase) => {
-        if (isPurchaseOrderView) {
-            const orderType = purchase.orderType || purchase.fullObject?.orderType;
-            if (orderType === 'purchase_quotation') return 'Quotation';
-            if (orderType === 'proforma_purchase') return 'Proforma';
-            return 'Order';
-        } else {
-            const values = extractPurchaseValues(purchase);
-            if (values.gstEnabled) {
-                return 'GST Purchase';
-            }
-            return 'Purchase';
-        }
-    };
-
-    const getTransactionIcon = (purchase) => {
-        if (isPurchaseOrderView) {
-            const orderType = purchase.orderType || purchase.fullObject?.orderType;
-            if (orderType === 'purchase_quotation') return '💰';
-            if (orderType === 'proforma_purchase') return '📄';
-            return '📋';
-        } else {
-            const type = getTransactionType(purchase);
-            switch (type?.toLowerCase()) {
-                case 'purchase': return '🛒';
-                case 'gst purchase': return '📋';
-                case 'purchase order': return '📋';
-                case 'return': return '↩️';
-                case 'payment': return '💳';
-                default: return '📄';
-            }
-        }
-    };
-
-    // ✅ ENHANCED: Updated payment method mapping to handle underscores
-    const getPaymentType = (purchase) => {
-        const values = extractPurchaseValues(purchase);
-
-        let paymentType = values.paymentMethod;
-
-        if (!paymentType || paymentType === 'credit' || paymentType === 'unpaid') {
-            const paymentStatus = purchase.payment?.status || purchase.fullObject?.payment?.status;
-
-            if (paymentStatus === 'partial') {
-                paymentType = 'partial';
-            } else if (values.balanceAmount <= 0 && values.totalAmount > 0) {
-                paymentType = 'cash';
-            } else if (values.paidAmount > 0 && values.balanceAmount > 0) {
-                paymentType = 'partial';
-            } else if (values.balanceAmount > 0) {
-                paymentType = 'credit';
-            } else {
-                paymentType = 'cash';
-            }
-        }
-
-        const paymentMethodMap = {
-            'cash': 'Cash',
-            'bank': 'Bank Transfer',
-            'banktransfer': 'Bank Transfer',
-            'bank_transfer': 'Bank Transfer',
-            'bank transfer': 'Bank Transfer',
-            'online': 'Online',
-            'upi': 'UPI',
-            'cheque': 'Cheque',
-            'check': 'Cheque',
-            'card': 'Card',
-            'credit_card': 'Credit Card',
-            'debit_card': 'Debit Card',
-            'wallet': 'Wallet',
-            'paytm': 'Paytm',
-            'gpay': 'Google Pay',
-            'phonepe': 'PhonePe',
-            'neft': 'NEFT',
-            'rtgs': 'RTGS',
-            'imps': 'IMPS',
-            'credit': 'Credit',
-            'partial': 'Partial',
-            'paid': 'Cash'
-        };
-
-        const mappedPaymentType = paymentMethodMap[paymentType?.toLowerCase()] ||
-            paymentType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) ||
-            'Cash';
-        return mappedPaymentType;
-    };
-
-    // ✅ ENHANCED: Better calculation function to handle different scenarios
-    const calculateDisplayAmounts = (purchase) => {
-        const values = extractPurchaseValues(purchase);
-        const taxAmounts = calculateTaxAmounts(purchase);
-
-        let displayAmount = values.totalAmount;
-        let displayBalance = values.balanceAmount;
-
-        if (displayAmount === 0 && (taxAmounts.totalCGST > 0 || taxAmounts.totalSGST > 0)) {
-            const items = values.items;
-            if (items && items.length > 0) {
-                const baseAmount = items.reduce((sum, item) => {
-                    return sum + parseFloat(item.amount || item.total || item.itemAmount || (item.quantity * item.pricePerUnit) || (item.quantity * item.rate) || 0);
-                }, 0);
-                displayAmount = baseAmount + taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST;
-            }
-        }
-
-        if (displayBalance === 0 && displayAmount > 0 && values.paidAmount === 0) {
-            displayBalance = displayAmount;
-        }
+        // Calculate amounts
+        const subtotal = quantity * pricePerUnit;
+        const discountAmount = parseFloat(item.discountAmount || 0);
+        const taxableAmount = subtotal - discountAmount;
+        const taxAmount = (taxableAmount * taxRate) / 100;
+        const cgstAmount = taxAmount / 2;
+        const sgstAmount = taxAmount / 2;
+        const totalAmount = taxableAmount + taxAmount;
 
         return {
-            amount: displayAmount,
-            balance: displayBalance,
-            cgst: taxAmounts.totalCGST,
-            sgst: taxAmounts.totalSGST,
-            totalTax: taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST,
-            baseAmount: displayAmount - (taxAmounts.totalCGST + taxAmounts.totalSGST + taxAmounts.totalIGST)
+          id: item.id || item._id || `item-${index}-${Date.now()}`,
+          _id: item.id || item._id,
+          itemRef: item.itemRef || item.productId || item.id,
+          itemName: item.itemName || item.productName || item.name || "",
+          itemCode: item.itemCode || item.productCode || item.code || "",
+          hsnCode: item.hsnCode || item.hsnNumber || "0000",
+          quantity: quantity,
+          unit: item.unit || "PCS",
+          pricePerUnit: pricePerUnit,
+          taxRate: taxRate,
+          discountPercent: parseFloat(item.discountPercent || 0),
+          discountAmount: discountAmount,
+          taxableAmount: taxableAmount,
+          cgstAmount: cgstAmount,
+          sgstAmount: sgstAmount,
+          igst: parseFloat(item.igst || 0),
+          amount: totalAmount,
+          category: item.category || "",
+          currentStock: parseFloat(item.currentStock || 0),
+          taxMode: item.taxMode || purchase.taxMode || "without-tax",
+          priceIncludesTax: Boolean(
+            item.priceIncludesTax || purchase.priceIncludesTax
+          ),
+          // ✅ Add selected product info for form compatibility
+          selectedProduct: item.itemRef
+            ? {
+                id: item.itemRef,
+                _id: item.itemRef,
+                name: item.itemName || item.productName,
+                purchasePrice: pricePerUnit,
+                gstRate: taxRate,
+                hsnCode: item.hsnCode || "0000",
+                unit: item.unit || "PCS",
+              }
+            : null,
         };
-    };
+      });
 
-    // ✅ ENHANCED: Updated payment type variant mapping
-    const getPaymentTypeVariant = (purchase) => {
-        const paymentType = getPaymentType(purchase);
-        switch (paymentType?.toLowerCase()) {
-            case 'cash': return 'success';
-            case 'bank transfer':
-            case 'online':
-            case 'upi':
-            case 'neft':
-            case 'rtgs':
-            case 'imps': return 'info';
-            case 'credit': return 'warning';
-            case 'partial': return 'secondary';
-            case 'cheque':
-            case 'check': return 'primary';
-            case 'card':
-            case 'credit card':
-            case 'debit card': return 'info';
-            case 'wallet':
-            case 'paytm':
-            case 'google pay':
-            case 'phonepe': return 'success';
-            default: return 'light';
-        }
-    };
-
-    const getTransactionVariant = (purchase) => {
-        if (isPurchaseOrderView) {
-            const orderType = purchase.orderType || purchase.fullObject?.orderType;
-            if (orderType === 'purchase_quotation') return 'warning';
-            if (orderType === 'proforma_purchase') return 'info';
-            return 'primary';
-        } else {
-            const type = getTransactionType(purchase);
-            switch (type?.toLowerCase()) {
-                case 'purchase': return 'primary';
-                case 'gst purchase': return 'info';
-                case 'purchase order': return 'info';
-                case 'return': return 'danger';
-                case 'payment': return 'success';
-                default: return 'light';
+      // ✅ Transform supplier data
+      const supplierData =
+        purchase.supplier && typeof purchase.supplier === "object"
+          ? {
+              id: purchase.supplier._id || purchase.supplier.id,
+              _id: purchase.supplier._id || purchase.supplier.id,
+              name:
+                purchase.supplier.name || purchase.supplier.supplierName || "",
+              mobile: purchase.supplier.mobile || purchase.supplier.phone || "",
+              email: purchase.supplier.email || "",
+              address: purchase.supplier.address || "",
+              gstNumber: purchase.supplier.gstNumber || "",
             }
-        }
-    };
+          : {
+              id: purchase.supplierId || purchase.supplier,
+              _id: purchase.supplierId || purchase.supplier,
+              name: purchase.supplierName || purchase.partyName || "",
+              mobile:
+                purchase.supplierMobile ||
+                purchase.partyPhone ||
+                purchase.mobileNumber ||
+                "",
+              email: purchase.supplierEmail || purchase.partyEmail || "",
+              address: purchase.supplierAddress || purchase.partyAddress || "",
+              gstNumber: purchase.supplierGstNumber || "",
+            };
 
-    const getPurchaseStatusVariant = (status) => {
-        switch (status?.toLowerCase()) {
-            case 'draft': return 'secondary';
-            case 'sent':
-            case 'ordered': return 'primary';
-            case 'confirmed': return 'info';
-            case 'received': return 'warning';
-            case 'completed': return 'success';
-            case 'cancelled': return 'danger';
-            case 'expired': return 'dark';
-            default: return 'light';
-        }
-    };
+      // ✅ Calculate financial data
+      const totalAmount = parseFloat(
+        purchase.amount ||
+          purchase.total ||
+          purchase.totals?.finalTotal ||
+          purchase.grandTotal ||
+          0
+      );
+      const balanceAmount = parseFloat(
+        purchase.balance ||
+          purchase.balanceAmount ||
+          purchase.pendingAmount ||
+          purchase.payment?.pendingAmount ||
+          0
+      );
+      const paidAmount = parseFloat(
+        purchase.paidAmount ||
+          purchase.payment?.paidAmount ||
+          totalAmount - balanceAmount
+      );
 
-    const getReceivingStatusVariant = (status) => {
-        switch (status?.toLowerCase()) {
-            case 'pending': return 'secondary';
-            case 'partial': return 'warning';
-            case 'complete':
-            case 'received': return 'success';
-            default: return 'light';
-        }
-    };
+      // ✅ Enhanced payment data
+      const paymentMethod =
+        purchase.payment?.method ||
+        purchase.paymentMethod ||
+        purchase.paymentType ||
+        purchase.method ||
+        "cash";
 
-    // ✅ NEW: Helper function to check if purchase order can be converted
-    const canConvertToInvoice = (purchase) => {
-        return isPurchaseOrderView &&
-            !purchase.convertedToInvoice &&
-            purchase.status !== 'converted' &&
-            purchase.status !== 'cancelled';
-    };
+      const paymentData = {
+        method: paymentMethod,
+        paymentType: paymentMethod,
+        type: paymentMethod,
+        paidAmount: paidAmount,
+        amount: paidAmount,
+        pendingAmount: balanceAmount,
+        balanceAmount: balanceAmount,
+        totalAmount: totalAmount,
+        paymentDate:
+          purchase.payment?.paymentDate ||
+          purchase.paymentDate ||
+          purchase.purchaseDate ||
+          purchase.billDate ||
+          purchase.date,
+        dueDate: purchase.payment?.dueDate || purchase.dueDate || null,
+        creditDays: purchase.payment?.creditDays || purchase.creditDays || 0,
+        notes:
+          purchase.payment?.notes ||
+          purchase.paymentNotes ||
+          purchase.notes ||
+          "",
+        reference:
+          purchase.payment?.reference || purchase.paymentReference || "",
+        status:
+          balanceAmount <= 0 ? "paid" : paidAmount > 0 ? "partial" : "pending",
+        // ✅ Bank account information
+        bankAccountId:
+          purchase.payment?.bankAccountId || purchase.bankAccountId || null,
+        bankAccountName:
+          purchase.payment?.bankAccountName || purchase.bankAccountName || "",
+        bankName: purchase.payment?.bankName || purchase.bankName || "",
+        accountNumber:
+          purchase.payment?.accountNumber || purchase.accountNumber || "",
+      };
+
+      // ✅ Comprehensive transformed purchase
+      const transformedPurchase = {
+        // ✅ IDs
+        id: purchase._id || purchase.id,
+        _id: purchase._id || purchase.id,
+
+        // ✅ Document type
+        documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
+
+        // ✅ Document numbers with comprehensive mapping
+        purchaseNumber:
+          purchase.purchaseNumber ||
+          purchase.billNumber ||
+          purchase.billNo ||
+          purchase.purchaseOrderNumber ||
+          purchase.invoiceNumber,
+        billNumber:
+          purchase.billNumber ||
+          purchase.purchaseNumber ||
+          purchase.billNo ||
+          purchase.invoiceNumber,
+        purchaseOrderNumber:
+          purchase.purchaseOrderNumber ||
+          purchase.purchaseNumber ||
+          purchase.billNumber,
+        invoiceNumber:
+          purchase.invoiceNumber ||
+          purchase.purchaseNumber ||
+          purchase.billNumber,
+
+        // ✅ Dates with multiple fallbacks
+        purchaseDate:
+          purchase.purchaseDate ||
+          purchase.billDate ||
+          purchase.date ||
+          purchase.invoiceDate,
+        billDate:
+          purchase.billDate ||
+          purchase.purchaseDate ||
+          purchase.date ||
+          purchase.invoiceDate,
+        invoiceDate:
+          purchase.invoiceDate ||
+          purchase.purchaseDate ||
+          purchase.billDate ||
+          purchase.date,
+        date:
+          purchase.date ||
+          purchase.purchaseDate ||
+          purchase.billDate ||
+          purchase.invoiceDate,
+
+        // ✅ Supplier information (store in customer field for form compatibility)
+        customer: supplierData, // Store supplier as customer for form compatibility
+        supplier: supplierData,
+
+        // ✅ Legacy supplier fields for compatibility
+        supplierId: supplierData?.id,
+        supplierName: supplierData?.name || "",
+        supplierMobile: supplierData?.mobile || "",
+        supplierEmail: supplierData?.email || "",
+        supplierAddress: supplierData?.address || "",
+        partyName: supplierData?.name || "",
+        partyPhone: supplierData?.mobile || "",
+        partyEmail: supplierData?.email || "",
+        partyAddress: supplierData?.address || "",
+        mobileNumber: supplierData?.mobile || "",
+
+        // ✅ Items - CRITICAL: Ensure items are properly structured
+        items: transformedItems,
+        lineItems: transformedItems,
+
+        // ✅ Financial data
+        amount: totalAmount,
+        total: totalAmount,
+        grandTotal: totalAmount,
+        balance: balanceAmount,
+        balanceAmount: balanceAmount,
+
+        // ✅ Payment information
+        payment: {
+          ...purchase.payment,
+          ...paymentData,
+        },
+        paymentData: paymentData,
+        paymentType: paymentMethod,
+        paymentMethod: paymentMethod,
+        method: paymentMethod,
+        paymentReceived: paidAmount,
+        paidAmount: paidAmount,
+        pendingAmount: balanceAmount,
+        paymentDate: paymentData.paymentDate,
+        paymentNotes: paymentData.notes,
+        paymentReference: paymentData.reference,
+        paymentStatus: paymentData.status,
+        creditDays: paymentData.creditDays,
+        dueDate: paymentData.dueDate,
+
+        // ✅ Bank account information
+        bankAccountId: paymentData.bankAccountId,
+        bankAccountName: paymentData.bankAccountName,
+        bankName: paymentData.bankName,
+        accountNumber: paymentData.accountNumber,
+
+        // ✅ Totals object
+        totals: purchase.totals || {
+          subtotal: purchase.subtotal || totalAmount,
+          finalTotal: totalAmount,
+          totalAmount: totalAmount,
+          totalTax:
+            (purchase.cgst || 0) + (purchase.sgst || 0) + (purchase.igst || 0),
+          cgst: purchase.cgst || 0,
+          sgst: purchase.sgst || 0,
+          igst: purchase.igst || 0,
+          discount: purchase.discount || purchase.discountAmount || 0,
+        },
+
+        // ✅ Status and configuration
+        status: purchase.status,
+        purchaseOrderStatus: purchase.purchaseOrderStatus || purchase.status,
+        gstEnabled:
+          purchase.gstEnabled !== undefined ? purchase.gstEnabled : true,
+
+        // ✅ Additional fields
+        notes: purchase.notes || purchase.description || "",
+        terms: purchase.terms || purchase.termsAndConditions || "",
+        description: purchase.description || purchase.notes || "",
+        termsAndConditions: purchase.termsAndConditions || purchase.terms || "",
+
+        // ✅ Purchase-specific fields
+        purchaseType: purchase.purchaseType || "purchase",
+        invoiceType: purchase.invoiceType || "gst",
+        taxMode: purchase.taxMode || "without-tax",
+        priceIncludesTax: Boolean(purchase.priceIncludesTax),
+
+        // ✅ Company and employee context
+        companyId: purchase.companyId || companyId,
+        employeeName: purchase.employeeName,
+        employeeId: purchase.employeeId,
+        createdBy: purchase.createdBy,
+        createdByName: purchase.createdByName,
+
+        // ✅ Timestamps
+        createdAt: purchase.createdAt,
+        updatedAt: purchase.updatedAt,
+
+        // ✅ Additional metadata for modal
+        isTransformed: true,
+        transformedAt: new Date().toISOString(),
+      };
+
+      console.log("✅ Transformed purchase for edit:", {
+        originalItemsCount: (purchase.items || []).length,
+        transformedItemsCount: transformedItems.length,
+        firstItem: transformedItems[0],
+        paymentMethod: transformedPurchase.paymentMethod,
+        totalAmount: transformedPurchase.amount,
+        supplierName: transformedPurchase.supplierName,
+      });
+
+      return transformedPurchase;
+    },
+    [isPurchaseOrdersMode, companyId]
+  );
+
+  // ✅ Enhanced edit handler
+  const handleEditPurchase = useCallback(
+    (purchase) => {
+      console.log("📝 Edit purchase clicked:", purchase);
+
+      try {
+        // Transform purchase data for proper editing
+        const transformedPurchase = transformPurchaseForEdit(purchase);
+
+        // Navigate to edit page with enhanced state
+        const editPath = `/companies/${companyId}/${labels.editPath}/${
+          purchase._id || purchase.id
+        }/edit`;
+
+        console.log("🚀 Navigating to edit path:", editPath);
+        console.log("📋 Passing purchase data:", transformedPurchase);
+
+        navigate(editPath, {
+          state: {
+            purchase: transformedPurchase,
+            transaction: transformedPurchase,
+            documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
+            mode: isPurchaseOrdersMode ? "purchase-orders" : "purchases",
+            returnPath: location.pathname,
+            editMode: true,
+          },
+        });
+
+        // Close view modal if open
+        if (viewModalShow) {
+          setViewModalShow(false);
+          setSelectedPurchase(null);
+        }
+
+        // Also call parent handler if provided
+        if (onEditPurchase) {
+          onEditPurchase(purchase);
+        }
+      } catch (error) {
+        console.error("❌ Error handling edit purchase:", error);
+        addToast?.("Error opening purchase for editing", "error");
+      }
+    },
+    [
+      transformPurchaseForEdit,
+      companyId,
+      labels.editPath,
+      navigate,
+      location.pathname,
+      isPurchaseOrdersMode,
+      onEditPurchase,
+      addToast,
+      viewModalShow,
+    ]
+  );
+
+  // ✅ Enhanced view handler with loading states
+  const handleViewPurchase = useCallback(
+    async (purchase) => {
+      console.log("👁️ View purchase clicked:", purchase);
+
+      try {
+        setModalLoading(true);
+        setModalError(null);
+
+        // Transform purchase data for viewing
+        const transformedPurchase = transformPurchaseForEdit(purchase);
+
+        // Add additional view-specific data
+        const enhancedPurchase = {
+          ...transformedPurchase,
+          // ✅ Add display-friendly fields
+          displayNumber:
+            transformedPurchase.purchaseNumber ||
+            transformedPurchase.billNumber ||
+            "N/A",
+          displayDate: new Date(
+            transformedPurchase.purchaseDate || transformedPurchase.date
+          ).toLocaleDateString("en-GB"),
+          displaySupplier:
+            transformedPurchase.supplierName || "Unknown Supplier",
+          displayAmount: `₹${transformedPurchase.amount.toLocaleString(
+            "en-IN"
+          )}`,
+          displayPaymentStatus: transformedPurchase.paymentStatus || "pending",
+          displayPaymentMethod: transformedPurchase.paymentMethod || "cash",
+        };
+
+        setSelectedPurchase(enhancedPurchase);
+        setViewModalShow(true);
+
+        if (onViewPurchase) {
+          onViewPurchase(purchase);
+        }
+      } catch (error) {
+        console.error("❌ Error handling view purchase:", error);
+        setModalError("Failed to load purchase details");
+        addToast?.("Error loading purchase details", "error");
+      } finally {
+        setModalLoading(false);
+      }
+    },
+    [transformPurchaseForEdit, onViewPurchase, addToast]
+  );
+
+  // ✅ Updated delete handler
+  const handleDeletePurchase = useCallback(
+    async (purchase) => {
+      const purchaseId = purchase._id || purchase.id;
+
+      if (!purchaseId) {
+        addToast?.("Invalid purchase ID", "error");
+        return;
+      }
+
+      if (deletingPurchases.has(purchaseId)) {
+        console.warn("⚠️ Delete already in progress for:", purchaseId);
+        return;
+      }
+
+      try {
+        setDeletingPurchases((prev) => new Set(prev).add(purchaseId));
+        setModalLoading(true);
+
+        const purchaseNumber =
+          purchase.purchaseNumber || purchase.billNumber || "this purchase";
+        const confirmed = window.confirm(
+          `Are you sure you want to delete ${
+            isPurchaseOrdersMode ? "purchase order" : "purchase bill"
+          } ${purchaseNumber}?`
+        );
+
+        if (!confirmed) {
+          console.log("❌ Delete cancelled by user");
+          return;
+        }
+
+        const deleteOptions = {
+          hard: false,
+          reason: "Deleted by user",
+        };
+
+        if (
+          purchase.status === "draft" &&
+          (purchase.payment?.paidAmount || 0) === 0
+        ) {
+          const hardDelete = window.confirm(
+            `This is a draft ${
+              isPurchaseOrdersMode ? "order" : "bill"
+            } with no payments. Would you like to permanently delete it?\n\nOK = Permanent deletion\nCancel = Soft deletion (cancelled status)`
+          );
+          if (hardDelete) {
+            deleteOptions.hard = true;
+          }
+        }
+
+        console.log("🗑️ Deleting purchase:", purchaseId, deleteOptions);
+
+        // ✅ Use the correct service based on mode
+        const deleteResponse = isPurchaseOrdersMode
+          ? await purchaseOrderService.deletePurchaseOrder(
+              purchaseId,
+              deleteOptions
+            )
+          : await purchaseService.deletePurchase(purchaseId, deleteOptions);
+
+        if (
+          !deleteResponse.success &&
+          deleteResponse.alternativeAction === "soft_delete"
+        ) {
+          const softDeleteConfirmed = window.confirm(
+            `${deleteResponse.message}\n\n${
+              deleteResponse.suggestedAction
+            }\n\nProceed with cancelling the ${
+              isPurchaseOrdersMode ? "order" : "bill"
+            }?`
+          );
+
+          if (softDeleteConfirmed) {
+            deleteOptions.hard = false;
+            const retryResponse = isPurchaseOrdersMode
+              ? await purchaseOrderService.deletePurchaseOrder(
+                  purchaseId,
+                  deleteOptions
+                )
+              : await purchaseService.deletePurchase(purchaseId, deleteOptions);
+            Object.assign(deleteResponse, retryResponse);
+          } else {
+            return;
+          }
+        }
+
+        if (deleteResponse.success) {
+          let message =
+            deleteResponse.message ||
+            `${
+              isPurchaseOrdersMode ? "Order" : "Purchase"
+            } processed successfully`;
+          let toastType = "success";
+
+          if (deleteResponse.alreadyDeleted || deleteResponse.notFound) {
+            message = `${
+              isPurchaseOrdersMode ? "Order" : "Purchase"
+            } not found - removed from list`;
+            toastType = "info";
+          } else if (deleteResponse.deleteMethod === "soft") {
+            message = `${
+              isPurchaseOrdersMode ? "Order" : "Purchase"
+            } cancelled successfully`;
+          } else if (deleteResponse.deleteMethod === "hard") {
+            message = `${
+              isPurchaseOrdersMode ? "Order" : "Purchase"
+            } deleted permanently`;
+          }
+
+          addToast?.(message, toastType);
+
+          if (deleteResponse.warning) {
+            setTimeout(() => addToast?.(deleteResponse.warning, "info"), 1000);
+          }
+
+          if (viewModalShow) {
+            setViewModalShow(false);
+            setSelectedPurchase(null);
+          }
+
+          if (onDeletePurchase) {
+            setTimeout(() => onDeletePurchase(purchase), 100);
+          }
+
+          console.log("✅ Purchase deletion completed:", purchaseId);
+        } else {
+          throw new Error(
+            deleteResponse.message ||
+              `Failed to delete ${isPurchaseOrdersMode ? "order" : "purchase"}`
+          );
+        }
+      } catch (error) {
+        console.error("❌ Delete error:", error);
+
+        let errorMessage = `Failed to delete ${
+          isPurchaseOrdersMode ? "order" : "purchase"
+        }`;
+        let shouldRefreshList = false;
+
+        if (
+          error.message.includes("not found") ||
+          error.message.includes("404") ||
+          error.message.includes("already deleted")
+        ) {
+          errorMessage = `${
+            isPurchaseOrdersMode ? "Order" : "Purchase"
+          } not found - removing from list`;
+          shouldRefreshList = true;
+        } else if (error.message.includes("permission")) {
+          errorMessage = `You don't have permission to delete this ${
+            isPurchaseOrdersMode ? "order" : "purchase"
+          }`;
+        } else {
+          errorMessage =
+            error.message ||
+            `Failed to delete ${isPurchaseOrdersMode ? "order" : "purchase"}`;
+        }
+
+        addToast?.(errorMessage, shouldRefreshList ? "warning" : "error");
+
+        if (shouldRefreshList) {
+          if (viewModalShow) {
+            setViewModalShow(false);
+            setSelectedPurchase(null);
+          }
+          if (onDeletePurchase) {
+            setTimeout(() => onDeletePurchase(purchase), 100);
+          }
+        }
+      } finally {
+        setModalLoading(false);
+        setDeletingPurchases((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(purchaseId);
+          return newSet;
+        });
+      }
+    },
+    [
+      onDeletePurchase,
+      viewModalShow,
+      addToast,
+      deletingPurchases,
+      isPurchaseOrdersMode,
+    ]
+  );
+  // ✅ Enhanced duplicate handler
+  const handleDuplicatePurchase = useCallback(
+    (purchase) => {
+      console.log("📋 Duplicate purchase clicked:", purchase);
+
+      try {
+        const transformedPurchase = transformPurchaseForEdit(purchase);
+
+        // Remove ID fields for duplication
+        const duplicateData = {
+          ...transformedPurchase,
+          id: undefined,
+          _id: undefined,
+          purchaseNumber: undefined,
+          billNumber: undefined,
+          invoiceNumber: undefined,
+          purchaseOrderNumber: undefined,
+          createdAt: undefined,
+          updatedAt: undefined,
+          // Reset to draft status
+          status: "draft",
+          // Set current date
+          purchaseDate: new Date().toISOString(),
+          date: new Date().toISOString(),
+          billDate: new Date().toISOString(),
+        };
+
+        // Navigate to create page with duplicate data
+        const createPath = `/companies/${companyId}/${labels.createPath}`;
+
+        navigate(createPath, {
+          state: {
+            duplicateData: duplicateData,
+            isDuplicate: true,
+            originalPurchase: purchase,
+            returnPath: location.pathname,
+          },
+        });
+
+        // Close view modal if open
+        if (viewModalShow) {
+          setViewModalShow(false);
+          setSelectedPurchase(null);
+        }
+
+        if (onDuplicatePurchase) {
+          onDuplicatePurchase(purchase);
+        }
+      } catch (error) {
+        console.error("❌ Error duplicating purchase:", error);
+        addToast?.("Error duplicating purchase", "error");
+      }
+    },
+    [
+      transformPurchaseForEdit,
+      companyId,
+      labels.createPath,
+      navigate,
+      location.pathname,
+      viewModalShow,
+      onDuplicatePurchase,
+      addToast,
+    ]
+  );
+
+  // ✅ Modal action handlers
+  const handleModalEdit = useCallback(() => {
+    if (selectedPurchase) {
+      handleEditPurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, handleEditPurchase]);
+
+  const handleModalPrint = useCallback(() => {
+    if (selectedPurchase && onPrintPurchase) {
+      onPrintPurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, onPrintPurchase]);
+
+  const handleModalShare = useCallback(() => {
+    if (selectedPurchase && onSharePurchase) {
+      onSharePurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, onSharePurchase]);
+
+  const handleModalDownload = useCallback(() => {
+    if (selectedPurchase && onDownloadPurchase) {
+      onDownloadPurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, onDownloadPurchase]);
+
+  const handleModalDelete = useCallback(() => {
+    if (selectedPurchase && !modalLoading) {
+      const purchaseId = selectedPurchase._id || selectedPurchase.id;
+      if (!deletingPurchases.has(purchaseId)) {
+        handleDeletePurchase(selectedPurchase);
+      }
+    }
+  }, [selectedPurchase, handleDeletePurchase, modalLoading, deletingPurchases]);
+
+  const handleModalDuplicate = useCallback(() => {
+    if (selectedPurchase) {
+      handleDuplicatePurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, handleDuplicatePurchase]);
+
+  // ✅ Other action handlers
+  const handlePrintPurchase = useCallback(
+    (purchase) => {
+      if (onPrintPurchase) {
+        onPrintPurchase(purchase);
+      }
+    },
+    [onPrintPurchase]
+  );
+
+  const handleSharePurchase = useCallback(
+    (purchase) => {
+      if (onSharePurchase) {
+        onSharePurchase(purchase);
+      }
+    },
+    [onSharePurchase]
+  );
+
+  const handleDownloadPurchase = useCallback(
+    (purchase) => {
+      if (onDownloadPurchase) {
+        onDownloadPurchase(purchase);
+      }
+    },
+    [onDownloadPurchase]
+  );
+
+  const handleConvertPurchase = useCallback(
+    (purchase) => {
+      if (onConvertPurchase) {
+        onConvertPurchase(purchase);
+      }
+    },
+    [onConvertPurchase]
+  );
+
+  const handleMarkAsOrdered = useCallback(
+    (purchase) => {
+      if (onMarkAsOrdered) {
+        onMarkAsOrdered(purchase);
+      }
+    },
+    [onMarkAsOrdered]
+  );
+
+  const handleMarkAsReceived = useCallback(
+    (purchase) => {
+      if (onMarkAsReceived) {
+        onMarkAsReceived(purchase);
+      }
+    },
+    [onMarkAsReceived]
+  );
+
+  const handleCompletePurchase = useCallback(
+    (purchase) => {
+      if (onCompletePurchase) {
+        onCompletePurchase(purchase);
+      }
+    },
+    [onCompletePurchase]
+  );
+
+  // ✅ ENHANCED: Filter and separate cancelled purchases
+  const separatedPurchases = useMemo(() => {
+    const active = [];
+    const cancelled = [];
+
+    purchases.forEach((purchase) => {
+      if (purchase.status === "cancelled" || purchase.status === "deleted") {
+        cancelled.push(purchase);
+      } else {
+        active.push(purchase);
+      }
+    });
+
+    return {active, cancelled};
+  }, [purchases]);
+
+  // ✅ Update the ActionButton component around line 750
+  const ActionButton = ({purchase}) => {
+    const purchaseId = purchase._id || purchase.id;
+    const isDeleting = deletingPurchases.has(purchaseId);
+    const isCancelled =
+      purchase.status === "cancelled" || purchase.status === "deleted";
+
+    // ✅ Detect document type for this specific purchase
+    const docType = getDocumentType(purchase);
+    const isOrder = docType === "purchase-order";
+    const docLabels = getDocumentLabels(docType);
+
+    const handleDelete = useCallback(
+      async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isDeleting || isCancelled) {
+          console.warn(
+            "⚠️ Cannot delete - purchase is cancelled or being deleted"
+          );
+          return;
+        }
+
+        await handleDeletePurchase(purchase);
+      },
+      [purchase, isDeleting, isCancelled, handleDeletePurchase]
+    );
+
+    const handleEdit = useCallback(
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isCancelled) {
+          addToast?.("Cannot edit cancelled purchase", "warning");
+          return;
+        }
+
+        handleEditPurchase(purchase);
+      },
+      [purchase, isCancelled, handleEditPurchase, addToast]
+    );
 
     return (
-        <>
-            <div className="purchase-bills-table-container">
-                <div className="purchase-table-card border-0">
-                    {/* ✅ UPDATED: Dynamic header based on view type */}
-                    <div className="purchase-table-header bg-gradient-purple border-0 pb-0">
-                        <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap">
-                            <div className="header-info">
-                                <h6 className="fw-bold mb-1 text-white">{displayTitle}</h6>
-                                <small className="text-white-50" style={{ fontSize: '0.65rem' }}>
-                                    {filteredPurchases.length} records
-                                    {isLoading && ' (Loading...)'}
-                                </small>
-                            </div>
-                            <div className="d-flex gap-1 align-items-center flex-wrap">
-                                <InputGroup className="search-group">
-                                    <InputGroup.Text className="bg-white bg-opacity-25 border-white border-opacity-25 text-white px-2">
-                                        <FontAwesomeIcon icon={faSearch} className="text-white" style={{ fontSize: '0.65rem' }} />
-                                    </InputGroup.Text>
-                                    <Form.Control
-                                        type="text"
-                                        placeholder={displaySearchPlaceholder}
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                        className="border-white border-opacity-25 bg-white bg-opacity-25 text-white placeholder-white-50 search-input"
-                                        size="sm"
-                                        style={{ fontSize: '0.75rem' }}
-                                        disabled={isLoading}
-                                    />
-                                </InputGroup>
-                                <div className="d-flex gap-1">
-                                    <Button variant="outline-light" size="sm" className="table-action-btn" title="Export" disabled={isLoading}>
-                                        <FontAwesomeIcon icon={faFileExcel} style={{ fontSize: '0.6rem' }} />
-                                    </Button>
-                                    <Button variant="outline-light" size="sm" className="table-action-btn" title="Print" disabled={isLoading}>
-                                        <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.6rem' }} />
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="purchase-table-body p-0">
-                        <div className="table-responsive">
-                            <Table className="mb-0 purchase-bills-table">
-                                <thead>
-                                    <tr>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Date</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>{config.numberLabel}</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Supplier</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Type</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Payment</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold">
-                                            <div className="d-flex align-items-center">
-                                                <span>Status</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            <div className="d-flex align-items-center justify-content-center">
-                                                <span>CGST</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            <div className="d-flex align-items-center justify-content-center">
-                                                <span>SGST</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end">
-                                            <div className="d-flex align-items-center justify-content-end">
-                                                <span>Amount</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-end">
-                                            <div className="d-flex align-items-center justify-content-end">
-                                                <span>Balance</span>
-                                                <FontAwesomeIcon icon={faSort} className="ms-1 sort-icon" />
-                                            </div>
-                                        </th>
-                                        <th className="border-0 bg-gradient-light-purple text-purple fw-semibold text-center">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredPurchases.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={11} className="text-center text-muted py-4 border-0">
-                                                <div className="empty-state">
-                                                    <div className="empty-icon mb-2">
-                                                        {isLoading ? '⏳' : isPurchaseOrderView ? '📋' : '🛒'}
-                                                    </div>
-                                                    <h6 className="fw-semibold mb-1 text-purple" style={{ fontSize: '0.9rem' }}>
-                                                        {isLoading ? `Loading ${displayTitle.toLowerCase()}...` : `No ${displayTitle.toLowerCase()} found`}
-                                                    </h6>
-                                                    <p className="text-muted mb-0" style={{ fontSize: '0.75rem' }}>
-                                                        {isLoading
-                                                            ? 'Please wait while we fetch your data'
-                                                            : searchQuery
-                                                                ? 'Try adjusting your search terms'
-                                                                : `Create your first ${isPurchaseOrderView ? 'purchase order' : 'purchase bill'}`
-                                                        }
-                                                    </p>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredPurchases.map((purchase, index) => {
-                                            const values = extractPurchaseValues(purchase);
-                                            const displayAmounts = calculateDisplayAmounts(purchase);
-
-                                            return (
-                                                <tr key={purchase.id || purchase._id || index}
-                                                    className="purchase-transaction-row"
-                                                    style={{ cursor: 'pointer' }}
-                                                    onClick={() => handleViewTransaction(purchase)}>
-
-                                                    {/* Date - Ultra Compact */}
-                                                    <td className="border-0 py-2">
-                                                        <div className="date-info">
-                                                            <span className="text-dark fw-medium" style={{ fontSize: '0.75rem' }}>
-                                                                {formatDate(values.purchaseDate)}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Purchase Number - Compact */}
-                                                    <td className="border-0 py-2">
-                                                        <div className="bill-number">
-                                                            <span className="fw-bold text-primary" style={{ fontSize: '0.75rem' }}>
-                                                                {values.purchaseNumber || `${isPurchaseOrderView ? 'ORD' : 'PUR'}-${index + 1}`}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Supplier Name - Truncated */}
-                                                    <td className="border-0 py-2">
-                                                        <div className="supplier-info">
-                                                            <div className="fw-medium text-dark mb-0"
-                                                                style={{ fontSize: '0.75rem' }}
-                                                                title={values.supplierName}>
-                                                                {values.supplierName?.length > 12
-                                                                    ? `${values.supplierName.substring(0, 12)}...`
-                                                                    : values.supplierName}
-                                                            </div>
-                                                            {values.supplierMobile && (
-                                                                <small className="text-purple-muted d-block" style={{ fontSize: '0.6rem' }}>
-                                                                    {values.supplierMobile.substring(0, 10)}
-                                                                </small>
-                                                            )}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Transaction Type - Icon + Badge */}
-                                                    <td className="border-0 py-2">
-                                                        <div className="d-flex align-items-center">
-                                                            <span className="me-1" style={{ fontSize: '0.7rem' }}>
-                                                                {getTransactionIcon(purchase)}
-                                                            </span>
-                                                            <Badge
-                                                                bg={getTransactionVariant(purchase)}
-                                                                className="px-1 py-1 text-capitalize transaction-badge"
-                                                                style={{ fontSize: '0.6rem' }}
-                                                            >
-                                                                {getTransactionType(purchase)?.substring(0, 4)}
-                                                            </Badge>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Payment Type - Enhanced Badge */}
-                                                    <td className="border-0 py-2">
-                                                        <Badge
-                                                            bg={getPaymentTypeVariant(purchase)}
-                                                            className="px-1 py-1 payment-badge"
-                                                            style={{ fontSize: '0.55rem' }}
-                                                            text={getPaymentTypeVariant(purchase) === 'light' ? 'dark' : 'white'}
-                                                            title={getPaymentType(purchase)}
-                                                        >
-                                                            {getPaymentType(purchase).length > 8
-                                                                ? getPaymentType(purchase).substring(0, 8) + '...'
-                                                                : getPaymentType(purchase)
-                                                            }
-                                                        </Badge>
-                                                    </td>
-
-                                                    {/* Purchase Status - Combined Status */}
-                                                    <td className="border-0 py-2">
-                                                        <div className="status-info">
-                                                            <Badge
-                                                                bg={getPurchaseStatusVariant(values.currentStatus)}
-                                                                className="px-1 py-1 status-badge mb-1"
-                                                                style={{ fontSize: '0.55rem' }}
-                                                            >
-                                                                {values.currentStatus?.substring(0, 4)}
-                                                            </Badge>
-                                                            {purchase.receivingStatus && (
-                                                                <div>
-                                                                    <Badge
-                                                                        bg={getReceivingStatusVariant(purchase.receivingStatus)}
-                                                                        className="px-1 py-1 receiving-badge"
-                                                                        style={{ fontSize: '0.5rem' }}
-                                                                    >
-                                                                        📦{purchase.receivingStatus?.substring(0, 3)}
-                                                                    </Badge>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* CGST - Compact */}
-                                                    <td className="border-0 py-2 text-center">
-                                                        <div className="tax-info">
-                                                            <span className="fw-semibold text-info" style={{ fontSize: '0.7rem' }}>
-                                                                {formatCurrency(displayAmounts.cgst)}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* SGST - Compact */}
-                                                    <td className="border-0 py-2 text-center">
-                                                        <div className="tax-info">
-                                                            <span className="fw-semibold text-warning" style={{ fontSize: '0.7rem' }}>
-                                                                {formatCurrency(displayAmounts.sgst)}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Total Amount */}
-                                                    <td className="border-0 py-2 text-end">
-                                                        <div className="amount-info">
-                                                            <span className="fw-bold text-primary" style={{ fontSize: '0.8rem' }}>
-                                                                {formatCurrency(displayAmounts.amount)}
-                                                            </span>
-                                                            {displayAmounts.totalTax > 0 && (
-                                                                <small className="text-muted d-block" style={{ fontSize: '0.55rem' }}>
-                                                                    +₹{Math.round(displayAmounts.totalTax)} tax
-                                                                </small>
-                                                            )}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Balance */}
-                                                    <td className="border-0 py-2 text-end">
-                                                        <div className="balance-info">
-                                                            <span className={`fw-bold ${displayAmounts.balance > 0 ? 'text-danger' : 'text-success'}`}
-                                                                style={{ fontSize: '0.75rem' }}>
-                                                                {formatCurrency(displayAmounts.balance)}
-                                                            </span>
-                                                            {displayAmounts.balance > 0 && (
-                                                                <small className="text-danger d-block" style={{ fontSize: '0.55rem' }}>
-                                                                    Due
-                                                                </small>
-                                                            )}
-                                                            {displayAmounts.balance === 0 && displayAmounts.amount > 0 && (
-                                                                <small className="text-success d-block" style={{ fontSize: '0.55rem' }}>
-                                                                    Paid
-                                                                </small>
-                                                            )}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Actions - Ultra Compact */}
-                                                    <td className="border-0 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                                        <div className="d-flex gap-1 align-items-center justify-content-center">
-                                                            {/* Quick Convert Button for Purchase Orders */}
-                                                            {canConvertToInvoice(purchase) && (
-                                                                <Button
-                                                                    variant="outline-success"
-                                                                    size="sm"
-                                                                    className="action-btn"
-                                                                    title="Convert to Purchase Invoice"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        onConvertPurchase && onConvertPurchase(purchase);
-                                                                    }}
-                                                                    disabled={isLoading}
-                                                                >
-                                                                    <FontAwesomeIcon icon={faExchangeAlt} style={{ fontSize: '0.6rem' }} />
-                                                                </Button>
-                                                            )}
-
-                                                            <Button
-                                                                variant="outline-primary"
-                                                                size="sm"
-                                                                className="action-btn"
-                                                                title="Print"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onPrintPurchase && onPrintPurchase(purchase);
-                                                                }}
-                                                                disabled={isLoading}
-                                                            >
-                                                                <FontAwesomeIcon icon={faPrint} style={{ fontSize: '0.6rem' }} />
-                                                            </Button>
-
-                                                            <Dropdown>
-                                                                <Dropdown.Toggle
-                                                                    variant="outline-secondary"
-                                                                    size="sm"
-                                                                    className="action-btn dropdown-toggle-no-caret"
-                                                                    title="More"
-                                                                    disabled={isLoading}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                >
-                                                                    <FontAwesomeIcon icon={faEllipsisV} style={{ fontSize: '0.6rem' }} />
-                                                                </Dropdown.Toggle>
-                                                                <Dropdown.Menu align="end" className="shadow-lg border-0 dropdown-menu-enhanced">
-                                                                    <Dropdown.Item
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleViewTransaction(purchase);
-                                                                        }}
-                                                                        className="dropdown-item-enhanced"
-                                                                    >
-                                                                        <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
-                                                                        View Details
-                                                                    </Dropdown.Item>
-                                                                    <Dropdown.Item
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onEditPurchase && onEditPurchase(purchase);
-                                                                        }}
-                                                                        className="dropdown-item-enhanced"
-                                                                    >
-                                                                        <FontAwesomeIcon icon={faEdit} className="me-2 text-warning" />
-                                                                        Edit
-                                                                    </Dropdown.Item>
-
-                                                                    {/* Convert to Invoice Option in Dropdown */}
-                                                                    {canConvertToInvoice(purchase) && (
-                                                                        <>
-                                                                            <Dropdown.Divider />
-                                                                            <Dropdown.Item
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    onConvertPurchase && onConvertPurchase(purchase);
-                                                                                }}
-                                                                                className="dropdown-item-enhanced text-success"
-                                                                            >
-                                                                                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                                                                                Convert to Invoice
-                                                                            </Dropdown.Item>
-                                                                        </>
-                                                                    )}
-
-                                                                    {values.currentStatus === 'draft' && (
-                                                                        <Dropdown.Item
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                onMarkAsOrdered && onMarkAsOrdered(purchase);
-                                                                            }}
-                                                                            className="dropdown-item-enhanced"
-                                                                        >
-                                                                            <FontAwesomeIcon
-                                                                                icon={isPurchaseOrderView ? faPaperPlane : faShoppingCart}
-                                                                                className="me-2 text-info"
-                                                                            />
-                                                                            {config.actionLabels.markOrdered}
-                                                                        </Dropdown.Item>
-                                                                    )}
-                                                                    {(values.currentStatus === 'ordered' || values.currentStatus === 'sent') && (
-                                                                        <Dropdown.Item
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                onMarkAsReceived && onMarkAsReceived(purchase);
-                                                                            }}
-                                                                            className="dropdown-item-enhanced"
-                                                                        >
-                                                                            <FontAwesomeIcon
-                                                                                icon={isPurchaseOrderView ? faInbox : faTruck}
-                                                                                className="me-2 text-warning"
-                                                                            />
-                                                                            {config.actionLabels.markReceived}
-                                                                        </Dropdown.Item>
-                                                                    )}
-                                                                    {values.currentStatus === 'received' && (
-                                                                        <Dropdown.Item
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                onCompletePurchase && onCompletePurchase(purchase);
-                                                                            }}
-                                                                            className="dropdown-item-enhanced"
-                                                                        >
-                                                                            <FontAwesomeIcon icon={faCheck} className="me-2 text-success" />
-                                                                            {config.actionLabels.complete}
-                                                                        </Dropdown.Item>
-                                                                    )}
-                                                                    <Dropdown.Item
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onDownloadPurchase && onDownloadPurchase(purchase);
-                                                                        }}
-                                                                        className="dropdown-item-enhanced"
-                                                                    >
-                                                                        <FontAwesomeIcon icon={faDownload} className="me-2 text-info" />
-                                                                        Download
-                                                                    </Dropdown.Item>
-                                                                    <Dropdown.Item
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onSharePurchase && onSharePurchase(purchase);
-                                                                        }}
-                                                                        className="dropdown-item-enhanced"
-                                                                    >
-                                                                        <FontAwesomeIcon icon={faShare} className="me-2 text-info" />
-                                                                        Share
-                                                                    </Dropdown.Item>
-                                                                    <Dropdown.Divider />
-                                                                    <Dropdown.Item
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onDeletePurchase && onDeletePurchase(purchase);
-                                                                        }}
-                                                                        className="dropdown-item-enhanced text-danger"
-                                                                    >
-                                                                        <FontAwesomeIcon icon={faTrash} className="me-2" />
-                                                                        Delete
-                                                                    </Dropdown.Item>
-                                                                </Dropdown.Menu>
-                                                            </Dropdown>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </Table>
-                        </div>
-
-                        {/* Compact Footer */}
-                        {filteredPurchases.length > 0 && (
-                            <div className="table-footer p-2 bg-light border-top">
-                                <div className="d-flex justify-content-between align-items-center">
-                                    <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                                        {filteredPurchases.length} of {purchases.length} records
-                                    </small>
-                                    <div className="d-flex gap-1">
-                                        <Button variant="outline-primary" size="sm" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
-                                            Prev
-                                        </Button>
-                                        <Button variant="outline-primary" size="sm" style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
-                                            Next
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* ✅ NEW: Universal View Modal */}
-            <UniversalViewModal
-                show={showViewModal}
-                onHide={() => setShowViewModal(false)}
-                transaction={selectedTransaction}
-                documentType={config.documentType}
-                onEdit={handleModalEdit}
-                onPrint={handleModalPrint}
-                onDownload={handleModalDownload}
-                onShare={handleModalShare}
-                onConvert={handleModalConvert}
-            />
-            <style>
-                {`
-                .purchase-bills-table-container {
-                    background: white;
-                    border-radius: 12px;
-                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-                    overflow: hidden;
-                    margin: 0;
-                    height: fit-content;
-                    width: 100%;
-                }
-
-                .purchase-table-card {
-                    border-radius: 12px;
-                    overflow: hidden;
-                }
-
-                .bg-gradient-purple {
-                    background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 50%, #b794f6 100%);
-                    padding: 0.75rem 1rem 0.5rem;
-                }
-
-                .bg-gradient-light-purple {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.06) 0%, rgba(156, 136, 255, 0.06) 50%, rgba(183, 148, 246, 0.06) 100%);
-                }
-
-                .text-purple {
-                    color: #6c63ff !important;
-                }
-
-                .text-purple-muted {
-                    color: #9c88ff !important;
-                }
-
-                .header-info h6 {
-                    font-size: 0.9rem;
-                    margin-bottom: 0.1rem;
-                }
-
-                .search-group {
-                    width: 180px;
-                    min-width: 150px;
-                }
-
-                .placeholder-white-50::placeholder {
-                    color: rgba(255, 255, 255, 0.7) !important;
-                }
-
-                .search-input:focus {
-                    background: rgba(255, 255, 255, 0.35) !important;
-                    border-color: rgba(255, 255, 255, 0.5) !important;
-                    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25) !important;
-                    color: white !important;
-                }
-
-                .table-action-btn {
-                    border: 1px solid rgba(255, 255, 255, 0.3);
-                    color: white;
-                    width: 28px;
-                    height: 28px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 6px;
-                    transition: all 0.2s ease;
-                    padding: 0;
-                }
-
-                .table-action-btn:hover:not(:disabled) {
-                    background: rgba(255, 255, 255, 0.2);
-                    border-color: rgba(255, 255, 255, 0.5);
-                    color: white;
-                    transform: translateY(-1px);
-                }
-
-                .table-action-btn:disabled {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                }
-
-                /* ULTRA COMPACT TABLE - ALL COLUMNS VISIBLE */
-                .purchase-bills-table {
-                    font-size: 0.7rem;
-                    table-layout: fixed;
-                    width: 100%;
-                }
-
-                .purchase-bills-table th {
-                    font-size: 0.6rem;
-                    text-transform: uppercase;
-                    letter-spacing: 0.2px;
-                    padding: 0.5rem 0.3rem;
-                    font-weight: 600;
-                    border-bottom: 2px solid rgba(108, 99, 255, 0.1);
-                    white-space: nowrap;
-                    vertical-align: middle;
-                }
-
-                .purchase-bills-table td {
-                    padding: 0.4rem 0.3rem;
-                    vertical-align: middle;
-                    font-size: 0.7rem;
-                    border-bottom: 1px solid rgba(108, 99, 255, 0.05);
-                }
-
-                /* OPTIMIZED COLUMN WIDTHS FOR ALL COLUMNS VISIBILITY */
-                .purchase-bills-table th:nth-child(1), /* Date */
-                .purchase-bills-table td:nth-child(1) {
-                    width: 8%;
-                    min-width: 60px;
-                }
-
-                .purchase-bills-table th:nth-child(2), /* Bill No */
-                .purchase-bills-table td:nth-child(2) {
-                    width: 10%;
-                    min-width: 80px;
-                }
-
-                .purchase-bills-table th:nth-child(3), /* Supplier */
-                .purchase-bills-table td:nth-child(3) {
-                    width: 14%;
-                    min-width: 100px;
-                }
-
-                .purchase-bills-table th:nth-child(4), /* Type */
-                .purchase-bills-table td:nth-child(4) {
-                    width: 8%;
-                    min-width: 70px;
-                }
-
-                .purchase-bills-table th:nth-child(5), /* Payment */
-                .purchase-bills-table td:nth-child(5) {
-                    width: 8%;
-                    min-width: 70px;
-                }
-
-                .purchase-bills-table th:nth-child(6), /* Status */
-                .purchase-bills-table td:nth-child(6) {
-                    width: 10%;
-                    min-width: 80px;
-                }
-
-                .purchase-bills-table th:nth-child(7), /* CGST */
-                .purchase-bills-table td:nth-child(7) {
-                    width: 9%;
-                    min-width: 70px;
-                }
-
-                .purchase-bills-table th:nth-child(8), /* SGST */
-                .purchase-bills-table td:nth-child(8) {
-                    width: 9%;
-                    min-width: 70px;
-                }
-
-                .purchase-bills-table th:nth-child(9), /* Amount */
-                .purchase-bills-table td:nth-child(9) {
-                    width: 11%;
-                    min-width: 80px;
-                }
-
-                .purchase-bills-table th:nth-child(10), /* Balance */
-                .purchase-bills-table td:nth-child(10) {
-                    width: 9%;
-                    min-width: 70px;
-                }
-
-                .purchase-bills-table th:nth-child(11), /* Actions */
-                .purchase-bills-table td:nth-child(11) {
-                    width: 9%;
-                    min-width: 70px;
-                }
-
-                .purchase-transaction-row {
-                    transition: all 0.2s ease;
-                }
-
-                .purchase-transaction-row:hover {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.02) 0%, rgba(156, 136, 255, 0.02) 100%);
-                    transform: translateY(-1px);
-                    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.08);
-                }
-
-                .sort-icon {
-                    opacity: 0.4;
-                    font-size: 0.5rem !important;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    color: #9c88ff;
-                }
-
-                .sort-icon:hover {
-                    opacity: 0.8;
-                    transform: scale(1.1);
-                    color: #6c63ff;
-                }
-
-                .date-info {
-                    min-width: 50px;
-                }
-
-                .bill-number {
-                    background: linear-gradient(135deg, rgba(108, 99, 255, 0.08) 0%, rgba(156, 136, 255, 0.08) 100%);
-                    padding: 2px 4px;
-                    border-radius: 4px;
-                    display: inline-block;
-                }
-
-                .supplier-info {
-                    min-width: 80px;
-                    max-width: 100px;
-                    overflow: hidden;
-                }
-
-                .status-info {
-                    min-width: 70px;
-                    text-align: center;
-                }
-
-                .status-badge,
-                .receiving-badge {
-                    display: block;
-                    width: 100%;
-                    font-size: 0.55rem !important;
-                    font-weight: 600;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 2px 4px !important;
-                    white-space: nowrap;
-                    margin-bottom: 2px;
-                }
-
-                .receiving-badge {
-                    font-size: 0.5rem !important;
-                    opacity: 0.9;
-                }
-
-                .tax-info {
-                    text-align: center;
-                    min-width: 60px;
-                }
-
-                .tax-percent {
-                    line-height: 1;
-                    margin-top: 1px;
-                }
-
-                .amount-info {
-                    min-width: 70px;
-                }
-
-                .balance-info {
-                    min-width: 60px;
-                }
-
-                .transaction-badge,
-                .payment-badge {
-                    font-size: 0.55rem;
-                    font-weight: 600;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 2px 4px !important;
-                    white-space: nowrap;
-                }
-
-                .action-btn {
-                    width: 24px;
-                    height: 24px;
-                    padding: 0;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 4px;
-                    transition: all 0.2s ease;
-                }
-
-                .action-btn:hover:not(:disabled) {
-                    transform: translateY(-1px);
-                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-                }
-
-                .action-btn:disabled {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                }
-
-                .dropdown-toggle-no-caret::after {
-                    display: none;
-                }
-
-                .dropdown-menu-enhanced {
-                    border-radius: 6px;
-                    padding: 0.3rem;
-                    min-width: 140px;
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-                }
-
-                .dropdown-item-enhanced {
-                    padding: 0.4rem 0.6rem;
-                    font-size: 0.7rem;
-                    transition: all 0.2s ease;
-                    border-radius: 4px;
-                    margin: 1px 0;
-                }
-
-                .dropdown-item-enhanced:hover {
-                    background: rgba(108, 99, 255, 0.08);
-                    transform: translateX(2px);
-                }
-
-                .empty-state {
-                    padding: 2rem 1rem;
-                }
-
-                .empty-icon {
-                    font-size: 2rem;
-                    opacity: 0.6;
-                }
-
-                .table-footer {
-                    background: rgba(108, 99, 255, 0.02) !important;
-                    border-top: 1px solid rgba(108, 99, 255, 0.08) !important;
-                }
-
-                /* Purple-themed badge colors */
-                .badge.bg-primary { background: linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%) !important; }
-                .badge.bg-info { background: linear-gradient(135deg, #06b6d4 0%, #38bdf8 100%) !important; }
-                .badge.bg-success { background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important; }
-                .badge.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%) !important; }
-                .badge.bg-danger { background: linear-gradient(135deg, #ef4444 0%, #f87171 100%) !important; }
-                .badge.bg-secondary { background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%) !important; }
-                .badge.bg-light { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important; color: #374151 !important; }
-
-                /* Enhanced Colors for Purple Theme */
-                .text-primary { color: #6c63ff !important; }
-                .text-success { color: #10b981 !important; }
-                .text-warning { color: #f59e0b !important; }
-                .text-info { color: #06b6d4 !important; }
-                .text-danger { color: #ef4444 !important; }
-
-                /* RESPONSIVE DESIGN - MAINTAIN ALL COLUMNS */
-                @media (max-width: 1400px) {
-                    .search-group {
-                        width: 160px;
-                    }
-
-                    .purchase-bills-table th,
-                    .purchase-bills-table td {
-                        padding: 0.35rem 0.25rem;
-                        font-size: 0.65rem;
-                    }
-
-                    .purchase-bills-table th {
-                        font-size: 0.55rem;
-                    }
-                }
-
-                @media (max-width: 1200px) {
-                    .search-group {
-                        width: 140px;
-                    }
-
-                    .purchase-bills-table th,
-                    .purchase-bills-table td {
-                        padding: 0.3rem 0.2rem;
-                        font-size: 0.6rem;
-                    }
-
-                    .purchase-bills-table th {
-                        font-size: 0.5rem;
-                    }
-
-                    .supplier-info {
-                        max-width: 80px;
-                    }
-
-                    .action-btn {
-                        width: 22px;
-                        height: 22px;
-                    }
-                }
-
-                @media (max-width: 992px) {
-                    .bg-gradient-purple {
-                        padding: 0.5rem 0.75rem 0.25rem;
-                    }
-
-                    .purchase-table-header .d-flex {
-                        flex-direction: column;
-                        gap: 0.5rem;
-                        align-items: stretch !important;
-                    }
-
-                    .search-group {
-                        width: 100%;
-                        max-width: 200px;
-                    }
-
-                    .purchase-bills-table th,
-                    .purchase-bills-table td {
-                        padding: 0.25rem 0.15rem;
-                        font-size: 0.55rem;
-                    }
-
-                    .purchase-bills-table th {
-                        font-size: 0.45rem;
-                    }
-
-                    .supplier-info {
-                        max-width: 70px;
-                    }
-                }
-                /* Responsive design */
-                @media (max-width: 768px) {
-                    .table-responsive {
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                    }
-                    
-                    .purchase-bills-table {
-                        min-width: 900px;
-                    }
-                }
-                `}
-            </style>
-        </>
+      <Dropdown>
+        <Dropdown.Toggle
+          variant={isCancelled ? "outline-secondary" : "outline-secondary"}
+          size="sm"
+          className={`border-0 ${isCancelled ? "opacity-50" : ""}`}
+          id={`dropdown-${purchaseId}`}
+          disabled={isDeleting || modalLoading}
+        >
+          <FontAwesomeIcon icon={faEllipsisV} />
+        </Dropdown.Toggle>
+
+        <Dropdown.Menu align="end">
+          <Dropdown.Item onClick={() => handleViewPurchase(purchase)}>
+            <FontAwesomeIcon icon={faEye} className="me-2" />
+            View Details
+          </Dropdown.Item>
+
+          {enableActions && !isCancelled && (
+            <>
+              <Dropdown.Item
+                onClick={handleEdit}
+                disabled={isDeleting || modalLoading}
+              >
+                <FontAwesomeIcon icon={faEdit} className="me-2" />
+                Edit {docLabels.documentName}
+              </Dropdown.Item>
+
+              <Dropdown.Item
+                onClick={() => handleDuplicatePurchase(purchase)}
+                disabled={isDeleting || modalLoading}
+              >
+                <FontAwesomeIcon icon={faCopy} className="me-2" />
+                Duplicate
+              </Dropdown.Item>
+
+              <Dropdown.Divider />
+            </>
+          )}
+
+          {/* ✅ Always show print/download options */}
+          <Dropdown.Item onClick={() => handlePrintPurchase(purchase)}>
+            <FontAwesomeIcon icon={faPrint} className="me-2" />
+            Print
+          </Dropdown.Item>
+
+          <Dropdown.Item onClick={() => handleSharePurchase(purchase)}>
+            <FontAwesomeIcon icon={faShare} className="me-2" />
+            Share
+          </Dropdown.Item>
+
+          <Dropdown.Item onClick={() => handleDownloadPurchase(purchase)}>
+            <FontAwesomeIcon icon={faDownload} className="me-2" />
+            Download
+          </Dropdown.Item>
+
+          {/* ✅ Show order-specific actions for purchase orders */}
+          {isOrder && !isCancelled && (
+            <>
+              <Dropdown.Divider />
+              <Dropdown.Header>Order Actions</Dropdown.Header>
+              <Dropdown.Item onClick={() => handleMarkAsOrdered(purchase)}>
+                <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+                Mark as Ordered
+              </Dropdown.Item>
+              <Dropdown.Item onClick={() => handleMarkAsReceived(purchase)}>
+                <FontAwesomeIcon icon={faTruck} className="me-2" />
+                Mark as Received
+              </Dropdown.Item>
+              <Dropdown.Item onClick={() => handleConvertPurchase(purchase)}>
+                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                Convert to Invoice
+              </Dropdown.Item>
+            </>
+          )}
+
+          {/* ✅ Show invoice-specific actions for purchase invoices */}
+          {!isOrder && !isCancelled && (
+            <>
+              <Dropdown.Divider />
+              <Dropdown.Header>Invoice Actions</Dropdown.Header>
+              <Dropdown.Item onClick={() => handleConvertPurchase(purchase)}>
+                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                Convert to Order
+              </Dropdown.Item>
+            </>
+          )}
+
+          {/* ✅ Delete option only for non-cancelled documents */}
+          {enableActions && !isCancelled && (
+            <>
+              <Dropdown.Divider />
+              <Dropdown.Item
+                onClick={handleDelete}
+                className="text-danger"
+                disabled={isDeleting || modalLoading}
+              >
+                <FontAwesomeIcon
+                  icon={isDeleting ? faSpinner : faTrash}
+                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
+                />
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Dropdown.Item>
+            </>
+          )}
+        </Dropdown.Menu>
+      </Dropdown>
     );
+  };
+
+  // ✅ ENHANCED: StatusBadge with cancelled status
+  const StatusBadge = ({status, paymentStatus, amount, balance}) => {
+    const getStatusInfo = () => {
+      // ✅ Check for cancelled status first
+      if (status === "cancelled" || status === "deleted") {
+        return {variant: "dark", text: "Cancelled", icon: faTrash};
+      }
+
+      if (paymentStatus === "paid" || balance <= 0) {
+        return {variant: "success", text: "Paid", icon: faCheck};
+      } else if (
+        paymentStatus === "partial" ||
+        (balance > 0 && balance < amount)
+      ) {
+        return {variant: "warning", text: "Partial", icon: faClipboardList};
+      } else if (paymentStatus === "overdue") {
+        return {variant: "danger", text: "Overdue", icon: faExchangeAlt};
+      } else {
+        return {variant: "secondary", text: "Pending", icon: faInbox};
+      }
+    };
+
+    const statusInfo = getStatusInfo();
+
+    return (
+      <Badge bg={statusInfo.variant} className="me-1 d-flex align-items-center">
+        <FontAwesomeIcon icon={statusInfo.icon} className="me-1" />
+        {statusInfo.text}
+      </Badge>
+    );
+  };
+
+  // ✅ ENHANCED: PurchaseRow component to handle cancelled styling
+  const PurchaseRow = ({
+    purchase,
+    isSelected,
+    onRowClick,
+    enableBulkActions,
+    enableActions,
+  }) => {
+    const amount = parseFloat(
+      purchase.amount || purchase.total || purchase.totals?.finalTotal || 0
+    );
+    const paidAmount = parseFloat(
+      purchase.paidAmount || purchase.payment?.paidAmount || 0
+    );
+    const balance = parseFloat(
+      purchase.balance ||
+        purchase.balanceAmount ||
+        purchase.pendingAmount ||
+        purchase.payment?.pendingAmount ||
+        0
+    );
+    const paymentStatus =
+      purchase.paymentStatus ||
+      purchase.payment?.status ||
+      (balance <= 0 ? "paid" : paidAmount > 0 ? "partial" : "pending");
+    const itemsCount = (purchase.items || []).length;
+    const purchaseId = purchase._id || purchase.id;
+    const isCancelled =
+      purchase.status === "cancelled" || purchase.status === "deleted";
+
+    return (
+      <tr
+        key={purchaseId}
+        className={`
+        ${isSelected ? "table-active-purple" : ""} 
+        ${isCancelled ? "cancelled-purchase-row" : ""}
+      `}
+        style={{cursor: "pointer"}}
+        onClick={() => onRowClick(purchase)}
+      >
+        {enableBulkActions && (
+          <td onClick={(e) => e.stopPropagation()}>
+            <Form.Check
+              type="checkbox"
+              checked={isSelected}
+              disabled={isCancelled} // ✅ Disable selection for cancelled purchases
+              onChange={(e) => {
+                if (onSelectionChange && !isCancelled) {
+                  const newSelection = e.target.checked
+                    ? [...selectedPurchases, purchaseId]
+                    : selectedPurchases.filter((id) => id !== purchaseId);
+                  onSelectionChange(newSelection);
+                }
+              }}
+            />
+          </td>
+        )}
+        <td className={isCancelled ? "text-muted" : ""}>
+          <small className={isCancelled ? "text-muted" : "text-muted"}>
+            {new Date(
+              purchase.purchaseDate ||
+                purchase.billDate ||
+                purchase.date ||
+                purchase.invoiceDate
+            ).toLocaleDateString("en-GB")}
+          </small>
+        </td>
+        <td>
+          <strong
+            className={
+              isCancelled
+                ? "text-muted text-decoration-line-through"
+                : "text-primary"
+            }
+          >
+            {purchase.purchaseNumber ||
+              purchase.billNumber ||
+              purchase.billNo ||
+              purchase.purchaseOrderNumber ||
+              purchase.invoiceNumber ||
+              "N/A"}
+          </strong>
+          {isCancelled && (
+            <div>
+              <small className="text-muted fst-italic">
+                <FontAwesomeIcon icon={faTrash} className="me-1" />
+                Cancelled
+              </small>
+            </div>
+          )}
+        </td>
+        <td>
+          <div>
+            <div className={`fw-medium ${isCancelled ? "text-muted" : ""}`}>
+              {purchase.supplierName ||
+                purchase.supplier?.name ||
+                purchase.partyName ||
+                "Unknown Supplier"}
+            </div>
+            {(purchase.supplierMobile ||
+              purchase.supplier?.mobile ||
+              purchase.partyPhone ||
+              purchase.mobileNumber) && (
+              <small className="text-muted">
+                {purchase.supplierMobile ||
+                  purchase.supplier?.mobile ||
+                  purchase.partyPhone ||
+                  purchase.mobileNumber}
+              </small>
+            )}
+          </div>
+        </td>
+        <td>
+          <Badge
+            bg={isCancelled ? "secondary" : "info"}
+            className={`me-1 ${isCancelled ? "opacity-50" : ""}`}
+          >
+            {itemsCount} item{itemsCount !== 1 ? "s" : ""}
+          </Badge>
+        </td>
+        <td className="text-end">
+          <strong
+            className={
+              isCancelled ? "text-muted text-decoration-line-through" : ""
+            }
+          >
+            ₹{amount.toLocaleString("en-IN")}
+          </strong>
+        </td>
+        <td className="text-end">
+          {paidAmount > 0 ? (
+            <span
+              className={`fw-medium ${
+                isCancelled ? "text-muted" : "text-success"
+              }`}
+            >
+              ₹{paidAmount.toLocaleString("en-IN")}
+            </span>
+          ) : (
+            <span className="text-muted">₹0</span>
+          )}
+        </td>
+        <td className="text-end">
+          {balance > 0 ? (
+            <span
+              className={`fw-medium ${
+                isCancelled ? "text-muted" : "text-danger"
+              }`}
+            >
+              ₹{balance.toLocaleString("en-IN")}
+            </span>
+          ) : (
+            <span className="text-muted">₹0</span>
+          )}
+        </td>
+        <td>
+          <StatusBadge
+            status={purchase.status}
+            paymentStatus={paymentStatus}
+            amount={amount}
+            balance={balance}
+          />
+        </td>
+        <td>
+          <Badge
+            bg={
+              isCancelled
+                ? "secondary"
+                : purchase.paymentMethod === "cash"
+                ? "success"
+                : purchase.paymentMethod === "bank" ||
+                  purchase.paymentMethod === "bank_transfer"
+                ? "primary"
+                : purchase.paymentMethod === "upi"
+                ? "info"
+                : "secondary"
+            }
+            className={`text-capitalize ${isCancelled ? "opacity-50" : ""}`}
+          >
+            {purchase.paymentMethod ||
+              purchase.payment?.method ||
+              purchase.paymentType ||
+              "Cash"}
+          </Badge>
+        </td>
+        {enableActions && (
+          <td
+            className="text-center dropdown-cell"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ActionButton purchase={purchase} />
+          </td>
+        )}
+      </tr>
+    );
+  };
+
+  // ✅ Enhanced loading component
+  const LoadingComponent = () => (
+    <div className="text-center py-5">
+      <Spinner
+        animation="border"
+        variant="primary"
+        size="lg"
+        className="mb-3"
+      />
+      <h5 className="text-muted">
+        Loading {labels.documentNamePlural.toLowerCase()}...
+      </h5>
+      <p className="text-muted small">Please wait while we fetch your data</p>
+    </div>
+  );
+
+  // ✅ Enhanced empty state component
+  const EmptyStateComponent = () => (
+    <div className="text-center py-5">
+      <FontAwesomeIcon
+        icon={isPurchaseOrdersMode ? faShoppingCart : faFileExcel}
+        size="4x"
+        className="text-muted mb-4"
+      />
+      <h4 className="text-muted mb-3">No {labels.documentNamePlural} Found</h4>
+      <p className="text-muted mb-4">
+        {isPurchaseOrdersMode
+          ? "Start by creating your first purchase order to track your suppliers and orders."
+          : "Start by creating your first purchase bill to manage your vendor payments."}
+      </p>
+      <Button
+        variant="primary"
+        onClick={() => navigate(`/companies/${companyId}/${labels.createPath}`)}
+      >
+        <FontAwesomeIcon icon={faPlus} className="me-2" />
+        Create {labels.documentName}
+      </Button>
+    </div>
+  );
+
+  // ✅ Main render logic
+  if (isLoading) {
+    return <LoadingComponent />;
+  }
+
+  if (!purchases || purchases.length === 0) {
+    return <EmptyStateComponent />;
+  }
+
+  // ✅ Main render logic
+  if (isLoading) {
+    return <LoadingComponent />;
+  }
+
+  if (!purchases || purchases.length === 0) {
+    return <EmptyStateComponent />;
+  }
+
+  return (
+    <>
+      <div className="purchase-bills-table-wrapper">
+        {/* ✅ FIXED: Add responsive wrapper */}
+        <div className="table-responsive-wrapper">
+          <Table responsive hover className="mb-0">
+            {/* ✅ UPDATED: Purple-themed header */}
+            <thead className="table-header-purple">
+              <tr>
+                {enableBulkActions && (
+                  <th width="40">
+                    <Form.Check
+                      type="checkbox"
+                      checked={
+                        selectedPurchases.length === purchases.length &&
+                        purchases.length > 0
+                      }
+                      onChange={(e) => {
+                        if (onSelectionChange) {
+                          onSelectionChange(
+                            e.target.checked
+                              ? purchases.map((p) => p._id || p.id)
+                              : []
+                          );
+                        }
+                      }}
+                      className="purple-checkbox"
+                    />
+                  </th>
+                )}
+                <th>
+                  <div className="d-flex align-items-center">
+                    Date
+                    <FontAwesomeIcon
+                      icon={faSort}
+                      className="ms-1 text-white-50"
+                      style={{cursor: "pointer"}}
+                      onClick={() => onSort?.("date")}
+                    />
+                  </div>
+                </th>
+                <th>{isPurchaseOrdersMode ? "Order No." : "Bill No."}</th>
+                <th>Supplier</th>
+                <th>Items</th>
+                <th className="text-end">
+                  <div className="d-flex align-items-center justify-content-end">
+                    Amount
+                    <FontAwesomeIcon
+                      icon={faSort}
+                      className="ms-1 text-white-50"
+                      style={{cursor: "pointer"}}
+                      onClick={() => onSort?.("amount")}
+                    />
+                  </div>
+                </th>
+                <th className="text-end">Paid</th>
+                <th className="text-end">Balance</th>
+                <th>Status</th>
+                <th>Payment</th>
+                {enableActions && <th className="text-center">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {purchases.map((purchase) => {
+                const amount = parseFloat(
+                  purchase.amount ||
+                    purchase.total ||
+                    purchase.totals?.finalTotal ||
+                    0
+                );
+                const paidAmount = parseFloat(
+                  purchase.paidAmount || purchase.payment?.paidAmount || 0
+                );
+                const balance = parseFloat(
+                  purchase.balance ||
+                    purchase.balanceAmount ||
+                    purchase.pendingAmount ||
+                    purchase.payment?.pendingAmount ||
+                    0
+                );
+                const paymentStatus =
+                  purchase.paymentStatus ||
+                  purchase.payment?.status ||
+                  (balance <= 0
+                    ? "paid"
+                    : paidAmount > 0
+                    ? "partial"
+                    : "pending");
+                const itemsCount = (purchase.items || []).length;
+                const purchaseId = purchase._id || purchase.id;
+                const isSelected = selectedPurchases.includes(purchaseId);
+
+                return (
+                  <tr
+                    key={purchaseId}
+                    className={isSelected ? "table-active-purple" : ""}
+                    style={{cursor: "pointer"}}
+                    onClick={() => handleViewPurchase(purchase)}
+                  >
+                    {enableBulkActions && (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <Form.Check
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (onSelectionChange) {
+                              const newSelection = e.target.checked
+                                ? [...selectedPurchases, purchaseId]
+                                : selectedPurchases.filter(
+                                    (id) => id !== purchaseId
+                                  );
+                              onSelectionChange(newSelection);
+                            }
+                          }}
+                        />
+                      </td>
+                    )}
+                    <td>
+                      <small className="text-muted">
+                        {new Date(
+                          purchase.purchaseDate ||
+                            purchase.billDate ||
+                            purchase.date ||
+                            purchase.invoiceDate
+                        ).toLocaleDateString("en-GB")}
+                      </small>
+                    </td>
+                    <td>
+                      <strong className="text-primary">
+                        {purchase.purchaseNumber ||
+                          purchase.billNumber ||
+                          purchase.billNo ||
+                          purchase.purchaseOrderNumber ||
+                          purchase.invoiceNumber ||
+                          "N/A"}
+                      </strong>
+                    </td>
+                    <td>
+                      <div>
+                        <div className="fw-medium">
+                          {purchase.supplierName ||
+                            purchase.supplier?.name ||
+                            purchase.partyName ||
+                            "Unknown Supplier"}
+                        </div>
+                        {(purchase.supplierMobile ||
+                          purchase.supplier?.mobile ||
+                          purchase.partyPhone ||
+                          purchase.mobileNumber) && (
+                          <small className="text-muted">
+                            {purchase.supplierMobile ||
+                              purchase.supplier?.mobile ||
+                              purchase.partyPhone ||
+                              purchase.mobileNumber}
+                          </small>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <Badge bg="info" className="me-1">
+                        {itemsCount} item{itemsCount !== 1 ? "s" : ""}
+                      </Badge>
+                    </td>
+                    <td className="text-end">
+                      <strong>₹{amount.toLocaleString("en-IN")}</strong>
+                    </td>
+                    <td className="text-end">
+                      {paidAmount > 0 ? (
+                        <span className="text-success fw-medium">
+                          ₹{paidAmount.toLocaleString("en-IN")}
+                        </span>
+                      ) : (
+                        <span className="text-muted">₹0</span>
+                      )}
+                    </td>
+                    <td className="text-end">
+                      {balance > 0 ? (
+                        <span className="text-danger fw-medium">
+                          ₹{balance.toLocaleString("en-IN")}
+                        </span>
+                      ) : (
+                        <span className="text-muted">₹0</span>
+                      )}
+                    </td>
+                    <td>
+                      <StatusBadge
+                        status={purchase.status}
+                        paymentStatus={paymentStatus}
+                        amount={amount}
+                        balance={balance}
+                      />
+                    </td>
+                    <td>
+                      <Badge
+                        bg={
+                          purchase.paymentMethod === "cash"
+                            ? "success"
+                            : purchase.paymentMethod === "bank" ||
+                              purchase.paymentMethod === "bank_transfer"
+                            ? "primary"
+                            : purchase.paymentMethod === "upi"
+                            ? "info"
+                            : "secondary"
+                        }
+                        className="text-capitalize"
+                      >
+                        {purchase.paymentMethod ||
+                          purchase.payment?.method ||
+                          purchase.paymentType ||
+                          "Cash"}
+                      </Badge>
+                    </td>
+                    {enableActions && (
+                      <td
+                        className="text-center dropdown-cell"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ActionButton purchase={purchase} />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
+      </div>
+
+      {/* ✅ Enhanced Universal View Modal */}
+      {selectedPurchase && (
+        <UniversalViewModal
+          show={viewModalShow}
+          onHide={() => {
+            setViewModalShow(false);
+            setSelectedPurchase(null);
+            setModalError(null);
+          }}
+          title={`${labels.documentName} Details`}
+          data={selectedPurchase}
+          transaction={selectedPurchase}
+          companyId={companyId}
+          currentUser={currentUser}
+          currentCompany={currentCompany}
+          addToast={addToast}
+          loading={modalLoading}
+          error={modalError}
+          documentType={
+            isPurchaseOrdersMode ? "purchase-order" : "purchase-invoice"
+          }
+          // ✅ Enhanced action handlers
+          onEdit={handleModalEdit}
+          onPrint={handleModalPrint}
+          onShare={handleModalShare}
+          onDownload={handleModalDownload}
+          onDuplicate={handleModalDuplicate}
+          onDelete={handleModalDelete}
+          // ✅ Additional props for enhanced functionality
+          enableEdit={enableActions}
+          enablePrint={true}
+          enableShare={true}
+          enableDownload={true}
+          enableDuplicate={enableActions}
+          enableDelete={enableActions}
+          // ✅ Purchase-specific props
+          enableConvert={isPurchaseOrdersMode}
+          onConvert={() => handleConvertPurchase(selectedPurchase)}
+          onMarkAsOrdered={
+            isPurchaseOrdersMode
+              ? () => handleMarkAsOrdered(selectedPurchase)
+              : undefined
+          }
+          onMarkAsReceived={
+            isPurchaseOrdersMode
+              ? () => handleMarkAsReceived(selectedPurchase)
+              : undefined
+          }
+          onComplete={
+            isPurchaseOrdersMode
+              ? () => handleCompletePurchase(selectedPurchase)
+              : undefined
+          }
+        />
+      )}
+
+      <style>
+        {`
+      .purchase-bills-table-wrapper {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e9ecef;
+        position: relative;
+        max-width: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .purchase-bills-table-wrapper .table-responsive-wrapper {
+        overflow-x: auto;
+        overflow-y: visible;
+        max-width: 100%;
+        position: relative;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
+      }
+
+      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-track {
+        background: #f1f3f4;
+        border-radius: 3px;
+      }
+
+      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb {
+        background: rgba(168, 85, 247, 0.3);
+        border-radius: 3px;
+      }
+
+      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
+        background: rgba(168, 85, 247, 0.5);
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple {
+        background: linear-gradient(
+          135deg,
+          #6f42c1 0%,
+          #8b5cf6 50%,
+          #a855f7 100%
+        );
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th {
+        background: transparent !important;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+        font-weight: 600;
+        padding: 16px 12px;
+        font-size: 0.875rem;
+        color: #ffffff !important;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        position: relative;
+        min-width: 120px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:first-child {
+        min-width: 40px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(2) {
+        min-width: 100px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(3) {
+        min-width: 150px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(4) {
+        min-width: 180px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(5) {
+        min-width: 80px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(6) {
+        min-width: 120px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(7) {
+        min-width: 100px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(8) {
+        min-width: 100px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(9) {
+        min-width: 100px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:nth-child(10) {
+        min-width: 100px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:last-child {
+        min-width: 80px;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+          45deg,
+          rgba(255, 255, 255, 0.1) 0%,
+          transparent 50%
+        );
+        pointer-events: none;
+      }
+
+      .purchase-bills-table-wrapper .table-header-purple th:hover {
+        background: rgba(255, 255, 255, 0.1) !important;
+        transition: all 0.3s ease;
+      }
+
+      .purple-checkbox input[type="checkbox"] {
+        accent-color: #ffffff;
+        transform: scale(1.1);
+      }
+
+      .purple-checkbox input[type="checkbox"]:checked {
+        background-color: #ffffff;
+        border-color: #ffffff;
+      }
+
+      .purchase-bills-table-wrapper .table tbody tr.table-active-purple {
+        background: linear-gradient(
+          90deg,
+          rgba(168, 85, 247, 0.1) 0%,
+          rgba(139, 92, 246, 0.05) 100%
+        );
+        border-left: 4px solid #a855f7;
+      }
+
+      .purchase-bills-table-wrapper .table {
+        margin-bottom: 0;
+        font-size: 0.9rem;
+        width: 100%;
+        table-layout: auto;
+        min-width: 1200px;
+      }
+
+      .purchase-bills-table-wrapper .table td {
+        padding: 16px 12px;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f3f4;
+        white-space: nowrap;
+        min-width: inherit;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-cell {
+        position: relative;
+        z-index: 10;
+        overflow: visible;
+      }
+
+      .purchase-bills-table-wrapper .table tbody tr:hover {
+        background: linear-gradient(
+          90deg,
+          rgba(168, 85, 247, 0.05) 0%,
+          rgba(139, 92, 246, 0.02) 100%
+        );
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(168, 85, 247, 0.15);
+        transition: all 0.2s ease;
+        border-left: 3px solid #a855f7;
+      }
+
+      .purchase-bills-table-wrapper .dropdown {
+        position: static;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-toggle {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        color: #6f42c1;
+        position: relative;
+        z-index: 11;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-toggle:focus,
+      .purchase-bills-table-wrapper .dropdown-toggle:hover {
+        box-shadow: 0 0 0 0.2rem rgba(168, 85, 247, 0.25) !important;
+        background-color: rgba(168, 85, 247, 0.1) !important;
+        color: #6f42c1 !important;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-menu {
+        border: none;
+        box-shadow: 0 8px 32px rgba(168, 85, 247, 0.3);
+        border-radius: 8px;
+        margin-top: 4px;
+        border-top: 3px solid #a855f7;
+        z-index: 9999 !important;
+        position: absolute !important;
+        will-change: transform;
+        min-width: 180px;
+        background: white;
+        transform: translateZ(0);
+      }
+
+      .purchase-bills-table-wrapper .dropdown-menu.show {
+        z-index: 9999 !important;
+        position: absolute !important;
+      }
+
+      .purchase-bills-table-wrapper .badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.4em 0.8em;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-item {
+        padding: 8px 16px;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-item:hover {
+        background: linear-gradient(
+          90deg,
+          rgba(168, 85, 247, 0.1) 0%,
+          rgba(139, 92, 246, 0.05) 100%
+        );
+        color: #6f42c1;
+        padding-left: 20px;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-header {
+        font-size: 0.75rem;
+        color: #6f42c1;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: rgba(168, 85, 247, 0.1);
+        margin: 0 -16px;
+        padding: 8px 16px;
+      }
+
+      .purchase-bills-table-wrapper .dropdown-divider {
+        border-color: rgba(168, 85, 247, 0.2);
+      }
+
+      .purchase-bills-table-wrapper .text-white-50:hover {
+        color: rgba(255, 255, 255, 0.8) !important;
+        transform: scale(1.1);
+        transition: all 0.2s ease;
+      }
+
+      @media (max-width: 1400px) {
+        .purchase-bills-table-wrapper .table {
+          min-width: 1100px;
+        }
+        
+        .purchase-bills-table-wrapper .table th,
+        .purchase-bills-table-wrapper .table td {
+          padding: 14px 10px;
+          font-size: 0.85rem;
+        }
+      }
+
+      @media (max-width: 1200px) {
+        .purchase-bills-table-wrapper .table {
+          min-width: 1000px;
+        }
+
+        .purchase-bills-table-wrapper .table th,
+        .purchase-bills-table-wrapper .table td {
+          padding: 12px 8px;
+          font-size: 0.85rem;
+        }
+
+        .purchase-bills-table-wrapper .dropdown-menu {
+          min-width: 160px;
+        }
+      }
+
+      @media (max-width: 992px) {
+        .purchase-bills-table-wrapper .table {
+          min-width: 900px;
+        }
+
+        .purchase-bills-table-wrapper .table th,
+        .purchase-bills-table-wrapper .table td {
+          padding: 10px 6px;
+          font-size: 0.8rem;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .purchase-bills-table-wrapper {
+          font-size: 0.8rem;
+          border-radius: 8px;
+          margin: 0 -15px;
+        }
+
+        .purchase-bills-table-wrapper .table {
+          min-width: 800px;
+        }
+
+        .purchase-bills-table-wrapper .table th,
+        .purchase-bills-table-wrapper .table td {
+          padding: 8px 4px;
+          font-size: 0.75rem;
+        }
+
+        .purchase-bills-table-wrapper .badge {
+          font-size: 0.7rem;
+          padding: 0.3em 0.6em;
+        }
+
+        .purchase-bills-table-wrapper .table-header-purple th {
+          padding: 10px 6px;
+          font-size: 0.75rem;
+        }
+
+        .purchase-bills-table-wrapper .dropdown-menu {
+          min-width: 140px;
+          font-size: 0.8rem;
+        }
+
+        .purchase-bills-table-wrapper .dropdown-item {
+          padding: 6px 12px;
+          font-size: 0.8rem;
+        }
+
+        .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar {
+          height: 8px;
+        }
+      }
+
+      @media (max-width: 576px) {
+        .purchase-bills-table-wrapper {
+          border-radius: 0;
+          margin: 0 -15px;
+        }
+
+        .purchase-bills-table-wrapper .table {
+          min-width: 700px;
+        }
+
+        .purchase-bills-table-wrapper .table th,
+        .purchase-bills-table-wrapper .table td {
+          padding: 6px 3px;
+          font-size: 0.7rem;
+        }
+      }
+
+      .purchase-bills-table-wrapper .table tbody tr {
+        transition: all 0.2s ease;
+      }
+
+      .purchase-bills-table-wrapper .spinner-border {
+        width: 3rem;
+        height: 3rem;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-info {
+        background: linear-gradient(45deg, #a855f7, #8b5cf6) !important;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-success {
+        background: linear-gradient(45deg, #10b981, #059669) !important;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-warning {
+        background: linear-gradient(45deg, #f59e0b, #d97706) !important;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-danger {
+        background: linear-gradient(45deg, #ef4444, #dc2626) !important;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-secondary {
+        background: linear-gradient(45deg, #6b7280, #4b5563) !important;
+      }
+
+      .purchase-bills-table-wrapper .badge.bg-primary {
+        background: linear-gradient(45deg, #8b5cf6, #7c3aed) !important;
+      }
+
+      .dropdown-menu {
+        z-index: 9999 !important;
+      }
+
+      .table-responsive {
+        overflow: visible !important;
+      }
+
+      .purchase-bills-table-wrapper .dropdown.show .dropdown-menu {
+        z-index: 9999 !important;
+        position: absolute !important;
+        transform: translate3d(0, 0, 0);
+      }
+
+      .purchase-bills-table-wrapper * {
+        box-sizing: border-box;
+      }
+      `}
+      </style>
+    </>
+  );
 }
 
 export default PurchaseBillsTable;

@@ -41,6 +41,9 @@ function SalesForm({
   addToast,
   editMode = false,
   existingTransaction = null,
+  initialData = null,
+  editingData = null,
+  defaultValues = null,
   transactionId = null,
   companyId: propCompanyId,
   currentUser,
@@ -108,56 +111,6 @@ function SalesForm({
 
   const effectiveAddToast = addToast || defaultAddToast;
 
-  // Initialize company ID from storage if needed
-  useEffect(() => {
-    if (!propCompanyId && !urlCompanyId && !localCompanyId) {
-      const storedCompanyId =
-        localStorage.getItem("selectedCompanyId") ||
-        localStorage.getItem("companyId") ||
-        sessionStorage.getItem("companyId") ||
-        currentCompany?.id ||
-        currentCompany?._id ||
-        currentUser?.companyId ||
-        currentUser?.company?._id ||
-        currentUser?.company?.id;
-
-      if (
-        storedCompanyId &&
-        storedCompanyId !== "null" &&
-        storedCompanyId !== "undefined"
-      ) {
-        setLocalCompanyId(storedCompanyId);
-      }
-    }
-  }, [
-    propCompanyId,
-    urlCompanyId,
-    currentCompany,
-    currentUser,
-    localCompanyId,
-  ]);
-
-  // Generate document number
-  const generateDocumentNumber = (invoiceType = "non-gst") => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const random = Math.floor(1000 + Math.random() * 9000);
-
-    if (isQuotationsMode) {
-      const companyPrefix = currentCompany?.code || "QT";
-      return invoiceType === "gst"
-        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
-        : `${companyPrefix}-${year}${month}${day}-${random}`;
-    } else {
-      const companyPrefix = currentCompany?.code || "INV";
-      return invoiceType === "gst"
-        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
-        : `${companyPrefix}-${year}${month}${day}-${random}`;
-    }
-  };
-
   // Get field labels
   const getFieldLabels = () => {
     return isQuotationsMode
@@ -200,6 +153,27 @@ function SalesForm({
 
   const labels = getFieldLabels();
 
+  // Generate document number
+  const generateDocumentNumber = (invoiceType = "non-gst") => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const day = date.getDate().toString().padStart(2, "0");
+    const random = Math.floor(1000 + Math.random() * 9000);
+
+    if (isQuotationsMode) {
+      const companyPrefix = currentCompany?.code || "QT";
+      return invoiceType === "gst"
+        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
+        : `${companyPrefix}-${year}${month}${day}-${random}`;
+    } else {
+      const companyPrefix = currentCompany?.code || "INV";
+      return invoiceType === "gst"
+        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
+        : `${companyPrefix}-${year}${month}${day}-${random}`;
+    }
+  };
+
   // Initialize form data
   const [formData, setFormData] = useState(() => {
     const initialCompanyId = getEffectiveCompanyId();
@@ -216,6 +190,15 @@ function SalesForm({
       items: [],
       paymentMethod: "cash",
       paymentData: null,
+      paidAmount: 0,
+      paymentReceived: 0,
+      pendingAmount: 0,
+      paymentDate: new Date().toISOString().split("T")[0],
+      paymentNotes: "",
+      paymentReference: "",
+      paymentStatus: "pending",
+      creditDays: 0,
+      dueDate: null,
       notes: "",
       quotationValidity: isQuotationsMode ? 30 : undefined,
       quotationStatus: isQuotationsMode ? "draft" : undefined,
@@ -235,6 +218,35 @@ function SalesForm({
         : "",
     };
   });
+
+  // Initialize company ID from storage if needed
+  useEffect(() => {
+    if (!propCompanyId && !urlCompanyId && !localCompanyId) {
+      const storedCompanyId =
+        localStorage.getItem("selectedCompanyId") ||
+        localStorage.getItem("companyId") ||
+        sessionStorage.getItem("companyId") ||
+        currentCompany?.id ||
+        currentCompany?._id ||
+        currentUser?.companyId ||
+        currentUser?.company?._id ||
+        currentUser?.company?.id;
+
+      if (
+        storedCompanyId &&
+        storedCompanyId !== "null" &&
+        storedCompanyId !== "undefined"
+      ) {
+        setLocalCompanyId(storedCompanyId);
+      }
+    }
+  }, [
+    propCompanyId,
+    urlCompanyId,
+    currentCompany,
+    currentUser,
+    localCompanyId,
+  ]);
 
   // Update form data function
   const updateFormData = useCallback(
@@ -264,16 +276,28 @@ function SalesForm({
     }
   }, [effectiveCompanyId, formData.companyId, getEffectiveCompanyId]);
 
-  // Load transaction for editing
+  // ✅ Enhanced initialization for edit mode
   useEffect(() => {
-    if (editMode && existingTransaction && !initializationComplete) {
-      initializeFormFromTransaction(existingTransaction);
-    } else if (editMode && !existingTransaction && transactionId) {
-      loadTransactionById(transactionId);
-    } else if (editMode && !existingTransaction) {
-      setInitializing(false);
-      setInitializationComplete(true);
-      effectiveAddToast("No transaction data provided for editing", "error");
+    if (editMode && !initializationComplete) {
+      // Get transaction data from any available source
+      const transactionData =
+        existingTransaction || initialData || editingData || defaultValues;
+
+      if (transactionData) {
+        console.log(
+          "📝 Initializing edit mode with transaction data:",
+          transactionData
+        );
+        initializeFormFromTransaction(transactionData);
+      } else if (transactionId) {
+        console.log("📝 Loading transaction by ID:", transactionId);
+        loadTransactionById(transactionId);
+      } else {
+        console.warn("⚠️ Edit mode enabled but no transaction data provided");
+        setInitializing(false);
+        setInitializationComplete(true);
+        effectiveAddToast("No transaction data provided for editing", "error");
+      }
     } else if (!editMode && !initializationComplete) {
       setInitializing(false);
       setInitializationComplete(true);
@@ -281,9 +305,11 @@ function SalesForm({
   }, [
     editMode,
     existingTransaction,
+    initialData,
+    editingData,
+    defaultValues,
     transactionId,
     initializationComplete,
-    isQuotationsMode,
   ]);
 
   // Load transaction by ID
@@ -312,19 +338,23 @@ function SalesForm({
     }
   };
 
-  // Initialize form from transaction data
+  // ✅ Enhanced initialize form from transaction data with proper payment handling
   const initializeFormFromTransaction = useCallback(
     async (transaction) => {
-      if (initializationComplete) return;
+      if (initializationComplete) {
+        console.log("⚠️ Initialization already complete, skipping...");
+        return;
+      }
 
       setInitializing(true);
+      console.log("🔄 Initializing form from transaction:", transaction);
 
       try {
         if (!transaction) {
           throw new Error("No transaction data provided");
         }
 
-        // Transform customer data
+        // ✅ Enhanced customer transformation
         let transformedCustomer = null;
         if (transaction.customer && typeof transaction.customer === "object") {
           transformedCustomer = {
@@ -340,126 +370,198 @@ function SalesForm({
             address: transaction.customer.address || "",
             gstNumber: transaction.customer.gstNumber || "",
           };
-        } else if (transaction.customerId || transaction.customerName) {
+        } else if (
+          transaction.customerId ||
+          transaction.customerName ||
+          transaction.partyName
+        ) {
           transformedCustomer = {
             id: transaction.customerId,
             _id: transaction.customerId,
-            name: transaction.customerName || "",
+            name: transaction.customerName || transaction.partyName || "",
             mobile:
-              transaction.customerMobile || transaction.mobileNumber || "",
-            email: transaction.customerEmail || "",
-            address: transaction.customerAddress || "",
+              transaction.customerMobile ||
+              transaction.partyPhone ||
+              transaction.mobileNumber ||
+              "",
+            email: transaction.customerEmail || transaction.partyEmail || "",
+            address:
+              transaction.customerAddress || transaction.partyAddress || "",
             gstNumber: transaction.customerGstNumber || "",
           };
         }
 
-        // Transform items data
-        const transformedItems = (transaction.items || []).map(
-          (item, index) => {
-            const quantity = parseFloat(item.quantity || item.qty || 0);
-            const pricePerUnit = parseFloat(
-              item.pricePerUnit || item.price || item.rate || 0
-            );
-            const taxRate = parseFloat(item.taxRate || item.gstRate || 18);
+        // ✅ Enhanced items transformation
+        const transformedItems = (
+          transaction.items ||
+          transaction.lineItems ||
+          []
+        ).map((item, index) => {
+          const quantity = parseFloat(item.quantity || item.qty || 1);
+          const pricePerUnit = parseFloat(
+            item.pricePerUnit || item.price || item.rate || item.unitPrice || 0
+          );
+          const taxRate = parseFloat(item.taxRate || item.gstRate || 18);
 
-            const subtotal = quantity * pricePerUnit;
-            const discountAmount = parseFloat(item.discountAmount || 0);
-            const taxableAmount = subtotal - discountAmount;
-            const taxAmount = (taxableAmount * taxRate) / 100;
-            const cgstAmount = taxAmount / 2;
-            const sgstAmount = taxAmount / 2;
-            const totalAmount = taxableAmount + taxAmount;
+          const subtotal = quantity * pricePerUnit;
+          const discountAmount = parseFloat(item.discountAmount || 0);
+          const taxableAmount = subtotal - discountAmount;
+          const taxAmount = (taxableAmount * taxRate) / 100;
+          const cgstAmount = taxAmount / 2;
+          const sgstAmount = taxAmount / 2;
+          const totalAmount = taxableAmount + taxAmount;
 
-            return {
-              id: item.id || item._id || `item-${index}-${Date.now()}`,
-              itemRef: item.itemRef || item.productId,
-              itemName: item.itemName || item.productName || item.name || "",
-              itemCode: item.itemCode || item.productCode || "",
-              hsnCode: item.hsnCode || item.hsnNumber || "0000",
-              quantity: quantity,
-              unit: item.unit || "PCS",
-              pricePerUnit: pricePerUnit,
-              taxRate: taxRate,
-              discountPercent: parseFloat(item.discountPercent || 0),
-              discountAmount: discountAmount,
-              taxableAmount: taxableAmount,
-              cgstAmount: cgstAmount,
-              sgstAmount: sgstAmount,
-              igst: parseFloat(item.igst || 0),
-              amount: totalAmount,
-              category: item.category || "",
-              currentStock: parseFloat(item.currentStock || 0),
-              taxMode: item.taxMode || transaction.taxMode || "without-tax",
-              priceIncludesTax: Boolean(
-                item.priceIncludesTax || transaction.priceIncludesTax
-              ),
-              selectedProduct: item.itemRef
-                ? {
-                    id: item.itemRef,
-                    name: item.itemName || item.productName,
-                    sellPrice: pricePerUnit,
-                    gstRate: taxRate,
-                    hsnCode: item.hsnCode || "0000",
-                  }
-                : null,
-            };
-          }
-        );
-
-        // Transform payment data
-        let paymentData = null;
-        if (transaction.payment || transaction.paymentData) {
-          const payment = transaction.payment || transaction.paymentData;
-          paymentData = {
-            paymentType: payment.method || payment.paymentType || "cash",
-            method: payment.method || payment.paymentType || "cash",
-            amount: parseFloat(payment.paidAmount || payment.amount || 0),
-            paidAmount: parseFloat(payment.paidAmount || payment.amount || 0),
-            pendingAmount: parseFloat(
-              payment.pendingAmount || payment.balanceAmount || 0
+          return {
+            id: item.id || item._id || `item-${index}-${Date.now()}`,
+            itemRef: item.itemRef || item.productId || item.id,
+            itemName: item.itemName || item.productName || item.name || "",
+            itemCode: item.itemCode || item.productCode || item.code || "",
+            hsnCode: item.hsnCode || item.hsnNumber || "0000",
+            quantity: quantity,
+            unit: item.unit || "PCS",
+            pricePerUnit: pricePerUnit,
+            taxRate: taxRate,
+            discountPercent: parseFloat(item.discountPercent || 0),
+            discountAmount: discountAmount,
+            taxableAmount: taxableAmount,
+            cgstAmount: cgstAmount,
+            sgstAmount: sgstAmount,
+            igst: parseFloat(item.igst || 0),
+            amount: totalAmount,
+            category: item.category || "",
+            currentStock: parseFloat(item.currentStock || 0),
+            taxMode: item.taxMode || transaction.taxMode || "without-tax",
+            priceIncludesTax: Boolean(
+              item.priceIncludesTax || transaction.priceIncludesTax
             ),
-            status: payment.status || "pending",
-            paymentDate: payment.paymentDate || transaction.invoiceDate,
-            reference: payment.reference || "",
-            dueDate: payment.dueDate || null,
-            creditDays: payment.creditDays || 0,
+            selectedProduct: item.itemRef
+              ? {
+                  id: item.itemRef,
+                  name: item.itemName || item.productName,
+                  sellPrice: pricePerUnit,
+                  gstRate: taxRate,
+                  hsnCode: item.hsnCode || "0000",
+                }
+              : null,
+          };
+        });
+
+        // ✅ Enhanced payment data transformation with proper calculations
+        const totalAmount = parseFloat(
+          transaction.amount || transaction.total || transaction.grandTotal || 0
+        );
+        const balanceAmount = parseFloat(
+          transaction.balance || transaction.balanceAmount || 0
+        );
+        const calculatedPaidAmount = totalAmount - balanceAmount;
+
+        console.log("💰 Payment data calculation:", {
+          totalAmount,
+          balanceAmount,
+          calculatedPaidAmount,
+          originalPayment: transaction.payment,
+          paymentReceived: transaction.paymentReceived,
+          paidAmount: transaction.paidAmount,
+        });
+
+        let paymentData = null;
+        if (
+          transaction.payment ||
+          transaction.paymentData ||
+          calculatedPaidAmount > 0
+        ) {
+          const payment = transaction.payment || transaction.paymentData || {};
+
+          // ✅ Use calculated paid amount if no explicit payment data
+          const effectivePaidAmount =
+            payment.paidAmount ||
+            payment.amount ||
+            transaction.paymentReceived ||
+            transaction.paidAmount ||
+            calculatedPaidAmount;
+
+          paymentData = {
+            paymentType:
+              payment.method ||
+              payment.paymentType ||
+              transaction.paymentType ||
+              transaction.paymentMethod ||
+              "cash",
+            method:
+              payment.method ||
+              payment.paymentType ||
+              transaction.paymentType ||
+              transaction.paymentMethod ||
+              "cash",
+            amount: effectivePaidAmount,
+            paidAmount: effectivePaidAmount,
+            totalAmount: totalAmount,
+            pendingAmount:
+              payment.pendingAmount || payment.balanceAmount || balanceAmount,
+            balanceAmount: balanceAmount,
+            status:
+              payment.status ||
+              (balanceAmount <= 0
+                ? "paid"
+                : effectivePaidAmount > 0
+                ? "partial"
+                : "pending"),
+            paymentDate:
+              payment.paymentDate ||
+              transaction.paymentDate ||
+              transaction.invoiceDate,
+            reference: payment.reference || transaction.paymentReference || "",
+            notes: payment.notes || transaction.paymentNotes || "",
+            dueDate: payment.dueDate || transaction.dueDate || null,
+            creditDays: payment.creditDays || transaction.creditDays || 0,
           };
         }
 
-        // Create new form data
+        // ✅ Enhanced date parsing
+        const parseDate = (dateValue) => {
+          if (dateValue) {
+            try {
+              const parsedDate = new Date(dateValue);
+              if (!isNaN(parsedDate.getTime())) {
+                return parsedDate.toISOString().split("T")[0];
+              }
+            } catch (e) {
+              console.warn("Date parsing failed for:", dateValue);
+            }
+          }
+          return new Date().toISOString().split("T")[0];
+        };
+
+        // ✅ Create comprehensive form data with proper payment information
         const newFormData = {
+          // Document identification
           invoiceNumber:
             transaction.invoiceNumber ||
+            transaction.invoiceNo ||
             transaction.quotationNumber ||
-            transaction.documentNumber ||
-            transaction.number ||
+            transaction.orderNo ||
             "",
 
-          invoiceDate: (() => {
-            const dateValue =
-              transaction.invoiceDate ||
+          // Document dates
+          invoiceDate: parseDate(
+            transaction.invoiceDate ||
               transaction.quotationDate ||
               transaction.date ||
-              transaction.documentDate;
-            if (dateValue) {
-              try {
-                return new Date(dateValue).toISOString().split("T")[0];
-              } catch (e) {
-                return new Date().toISOString().split("T")[0];
-              }
-            }
-            return new Date().toISOString().split("T")[0];
-          })(),
+              transaction.documentDate
+          ),
 
+          dueDate: transaction.dueDate ? parseDate(transaction.dueDate) : null,
+
+          // Customer information
           customer: transformedCustomer,
-          mobileNumber:
-            transaction.customerMobile ||
-            transaction.mobileNumber ||
-            transformedCustomer?.mobile ||
-            "",
+          customerId: transformedCustomer?.id,
+          customerName: transformedCustomer?.name || "",
+          mobileNumber: transformedCustomer?.mobile || "",
 
+          // Items
           items: transformedItems,
 
+          // Tax and pricing configuration
           gstEnabled:
             transaction.gstEnabled !== false &&
             (transaction.invoiceType === "gst" ||
@@ -470,25 +572,57 @@ function SalesForm({
           taxMode: transaction.taxMode || "without-tax",
           priceIncludesTax: Boolean(transaction.priceIncludesTax),
 
-          paymentMethod: paymentData?.paymentType || "cash",
+          // ✅ Enhanced payment information with proper values
+          paymentMethod:
+            paymentData?.paymentType ||
+            transaction.paymentType ||
+            transaction.paymentMethod ||
+            "cash",
           paymentData: paymentData,
+          paymentReceived: paymentData?.paidAmount || calculatedPaidAmount,
+          paidAmount: paymentData?.paidAmount || calculatedPaidAmount,
+          pendingAmount: paymentData?.pendingAmount || balanceAmount,
+          paymentDate:
+            paymentData?.paymentDate ||
+            parseDate(
+              transaction.paymentDate ||
+                transaction.invoiceDate ||
+                transaction.date
+            ),
+          paymentNotes: paymentData?.notes || transaction.paymentNotes || "",
+          paymentReference:
+            paymentData?.reference || transaction.paymentReference || "",
+          paymentStatus:
+            paymentData?.status ||
+            (balanceAmount <= 0
+              ? "paid"
+              : calculatedPaidAmount > 0
+              ? "partial"
+              : "pending"),
+          creditDays: paymentData?.creditDays || transaction.creditDays || 0,
 
+          // Notes and terms
           notes: transaction.notes || transaction.description || "",
-          termsAndConditions: transaction.termsAndConditions || "",
+          termsAndConditions:
+            transaction.termsAndConditions || transaction.terms || "",
 
-          status: transaction.status || "draft",
+          // Status and quotation specific fields
+          status: transaction.status || transaction.quotationStatus || "draft",
           quotationValidity:
             transaction.quotationValidity ||
             (isQuotationsMode ? 30 : undefined),
           quotationStatus:
             transaction.quotationStatus ||
+            transaction.status ||
             (isQuotationsMode ? "draft" : undefined),
           quotationExpiryDate:
             transaction.quotationExpiryDate ||
             (isQuotationsMode
               ? (() => {
                   const date = new Date(
-                    transaction.quotationDate || transaction.invoiceDate
+                    transaction.quotationDate ||
+                      transaction.invoiceDate ||
+                      new Date()
                   );
                   date.setDate(
                     date.getDate() + (transaction.quotationValidity || 30)
@@ -498,13 +632,31 @@ function SalesForm({
               : undefined),
           convertedToInvoice: transaction.convertedToInvoice || false,
 
+          // System fields
           documentMode: isQuotationsMode ? "quotation" : "invoice",
           createdBy: transaction.createdBy || currentUser?.name || "System",
           companyId: effectiveCompanyId,
+
+          // ✅ Financial totals
+          totalAmount: totalAmount,
+          balance: balanceAmount,
+          amount: totalAmount,
         };
 
+        console.log("✅ Setting form data with payment info:", {
+          paymentMethod: newFormData.paymentMethod,
+          paymentReceived: newFormData.paymentReceived,
+          paidAmount: newFormData.paidAmount,
+          pendingAmount: newFormData.pendingAmount,
+          totalAmount: newFormData.totalAmount,
+          paymentData: newFormData.paymentData,
+        });
+
         setFormData((prev) => ({...prev, ...newFormData}));
+
+        console.log("✅ Form initialized successfully with payment data");
       } catch (error) {
+        console.error("❌ Error initializing form:", error);
         effectiveAddToast(
           `Error loading ${labels.documentName.toLowerCase()}: ${
             error.message
@@ -526,7 +678,7 @@ function SalesForm({
     ]
   );
 
-  // Simple save handler - just pass through to service
+  // ✅ Enhanced save handler
   const handleSave = useCallback(
     async (invoiceDataFromTable) => {
       if (saving) {
@@ -540,49 +692,87 @@ function SalesForm({
       try {
         setSaving(true);
 
+        console.log("💾 Save operation:", {
+          editMode,
+          transactionId,
+          isQuotationsMode,
+          data: invoiceDataFromTable,
+        });
+
+        // ✅ Enhanced data preparation
+        const enhancedData = {
+          ...invoiceDataFromTable,
+          companyId: effectiveCompanyId,
+          documentType: isQuotationsMode ? "quotation" : "invoice",
+          mode: isQuotationsMode ? "quotations" : "invoices",
+
+          // ✅ Pass edit context if available
+          ...(editMode &&
+            transactionId && {
+              _id: transactionId,
+              id: transactionId,
+              editMode: true,
+              originalTransactionId: transactionId,
+            }),
+        };
+
         let result;
 
         if (editMode && transactionId) {
+          // ✅ UPDATE operation
+          console.log("🔄 Updating existing transaction:", transactionId);
+
           if (isQuotationsMode && quotationService) {
             result = await quotationService.updateQuotation(
               transactionId,
-              invoiceDataFromTable
+              enhancedData
             );
           } else {
             result = await salesService.updateInvoice(
               transactionId,
-              invoiceDataFromTable
+              enhancedData
             );
           }
         } else {
+          // ✅ CREATE operation
+          console.log("🆕 Creating new transaction");
+
           if (isQuotationsMode && quotationService) {
-            result = await quotationService.createQuotation(
-              invoiceDataFromTable
-            );
+            result = await quotationService.createQuotation(enhancedData);
           } else {
-            result = await salesService.createInvoice(invoiceDataFromTable);
+            result = await salesService.createInvoice(enhancedData);
           }
         }
 
         if (result?.success || result?.data || result?._id || result?.id) {
           const responseData = result.data || result;
+          const operation = editMode ? "updated" : "created";
+          const successMessage = `${labels.documentName} ${operation} successfully!`;
 
           effectiveAddToast(
-            `${labels.successMessage} Amount: ₹${
+            `${successMessage} Amount: ₹${
               responseData.total ||
               responseData.grandTotal ||
               responseData.amount ||
-              invoiceDataFromTable.totals?.finalTotal ||
+              enhancedData.totals?.finalTotal ||
               0
             }`,
             "success"
           );
 
-          // Navigate to appropriate page
+          // ✅ Navigation based on operation
           setTimeout(() => {
-            if (isQuotationsMode) {
-              navigate(`/companies/${effectiveCompanyId}/sales?tab=quotations`);
+            if (editMode) {
+              // For edit mode, navigate back to list
+              if (isQuotationsMode) {
+                navigate(
+                  `/companies/${effectiveCompanyId}/sales?tab=quotations`
+                );
+              } else {
+                navigate(`/companies/${effectiveCompanyId}/sales`);
+              }
             } else {
+              // For create mode, navigate to list
               navigate(`/companies/${effectiveCompanyId}/sales`);
             }
           }, 1500);
@@ -590,10 +780,14 @@ function SalesForm({
           return {
             success: true,
             data: responseData,
-            message: labels.successMessage,
+            message: successMessage,
+            operation: operation,
           };
         } else {
-          throw new Error(result?.message || "Save operation failed");
+          throw new Error(
+            result?.message ||
+              `${editMode ? "Update" : "Save"} operation failed`
+          );
         }
       } catch (error) {
         if (
@@ -607,9 +801,10 @@ function SalesForm({
           };
         }
 
-        const errorMessage = `Error ${
-          editMode ? "updating" : "saving"
-        } ${labels.documentName.toLowerCase()}: ${error.message}`;
+        const operation = editMode ? "updating" : "saving";
+        const errorMessage = `Error ${operation} ${labels.documentName.toLowerCase()}: ${
+          error.message
+        }`;
 
         effectiveAddToast(errorMessage, "error");
 
@@ -748,7 +943,14 @@ function SalesForm({
   }
 
   // Edit mode validation
-  if (editMode && !existingTransaction && initializationComplete) {
+  if (
+    editMode &&
+    !existingTransaction &&
+    !initialData &&
+    !editingData &&
+    !defaultValues &&
+    initializationComplete
+  ) {
     return (
       <div
         className="sales-form-wrapper"
@@ -796,6 +998,7 @@ function SalesForm({
             documentType={documentType}
             isQuotationsMode={isQuotationsMode}
             labels={labels}
+            editMode={editMode}
           />
         </div>
 
@@ -819,6 +1022,8 @@ function SalesForm({
             editMode={editMode}
             saving={saving}
             labels={labels}
+            inventoryItems={inventoryItems}
+            onAddItem={onAddItem}
           />
         </div>
       </Container>

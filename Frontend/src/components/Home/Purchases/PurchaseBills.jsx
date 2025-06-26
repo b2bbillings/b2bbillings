@@ -1,19 +1,19 @@
-import React, {useState, useEffect, useCallback, useMemo} from "react";
+import React, {useState, useEffect, useCallback, useMemo, useRef} from "react";
 import {Container, Row, Col, Alert, Button} from "react-bootstrap";
-import {useParams} from "react-router-dom";
+import {useParams, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faArrowLeft} from "@fortawesome/free-solid-svg-icons";
+import {faPlus, faRefresh} from "@fortawesome/free-solid-svg-icons";
 
 // Import components
 import PurchaseBillsHeader from "./PurchaseBill/PurchaseBillsHeader";
 import PurchaseBillsFilter from "./PurchaseBill/PurchaseBillsFilter";
 import PurchaseBillsSummary from "./PurchaseBill/PurchaseBillsSummary";
 import PurchaseBillsTable from "./PurchaseBill/PurchaseBillsTable";
-import PurchaseForm from "./PurchaseForm";
 
 // Import services
 import purchaseService from "../../../services/purchaseService";
 import itemService from "../../../services/itemService";
+import transactionService from "../../../services/transactionService";
 
 // Import styles
 import "./PurchaseBills.css";
@@ -42,6 +42,11 @@ function PurchaseBills({
   companyId: propCompanyId,
 }) {
   const {companyId: urlCompanyId} = useParams();
+  const location = useLocation();
+
+  // ✅ ADD REF TO PREVENT INFINITE LOOPS
+  const loadedRef = useRef(false);
+  const enhancementInProgress = useRef(false);
 
   // Resolve effective company ID from multiple sources
   const effectiveCompanyId = useMemo(() => {
@@ -56,9 +61,7 @@ function PurchaseBills({
     );
   }, [propCompanyId, urlCompanyId, currentCompany]);
 
-  // State management
-  const [currentView, setCurrentView] = useState("list");
-  const [editingPurchase, setEditingPurchase] = useState(null);
+  // ✅ ENHANCED STATE - Include bank account data loading
   const [dateRange, setDateRange] = useState("This Month");
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -69,6 +72,12 @@ function PurchaseBills({
   const [selectedFirm, setSelectedFirm] = useState("All Firms");
   const [topSearchTerm, setTopSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [enhancementStats, setEnhancementStats] = useState({
+    enhanced: 0,
+    total: 0,
+    withBankData: 0,
+  });
 
   // Debounced search term for better performance
   const debouncedSearchTerm = useDebounce(topSearchTerm, 300);
@@ -186,8 +195,9 @@ function PurchaseBills({
           .map((p) => p.supplierName || p.supplier?.name || p.partyName)
           .filter((name) => name)
       ).size,
+      enhancementStats: enhancementStats,
     };
-  }, [purchases]);
+  }, [purchases, enhancementStats]);
 
   // Options
   const dateRangeOptions = useMemo(
@@ -225,7 +235,308 @@ function PurchaseBills({
     );
   }, [purchases, debouncedSearchTerm]);
 
-  // Load purchases data
+  // ✅ FIXED: Load bank accounts - removed from dependencies
+  const loadBankAccounts = useCallback(async () => {
+    if (!effectiveCompanyId) {
+      setBankAccounts([]);
+      return;
+    }
+
+    try {
+      console.log("🏦 Loading bank accounts for company:", effectiveCompanyId);
+
+      const endpoints = [
+        `/companies/${effectiveCompanyId}/bank-accounts`,
+        `/companies/${effectiveCompanyId}/bank-accounts?active=true`,
+        `/companies/${effectiveCompanyId}/accounts`,
+        `/bank-accounts?companyId=${effectiveCompanyId}`,
+      ];
+
+      let bankAccountData = [];
+
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(
+            `${
+              import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+            }${endpoint}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+                "x-company-id": effectiveCompanyId,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+
+            if (data.success) {
+              bankAccountData =
+                data.data?.accounts ||
+                data.data?.bankAccounts ||
+                data.data ||
+                data.accounts ||
+                [];
+            } else if (Array.isArray(data)) {
+              bankAccountData = data;
+            }
+
+            if (bankAccountData.length > 0) {
+              setBankAccounts(bankAccountData);
+              console.log(
+                `✅ Loaded ${bankAccountData.length} bank accounts from: ${endpoint}`
+              );
+              break;
+            }
+          }
+        } catch (endpointError) {
+          console.warn(
+            `⚠️ Bank account endpoint ${endpoint} failed:`,
+            endpointError.message
+          );
+          continue;
+        }
+      }
+
+      if (bankAccountData.length === 0) {
+        console.warn("⚠️ No bank accounts found from any endpoint");
+        setBankAccounts([]);
+      }
+    } catch (error) {
+      console.warn("⚠️ Failed to load bank accounts:", error);
+      setBankAccounts([]);
+    }
+  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId in dependencies
+
+  // ✅ FIXED: Transform purchase data - memoized to prevent recreation
+  const enhancePurchaseData = useCallback(
+    async (rawPurchases) => {
+      if (!Array.isArray(rawPurchases) || rawPurchases.length === 0) {
+        return rawPurchases;
+      }
+
+      // ✅ PREVENT MULTIPLE SIMULTANEOUS ENHANCEMENTS
+      if (enhancementInProgress.current) {
+        console.log("⚠️ Enhancement already in progress, skipping...");
+        return rawPurchases;
+      }
+
+      enhancementInProgress.current = true;
+
+      try {
+        console.log(
+          "🔄 Enhancing purchase data with bank account information..."
+        );
+
+        let enhancedCount = 0;
+        let withBankDataCount = 0;
+
+        const enhancedPurchases = await Promise.all(
+          rawPurchases.map(async (purchase, index) => {
+            try {
+              console.log(
+                `🔍 Processing purchase ${index + 1}/${rawPurchases.length}: ${
+                  purchase.purchaseNumber || purchase._id
+                }`
+              );
+
+              // ✅ Basic data transformation
+              let enhancedPurchase = {
+                ...purchase,
+                id: purchase._id || purchase.id,
+                amount:
+                  purchase.amount ||
+                  purchase.totalAmount ||
+                  purchase.finalTotal ||
+                  0,
+                supplierName:
+                  purchase.supplierName ||
+                  purchase.supplier?.name ||
+                  purchase.partyName,
+                supplierId:
+                  purchase.supplierId ||
+                  purchase.supplier?._id ||
+                  purchase.supplier?.id,
+              };
+
+              // ✅ Check if payment method indicates bank transaction
+              const paymentMethod =
+                transactionService.normalizePaymentMethodForFrontend(
+                  purchase.paymentMethod || purchase.payment?.method || "cash"
+                );
+
+              console.log(
+                `💳 Purchase ${purchase.purchaseNumber} payment method: ${paymentMethod}`
+              );
+
+              if (paymentMethod === "bank") {
+                console.log(
+                  "🔍 Bank payment detected, searching for transaction data..."
+                );
+
+                // ✅ Strategy 1: Try to get transaction data for bank account info
+                try {
+                  const transactionResponse =
+                    await transactionService.getPurchaseTransactions(
+                      effectiveCompanyId,
+                      purchase
+                    );
+
+                  if (
+                    transactionResponse.success &&
+                    transactionResponse.data.transactions.length > 0
+                  ) {
+                    const transaction =
+                      transactionResponse.data.transactions[0];
+
+                    console.log(
+                      `✅ Found transaction for purchase ${purchase.purchaseNumber}:`,
+                      {
+                        transactionId: transaction._id,
+                        bankAccountId: transaction.bankAccountId,
+                        bankAccountName: transaction.bankAccountName,
+                        amount: transaction.amount,
+                        strategy: transactionResponse.data.searchStrategy,
+                      }
+                    );
+
+                    enhancedPurchase = {
+                      ...enhancedPurchase,
+                      bankAccountId: transaction.bankAccountId,
+                      bankAccountName:
+                        transaction.bankAccountName || transaction.accountName,
+                      bankName: transaction.bankName,
+                      accountNumber:
+                        transaction.accountNumber || transaction.accountNo,
+                      ifscCode: transaction.ifscCode,
+                      branchName: transaction.branchName,
+                      paymentTransactionId: transaction._id || transaction.id,
+                      transactionDate:
+                        transaction.transactionDate || transaction.createdAt,
+                      transactionStatus: transaction.status,
+                      hasTransactionData: true,
+                      enhancementStrategy: "transaction-found",
+                    };
+
+                    withBankDataCount++;
+                  } else {
+                    console.log(
+                      `⚠️ No transaction found for purchase ${purchase.purchaseNumber}`
+                    );
+
+                    // ✅ Strategy 2: Fallback to first available bank account
+                    if (bankAccounts.length > 0) {
+                      const defaultAccount =
+                        bankAccounts.find(
+                          (acc) =>
+                            acc.isActive !== false &&
+                            (acc.type === "bank" ||
+                              !acc.type ||
+                              acc.accountType === "bank")
+                        ) || bankAccounts[0];
+
+                      if (defaultAccount) {
+                        enhancedPurchase = {
+                          ...enhancedPurchase,
+                          bankAccountId:
+                            defaultAccount._id || defaultAccount.id,
+                          bankAccountName:
+                            defaultAccount.accountName || defaultAccount.name,
+                          bankName: defaultAccount.bankName,
+                          accountNumber:
+                            defaultAccount.accountNumber ||
+                            defaultAccount.accountNo,
+                          ifscCode: defaultAccount.ifscCode,
+                          branchName: defaultAccount.branchName,
+                          hasTransactionData: false,
+                          enhancementStrategy: "default-bank-account",
+                        };
+
+                        console.log(
+                          `✅ Applied default bank account to purchase ${purchase.purchaseNumber}:`,
+                          {
+                            bankAccountId:
+                              defaultAccount._id || defaultAccount.id,
+                            bankAccountName:
+                              defaultAccount.accountName || defaultAccount.name,
+                          }
+                        );
+                      }
+                    }
+                  }
+                } catch (transactionError) {
+                  console.warn(
+                    `⚠️ Transaction search failed for purchase ${purchase.purchaseNumber}:`,
+                    transactionError.message
+                  );
+
+                  // ✅ Strategy 3: Still apply default bank account even if transaction search fails
+                  if (bankAccounts.length > 0) {
+                    const defaultAccount = bankAccounts[0];
+                    enhancedPurchase = {
+                      ...enhancedPurchase,
+                      bankAccountId: defaultAccount._id || defaultAccount.id,
+                      bankAccountName:
+                        defaultAccount.accountName || defaultAccount.name,
+                      bankName: defaultAccount.bankName,
+                      accountNumber: defaultAccount.accountNumber,
+                      enhancementStrategy: "fallback-bank-account",
+                      hasTransactionData: false,
+                    };
+                  }
+                }
+              } else {
+                // ✅ For non-bank payments, still check if there's existing bank account data
+                if (purchase.bankAccountId || purchase.payment?.bankAccountId) {
+                  enhancedPurchase.hasTransactionData = true;
+                  enhancedPurchase.enhancementStrategy = "existing-bank-data";
+                  withBankDataCount++;
+                } else {
+                  enhancedPurchase.enhancementStrategy = "non-bank-payment";
+                }
+              }
+
+              enhancedCount++;
+              return enhancedPurchase;
+            } catch (enhanceError) {
+              console.warn(
+                `⚠️ Failed to enhance purchase ${
+                  purchase.purchaseNumber || purchase._id
+                }:`,
+                enhanceError.message
+              );
+              return {
+                ...purchase,
+                id: purchase._id || purchase.id,
+                enhancementStrategy: "enhancement-failed",
+                hasTransactionData: false,
+              };
+            }
+          })
+        );
+
+        // ✅ Update enhancement statistics
+        setEnhancementStats({
+          enhanced: enhancedCount,
+          total: rawPurchases.length,
+          withBankData: withBankDataCount,
+        });
+
+        console.log(
+          `✅ Enhanced ${enhancedCount}/${rawPurchases.length} purchases (${withBankDataCount} with bank data)`
+        );
+
+        return enhancedPurchases;
+      } finally {
+        enhancementInProgress.current = false;
+      }
+    },
+    [effectiveCompanyId, bankAccounts] // ✅ STABLE DEPENDENCIES
+  );
+
+  // ✅ FIXED: Load purchases data - removed circular dependencies
   const loadPurchasesData = useCallback(async () => {
     if (!effectiveCompanyId) {
       setPurchases([]);
@@ -244,6 +555,8 @@ function PurchaseBills({
         endDate: endDate.toISOString().split("T")[0],
       };
 
+      console.log("📊 Loading purchases for company:", effectiveCompanyId);
+
       const response = await purchaseService.getPurchases(
         effectiveCompanyId,
         filters
@@ -261,7 +574,7 @@ function PurchaseBills({
           transformedPurchases = [rawData];
         }
 
-        // Transform data if method exists
+        // ✅ Apply service transformation first if available
         if (
           purchaseService.transformPurchaseData &&
           transformedPurchases.length > 0
@@ -270,12 +583,23 @@ function PurchaseBills({
             try {
               return purchaseService.transformPurchaseData(purchase);
             } catch (transformError) {
+              console.warn("Purchase transform error:", transformError);
               return purchase;
             }
           });
         }
 
+        // ✅ Then enhance with bank account information ONLY if bank accounts are loaded
+        if (transformedPurchases.length > 0 && bankAccounts.length > 0) {
+          transformedPurchases = await enhancePurchaseData(
+            transformedPurchases
+          );
+        }
+
         setPurchases(transformedPurchases);
+        console.log(
+          `✅ Loaded and enhanced ${transformedPurchases.length} purchases`
+        );
       } else {
         setPurchases([]);
         if (
@@ -289,6 +613,7 @@ function PurchaseBills({
         }
       }
     } catch (error) {
+      console.error("❌ Error loading purchases:", error);
       setPurchases([]);
 
       let errorMessage = "Failed to load purchases data";
@@ -329,7 +654,14 @@ function PurchaseBills({
     } finally {
       setLoading(false);
     }
-  }, [effectiveCompanyId, startDate, endDate, addToast]);
+  }, [
+    effectiveCompanyId,
+    startDate,
+    endDate,
+    addToast,
+    bankAccounts,
+    enhancePurchaseData,
+  ]); // ✅ STABLE DEPENDENCIES
 
   // Load inventory items
   const loadInventoryItems = useCallback(async () => {
@@ -348,29 +680,73 @@ function PurchaseBills({
         setInventoryItems([]);
       }
     } catch (error) {
+      console.warn("Failed to load inventory items:", error);
       setInventoryItems([]);
     }
-  }, [effectiveCompanyId]);
+  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId
 
-  // Load data on mount and when dependencies change
+  // ✅ FIXED: Check for refresh trigger from edit page - only once
   useEffect(() => {
-    if (effectiveCompanyId) {
+    const stateData = location.state;
+    if (stateData?.refreshData || stateData?.updatedPurchase) {
+      console.log("🔄 Refreshing purchase data after edit");
+
+      // Show success message if provided
+      if (stateData.message) {
+        addToast?.(stateData.message, "success");
+      }
+
+      // Clear the state to prevent multiple refreshes
+      window.history.replaceState({}, document.title);
+
+      // ✅ ONLY trigger if not already loaded
+      if (loadedRef.current) {
+        loadPurchasesData();
+      }
+    }
+  }, [location.state]); // ✅ ONLY location.state
+
+  // ✅ FIXED: Load data on mount - prevent infinite loops
+  useEffect(() => {
+    if (effectiveCompanyId && !loadedRef.current) {
+      loadedRef.current = true;
+
+      const loadData = async () => {
+        try {
+          // Load bank accounts first
+          await loadBankAccounts();
+
+          // Small delay to ensure bank accounts are set before loading purchases
+          setTimeout(async () => {
+            await loadPurchasesData();
+            await loadInventoryItems();
+          }, 100);
+        } catch (error) {
+          console.error("Error loading initial data:", error);
+          loadedRef.current = false; // Allow retry
+        }
+      };
+
+      loadData();
+    } else if (!effectiveCompanyId) {
+      // Reset when company changes
+      loadedRef.current = false;
+      setPurchases([]);
+      setBankAccounts([]);
+      setEnhancementStats({enhanced: 0, total: 0, withBankData: 0});
+    }
+  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId
+
+  // ✅ FIXED: Date range changes - only reload if already loaded
+  useEffect(() => {
+    if (effectiveCompanyId && loadedRef.current) {
       const timer = setTimeout(() => {
         loadPurchasesData();
-        loadInventoryItems();
-      }, 100);
+      }, 500); // Debounce date changes
 
       return () => clearTimeout(timer);
-    } else {
-      setPurchases([]);
     }
-  }, [
-    effectiveCompanyId,
-    startDate,
-    endDate,
-    loadPurchasesData,
-    loadInventoryItems,
-  ]);
+  }, [startDate, endDate]); // ✅ ONLY date dependencies
 
   // Event handlers
   const handleDateRangeChange = useCallback((range) => {
@@ -389,174 +765,24 @@ function PurchaseBills({
     setDateRange("Custom Range");
   }, []);
 
+  // ✅ ENHANCED: Navigate to separate create page
   const handleCreatePurchase = useCallback(() => {
-    setEditingPurchase(null);
-    setCurrentView("purchase");
+    window.location.href = `/companies/${effectiveCompanyId}/purchases/add`;
+  }, [effectiveCompanyId]);
+
+  // ✅ ENHANCED: Pass enhanced purchase data to edit
+  const handleEditPurchase = useCallback((purchase) => {
+    console.log("📝 Edit purchase requested with enhanced data:", {
+      purchaseId: purchase.id || purchase._id,
+      bankAccountId: purchase.bankAccountId,
+      bankAccountName: purchase.bankAccountName,
+      hasTransactionData: purchase.hasTransactionData,
+      paymentMethod: purchase.paymentMethod,
+      enhancementStrategy: purchase.enhancementStrategy,
+    });
+
+    // The table will handle navigation with enhanced data
   }, []);
-
-  const handleBackToList = useCallback(() => {
-    setCurrentView("list");
-    setEditingPurchase(null);
-  }, []);
-
-  // ✅ FIXED: Enhanced save handler to handle all response formats
-  const handlePurchaseFormSave = useCallback(
-    async (purchaseData) => {
-      try {
-        console.log("📋 PurchaseBills - Received save result:", purchaseData);
-
-        // ✅ Handle different response formats from backend
-        let savedPurchase = null;
-        let hasSuccess = false;
-        let hasTransaction = false;
-
-        // Format 1: Standard success response
-        if (purchaseData?.success && purchaseData?.data) {
-          savedPurchase = purchaseData.data;
-          hasSuccess = true;
-        }
-        // Format 2: Backend response with purchase/bill object (current case)
-        else if (purchaseData?.purchase || purchaseData?.bill) {
-          savedPurchase = purchaseData.purchase || purchaseData.bill;
-          hasSuccess = true;
-
-          // Check if transaction was created
-          if (purchaseData.transaction || purchaseData.transactionId) {
-            hasTransaction = true;
-            savedPurchase.transaction = purchaseData.transaction;
-            savedPurchase.transactionId = purchaseData.transactionId;
-          }
-
-          // Show warning if there was a transaction error
-          if (purchaseData.transactionWarning) {
-            addToast?.(purchaseData.transactionWarning, "warning");
-          }
-        }
-        // Format 3: Direct purchase object
-        else if (purchaseData?._id || purchaseData?.id) {
-          savedPurchase = purchaseData;
-          hasSuccess = true;
-        }
-        // Format 4: Check if it has typical purchase fields
-        else if (purchaseData?.purchaseNumber || purchaseData?.billNo) {
-          savedPurchase = purchaseData;
-          hasSuccess = true;
-        }
-
-        if (hasSuccess && savedPurchase) {
-          console.log("✅ Purchase save successful, updating UI...", {
-            purchaseNumber:
-              savedPurchase.purchaseNumber || savedPurchase.billNo,
-            hasTransaction: hasTransaction,
-            editMode: !!editingPurchase,
-          });
-
-          // Transform the purchase data for consistent UI display
-          const transformedPurchase = purchaseService.transformPurchaseData
-            ? purchaseService.transformPurchaseData(savedPurchase)
-            : {
-                ...savedPurchase,
-                // Ensure required fields are present
-                id: savedPurchase._id || savedPurchase.id,
-                purchaseNumber:
-                  savedPurchase.purchaseNumber || savedPurchase.billNo,
-                amount:
-                  savedPurchase.totals?.finalTotal ||
-                  savedPurchase.total ||
-                  savedPurchase.amount,
-                supplierName:
-                  savedPurchase.supplier?.name || savedPurchase.supplierName,
-                date: savedPurchase.purchaseDate || savedPurchase.date,
-                status: savedPurchase.status || "completed",
-              };
-
-          if (editingPurchase) {
-            // Update existing purchase in list
-            setPurchases((prev) =>
-              prev.map((p) =>
-                p.id === editingPurchase.id || p._id === editingPurchase._id
-                  ? transformedPurchase
-                  : p
-              )
-            );
-            addToast?.(
-              `Purchase ${
-                transformedPurchase.purchaseNumber || transformedPurchase.billNo
-              } updated successfully!${
-                hasTransaction ? " (with transaction)" : ""
-              }`,
-              "success"
-            );
-          } else {
-            // Add new purchase to list
-            setPurchases((prev) => [transformedPurchase, ...prev]);
-            addToast?.(
-              `Purchase ${
-                transformedPurchase.purchaseNumber || transformedPurchase.billNo
-              } created successfully!${
-                hasTransaction ? " (with transaction)" : ""
-              }`,
-              "success"
-            );
-          }
-
-          // Navigate back to list
-          setCurrentView("list");
-          setEditingPurchase(null);
-
-          // Return success format for any parent handlers
-          return {
-            success: true,
-            data: savedPurchase,
-            transaction: purchaseData.transaction,
-            transactionId: purchaseData.transactionId,
-          };
-        } else {
-          // ✅ Even if format is unexpected, don't treat as error if purchase seems successful
-          console.warn(
-            "Purchase save returned unexpected format:",
-            purchaseData
-          );
-
-          // Check if this might still be a successful save with non-standard format
-          if (purchaseData && typeof purchaseData === "object") {
-            // Show any transaction warnings that might be present
-            if (purchaseData.transactionWarning) {
-              addToast?.(purchaseData.transactionWarning, "warning");
-            }
-
-            // Don't show error if the purchase might have been created
-            if (
-              purchaseData.purchaseNumber ||
-              purchaseData.billNo ||
-              purchaseData.purchase?.purchaseNumber ||
-              purchaseData.bill?.purchaseNumber
-            ) {
-              console.log(
-                "🟡 Purchase appears to have been created despite unexpected format"
-              );
-
-              // Reload the purchases list to get the latest data
-              setTimeout(() => {
-                loadPurchasesData();
-              }, 1000);
-
-              // Navigate back to list
-              setCurrentView("list");
-              setEditingPurchase(null);
-            }
-          }
-
-          return purchaseData;
-        }
-      } catch (error) {
-        console.error("PurchaseBills - Save handler error:", error);
-        // Error handling is already done in PurchaseInvoiceFormSection
-        throw error;
-      }
-    },
-    [editingPurchase, addToast, loadPurchasesData]
-  );
 
   const handleAddItem = useCallback(
     async (productData) => {
@@ -591,7 +817,7 @@ function PurchaseBills({
     setTopSearchTerm(e.target.value);
   }, []);
 
-  // Purchase transaction handlers
+  // ✅ Purchase transaction handlers
   const handleViewPurchase = useCallback(
     (purchase) => {
       addToast?.(
@@ -606,48 +832,30 @@ function PurchaseBills({
     [addToast]
   );
 
-  const handleEditPurchase = useCallback((purchase) => {
-    setEditingPurchase(purchase.originalPurchase || purchase);
-    setCurrentView("purchase");
-  }, []);
-
+  // ✅ REPLACE the existing handleDeletePurchase with this simple version:
   const handleDeletePurchase = useCallback(
-    async (purchase) => {
-      if (
-        window.confirm(
-          `Are you sure you want to delete purchase ${
-            purchase.purchaseNumber || purchase.billNo
-          }?\n\nThis action cannot be undone.`
-        )
-      ) {
-        try {
-          setLoading(true);
-          const response = await purchaseService.deletePurchase(
-            effectiveCompanyId,
-            purchase.id
-          );
+    (purchase) => {
+      // ✅ Simple refresh handler - no API calls here
+      console.log("🔄 Parent: Purchase deleted, refreshing list");
 
-          if (response.success) {
-            setPurchases((prev) => prev.filter((p) => p.id !== purchase.id));
-            addToast?.(
-              `Purchase ${
-                purchase.purchaseNumber || purchase.billNo
-              } deleted successfully`,
-              "success"
-            );
-          } else {
-            throw new Error(response.message || "Failed to delete purchase");
-          }
-        } catch (error) {
-          addToast?.("Error deleting purchase: " + error.message, "error");
-        } finally {
-          setLoading(false);
-        }
-      }
+      // ✅ Remove from local state for immediate feedback
+      setPurchases((prev) =>
+        prev.filter((p) => (p.id || p._id) !== (purchase.id || purchase._id))
+      );
+
+      // ✅ Refresh data after a short delay
+      setTimeout(() => {
+        loadPurchasesData();
+      }, 1000);
+
+      // ✅ Show success message
+      addToast?.(
+        `Purchase ${purchase.purchaseNumber || "item"} removed from list`,
+        "success"
+      );
     },
-    [effectiveCompanyId, addToast]
+    [loadPurchasesData, addToast]
   );
-
   const handlePrintPurchase = useCallback(
     (purchase) => {
       addToast?.(
@@ -690,14 +898,24 @@ function PurchaseBills({
     [addToast]
   );
 
+  const handleDownloadPurchase = useCallback(
+    (purchase) => {
+      addToast?.(
+        `Downloading purchase ${purchase.purchaseNumber || purchase.billNo}...`,
+        "info"
+      );
+    },
+    [addToast]
+  );
+
   // Utility handlers
   const handleMoreOptions = useCallback(() => {
-    // More options functionality
-  }, []);
+    addToast?.("More options feature coming soon!", "info");
+  }, [addToast]);
 
   const handleSettings = useCallback(() => {
-    // Settings functionality
-  }, []);
+    addToast?.("Settings feature coming soon!", "info");
+  }, [addToast]);
 
   const handleExcelExport = useCallback(() => {
     addToast?.("Excel export feature coming soon!", "info");
@@ -706,6 +924,29 @@ function PurchaseBills({
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
+
+  // ✅ FIXED: Manual refresh handler
+  const handleRefresh = useCallback(() => {
+    loadedRef.current = false; // Allow reload
+    enhancementInProgress.current = false; // Reset enhancement flag
+
+    const refreshData = async () => {
+      try {
+        await loadBankAccounts();
+        setTimeout(async () => {
+          await loadPurchasesData();
+          addToast?.("Purchase data refreshed!", "success");
+          loadedRef.current = true;
+        }, 100);
+      } catch (error) {
+        console.error("Error refreshing data:", error);
+        addToast?.("Error refreshing data", "error");
+        loadedRef.current = true; // Set back to prevent infinite attempts
+      }
+    };
+
+    refreshData();
+  }, [loadBankAccounts, loadPurchasesData, addToast]);
 
   // Early returns for better UX
   if (!isOnline) {
@@ -718,6 +959,12 @@ function PurchaseBills({
               Purchase data requires an internet connection. Please check your
               network and try again.
             </p>
+            <Button
+              variant="outline-warning"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
           </Alert>
         </Container>
       </div>
@@ -731,66 +978,19 @@ function PurchaseBills({
           <Alert variant="warning" className="text-center">
             <h5>⚠️ No Company Selected</h5>
             <p>Please select a company to view purchase bills.</p>
+            <Button
+              variant="outline-primary"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </Button>
           </Alert>
         </Container>
       </div>
     );
   }
 
-  // Render Purchase Form View
-  if (currentView === "purchase") {
-    return (
-      <div className="purchase-bills-wrapper">
-        <div className="purchase-form-header">
-          <Container fluid className="px-4">
-            <Row className="align-items-center py-3">
-              <Col>
-                <Button
-                  variant="outline-secondary"
-                  onClick={handleBackToList}
-                  className="me-3"
-                  disabled={loading}
-                >
-                  <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
-                  Back to Purchase Bills
-                </Button>
-                <span className="page-title-text">
-                  {editingPurchase
-                    ? `Edit Purchase ${
-                        editingPurchase.purchaseNumber || editingPurchase.billNo
-                      }`
-                    : "Create New Purchase"}
-                </span>
-              </Col>
-            </Row>
-          </Container>
-        </div>
-
-        {/* ✅ SIMPLIFIED: PurchaseForm handles all the business logic */}
-        <PurchaseForm
-          editMode={!!editingPurchase}
-          existingTransaction={editingPurchase}
-          transactionId={editingPurchase?.id}
-          onSave={handlePurchaseFormSave} // Simple handler for UI updates only
-          onCancel={handleBackToList}
-          onExit={handleBackToList}
-          companyId={effectiveCompanyId}
-          currentUser={null} // Pass actual user if available
-          currentCompany={currentCompany}
-          inventoryItems={inventoryItems}
-          categories={categories}
-          onAddItem={handleAddItem}
-          addToast={addToast}
-          isOnline={true}
-          mode="purchases"
-          documentType="purchase"
-          formType="purchase"
-        />
-      </div>
-    );
-  }
-
-  // Main Purchase Bills View
+  // ✅ ENHANCED MAIN RENDER: With bank account pre-loading and enhancement stats
   return (
     <div className="purchase-bills-wrapper">
       <PurchaseBillsHeader
@@ -814,17 +1014,34 @@ function PurchaseBills({
                   </h4>
                   <p className="text-muted mb-0">
                     Manage your purchase transactions ({purchases.length} bills)
+                    {bankAccounts.length > 0 &&
+                      ` • ${bankAccounts.length} bank accounts loaded`}
+                    {enhancementStats.total > 0 &&
+                      ` • ${enhancementStats.withBankData}/${enhancementStats.total} enhanced with bank data`}
                   </p>
                 </div>
-                <Button
-                  variant="warning"
-                  onClick={handleCreatePurchase}
-                  className="px-4"
-                  disabled={loading}
-                >
-                  <i className="fas fa-plus me-2"></i>
-                  Add Purchase
-                </Button>
+                <div className="d-flex gap-2">
+                  <Button
+                    variant="outline-secondary"
+                    onClick={handleRefresh}
+                    disabled={loading}
+                    title="Refresh Data"
+                  >
+                    <FontAwesomeIcon
+                      icon={faRefresh}
+                      className={loading ? "fa-spin" : ""}
+                    />
+                  </Button>
+                  <Button
+                    variant="warning"
+                    onClick={handleCreatePurchase}
+                    className="px-4"
+                    disabled={loading}
+                  >
+                    <FontAwesomeIcon icon={faPlus} className="me-2" />
+                    Add Purchase
+                  </Button>
+                </div>
               </div>
             </Col>
           </Row>
@@ -866,16 +1083,100 @@ function PurchaseBills({
               onDeletePurchase={handleDeletePurchase}
               onPrintPurchase={handlePrintPurchase}
               onSharePurchase={handleSharePurchase}
+              onDownloadPurchase={handleDownloadPurchase}
               categories={categories}
               onAddItem={handleAddItem}
               inventoryItems={inventoryItems}
               loading={loading}
+              isLoading={loading}
               companyId={effectiveCompanyId}
               searchTerm={debouncedSearchTerm}
+              addToast={addToast}
+              title="Purchase Bills"
+              searchPlaceholder="Search purchase bills by supplier, number..."
+              // ✅ Pass enhanced data and bank accounts
+              bankAccounts={bankAccounts}
+              enhancedPurchases={true}
+              enhancementStats={enhancementStats}
             />
           </Col>
         </Row>
       </Container>
+
+      {/* Enhanced styling */}
+      <style jsx>{`
+        .purchase-bills-wrapper {
+          background-color: #f8f9fa;
+          min-height: 100vh;
+        }
+
+        .purchase-page-title {
+          background: linear-gradient(
+            135deg,
+            rgba(255, 193, 7, 0.1) 0%,
+            rgba(253, 126, 20, 0.05) 100%
+          );
+          border-bottom: 1px solid rgba(255, 193, 7, 0.1);
+        }
+
+        .sidebar-col {
+          padding-right: 1rem;
+        }
+
+        .content-col {
+          padding-left: 1rem;
+        }
+
+        @media (max-width: 768px) {
+          .sidebar-col,
+          .content-col {
+            padding: 0.5rem;
+          }
+
+          .purchase-page-title .d-flex {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: stretch !important;
+          }
+        }
+
+        /* Loading state */
+        .purchase-bills-wrapper.loading {
+          opacity: 0.8;
+          pointer-events: none;
+        }
+
+        /* Responsive design */
+        @media (max-width: 992px) {
+          .sidebar-col {
+            order: 2;
+          }
+          .content-col {
+            order: 1;
+          }
+        }
+
+        /* Enhancement indicator */
+        .enhancement-indicator {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          margin-left: 8px;
+        }
+
+        .enhancement-indicator.enhanced {
+          background-color: #28a745;
+        }
+
+        .enhancement-indicator.default {
+          background-color: #ffc107;
+        }
+
+        .enhancement-indicator.none {
+          background-color: #6c757d;
+        }
+      `}</style>
     </div>
   );
 }

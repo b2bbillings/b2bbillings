@@ -9,7 +9,7 @@ import {
   Spinner,
   Alert,
 } from "react-bootstrap";
-import {useParams, useNavigate} from "react-router-dom";
+import {useParams, useNavigate, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faFileInvoice,
@@ -21,6 +21,7 @@ import {
   faSpinner,
   faExclamationTriangle,
   faTruck,
+  faCheckCircle,
 } from "@fortawesome/free-solid-svg-icons";
 
 import PurchaseInvoiceHeader from "./PurchaseBill/PurchaseInvoiceHeader";
@@ -50,13 +51,27 @@ function PurchaseForm({
   purchaseOrderService,
   show = true,
   onHide,
+  saving: propSaving = false, // ✅ NEW: Accept external saving state
+  isPageMode = false, // ✅ NEW: For page vs modal mode
+  showHeader = true, // ✅ NEW: Show/hide header
+  enableAutoSave = false, // ✅ NEW: Auto-save functionality
+  validateOnMount = false, // ✅ NEW: Validate on mount
 }) {
   const {companyId: urlCompanyId} = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [localCompanyId, setLocalCompanyId] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(propSaving);
   const [initializing, setInitializing] = useState(false);
   const [initializationComplete, setInitializationComplete] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({}); // ✅ NEW: Validation state
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // ✅ NEW: Track changes
+
+  // ✅ NEW: Update saving state when prop changes
+  useEffect(() => {
+    setSaving(propSaving);
+  }, [propSaving]);
 
   // Get effective company ID
   const getEffectiveCompanyId = useCallback(() => {
@@ -97,12 +112,19 @@ function PurchaseForm({
     );
   }, [mode, documentType, formType, orderType]);
 
-  // Default toast function
+  // ✅ ENHANCED: Better toast function with validation
   const defaultAddToast = useCallback((message, type = "info") => {
+    console.log(`🔔 Toast [${type.toUpperCase()}]: ${message}`);
+
     if (type === "error") {
-      alert(`Error: ${message}`);
-    } else {
-      console.log(`${type.toUpperCase()}: ${message}`);
+      console.error("❌ Error:", message);
+      if (typeof alert !== "undefined") {
+        alert(`Error: ${message}`);
+      }
+    } else if (type === "success") {
+      console.log("✅ Success:", message);
+    } else if (type === "warning") {
+      console.warn("⚠️ Warning:", message);
     }
   }, []);
 
@@ -243,7 +265,7 @@ function PurchaseForm({
     };
   });
 
-  // Update form data function
+  // ✅ ENHANCED: Update form data function with change tracking
   const updateFormData = useCallback(
     (field, value) => {
       setFormData((prev) => {
@@ -251,10 +273,25 @@ function PurchaseForm({
         if (!updated.companyId) {
           updated.companyId = effectiveCompanyId;
         }
+
+        // ✅ NEW: Track unsaved changes
+        if (!editMode || JSON.stringify(updated) !== JSON.stringify(prev)) {
+          setHasUnsavedChanges(true);
+        }
+
         return updated;
       });
+
+      // ✅ NEW: Clear field-specific validation errors
+      if (validationErrors[field]) {
+        setValidationErrors((prev) => {
+          const updated = {...prev};
+          delete updated[field];
+          return updated;
+        });
+      }
     },
-    [effectiveCompanyId]
+    [effectiveCompanyId, editMode, validationErrors]
   );
 
   // Update company ID when it changes
@@ -271,6 +308,53 @@ function PurchaseForm({
     }
   }, [effectiveCompanyId, formData.companyId, getEffectiveCompanyId]);
 
+  // ✅ NEW: Validation function
+  const validateForm = useCallback(() => {
+    const errors = {};
+
+    if (!formData.customer) {
+      errors.customer = "Please select a supplier";
+    }
+
+    if (!formData.invoiceNumber?.trim()) {
+      errors.invoiceNumber = "Document number is required";
+    }
+
+    if (!formData.invoiceDate) {
+      errors.invoiceDate = "Document date is required";
+    }
+
+    if (!formData.items || formData.items.length === 0) {
+      errors.items = "Please add at least one item";
+    }
+
+    // Validate items
+    if (formData.items && formData.items.length > 0) {
+      const itemErrors = [];
+      formData.items.forEach((item, index) => {
+        const itemError = {};
+        if (!item.itemName?.trim()) {
+          itemError.itemName = "Item name is required";
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          itemError.quantity = "Valid quantity is required";
+        }
+        if (!item.pricePerUnit || item.pricePerUnit <= 0) {
+          itemError.pricePerUnit = "Valid price is required";
+        }
+        if (Object.keys(itemError).length > 0) {
+          itemErrors[index] = itemError;
+        }
+      });
+      if (itemErrors.length > 0) {
+        errors.itemErrors = itemErrors;
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [formData]);
+
   // Load transaction for editing
   useEffect(() => {
     if (editMode && existingTransaction && !initializationComplete) {
@@ -284,6 +368,11 @@ function PurchaseForm({
     } else if (!editMode && !initializationComplete) {
       setInitializing(false);
       setInitializationComplete(true);
+
+      // ✅ NEW: Validate on mount if requested
+      if (validateOnMount) {
+        validateForm();
+      }
     }
   }, [
     editMode,
@@ -291,12 +380,16 @@ function PurchaseForm({
     transactionId,
     initializationComplete,
     isPurchaseOrdersMode,
+    validateOnMount,
+    validateForm,
   ]);
 
   // Load transaction by ID
   const loadTransactionById = async (id) => {
     setInitializing(true);
     try {
+      console.log(`🔄 Loading ${labels.documentName.toLowerCase()} by ID:`, id);
+
       let result;
       if (isPurchaseOrdersMode && purchaseOrderService) {
         result = await purchaseOrderService.getPurchaseOrder(id);
@@ -305,11 +398,22 @@ function PurchaseForm({
       }
 
       if (result?.success && result.data) {
+        console.log(
+          `✅ Loaded ${labels.documentName.toLowerCase()}:`,
+          result.data
+        );
         await initializeFormFromTransaction(result.data);
       } else {
-        throw new Error(`Failed to load ${labels.documentName.toLowerCase()}`);
+        throw new Error(
+          result?.message ||
+            `Failed to load ${labels.documentName.toLowerCase()}`
+        );
       }
     } catch (error) {
+      console.error(
+        `❌ Error loading ${labels.documentName.toLowerCase()}:`,
+        error
+      );
       effectiveAddToast(
         `Error loading ${labels.documentName.toLowerCase()}: ${error.message}`,
         "error"
@@ -319,7 +423,7 @@ function PurchaseForm({
     }
   };
 
-  // Initialize form from transaction data
+  // Initialize form from transaction data (keeping existing logic)
   const initializeFormFromTransaction = useCallback(
     async (transaction) => {
       if (initializationComplete) return;
@@ -330,6 +434,11 @@ function PurchaseForm({
         if (!transaction) {
           throw new Error("No transaction data provided");
         }
+
+        console.log(
+          `🔄 Initializing form from ${labels.documentName.toLowerCase()}:`,
+          transaction
+        );
 
         // Transform supplier data (stored in customer field for consistency)
         let transformedSupplier = null;
@@ -525,7 +634,16 @@ function PurchaseForm({
         };
 
         setFormData((prev) => ({...prev, ...newFormData}));
+
+        // ✅ NEW: Mark as no unsaved changes after loading
+        setHasUnsavedChanges(false);
+
+        console.log(
+          `✅ Form initialized from ${labels.documentName.toLowerCase()}`,
+          newFormData
+        );
       } catch (error) {
+        console.error(`❌ Error initializing form:`, error);
         effectiveAddToast(
           `Error loading ${labels.documentName.toLowerCase()}: ${
             error.message
@@ -555,16 +673,54 @@ function PurchaseForm({
     );
   };
 
+  // ✅ ENHANCED: Cancel handler with unsaved changes warning
+  const handleCancel = useCallback(() => {
+    if (hasUnsavedChanges && !saving) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to cancel?"
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setHasUnsavedChanges(false);
+
+    if (onCancel) {
+      onCancel();
+    } else if (onHide) {
+      onHide();
+    } else if (effectiveCompanyId) {
+      // Default navigation back to list
+      const listPath = `/companies/${effectiveCompanyId}/${
+        isPurchaseOrdersMode ? "purchase-orders" : "purchases"
+      }`;
+      navigate(listPath);
+    }
+  }, [
+    hasUnsavedChanges,
+    saving,
+    onCancel,
+    onHide,
+    effectiveCompanyId,
+    isPurchaseOrdersMode,
+    navigate,
+  ]);
+
   // Page configuration
   const pageConfig = useMemo(() => {
     const baseConfig = {
       purchase: {
-        title: editMode ? "Edit Purchase Bill" : "Create Purchase Bill",
+        title:
+          pageTitle ||
+          (editMode ? "Edit Purchase Bill" : "Create Purchase Bill"),
         icon: faFileInvoice,
         color: "primary",
       },
       "purchase-order": {
-        title: editMode ? "Edit Purchase Order" : "Create Purchase Order",
+        title:
+          pageTitle ||
+          (editMode ? "Edit Purchase Order" : "Create Purchase Order"),
         icon: faShoppingCart,
         color: "warning",
       },
@@ -574,7 +730,7 @@ function PurchaseForm({
       baseConfig[isPurchaseOrdersMode ? "purchase-order" : "purchase"] ||
       baseConfig.purchase
     );
-  }, [isPurchaseOrdersMode, editMode]);
+  }, [isPurchaseOrdersMode, editMode, pageTitle]);
 
   // Company validation
   if (!effectiveCompanyId) {
@@ -595,7 +751,7 @@ function PurchaseForm({
               Please select a company to {editMode ? "edit" : "create"}{" "}
               {labels.documentNamePlural.toLowerCase()}.
             </p>
-            <Button variant="secondary" onClick={onCancel || onHide}>
+            <Button variant="secondary" onClick={handleCancel}>
               {onCancel ? "Back to List" : "Close"}
             </Button>
             <Button
@@ -677,7 +833,7 @@ function PurchaseForm({
             <p>
               Unable to load transaction data for editing. Please try again.
             </p>
-            <Button variant="secondary" onClick={onCancel || onHide}>
+            <Button variant="secondary" onClick={handleCancel}>
               {onCancel ? "Back to List" : "Close"}
             </Button>
           </Alert>
@@ -693,25 +849,29 @@ function PurchaseForm({
       data-mode={mode}
     >
       <Container fluid className="py-3 px-4">
-        {/* Header Component */}
-        <div className="mb-3">
-          <PurchaseInvoiceHeader
-            formData={formData}
-            onFormDataChange={updateFormData}
-            companyId={effectiveCompanyId}
-            currentUser={currentUser}
-            currentCompany={currentCompany}
-            addToast={effectiveAddToast}
-            errors={{}}
-            disabled={saving}
-            mode={mode}
-            documentType={documentType}
-            isPurchaseOrdersMode={isPurchaseOrdersMode}
-            labels={labels}
-          />
-        </div>
+        {/* ✅ ENHANCED: Header Component with conditional rendering */}
+        {showHeader && (
+          <div className="mb-3">
+            <PurchaseInvoiceHeader
+              formData={formData}
+              onFormDataChange={updateFormData}
+              companyId={effectiveCompanyId}
+              currentUser={currentUser}
+              currentCompany={currentCompany}
+              addToast={effectiveAddToast}
+              errors={validationErrors} // ✅ NEW: Pass validation errors
+              disabled={saving}
+              mode={mode}
+              documentType={documentType}
+              isPurchaseOrdersMode={isPurchaseOrdersMode}
+              labels={labels}
+              isPageMode={isPageMode} // ✅ NEW: Pass page mode
+              hasUnsavedChanges={hasUnsavedChanges} // ✅ NEW: Pass unsaved changes state
+            />
+          </div>
+        )}
 
-        {/* Main Form Component */}
+        {/* ✅ ENHANCED: Main Form Component */}
         <div className="mb-3">
           <PurchaseInvoiceFormSection
             formData={formData}
@@ -721,9 +881,9 @@ function PurchaseForm({
             currentCompany={currentCompany}
             addToast={effectiveAddToast}
             onSave={onSave} // Pass through parent onSave for additional handling if needed
-            onCancel={onCancel || onHide}
+            onCancel={handleCancel} // ✅ NEW: Use enhanced cancel handler
             onShare={handleShare}
-            errors={{}}
+            errors={validationErrors} // ✅ NEW: Pass validation errors
             disabled={saving}
             mode={mode}
             documentType={documentType}
@@ -732,11 +892,15 @@ function PurchaseForm({
             saving={saving}
             labels={labels}
             transactionId={transactionId} // Pass transactionId for edit mode
+            isPageMode={isPageMode} // ✅ NEW: Pass page mode
+            hasUnsavedChanges={hasUnsavedChanges} // ✅ NEW: Pass unsaved changes state
+            validateForm={validateForm} // ✅ NEW: Pass validation function
+            onValidationChange={setValidationErrors} // ✅ NEW: Pass validation setter
           />
         </div>
       </Container>
 
-      {/* Custom Styles */}
+      {/* ✅ ENHANCED: Custom Styles */}
       <style jsx>{`
         .purchase-form-wrapper[data-mode="purchase-orders"] {
           --primary-color: #ffc107;
@@ -769,6 +933,48 @@ function PurchaseForm({
 
         .purchase-form-wrapper[data-mode="purchase-orders"] .text-primary {
           color: var(--primary-color) !important;
+        }
+
+        /* ✅ NEW: Enhanced styles */
+        .purchase-form-wrapper .has-validation-error {
+          border-color: #dc3545 !important;
+          box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+        }
+
+        .purchase-form-wrapper .unsaved-indicator {
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+          100% {
+            opacity: 1;
+          }
+        }
+
+        .purchase-form-wrapper .saving-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(255, 255, 255, 0.8);
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+          .purchase-form-wrapper .container-fluid {
+            padding: 0.75rem;
+          }
         }
       `}</style>
     </div>
