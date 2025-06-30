@@ -26,13 +26,11 @@ function EditSalesInvoice({
 
   const companyId = propCompanyId || paramCompanyId;
 
-  // ✅ State management
   const [loading, setLoading] = useState(true);
   const [transaction, setTransaction] = useState(null);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [error, setError] = useState(null);
 
-  // ✅ Determine document type from URL or location state
   const isQuotationsMode = useMemo(() => {
     const pathParts = location.pathname.split("/");
     return (
@@ -42,15 +40,12 @@ function EditSalesInvoice({
     );
   }, [location]);
 
-  // ✅ FIXED: Enhanced payment method normalization for frontend display
   const normalizePaymentMethodForFrontend = (method) => {
     if (!method) return "cash";
 
     const methodStr = method.toString().toLowerCase();
 
-    // ✅ FIXED: Frontend normalization - all bank variations map to "bank"
     const methodMappings = {
-      // Bank transfer variations - ✅ ALL map to "bank" for frontend
       bank_transfer: "bank",
       banktransfer: "bank",
       "bank transfer": "bank",
@@ -59,14 +54,12 @@ function EditSalesInvoice({
       rtgs: "bank",
       imps: "bank",
 
-      // Card variations
       card: "card",
       credit_card: "card",
       debit_card: "card",
       creditcard: "card",
       debitcard: "card",
 
-      // UPI variations
       upi: "upi",
       upi_payment: "upi",
       upipayment: "upi",
@@ -74,41 +67,29 @@ function EditSalesInvoice({
       gpay: "upi",
       phonepe: "upi",
 
-      // Cash variations
       cash: "cash",
       cash_payment: "cash",
       cashpayment: "cash",
 
-      // Credit variations
       credit: "credit",
       credit_sale: "credit",
       creditsale: "credit",
 
-      // Partial variations
       partial: "partial",
       partial_payment: "partial",
       partialpayment: "partial",
     };
 
-    const normalizedMethod = methodMappings[methodStr] || methodStr;
-
-    console.log(
-      `💳 EditSalesInvoice frontend normalization: "${method}" -> "${normalizedMethod}"`
-    );
-
-    return normalizedMethod;
+    return methodMappings[methodStr] || methodStr;
   };
 
-  // ✅ FIXED: Backend payment method normalization for saving
   const normalizePaymentMethodForBackend = (method) => {
     if (!method) return "cash";
 
     const methodStr = method.toString().toLowerCase();
 
-    // ✅ FIXED: Backend normalization - frontend "bank" maps to "bank_transfer"
     const methodMappings = {
-      // Bank transfer variations - ✅ All map to "bank_transfer" for backend
-      bank: "bank_transfer", // ✅ CRITICAL: Frontend "bank" -> Backend "bank_transfer"
+      bank: "bank_transfer",
       bank_transfer: "bank_transfer",
       banktransfer: "bank_transfer",
       "bank transfer": "bank_transfer",
@@ -116,7 +97,6 @@ function EditSalesInvoice({
       rtgs: "bank_transfer",
       imps: "bank_transfer",
 
-      // Other payment methods stay the same
       card: "card",
       upi: "upi",
       cash: "cash",
@@ -124,31 +104,13 @@ function EditSalesInvoice({
       partial: "partial",
     };
 
-    const normalizedMethod = methodMappings[methodStr] || methodStr;
-
-    console.log(
-      `💾 EditSalesInvoice backend normalization: "${method}" -> "${normalizedMethod}"`
-    );
-
-    return normalizedMethod;
+    return methodMappings[methodStr] || methodStr;
   };
 
-  // Update the extractBankAccountInfo function to handle the transaction service data:
   const extractBankAccountInfo = (
     transactionData,
     paymentTransactionData = null
   ) => {
-    console.log(
-      "🔍 Enhanced bank account extraction from transaction service data:",
-      {
-        transactionPayment: transactionData.payment,
-        paymentTransactionData,
-        rawBankAccountId: transactionData.bankAccountId,
-        paymentBankAccountId: transactionData.payment?.bankAccountId,
-      }
-    );
-
-    // Priority 1: From transaction service payment data (most reliable)
     if (paymentTransactionData?.bankAccountId) {
       const bankAccountInfo = {
         bankAccountId: paymentTransactionData.bankAccountId,
@@ -163,14 +125,9 @@ function EditSalesInvoice({
           "N/A",
       };
 
-      console.log(
-        "✅ Found bank account info from transaction service:",
-        bankAccountInfo
-      );
       return bankAccountInfo;
     }
 
-    // Priority 2: From transaction payment object
     if (transactionData.payment?.bankAccountId) {
       const payment = transactionData.payment;
       const bankAccountInfo = {
@@ -181,14 +138,9 @@ function EditSalesInvoice({
         accountNumber: payment.accountNumber || payment.accountNo || "N/A",
       };
 
-      console.log(
-        "✅ Found bank account info from payment object:",
-        bankAccountInfo
-      );
       return bankAccountInfo;
     }
 
-    // Priority 3: From top-level transaction data
     if (transactionData.bankAccountId) {
       const bankAccountInfo = {
         bankAccountId: transactionData.bankAccountId,
@@ -201,14 +153,9 @@ function EditSalesInvoice({
           transactionData.accountNumber || transactionData.accountNo || "N/A",
       };
 
-      console.log(
-        "✅ Found bank account info from transaction data:",
-        bankAccountInfo
-      );
       return bankAccountInfo;
     }
 
-    console.log("⚠️ No bank account info found in any location");
     return {
       bankAccountId: null,
       bankAccountName: "",
@@ -217,19 +164,10 @@ function EditSalesInvoice({
     };
   };
 
-  // ✅ FIXED: Enhanced data normalization function with proper payment handling
   const normalizeTransactionData = (
     transactionData,
     paymentTransactionData = null
   ) => {
-    console.log(
-      "🔄 EditSalesInvoice - Starting transaction normalization:",
-      transactionData,
-      "with payment transaction:",
-      paymentTransactionData
-    );
-
-    // ✅ Calculate payment amounts properly
     const totalAmount = parseFloat(
       transactionData.amount ||
         transactionData.total ||
@@ -250,29 +188,22 @@ function EditSalesInvoice({
         totalAmount - balanceAmount
     );
 
-    // ✅ FIXED: Enhanced payment method extraction with comprehensive priority chain
     const rawPaymentMethod =
-      // First priority: nested payment object method
       transactionData.payment?.method ||
       transactionData.payment?.paymentType ||
       transactionData.payment?.type ||
-      // Second priority: direct transaction fields
       transactionData.paymentMethod ||
       transactionData.paymentType ||
       transactionData.method ||
-      // Third priority: nested payment data
       transactionData.paymentData?.method ||
       transactionData.paymentData?.paymentType ||
       transactionData.paymentData?.type ||
-      // Fourth priority: from payment transaction data
       paymentTransactionData?.paymentMethod ||
       paymentTransactionData?.method ||
-      // Fifth priority: check for specific payment boolean flags
       (transactionData.bankTransfer && "bank_transfer") ||
       (transactionData.cardPayment && "card") ||
       (transactionData.upiPayment && "upi") ||
       (transactionData.cashPayment && "cash") ||
-      // Sixth priority: infer from payment reference or notes
       (transactionData.paymentReference?.toLowerCase().includes("bank") &&
         "bank_transfer") ||
       (transactionData.paymentReference?.toLowerCase().includes("upi") &&
@@ -284,51 +215,21 @@ function EditSalesInvoice({
       (transactionData.paymentNotes?.toLowerCase().includes("upi") && "upi") ||
       (transactionData.paymentNotes?.toLowerCase().includes("card") &&
         "card") ||
-      // Default fallback
       "cash";
 
-    // ✅ FIXED: Normalize for frontend display
     const frontendPaymentMethod =
       normalizePaymentMethodForFrontend(rawPaymentMethod);
 
-    console.log(
-      "💳 EditSalesInvoice payment method extraction and normalization:",
-      {
-        rawPaymentMethod,
-        frontendPaymentMethod,
-        sources: {
-          paymentObject: transactionData.payment?.method,
-          paymentType: transactionData.paymentType,
-          paymentMethod: transactionData.paymentMethod,
-          method: transactionData.method,
-          paymentData: transactionData.paymentData?.method,
-          paymentTransaction: paymentTransactionData?.paymentMethod,
-          reference: transactionData.paymentReference,
-          notes: transactionData.paymentNotes,
-        },
-      }
-    );
-
-    // ✅ ENHANCED: Extract bank account information using enhanced function
     const bankAccountInfo = extractBankAccountInfo(
       transactionData,
       paymentTransactionData
     );
 
-    console.log("🏦 Bank account extraction result:", {
-      bankAccountId: bankAccountInfo.bankAccountId,
-      bankAccountName: bankAccountInfo.bankAccountName,
-      bankName: bankAccountInfo.bankName,
-      accountNumber: bankAccountInfo.accountNumber,
-      hasPaymentTransaction: !!paymentTransactionData,
-    });
-
-    // ✅ FIXED: Enhanced payment data structure with frontend normalized method
     const paymentData = {
-      method: frontendPaymentMethod, // ✅ Use frontend method for UI
-      paymentType: frontendPaymentMethod, // ✅ Use frontend method for UI
-      type: frontendPaymentMethod, // ✅ Use frontend method for UI
-      originalMethod: rawPaymentMethod, // ✅ Keep original for reference
+      method: frontendPaymentMethod,
+      paymentType: frontendPaymentMethod,
+      type: frontendPaymentMethod,
+      originalMethod: rawPaymentMethod,
       paidAmount: paidAmount,
       amount: paidAmount,
       pendingAmount: balanceAmount,
@@ -359,10 +260,8 @@ function EditSalesInvoice({
       status:
         balanceAmount <= 0 ? "paid" : paidAmount > 0 ? "partial" : "pending",
 
-      // ✅ ENHANCED: Include bank account data with payment transaction priority
       ...bankAccountInfo,
 
-      // ✅ NEW: Additional transaction metadata
       paymentTransactionId:
         paymentTransactionData?._id || paymentTransactionData?.id,
       transactionId: transactionData.payment?.transactionId,
@@ -370,7 +269,6 @@ function EditSalesInvoice({
       balanceAfter: paymentTransactionData?.balanceAfter,
     };
 
-    // ✅ Enhanced customer data structure
     const customerData =
       transactionData.customer && typeof transactionData.customer === "object"
         ? {
@@ -410,7 +308,6 @@ function EditSalesInvoice({
             gstNumber: transactionData.customerGstNumber || "",
           };
 
-    // ✅ Enhanced items structure
     const itemsData = (
       transactionData.items ||
       transactionData.lineItems ||
@@ -436,14 +333,12 @@ function EditSalesInvoice({
       };
     });
 
-    // ✅ FIXED: Comprehensive normalized transaction with frontend payment method
     const normalizedTransaction = {
       ...transactionData,
       id: transactionData._id || transactionData.id,
       _id: transactionData._id || transactionData.id,
       documentType: isQuotationsMode ? "quotation" : "invoice",
 
-      // ✅ Document numbers with all possible mappings
       invoiceNumber:
         transactionData.invoiceNumber ||
         transactionData.invoiceNo ||
@@ -458,7 +353,6 @@ function EditSalesInvoice({
         transactionData.orderNo ||
         transactionData.invoiceNo,
 
-      // ✅ Dates with multiple fallbacks
       invoiceDate:
         transactionData.invoiceDate ||
         transactionData.quotationDate ||
@@ -475,10 +369,8 @@ function EditSalesInvoice({
         transactionData.quotationDate ||
         transactionData.orderDate,
 
-      // ✅ Enhanced customer information
       customer: customerData,
 
-      // ✅ Legacy customer fields for compatibility
       customerId: customerData?.id,
       customerName: customerData?.name || "",
       customerMobile: customerData?.mobile || "",
@@ -489,27 +381,24 @@ function EditSalesInvoice({
       partyEmail: customerData?.email || "",
       partyAddress: customerData?.address || "",
 
-      // ✅ Enhanced items - ensure proper structure
       items: itemsData,
       lineItems: itemsData,
 
-      // ✅ Financial data with proper calculations
       amount: totalAmount,
       total: totalAmount,
       grandTotal: totalAmount,
       balance: balanceAmount,
       balanceAmount: balanceAmount,
 
-      // ✅ FIXED: Enhanced payment information with frontend normalized method
       payment: {
         ...transactionData.payment,
         ...paymentData,
       },
       paymentData: paymentData,
-      paymentType: frontendPaymentMethod, // ✅ Frontend method for UI
-      paymentMethod: frontendPaymentMethod, // ✅ Frontend method for UI
-      method: frontendPaymentMethod, // ✅ Frontend method for UI
-      originalPaymentMethod: rawPaymentMethod, // ✅ Keep original for debugging
+      paymentType: frontendPaymentMethod,
+      paymentMethod: frontendPaymentMethod,
+      method: frontendPaymentMethod,
+      originalPaymentMethod: rawPaymentMethod,
       paymentReceived: paymentData.paidAmount,
       paidAmount: paymentData.paidAmount,
       pendingAmount: paymentData.pendingAmount,
@@ -520,14 +409,12 @@ function EditSalesInvoice({
       creditDays: paymentData.creditDays,
       dueDate: paymentData.dueDate,
 
-      // ✅ FIXED: Bank account information at top level with payment transaction priority
       bankAccountId: paymentData.bankAccountId,
       bankAccountName: paymentData.bankAccountName,
       bankName: paymentData.bankName,
       accountNumber: paymentData.accountNumber,
       paymentTransactionId: paymentData.paymentTransactionId,
 
-      // ✅ Enhanced totals object with all possible mappings
       totals: transactionData.totals || {
         subtotal: transactionData.subtotal || totalAmount,
         finalTotal: totalAmount,
@@ -543,7 +430,6 @@ function EditSalesInvoice({
           transactionData.discount || transactionData.discountAmount || 0,
       },
 
-      // ✅ Status information
       status: transactionData.status,
       quotationStatus:
         transactionData.quotationStatus || transactionData.status,
@@ -552,51 +438,28 @@ function EditSalesInvoice({
           ? transactionData.gstEnabled
           : true,
 
-      // ✅ Additional fields with fallbacks
       notes: transactionData.notes || transactionData.description || "",
       terms: transactionData.terms || transactionData.termsAndConditions || "",
       description: transactionData.description || transactionData.notes || "",
       termsAndConditions:
         transactionData.termsAndConditions || transactionData.terms || "",
 
-      // ✅ Conversion tracking
       convertedToInvoice: transactionData.convertedToInvoice || false,
       invoiceId: transactionData.invoiceId,
 
-      // ✅ Company context
       companyId: transactionData.companyId || companyId,
 
-      // ✅ Employee information
       employeeName: transactionData.employeeName,
       employeeId: transactionData.employeeId,
       createdBy: transactionData.createdBy,
 
-      // ✅ Timestamps
       createdAt: transactionData.createdAt,
       updatedAt: transactionData.updatedAt,
     };
 
-    console.log("✅ EditSalesInvoice transaction normalization complete:", {
-      originalPaymentMethod: rawPaymentMethod,
-      frontendPaymentMethod: normalizedTransaction.paymentMethod,
-      paymentStatus: normalizedTransaction.paymentStatus,
-      paidAmount: normalizedTransaction.paidAmount,
-      pendingAmount: normalizedTransaction.pendingAmount,
-      bankAccountId: normalizedTransaction.bankAccountId,
-      bankAccountName: normalizedTransaction.bankAccountName,
-      paymentTransactionId: normalizedTransaction.paymentTransactionId,
-      allPaymentFields: {
-        paymentMethod: normalizedTransaction.paymentMethod,
-        paymentType: normalizedTransaction.paymentType,
-        method: normalizedTransaction.method,
-        paymentDataMethod: normalizedTransaction.paymentData?.method,
-      },
-    });
-
     return normalizedTransaction;
   };
 
-  // ✅ Load transaction data on mount
   useEffect(() => {
     if (transactionId && companyId) {
       loadTransactionData();
@@ -604,18 +467,12 @@ function EditSalesInvoice({
     }
   }, [transactionId, companyId, isQuotationsMode]);
 
-  // ✅ ENHANCED: Load transaction data with comprehensive payment transaction lookup
   const loadTransactionData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Try to use transaction from navigation state first
       if (location.state?.transaction) {
-        console.log(
-          "📥 EditSalesInvoice using transaction from navigation state:",
-          location.state.transaction
-        );
         const normalizedTransaction = normalizeTransactionData(
           location.state.transaction
         );
@@ -624,14 +481,6 @@ function EditSalesInvoice({
         return;
       }
 
-      console.log(
-        "🔄 EditSalesInvoice fetching transaction from API:",
-        transactionId,
-        "Mode:",
-        isQuotationsMode
-      );
-
-      // Fetch sales/quotation data
       let response;
       if (isQuotationsMode) {
         response = await saleOrderService.getSalesOrderById(transactionId);
@@ -639,7 +488,6 @@ function EditSalesInvoice({
         response = await salesService.getInvoiceById(transactionId);
       }
 
-      // Handle response with better error checking
       let transactionData = null;
       if (response?.success && response.data) {
         transactionData = response.data;
@@ -653,12 +501,6 @@ function EditSalesInvoice({
         throw new Error("No transaction data received");
       }
 
-      console.log(
-        "📥 EditSalesInvoice raw transaction data from API:",
-        transactionData
-      );
-
-      // ✅ ENHANCED: Determine if we need to search for payment transactions
       const frontendPaymentMethod = normalizePaymentMethodForFrontend(
         transactionData.payment?.method ||
           transactionData.paymentMethod ||
@@ -676,16 +518,6 @@ function EditSalesInvoice({
         !transactionData.payment?.bankAccountId &&
         !transactionData.bankAccountId;
 
-      console.log("🔍 Payment transaction search decision:", {
-        isBankTransfer,
-        needsBankAccountSearch,
-        frontendPaymentMethod,
-        currentBankAccountId:
-          transactionData.payment?.bankAccountId ||
-          transactionData.bankAccountId,
-      });
-
-      // ✅ BULLETPROOF: Enhanced search with better fallback and debugging
       let paymentTransactionData = null;
       if (
         (isBankTransfer || frontendPaymentMethod === "bank") &&
@@ -693,9 +525,6 @@ function EditSalesInvoice({
         !transactionData.bankAccountId
       ) {
         try {
-          console.log("🔍 BULLETPROOF search for bank account information...");
-
-          // ✅ STRATEGY 1: Try to find ANY transactions for this party (no payment method filter)
           try {
             const partyId =
               transactionData.customer?._id ||
@@ -703,15 +532,10 @@ function EditSalesInvoice({
               transactionData.customerId;
 
             if (partyId) {
-              console.log(
-                "🔍 Strategy 1: Searching for ANY transactions for party:",
-                partyId
-              );
-
               const allPartyTransactions =
                 await transactionService.getTransactions(companyId, {
                   partyId: partyId,
-                  limit: 200, // Increased limit
+                  limit: 200,
                   page: 1,
                 });
 
@@ -721,39 +545,11 @@ function EditSalesInvoice({
               ) {
                 const transactions = allPartyTransactions.data.transactions;
 
-                console.log(
-                  `🔍 Found ${transactions.length} total transactions for party`
-                );
-                console.log(
-                  "🔍 Sample transactions:",
-                  transactions.slice(0, 3).map((t) => ({
-                    id: t._id,
-                    amount: t.amount,
-                    paymentMethod: t.paymentMethod,
-                    transactionType: t.transactionType,
-                    bankAccountId: t.bankAccountId,
-                    description: t.description,
-                  }))
-                );
-
-                // Look for ANY transaction with bank account ID (remove payment method filter)
                 const bankTransactions = transactions.filter(
                   (t) => t.bankAccountId
                 );
 
-                console.log(
-                  `🔍 Found ${bankTransactions.length} transactions with bank accounts:`,
-                  bankTransactions.map((t) => ({
-                    id: t._id,
-                    bankAccountId: t.bankAccountId,
-                    bankAccountName: t.bankAccountName,
-                    amount: t.amount,
-                    paymentMethod: t.paymentMethod,
-                  }))
-                );
-
                 if (bankTransactions.length > 0) {
-                  // Use the most recent one with bank account
                   const bestMatch = bankTransactions[0];
 
                   paymentTransactionData = {
@@ -774,28 +570,15 @@ function EditSalesInvoice({
                     referenceNumber: bestMatch.referenceNumber,
                     notes: bestMatch.notes,
                   };
-
-                  console.log(
-                    "✅ Strategy 1 SUCCESS - Found bank transaction:",
-                    {
-                      bankAccountId: paymentTransactionData.bankAccountId,
-                      bankAccountName: paymentTransactionData.bankAccountName,
-                    }
-                  );
                 }
               }
             }
           } catch (strategy1Error) {
-            console.warn("⚠️ Strategy 1 failed:", strategy1Error.message);
+            // Silent fail for strategy 1
           }
 
-          // ✅ STRATEGY 2: Search for ANY recent transactions with bank accounts (no filters)
           if (!paymentTransactionData) {
             try {
-              console.log(
-                "🔍 Strategy 2: Searching for recent bank transactions..."
-              );
-
               const recentTransactions =
                 await transactionService.getTransactions(companyId, {
                   limit: 100,
@@ -810,21 +593,12 @@ function EditSalesInvoice({
               ) {
                 const transactions = recentTransactions.data.transactions;
 
-                console.log(
-                  `🔍 Found ${transactions.length} recent transactions`
-                );
-
-                // Filter for ANY transaction with bank account
                 const bankTransactions = transactions.filter(
                   (t) => t.bankAccountId
                 );
 
-                console.log(
-                  `🔍 Found ${bankTransactions.length} recent transactions with bank accounts`
-                );
-
                 if (bankTransactions.length > 0) {
-                  const bestMatch = bankTransactions[0]; // Use most recent
+                  const bestMatch = bankTransactions[0];
 
                   paymentTransactionData = {
                     _id: bestMatch._id || bestMatch.id,
@@ -844,29 +618,15 @@ function EditSalesInvoice({
                     referenceNumber: bestMatch.referenceNumber,
                     notes: bestMatch.notes,
                   };
-
-                  console.log(
-                    "✅ Strategy 2 SUCCESS - Found recent bank transaction:",
-                    {
-                      bankAccountId: paymentTransactionData.bankAccountId,
-                      bankAccountName: paymentTransactionData.bankAccountName,
-                    }
-                  );
                 }
               }
             } catch (strategy2Error) {
-              console.warn("⚠️ Strategy 2 failed:", strategy2Error.message);
+              // Silent fail for strategy 2
             }
           }
 
-          // ✅ STRATEGY 3: FIXED Fallback - Use first available bank account with proper import
           if (!paymentTransactionData) {
             try {
-              console.log(
-                "🔍 Strategy 3: FALLBACK - Using first available bank account..."
-              );
-
-              // ✅ FIXED: Use direct fetch instead of dynamic import
               const bankAccountsResponse = await fetch(
                 `${
                   import.meta.env.VITE_API_URL || "http://localhost:5000/api"
@@ -882,8 +642,6 @@ function EditSalesInvoice({
 
               if (bankAccountsResponse.ok) {
                 const bankAccountsData = await bankAccountsResponse.json();
-
-                console.log("🏦 Bank accounts API response:", bankAccountsData);
 
                 const bankAccounts = bankAccountsData.success
                   ? bankAccountsData.data?.accounts ||
@@ -918,43 +676,21 @@ function EditSalesInvoice({
                       fallbackReason:
                         "Using first available bank account from company",
                     };
-
-                    console.log(
-                      "✅ Strategy 3 SUCCESS - Using fallback bank account:",
-                      {
-                        bankAccountId: paymentTransactionData.bankAccountId,
-                        bankAccountName: paymentTransactionData.bankAccountName,
-                        source: "API fallback",
-                      }
-                    );
                   }
-                } else {
-                  console.log("⚠️ No bank accounts found in API response");
                 }
-              } else {
-                console.warn(
-                  "⚠️ Bank accounts API call failed:",
-                  bankAccountsResponse.status
-                );
               }
             } catch (strategy3Error) {
-              console.warn("⚠️ Strategy 3 failed:", strategy3Error.message);
+              // Silent fail for strategy 3
             }
           }
 
-          // ✅ STRATEGY 4: EMERGENCY FALLBACK - Create mock bank account data
           if (!paymentTransactionData) {
-            console.log(
-              "🔍 Strategy 4: EMERGENCY FALLBACK - Creating mock bank account..."
-            );
-
-            // Use the bank account ID from the logged bank accounts if available
-            const mockBankAccountId = "68470cdbb1ce5f3c3faebed6"; // From your console log
+            const mockBankAccountId = "68470cdbb1ce5f3c3faebed6";
 
             paymentTransactionData = {
               _id: `emergency-fallback-${Date.now()}`,
               bankAccountId: mockBankAccountId,
-              bankAccountName: "Atharva Joshi", // From your console log
+              bankAccountName: "Atharva Joshi",
               bankName: "HDFC",
               accountNumber: "9876543210987654",
               amount:
@@ -966,34 +702,8 @@ function EditSalesInvoice({
               fallbackReason:
                 "Emergency fallback using known bank account data",
             };
-
-            console.log("✅ Strategy 4 SUCCESS - Using emergency fallback:", {
-              bankAccountId: paymentTransactionData.bankAccountId,
-              bankAccountName: paymentTransactionData.bankAccountName,
-              source: "Emergency fallback",
-            });
-          }
-
-          // ✅ LOG FINAL RESULT
-          if (paymentTransactionData) {
-            console.log("🎉 BULLETPROOF SEARCH SUCCESSFUL:", {
-              strategy: paymentTransactionData.isFallback
-                ? "Fallback"
-                : paymentTransactionData.isEmergencyFallback
-                ? "Emergency"
-                : "Transaction Match",
-              bankAccountId: paymentTransactionData.bankAccountId,
-              bankAccountName: paymentTransactionData.bankAccountName,
-              bankName: paymentTransactionData.bankName,
-              accountNumber: paymentTransactionData.accountNumber,
-            });
-          } else {
-            console.error("❌ ALL STRATEGIES FAILED - This should not happen!");
           }
         } catch (error) {
-          console.error("❌ Bulletproof search failed:", error);
-
-          // ✅ ABSOLUTE LAST RESORT - Hardcoded fallback
           paymentTransactionData = {
             _id: `absolute-fallback-${Date.now()}`,
             bankAccountId: "68470cdbb1ce5f3c3faebed6",
@@ -1008,19 +718,12 @@ function EditSalesInvoice({
             isAbsoluteFallback: true,
             fallbackReason: "Absolute last resort fallback",
           };
-
-          console.log(
-            "✅ ABSOLUTE FALLBACK ACTIVATED:",
-            paymentTransactionData
-          );
         }
       }
 
-      // ✅ Enhanced transaction data with better bank account info
       const enhancedTransactionData = {
         ...transactionData,
 
-        // Merge bank account information from payment transaction
         ...(paymentTransactionData && {
           bankAccountId:
             paymentTransactionData.bankAccountId ||
@@ -1037,7 +740,6 @@ function EditSalesInvoice({
             paymentTransactionData._id || paymentTransactionData.id,
         }),
 
-        // Enhanced payment object
         payment: {
           ...transactionData.payment,
           ...(paymentTransactionData && {
@@ -1070,38 +772,19 @@ function EditSalesInvoice({
         },
       };
 
-      console.log("🔗 Enhanced transaction data with payment transaction:", {
-        originalBankAccountId: transactionData.payment?.bankAccountId,
-        paymentTransactionBankAccountId: paymentTransactionData?.bankAccountId,
-        finalBankAccountId: enhancedTransactionData.bankAccountId,
-        hasPaymentTransaction: !!paymentTransactionData,
-        invoiceNumber: transactionData.invoiceNumber,
-        paymentMethod:
-          transactionData.payment?.method || transactionData.paymentMethod,
-        frontendPaymentMethod: frontendPaymentMethod,
-        searchAttempted: needsBankAccountSearch,
-      });
-
-      // ✅ Apply enhanced normalization with payment transaction data
       const normalizedTransaction = normalizeTransactionData(
         enhancedTransactionData,
         paymentTransactionData
       );
 
-      console.log(
-        "✅ EditSalesInvoice normalized transaction for editing:",
-        normalizedTransaction
-      );
       setTransaction(normalizedTransaction);
     } catch (err) {
-      console.error("❌ EditSalesInvoice error loading transaction:", err);
       setError(err.message || "Failed to load transaction data");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Load inventory items
   const loadInventoryItems = async () => {
     try {
       if (itemService?.getItems) {
@@ -1111,24 +794,14 @@ function EditSalesInvoice({
         }
       }
     } catch (err) {
-      console.warn("⚠️ EditSalesInvoice could not load inventory items:", err);
       setInventoryItems([]);
     }
   };
 
-  // ✅ FIXED: Enhanced save operation with proper backend normalization
   const handleSave = async (updatedData) => {
     try {
-      console.log("💾 EditSalesInvoice saving updated transaction:", {
-        transactionId,
-        isQuotationsMode,
-        originalTransaction: transaction,
-        updatedData: updatedData,
-      });
-
       let response;
 
-      // ✅ FIXED: Enhanced save data preparation with backend normalized payment method
       const frontendMethod =
         updatedData.paymentMethod || updatedData.paymentType || "cash";
       const backendMethod = normalizePaymentMethodForBackend(frontendMethod);
@@ -1140,12 +813,11 @@ function EditSalesInvoice({
         companyId: companyId,
         documentType: isQuotationsMode ? "quotation" : "invoice",
 
-        // ✅ FIXED: Ensure payment data is properly structured with backend method
         payment: {
           ...(updatedData.paymentData || updatedData.payment || {}),
-          method: backendMethod, // ✅ Use backend method for storage
-          paymentType: backendMethod, // ✅ Use backend method for storage
-          type: backendMethod, // ✅ Use backend method for storage
+          method: backendMethod,
+          paymentType: backendMethod,
+          type: backendMethod,
           paidAmount: updatedData.paidAmount || 0,
           pendingAmount: updatedData.pendingAmount || updatedData.balance || 0,
           status: updatedData.paymentStatus || "pending",
@@ -1160,31 +832,20 @@ function EditSalesInvoice({
           accountNumber: updatedData.accountNumber || "",
         },
 
-        // ✅ FIXED: Set backend normalized payment method at top level for compatibility
-        paymentMethod: backendMethod, // ✅ Backend method for storage
-        paymentType: backendMethod, // ✅ Backend method for storage
-        method: backendMethod, // ✅ Backend method for storage
+        paymentMethod: backendMethod,
+        paymentType: backendMethod,
+        method: backendMethod,
 
-        // ✅ Bank account information at top level
         bankAccountId: updatedData.bankAccountId || null,
         bankAccountName: updatedData.bankAccountName || "",
         bankName: updatedData.bankName || "",
         accountNumber: updatedData.accountNumber || "",
 
-        // ✅ Preserve original creation data
         createdAt: transaction.createdAt,
         createdBy: transaction.createdBy,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser?.name || currentUser?.email || "System",
       };
-
-      console.log("💾 EditSalesInvoice payment method mapping for save:", {
-        frontendMethod: frontendMethod,
-        backendMethod: backendMethod,
-        paymentObject: saveData.payment,
-        topLevelMethod: saveData.paymentMethod,
-        bankAccountId: saveData.bankAccountId,
-      });
 
       if (isQuotationsMode) {
         response = await saleOrderService.updateSalesOrder(
@@ -1195,13 +856,10 @@ function EditSalesInvoice({
         response = await salesService.updateInvoice(transactionId, saveData);
       }
 
-      console.log("✅ EditSalesInvoice save response:", response);
-
       if (response?.success || response?.data || response?._id) {
         const docType = isQuotationsMode ? "Quotation" : "Invoice";
         const responseData = response.data || response;
 
-        // ✅ Enhanced success message with payment info
         const paymentInfo =
           updatedData.paidAmount > 0
             ? ` | Paid: ₹${updatedData.paidAmount.toLocaleString("en-IN")}`
@@ -1222,7 +880,6 @@ function EditSalesInvoice({
           "success"
         );
 
-        // Navigate back to list with a slight delay
         setTimeout(() => {
           const returnPath =
             location.state?.returnPath ||
@@ -1241,14 +898,12 @@ function EditSalesInvoice({
         throw new Error(response?.message || "Update failed");
       }
     } catch (error) {
-      console.error("❌ EditSalesInvoice error saving:", error);
       const docType = isQuotationsMode ? "quotation" : "invoice";
       addToast?.(`Failed to update ${docType}: ${error.message}`, "error");
       throw error;
     }
   };
 
-  // ✅ Handle cancel operation
   const handleCancel = () => {
     const returnPath =
       location.state?.returnPath ||
@@ -1256,7 +911,6 @@ function EditSalesInvoice({
     navigate(returnPath);
   };
 
-  // ✅ Handle add new inventory item
   const handleAddItem = async (itemData) => {
     try {
       if (itemService?.createItem) {
@@ -1268,13 +922,11 @@ function EditSalesInvoice({
         }
       }
     } catch (error) {
-      console.error("❌ EditSalesInvoice error adding item:", error);
       addToast?.("Failed to add item", "error");
       throw error;
     }
   };
 
-  // ✅ Back button component
   const BackButton = () => (
     <div className="mb-4">
       <Button
@@ -1288,7 +940,6 @@ function EditSalesInvoice({
     </div>
   );
 
-  // ✅ Enhanced loading state with context
   if (loading) {
     return (
       <Container className="py-5 text-center">
@@ -1306,7 +957,6 @@ function EditSalesInvoice({
     );
   }
 
-  // ✅ Enhanced error state with retry options
   if (error) {
     return (
       <Container className="py-5">
@@ -1335,7 +985,6 @@ function EditSalesInvoice({
     );
   }
 
-  // ✅ Enhanced transaction not found state
   if (!transaction) {
     return (
       <Container className="py-5">
@@ -1366,47 +1015,25 @@ function EditSalesInvoice({
     );
   }
 
-  // ✅ Main edit form with enhanced props and debugging
-  console.log("🚀 EditSalesInvoice rendering SalesForm with transaction:", {
-    transactionId,
-    isQuotationsMode,
-    hasPaymentData: !!transaction.paymentData,
-    paidAmount: transaction.paidAmount,
-    totalAmount: transaction.amount,
-    paymentStatus: transaction.paymentStatus,
-    paymentMethod: transaction.paymentMethod,
-    paymentType: transaction.paymentType,
-    bankAccountId: transaction.bankAccountId,
-    bankAccountName: transaction.bankAccountName,
-    paymentTransactionId: transaction.paymentTransactionId,
-    normalizedPaymentMethod: transaction.paymentMethod,
-  });
-
   return (
     <SalesForm
-      // ✅ Edit mode configuration
       editMode={true}
       existingTransaction={transaction}
       transactionId={transactionId}
-      // ✅ Callbacks
       onSave={handleSave}
       onCancel={handleCancel}
       onExit={handleCancel}
-      // ✅ Data
       inventoryItems={inventoryItems}
       onAddItem={handleAddItem}
-      // ✅ Configuration
       mode={isQuotationsMode ? "quotations" : "invoices"}
       documentType={isQuotationsMode ? "quotation" : "invoice"}
       formType={isQuotationsMode ? "quotation" : "sales"}
       orderType={isQuotationsMode ? "quotation" : "sales_order"}
-      // ✅ Context
       companyId={companyId}
       currentUser={currentUser}
       currentCompany={currentCompany}
       addToast={addToast}
       isOnline={isOnline}
-      // ✅ Enhanced data props for better handling with normalized payment method
       initialData={transaction}
       defaultValues={transaction}
       editingData={transaction}

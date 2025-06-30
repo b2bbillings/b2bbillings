@@ -1,20 +1,12 @@
 import React, {useState, useEffect} from "react";
-import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Button,
-  Form,
-  Alert,
-  Spinner,
-} from "react-bootstrap";
+import {Row, Col, Card, Button, Form, Alert, Spinner} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faSave,
   faUser,
   faRefresh,
   faArrowLeft,
+  faShoppingCart,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams} from "react-router-dom";
 import purchaseOrderService from "../../../services/purchaseOrderService";
@@ -34,67 +26,117 @@ function PurchaseOrderForm({
 }) {
   const {companyId: urlCompanyId} = useParams();
   const effectiveCompanyId = companyId || urlCompanyId;
+  const editMode = !!editingOrder;
 
   const [currentUser, setCurrentUser] = useState(propCurrentUser || null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [userError, setUserError] = useState(null);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    // Header fields
-    gstType: "gst",
-    deliveryDate: "",
-    purchaseDate: new Date().toISOString().split("T")[0],
-    purchaseOrderNumber: "",
-    employeeName: "",
-    employeeId: "",
-    selectedEmployee: "",
-    description: "",
+  const getTheme = () => {
+    return {
+      primary: "#6366f1",
+      primaryLight: "#8b5cf6",
+      primaryDark: "#4f46e5",
+      primaryRgb: "99, 102, 241",
+      secondary: "#6c757d",
+      accent: "#8b5cf6",
+      background: "#f8fafc",
+      surface: "#ffffff",
+      success: "#10b981",
+      warning: "#f59e0b",
+      error: "#ef4444",
+      text: "#1e293b",
+      textMuted: "#64748b",
+      border: "#e2e8f0",
+      borderDark: "#cbd5e1",
+    };
+  };
 
-    // Party/Supplier selection
-    selectedParty: "",
-    partyName: "",
-    partyPhone: "",
-    partyEmail: "",
-    partyAddress: "",
-    partyGstNumber: "",
+  const theme = getTheme();
 
-    // Product rows
-    items: [
-      {
-        id: 1,
-        selectedProduct: "",
-        productName: "",
-        productCode: "",
-        description: "",
-        quantity: "",
-        price: "",
-        purchasePrice: "",
-        unit: "pcs",
-        gstMode: "exclude",
-        gstRate: 18,
-        subtotal: 0,
-        gstAmount: 0,
-        totalAmount: 0,
-        availableStock: 0,
-        hsnNumber: "",
-      },
-    ],
+  const [formData, setFormData] = useState(() => {
+    const initialData = {
+      gstType: "gst",
+      deliveryDate: "",
+      purchaseDate: new Date().toISOString().split("T")[0],
+      employeeName: "",
+      employeeId: "",
+      selectedEmployee: "",
+      description: "",
+      selectedParty: "",
+      partyName: "",
+      partyPhone: "",
+      partyEmail: "",
+      partyAddress: "",
+      partyGstNumber: "",
+      items: [
+        {
+          id: 1,
+          selectedProduct: "",
+          productName: "",
+          productCode: "",
+          quantity: "",
+          price: "",
+          purchasePrice: "",
+          unit: "pcs",
+          gstMode: "exclude",
+          gstRate: 18,
+          subtotal: 0,
+          gstAmount: 0,
+          totalAmount: 0,
+          availableStock: 0,
+          hsnNumber: "",
+        },
+      ],
+    };
+
+    // Only include purchaseOrderNumber in edit mode
+    if (editMode && editingOrder?.purchaseOrderNumber) {
+      initialData.purchaseOrderNumber = editingOrder.purchaseOrderNumber;
+    }
+
+    return initialData;
   });
 
-  // UI states
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({});
 
-  // Enhanced user management
+  const pageStyles = {
+    wrapper: {
+      backgroundColor: theme.background,
+      minHeight: "100vh",
+      padding: "20px 0",
+      borderRadius: "0",
+    },
+    card: {
+      border: `1px solid ${theme.border}`,
+      borderRadius: "0",
+      backgroundColor: theme.surface,
+      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    },
+    button: {
+      borderWidth: "1px",
+      borderColor: theme.border,
+      borderRadius: "0",
+      fontWeight: "600",
+    },
+    input: {
+      borderColor: theme.border,
+      borderWidth: "1px",
+      borderRadius: "0",
+      fontSize: "14px",
+      fontWeight: "500",
+      backgroundColor: theme.surface,
+    },
+  };
+
   const fetchCurrentUser = async () => {
     try {
       setIsLoadingUser(true);
       setUserError(null);
 
-      // Try multiple methods to get user
       const userResult = await authService.getCurrentUserSafe();
       if (userResult.success && userResult.user) {
         setCurrentUser(userResult.user);
@@ -152,7 +194,6 @@ function PurchaseOrderForm({
     }
   };
 
-  // Helper function for back button
   const handleBack = () => {
     if (onCancel) {
       onCancel();
@@ -163,14 +204,12 @@ function PurchaseOrderForm({
     }
   };
 
-  // Cleaner useEffect hooks
   useEffect(() => {
     if (editingOrder) {
       setFormData((prev) => ({
         ...prev,
         ...editingOrder,
         items: editingOrder.items || prev.items,
-        // Map purchase order specific fields
         purchaseOrderNumber:
           editingOrder.purchaseOrderNumber || editingOrder.orderNumber,
         purchaseDate: editingOrder.purchaseDate || editingOrder.orderDate,
@@ -206,12 +245,10 @@ function PurchaseOrderForm({
     }
   }, [propCurrentUser]);
 
-  // Enhanced form data handler with cleaner GST calculation
   const handleFormDataChange = (field, value) => {
     setFormData((prev) => {
       const newData = {...prev, [field]: value};
 
-      // Handle GST type change - recalculate all item totals
       if (field === "gstType" || field === "_gstTypeChanged") {
         newData.items = (newData.items || []).map((item) => {
           if (item.quantity && item.price) {
@@ -224,7 +261,6 @@ function PurchaseOrderForm({
       return newData;
     });
 
-    // Clear field-specific errors
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -233,7 +269,6 @@ function PurchaseOrderForm({
     }
   };
 
-  // Extracted calculation logic for better maintainability
   const calculateItemTotals = (item, gstType) => {
     const quantity = parseFloat(item.quantity) || 0;
     const price = parseFloat(item.price) || 0;
@@ -265,7 +300,6 @@ function PurchaseOrderForm({
     };
   };
 
-  // Cleaner totals calculation
   const calculateGrandTotals = () => {
     const items = formData.items || [];
     const totals = items.reduce(
@@ -286,18 +320,72 @@ function PurchaseOrderForm({
     };
   };
 
-  // Replace your current handleSave function with this enhanced version:
+  // FIXED: Enhanced validation function
+  const validateForm = () => {
+    const newErrors = {};
+
+    // CRITICAL FIX: Only validate purchaseOrderNumber in edit mode
+    if (
+      editMode &&
+      (!formData.purchaseOrderNumber || !formData.purchaseOrderNumber.trim())
+    ) {
+      newErrors.purchaseOrderNumber = "Purchase order number is required";
+    }
+
+    // Enhanced supplier validation
+    const supplierName = formData.partyName?.trim();
+    const supplierMobile = formData.partyPhone?.trim();
+
+    if (!supplierName && !supplierMobile) {
+      newErrors.partyName = "Please select a supplier or provide supplier name";
+      newErrors.partyPhone = "Please provide supplier mobile number";
+    }
+
+    // Required field validations (excluding purchaseOrderNumber in create mode)
+    const requiredFields = [
+      {field: "purchaseDate", message: "Purchase date is required"},
+      {field: "employeeName", message: "Employee selection is required"},
+    ];
+
+    requiredFields.forEach(({field, message}) => {
+      if (!formData[field]) {
+        newErrors[field] = message;
+      }
+    });
+
+    // Validate items
+    const validItems = formData.items.filter(
+      (item) =>
+        item.productName &&
+        parseFloat(item.quantity) > 0 &&
+        parseFloat(item.price) > 0
+    );
+
+    if (validItems.length === 0) {
+      newErrors.items = "Please add at least one valid product";
+    }
+
+    // Validate individual items
+    formData.items.forEach((item, index) => {
+      if (item.productName) {
+        if (!item.quantity || parseFloat(item.quantity) <= 0) {
+          newErrors[`items.${index}.quantity`] = "Quantity is required";
+        }
+        if (!item.price || parseFloat(item.price) <= 0) {
+          newErrors[`items.${index}.price`] = "Purchase price is required";
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // FIXED: Enhanced handleSave function
   const handleSave = async () => {
     try {
       setSaving(true);
       setError("");
-
-      console.log("🔍 DEBUGGING: Current form data:", {
-        partyName: formData.partyName,
-        partyPhone: formData.partyPhone,
-        partyEmail: formData.partyEmail,
-        selectedParty: formData.selectedParty,
-      });
 
       const effectiveUser = currentUser || propCurrentUser;
       if (!effectiveUser && !formData.employeeName) {
@@ -316,6 +404,7 @@ function PurchaseOrderForm({
         );
       }
 
+      // FIXED: Use the corrected validation function
       if (!validateForm()) {
         throw new Error("Please fix the validation errors before saving");
       }
@@ -333,35 +422,36 @@ function PurchaseOrderForm({
 
       const totals = calculateGrandTotals();
 
-      // ✅ ENHANCED: Use the service's formatOrderData method with auto-detection
       const orderData = {
-        orderNumber: formData.purchaseOrderNumber?.trim(),
-        orderDate: formData.purchaseDate,
-        expectedDeliveryDate: formData.deliveryDate,
+        companyId: effectiveCompanyId,
         orderType: "purchase_order",
+        gstType: formData.gstType || "gst",
+        gstEnabled: formData.gstType === "gst",
 
-        // ✅ CRITICAL: Supplier information
+        // Supplier information
+        supplier: formData.selectedParty || "",
         supplierName: supplierName || "",
         supplierMobile: supplierMobile || "",
         supplierEmail: supplierEmail || "",
-        supplier: formData.selectedParty || "",
 
-        // ✅ NEW: Enable auto-detection explicitly
-        autoDetectSourceCompany: true,
+        // Dates
+        orderDate:
+          formData.purchaseDate || new Date().toISOString().split("T")[0],
+        purchaseDate:
+          formData.purchaseDate || new Date().toISOString().split("T")[0],
+        expectedDeliveryDate: formData.deliveryDate || null,
 
-        companyId: effectiveCompanyId,
-        gstEnabled: formData.gstType === "gst",
-        gstType: formData.gstType,
-        taxMode: "without-tax",
-        priceIncludesTax: false,
+        // Employee info
+        employeeName: formData.employeeName || effectiveUser?.name || "",
+        employeeId: formData.employeeId || effectiveUser?.id || "",
 
+        // Items
         items: validItems.map((item, index) => ({
           lineNumber: index + 1,
           itemName: item.productName,
           productName: item.productName,
           itemCode: item.productCode || "",
           productCode: item.productCode || "",
-          description: item.description || "",
           hsnNumber: item.hsnNumber || "0000",
           hsnCode: item.hsnNumber || "0000",
           quantity: parseFloat(item.quantity),
@@ -384,19 +474,7 @@ function PurchaseOrderForm({
           discountAmount: 0,
         })),
 
-        totals: {
-          subtotal: totals.subtotal,
-          totalQuantity: totals.totalQuantity,
-          totalDiscount: 0,
-          totalDiscountAmount: 0,
-          totalTax: totals.gstAmount,
-          totalTaxableAmount: totals.subtotal,
-          finalTotal: totals.grandTotal,
-          roundOff: 0,
-          withTaxTotal: totals.grandTotal,
-          withoutTaxTotal: totals.subtotal,
-        },
-
+        // Payment
         payment: {
           method: "credit",
           status: "pending",
@@ -410,9 +488,19 @@ function PurchaseOrderForm({
           notes: "",
         },
 
+        // Additional fields
         notes: formData.description || "",
-        status: "draft",
-        priority: "normal",
+        termsAndConditions: formData.termsAndConditions || "",
+        status: formData.status || "draft",
+        priority: formData.priority || "normal",
+
+        // CRITICAL: Only include purchaseOrderNumber in edit mode
+        ...(editMode &&
+          formData.purchaseOrderNumber && {
+            purchaseOrderNumber: formData.purchaseOrderNumber,
+          }),
+
+        // Creation metadata
         createdBy:
           formData.employeeId ||
           effectiveUser?.id ||
@@ -423,65 +511,39 @@ function PurchaseOrderForm({
           effectiveUser?.id ||
           effectiveUser?._id ||
           "system",
+        autoDetectSourceCompany: true,
       };
 
-      console.log("📦 Order data before formatting:", {
-        supplierName: orderData.supplierName,
-        supplierMobile: orderData.supplierMobile,
-        autoDetectSourceCompany: orderData.autoDetectSourceCompany,
-        companyId: orderData.companyId,
-      });
+      let result;
 
-      // ✅ Use the enhanced service with proper formatting
-      const formattedData = purchaseOrderService.formatOrderData(orderData);
+      if (editMode && formData.id) {
+        // Update existing order
+        result = await purchaseOrderService.updatePurchaseOrder(
+          formData.id,
+          orderData
+        );
+      } else {
+        // Create new order (orderNumber will be generated by backend)
+        result = await purchaseOrderService.createPurchaseOrder(orderData);
+      }
 
-      console.log("📦 Formatted order data:", {
-        supplierName: formattedData.supplierName,
-        supplierMobile: formattedData.supplierMobile,
-        autoDetectSourceCompany: formattedData.autoDetectSourceCompany,
-        companyId: formattedData.companyId,
-      });
+      if (result.success) {
+        const savedOrder =
+          result.data?.data?.purchaseOrder ||
+          result.data?.purchaseOrder ||
+          result.data;
+        const orderNumber =
+          savedOrder?.orderNumber || savedOrder?.purchaseOrderNumber;
 
-      const response = await purchaseOrderService.createPurchaseOrder(
-        formattedData
-      );
-
-      console.log("📦 Backend response:", response);
-
-      if (response.success) {
-        const purchaseOrderData =
-          response.data?.data?.purchaseOrder || response.data?.purchaseOrder;
-        const orderData = response.data?.data?.order || response.data?.order;
-
-        // ✅ NEW: Extract source company tracking info
-        const sourceTracking = response.data?.data?.sourceCompanyTracking;
-
-        console.log("✅ SUCCESS: Purchase order created:", {
-          orderNumber: purchaseOrderData?.orderNumber || orderData?.orderNumber,
-          sourceCompanyDetected: sourceTracking?.detected,
-          sourceCompanyId: sourceTracking?.sourceCompanyId,
-          detectionMethod: sourceTracking?.detectionMethod,
-          sourceCompanyName: sourceTracking?.sourceCompanyDetails?.businessName,
-        });
-
-        // ✅ Enhanced success message
-        let successMessage = "Purchase order created successfully!";
-        if (
-          sourceTracking?.detected &&
-          sourceTracking?.sourceCompanyDetails?.businessName
-        ) {
-          successMessage += ` (Linked to ${sourceTracking.sourceCompanyDetails.businessName})`;
-        }
-
-        addToast?.(successMessage, "success");
+        addToast?.(
+          editMode
+            ? `Purchase order ${orderNumber || ""} updated successfully!`
+            : `Purchase order ${orderNumber || ""} created successfully!`,
+          "success"
+        );
 
         if (onSave) {
-          onSave({
-            purchaseOrder: purchaseOrderData,
-            order: orderData,
-            response: response.data,
-            sourceTracking, // ✅ Pass source tracking info
-          });
+          onSave(savedOrder);
         }
 
         setTimeout(() => {
@@ -490,10 +552,9 @@ function PurchaseOrderForm({
           }
         }, 1500);
       } else {
-        throw new Error(response.message || "Failed to create purchase order");
+        throw new Error(result.message || "Failed to save purchase order");
       }
     } catch (error) {
-      console.error("❌ Error saving purchase order:", error);
       setError(error.message);
       addToast?.(`Error saving purchase order: ${error.message}`, "error");
     } finally {
@@ -501,127 +562,21 @@ function PurchaseOrderForm({
     }
   };
 
-  // ✅ FIXED: Enhanced validation with better supplier checks
-  const validateForm = () => {
-    const newErrors = {};
-
-    // ✅ Debug form data during validation
-    console.log("🔍 VALIDATION: Form data being validated:", {
-      partyName: formData.partyName,
-      partyPhone: formData.partyPhone,
-      selectedParty: formData.selectedParty,
-      purchaseOrderNumber: formData.purchaseOrderNumber,
-      employeeName: formData.employeeName,
-    });
-
-    // ✅ Enhanced supplier validation with specific checks
-    const supplierName = formData.partyName?.trim();
-    const supplierMobile = formData.partyPhone?.trim();
-
-    if (!supplierName && !supplierMobile) {
-      newErrors.partyName = "Please select a supplier or provide supplier name";
-      newErrors.partyPhone = "Please provide supplier mobile number";
-      console.log("❌ VALIDATION FAILED: No supplier information");
-    }
-
-    // ✅ Check if supplier fields are properly set
-    if (!supplierName) {
-      console.log("⚠️  WARNING: Supplier name is missing");
-    }
-    if (!supplierMobile) {
-      console.log("⚠️  WARNING: Supplier mobile is missing");
-    }
-
-    // Required field validations
-    const requiredFields = [
-      {
-        field: "purchaseOrderNumber",
-        message: "Purchase order number is required",
-      },
-      {field: "purchaseDate", message: "Purchase date is required"},
-      {field: "employeeName", message: "Employee selection is required"},
-    ];
-
-    requiredFields.forEach(({field, message}) => {
-      if (!formData[field]) {
-        newErrors[field] = message;
-        console.log(`❌ VALIDATION FAILED: ${field} - ${message}`);
-      }
-    });
-
-    // Validate items
-    const validItems = formData.items.filter(
-      (item) =>
-        item.productName &&
-        parseFloat(item.quantity) > 0 &&
-        parseFloat(item.price) > 0
-    );
-
-    if (validItems.length === 0) {
-      newErrors.items = "Please add at least one valid product";
-      console.log("❌ VALIDATION FAILED: No valid items");
-    }
-
-    // Validate individual items
-    formData.items.forEach((item, index) => {
-      if (item.productName) {
-        if (!item.quantity || parseFloat(item.quantity) <= 0) {
-          newErrors[`items.${index}.quantity`] = "Quantity is required";
-        }
-        if (!item.price || parseFloat(item.price) <= 0) {
-          newErrors[`items.${index}.price`] = "Purchase price is required";
-        }
-      }
-    });
-
-    setErrors(newErrors);
-    const isValid = Object.keys(newErrors).length === 0;
-
-    console.log("🔍 VALIDATION RESULT:", {
-      isValid,
-      errorCount: Object.keys(newErrors).length,
-      errors: newErrors,
-    });
-
-    return isValid;
-  };
-
-  // ✅ Add this debug function to check form data in real-time
-  const debugSupplierData = () => {
-    console.log("🔍 REAL-TIME SUPPLIER DATA:", {
-      partyName: formData.partyName,
-      partyPhone: formData.partyPhone,
-      partyEmail: formData.partyEmail,
-      selectedParty: formData.selectedParty,
-      timestamp: new Date().toISOString(),
-    });
-  };
-
-  // ✅ Add this useEffect to monitor supplier data changes
-  useEffect(() => {
-    debugSupplierData();
-  }, [formData.partyName, formData.partyPhone, formData.selectedParty]);
-
   const totals = calculateGrandTotals();
 
-  // Enhanced loading state
   if (loading) {
     return (
-      <Container
-        className="py-4"
-        style={{backgroundColor: "#FF8C00", minHeight: "100vh"}}
-      >
+      <div style={pageStyles.wrapper}>
         <div className="text-center">
-          <Spinner animation="border" className="text-white" />
-          <p className="mt-2 text-white fw-bold">
+          <Spinner animation="border" style={{color: theme.primary}} />
+          <p className="mt-2 fw-bold" style={{color: theme.text}}>
             Loading purchase order form...
           </p>
         </div>
-      </Container>
+      </div>
     );
   }
 
-  // Helper function for save button state
   const isSaveDisabled = () => {
     return (
       saving ||
@@ -640,290 +595,305 @@ function PurchaseOrderForm({
   };
 
   return (
-    <Container
-      className="py-3"
-      style={{backgroundColor: "#FF8C00", minHeight: "100vh"}}
-    >
-      {/* Error Alert */}
-      {error && (
-        <Alert
-          variant="danger"
-          className="mb-3"
-          dismissible
-          onClose={() => setError("")}
-        >
-          {error}
-        </Alert>
-      )}
+    <>
+      <style>
+        {`
+          .card,
+          .card *,
+          .btn,
+          .btn *,
+          .form-control,
+          .form-select,
+          .input-group-text,
+          .badge,
+          .dropdown-menu,
+          .modal-content,
+          .modal-header,
+          .modal-body,
+          .modal-footer,
+          .alert {
+            border-radius: 0 !important;
+            -webkit-border-radius: 0 !important;
+            -moz-border-radius: 0 !important;
+            -ms-border-radius: 0 !important;
+          }
+          
+          * {
+            --bs-border-radius: 0 !important;
+            --bs-border-radius-sm: 0 !important;
+            --bs-border-radius-lg: 0 !important;
+            --bs-border-radius-xl: 0 !important;
+            --bs-border-radius-2xl: 0 !important;
+            --bs-border-radius-pill: 0 !important;
+          }
 
-      {/* User Status Alert */}
-      {(isLoadingUser || userError) && (
-        <Alert variant={isLoadingUser ? "info" : "warning"} className="mb-3">
-          <div className="d-flex align-items-center justify-content-between">
-            <div>
-              {isLoadingUser ? (
-                <>
-                  <FontAwesomeIcon icon={faUser} className="me-2" />
-                  <Spinner size="sm" className="me-2" />
-                  Loading user information...
-                </>
-              ) : (
-                <>
-                  <FontAwesomeIcon icon={faUser} className="me-2" />
-                  ⚠️ {userError}
-                </>
+          .form-label {
+            font-size: 15px !important;
+            font-weight: 600 !important;
+          }
+        `}
+      </style>
+
+      <div style={pageStyles.wrapper}>
+        {error && (
+          <Alert
+            variant="danger"
+            className="mb-3 mx-3"
+            dismissible
+            onClose={() => setError("")}
+            style={pageStyles.card}
+          >
+            {error}
+          </Alert>
+        )}
+
+        {(isLoadingUser || userError) && (
+          <Alert
+            variant={isLoadingUser ? "info" : "warning"}
+            className="mb-3 mx-3"
+            style={pageStyles.card}
+          >
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                {isLoadingUser ? (
+                  <>
+                    <FontAwesomeIcon icon={faUser} className="me-2" />
+                    <Spinner size="sm" className="me-2" />
+                    Loading user information...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faUser} className="me-2" />
+                    ⚠️ {userError}
+                  </>
+                )}
+              </div>
+              {userError && !isLoadingUser && (
+                <Button
+                  variant="outline-warning"
+                  size="sm"
+                  onClick={retryUserFetch}
+                  disabled={isLoadingUser}
+                  style={pageStyles.button}
+                >
+                  <FontAwesomeIcon icon={faRefresh} className="me-1" />
+                  Retry
+                </Button>
               )}
             </div>
-            {userError && !isLoadingUser && (
-              <Button
-                variant="outline-warning"
-                size="sm"
-                onClick={retryUserFetch}
-                disabled={isLoadingUser}
-              >
-                <FontAwesomeIcon icon={faRefresh} className="me-1" />
-                Retry
-              </Button>
-            )}
-          </div>
-        </Alert>
-      )}
+          </Alert>
+        )}
 
-      {/* Page Heading with Back Button */}
-      <div className="mb-3">
-        <Card
-          className="mx-auto shadow-sm"
-          style={{
-            maxWidth: "850px",
-            border: "2px solid #000",
-            borderRadius: "8px",
-          }}
-        >
-          <Card.Body className="py-2 px-3">
-            <div className="d-flex align-items-center justify-content-between">
-              {/* Back Button */}
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                onClick={handleBack}
-                disabled={saving}
-                style={{
-                  borderWidth: "2px",
-                  borderColor: "#000",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                }}
-                title="Go back to purchase orders list"
-              >
-                <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
-                Back
-              </Button>
-
-              {/* Title */}
-              <h4 className="mb-0 fw-bold text-dark d-flex align-items-center">
-                <FontAwesomeIcon icon={faSave} className="me-2 text-primary" />
-                {editingOrder ? "Edit Purchase Order" : "Create Purchase Order"}
-              </h4>
-
-              {/* Spacer for centering */}
-              <div style={{width: "60px"}}></div>
-            </div>
-          </Card.Body>
-        </Card>
-      </div>
-
-      {/* Main Form Card - Same width */}
-      <Card className="mx-auto shadow-lg" style={{maxWidth: "850px"}}>
-        <Card.Body className="p-4">
-          {/* Header Section */}
-          <PurchaseOrderFormHeader
-            formData={formData}
-            onFormDataChange={handleFormDataChange}
-            companyId={effectiveCompanyId}
-            currentUser={currentUser || propCurrentUser}
-            currentCompany={currentCompany}
-            addToast={addToast}
-            errors={errors}
-            disabled={saving}
-          />
-
-          {/* Product Section */}
-          <PurchaseOrderFormProductSelection
-            formData={formData}
-            onFormDataChange={handleFormDataChange}
-            companyId={effectiveCompanyId}
-            currentUser={currentUser || propCurrentUser}
-            addToast={addToast}
-            errors={errors}
-            disabled={saving}
-          />
-
-          {/* Description Section - Compact */}
-          <Row className="mb-3">
-            <Col md={12}>
-              <Form.Group>
-                <Form.Label className="fw-bold text-danger small mb-1">
-                  Description
-                </Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                  value={formData.description || ""}
-                  onChange={(e) =>
-                    handleFormDataChange("description", e.target.value)
-                  }
-                  className="border-2"
-                  style={{
-                    borderColor: "#000",
-                    fontSize: "12px",
-                    padding: "6px 8px",
-                    resize: "none",
-                  }}
-                  placeholder="Enter description..."
-                  disabled={saving}
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          {/* Totals and Actions Section - Compact Layout */}
-          <Row className="mb-2">
-            <Col md={7}>
-              {/* Totals Display - Compact */}
-              <Card
-                className="border-2 bg-light h-100"
-                style={{borderColor: "#000"}}
-              >
-                <Card.Body className="p-2">
-                  <Row className="g-2 align-items-center">
-                    <Col xs={6}>
-                      <div style={{fontSize: "11px"}}>
-                        <div className="mb-1">
-                          <strong>Items: {totals.totalQuantity}</strong>
-                        </div>
-                        <div className="mb-1">
-                          <strong>
-                            Subtotal: ₹{totals.subtotal.toFixed(2)}
-                          </strong>
-                        </div>
-                        {formData.gstType === "gst" && (
-                          <div>
-                            <strong>GST: ₹{totals.gstAmount.toFixed(2)}</strong>
-                          </div>
-                        )}
-                      </div>
-                    </Col>
-                    <Col xs={6} className="text-end">
-                      <div
-                        className="text-warning fw-bold"
-                        style={{fontSize: "16px"}}
-                      >
-                        <strong>₹{totals.grandTotal.toFixed(2)}</strong>
-                      </div>
-                      <div className="text-muted" style={{fontSize: "10px"}}>
-                        {formData.gstType === "gst"
-                          ? "GST Inclusive"
-                          : "Non-GST"}
-                      </div>
-                    </Col>
-                  </Row>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col
-              md={5}
-              className="d-flex align-items-center justify-content-end"
-            >
-              {/* Action Buttons - Compact */}
-              <div className="d-flex gap-2">
-                <Button
-                  style={{
-                    backgroundColor: "#FFD700",
-                    borderColor: "#000",
-                    color: "#000",
-                    fontSize: "12px",
-                    padding: "8px 16px",
-                    fontWeight: "bold",
-                    minWidth: "100px",
-                  }}
-                  onClick={handleSave}
-                  disabled={isSaveDisabled()}
-                  className="border-2"
-                  title={getSaveButtonTitle()}
-                >
-                  {saving ? (
-                    <>
-                      <Spinner size="sm" className="me-1" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faSave} className="me-1" />
-                      Save
-                      {isLoadingUser && <Spinner size="sm" className="ms-1" />}
-                    </>
-                  )}
-                </Button>
-
+        <div className="mb-3 px-3">
+          <Card className="shadow-sm" style={pageStyles.card}>
+            <Card.Body className="py-2 px-3">
+              <div className="d-flex align-items-center justify-content-between">
                 <Button
                   variant="outline-secondary"
+                  size="sm"
                   onClick={handleBack}
                   disabled={saving}
-                  className="border-2"
                   style={{
-                    borderColor: "#000",
+                    ...pageStyles.button,
                     fontSize: "12px",
-                    padding: "8px 16px",
-                    fontWeight: "bold",
-                    minWidth: "80px",
+                    padding: "6px 12px",
                   }}
-                  title="Cancel and go back"
+                  title="Go back to purchase orders list"
                 >
                   <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
-                  Cancel
+                  Back
                 </Button>
+
+                <h4
+                  className="mb-0 fw-bold d-flex align-items-center"
+                  style={{color: theme.text}}
+                >
+                  <FontAwesomeIcon
+                    icon={faShoppingCart}
+                    className="me-2"
+                    style={{color: theme.primary}}
+                  />
+                  {editMode ? "Edit Purchase Order" : "Create Purchase Order"}
+                </h4>
+
+                <div style={{width: "60px"}}></div>
               </div>
-            </Col>
-          </Row>
+            </Card.Body>
+          </Card>
+        </div>
 
-          {/* Validation Errors - Compact */}
-          {(Object.keys(errors).length > 0 || userError) && (
-            <Row>
-              <Col md={12}>
-                <Alert variant="danger" className="p-2 mb-0">
-                  <div style={{fontSize: "11px"}}>
-                    <strong>Please fix the following issues:</strong>
-                    <ul className="mb-0 mt-1" style={{paddingLeft: "16px"}}>
-                      {userError && (
-                        <li>
-                          <strong>User Error:</strong> {userError}
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="p-0 ms-1 text-decoration-none"
-                            style={{fontSize: "10px"}}
-                            onClick={retryUserFetch}
-                            disabled={isLoadingUser}
+        <div style={{maxWidth: "1200px", margin: "0 auto", padding: "0 15px"}}>
+          <Card className="shadow-lg" style={pageStyles.card}>
+            <Card.Body className="p-4">
+              <PurchaseOrderFormHeader
+                formData={formData}
+                onFormDataChange={handleFormDataChange}
+                companyId={effectiveCompanyId}
+                currentUser={currentUser || propCurrentUser}
+                currentCompany={currentCompany}
+                addToast={addToast}
+                errors={errors}
+                disabled={saving}
+                editMode={editMode}
+              />
+
+              <PurchaseOrderFormProductSelection
+                formData={formData}
+                onFormDataChange={handleFormDataChange}
+                companyId={effectiveCompanyId}
+                currentUser={currentUser || propCurrentUser}
+                addToast={addToast}
+                errors={errors}
+                disabled={saving}
+              />
+
+              <Row className="mb-2">
+                <Col md={7}>
+                  <Card
+                    className="h-100"
+                    style={{
+                      ...pageStyles.card,
+                      backgroundColor: theme.background,
+                    }}
+                  >
+                    <Card.Body className="p-3">
+                      <Row className="g-2 align-items-center">
+                        <Col xs={6}>
+                          <div style={{fontSize: "13px"}}>
+                            <div className="mb-2">
+                              <strong style={{color: theme.text}}>
+                                Items: {totals.totalQuantity}
+                              </strong>
+                            </div>
+                            <div className="mb-2">
+                              <strong style={{color: theme.text}}>
+                                Subtotal: ₹{totals.subtotal.toFixed(2)}
+                              </strong>
+                            </div>
+                            {formData.gstType === "gst" && (
+                              <div>
+                                <strong style={{color: theme.text}}>
+                                  GST: ₹{totals.gstAmount.toFixed(2)}
+                                </strong>
+                              </div>
+                            )}
+                          </div>
+                        </Col>
+                        <Col xs={6} className="text-end">
+                          <div
+                            className="fw-bold"
+                            style={{fontSize: "18px", color: theme.primary}}
                           >
-                            (Retry)
-                          </Button>
-                        </li>
+                            ₹{totals.grandTotal.toFixed(2)}
+                          </div>
+                          <div
+                            style={{fontSize: "11px", color: theme.textMuted}}
+                          >
+                            {formData.gstType === "gst"
+                              ? "GST Inclusive"
+                              : "Non-GST"}
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+                </Col>
+                <Col
+                  md={5}
+                  className="d-flex align-items-center justify-content-end"
+                >
+                  <div className="d-flex gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={handleSave}
+                      disabled={isSaveDisabled()}
+                      style={{
+                        ...pageStyles.button,
+                        backgroundColor: theme.primary,
+                        borderColor: theme.primary,
+                        color: "white",
+                        fontSize: "14px",
+                        padding: "10px 20px",
+                        minWidth: "120px",
+                      }}
+                      title={getSaveButtonTitle()}
+                    >
+                      {saving ? (
+                        <>
+                          <Spinner size="sm" className="me-1" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <FontAwesomeIcon icon={faSave} className="me-1" />
+                          Save
+                          {isLoadingUser && (
+                            <Spinner size="sm" className="ms-1" />
+                          )}
+                        </>
                       )}
+                    </Button>
 
-                      {Object.entries(errors).map(([field, message]) => (
-                        <li key={field}>{message}</li>
-                      ))}
-                    </ul>
+                    <Button
+                      variant="outline-secondary"
+                      onClick={handleBack}
+                      disabled={saving}
+                      style={{
+                        ...pageStyles.button,
+                        fontSize: "14px",
+                        padding: "10px 20px",
+                        minWidth: "100px",
+                      }}
+                      title="Cancel and go back"
+                    >
+                      <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
+                      Cancel
+                    </Button>
                   </div>
-                </Alert>
-              </Col>
-            </Row>
-          )}
-        </Card.Body>
-      </Card>
-    </Container>
+                </Col>
+              </Row>
+
+              {(Object.keys(errors).length > 0 || userError) && (
+                <Row>
+                  <Col md={12}>
+                    <Alert
+                      variant="danger"
+                      className="p-3 mb-0"
+                      style={pageStyles.card}
+                    >
+                      <div style={{fontSize: "13px"}}>
+                        <strong>Please fix the following issues:</strong>
+                        <ul className="mb-0 mt-2" style={{paddingLeft: "20px"}}>
+                          {userError && (
+                            <li>
+                              <strong>User Error:</strong> {userError}
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 ms-1 text-decoration-none"
+                                style={{fontSize: "12px"}}
+                                onClick={retryUserFetch}
+                                disabled={isLoadingUser}
+                              >
+                                (Retry)
+                              </Button>
+                            </li>
+                          )}
+
+                          {Object.entries(errors).map(([field, message]) => (
+                            <li key={field}>{message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </Alert>
+                  </Col>
+                </Row>
+              )}
+            </Card.Body>
+          </Card>
+        </div>
+      </div>
+    </>
   );
 }
 

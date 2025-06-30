@@ -206,7 +206,6 @@ class SalesService {
     return "pending";
   }
 
-  // ✅ ENHANCED: Extract payment info with additional fields from PaymentModal
   extractPaymentInfo(invoiceData) {
     let paymentAmount = 0;
     let paymentMethod = "cash";
@@ -270,11 +269,27 @@ class SalesService {
       creditDays = invoiceData.creditDays || 0;
     }
 
-    const finalTotal = parseFloat(
-      invoiceData.totals?.finalTotalWithRoundOff ||
-        invoiceData.totals?.finalTotal ||
-        0
-    );
+    // ✅ CRITICAL FIX: Use exact total when preservation flags are present
+    let finalTotal;
+    if (invoiceData.preserveUICalculations || invoiceData.useExactAmounts) {
+      finalTotal = parseFloat(
+        invoiceData.authoritative ||
+          invoiceData.totals?.finalTotal ||
+          invoiceData.totals?.uiCalculatedTotal ||
+          0
+      );
+      console.log(
+        "💰 Using preserved final total for payment calculation:",
+        finalTotal
+      );
+    } else {
+      finalTotal = parseFloat(
+        invoiceData.totals?.finalTotalWithRoundOff ||
+          invoiceData.totals?.finalTotal ||
+          0
+      );
+    }
+
     const pendingAmount = Math.max(0, finalTotal - paymentAmount);
 
     // ✅ ENHANCED: Return more comprehensive payment info
@@ -290,6 +305,13 @@ class SalesService {
       notes: notes,
       bankAccountId: bankAccountId,
       bankAccountName: bankAccountName,
+
+      // ✅ CRITICAL: Include exact invoice total reference
+      invoiceTotal: finalTotal,
+      relatedInvoiceTotal: finalTotal,
+
+      // ✅ ENHANCED: Include source company reference for cross-company tracking
+      sourceCompanyId: invoiceData.sourceCompanyId || invoiceData.companyId,
     };
 
     // ✅ NEW: Add additional fields based on payment method
@@ -312,205 +334,67 @@ class SalesService {
 
     return paymentInfo;
   }
+  // Add this method after getInvoiceNumberPatternInfo method (around line 1150)
 
-  // ✅ COMPLETELY FIXED: Create invoice with proper submission guards
-  async createInvoice(invoiceData, retryCount = 0) {
-    const maxRetries = 2;
-
-    // ✅ CRITICAL: Generate unique request ID for tracking
-    const requestId = `create_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    const baseRequestId = invoiceData.submissionId || `create_${Date.now()}`;
-
-    // ✅ CRITICAL: Check if this exact request is already in progress
-    if (this._activeRequests && this._activeRequests.has(baseRequestId)) {
-      console.log(
-        "⚠️ Create invoice request already in progress:",
-        baseRequestId
-      );
-      return {
-        success: false,
-        error: "Request already in progress",
-        message: "Invoice creation already in progress",
-        isDuplicate: true, // ✅ CRITICAL: Mark as duplicate
-      };
-    }
-
+  // ✅ NEW: Get next invoice number preview (for SalesFormHeader)
+  async getNextInvoiceNumber(params = {}) {
     try {
-      // ✅ CRITICAL: Track this request to prevent duplicates
-      if (!this._activeRequests) {
-        this._activeRequests = new Set();
-      }
-      this._activeRequests.add(baseRequestId);
-
-      console.log("💾 Starting invoice creation - SINGLE CALL:", {
-        requestId,
-        baseRequestId,
-        timestamp: new Date().toISOString(),
-        retryCount,
-      });
-
-      // Ensure backend is ready
-      if (!this.isWarmedUp && retryCount === 0) {
-        await this.warmupBackend();
-      }
-
-      // ✅ NEW: Validate payment data if present
-      if (invoiceData.paymentData) {
-        const validation = this.validatePaymentData(invoiceData.paymentData);
-        if (!validation.isValid) {
-          throw new Error(
-            `Payment validation failed: ${validation.errors.join(", ")}`
-          );
-        }
-      }
-
-      // Validation
-      if (!invoiceData.companyId) {
+      if (!params.companyId) {
         throw new Error("Company ID is required");
       }
 
-      if (!invoiceData.items || invoiceData.items.length === 0) {
-        throw new Error("At least one item is required");
-      }
+      console.log("🔢 Getting next invoice number preview:", params);
 
-      // Clean data for backend
-      const cleanData = this.cleanInvoiceData(invoiceData);
+      const response = await api.get("/sales/next-invoice-number", {
+        params: {
+          companyId: params.companyId,
+          invoiceType: params.invoiceType || "gst",
+          documentType: params.documentType || "invoice",
+        },
+      });
 
-      // ✅ NEW: Log payment method for debugging
-      console.log(
-        "💳 Payment method being sent to backend:",
-        cleanData.payment?.method
-      );
-
-      // Add delay for retries
-      if (retryCount > 0) {
-        await new Promise((resolve) => setTimeout(resolve, retryCount * 500));
-      }
-
-      const response = await api.post("/sales", cleanData);
-
-      // Handle response formats
       if (response.status >= 200 && response.status < 300) {
         const responseData = response.data;
 
         if (responseData && responseData.success === true) {
-          console.log("✅ Invoice created successfully:", {
-            requestId,
-            baseRequestId,
-            invoiceId: responseData.data?._id || responseData.data?.id,
-          });
-
           return {
             success: true,
             data: responseData.data,
-            message: responseData.message || "Invoice created successfully!",
-          };
-        }
-
-        if (
-          responseData &&
-          (responseData._id || responseData.id || responseData.invoiceNumber)
-        ) {
-          console.log("✅ Invoice created successfully (direct response):", {
-            requestId,
-            baseRequestId,
-            invoiceId: responseData._id || responseData.id,
-          });
-
-          return {
-            success: true,
-            data: responseData,
-            message: "Invoice created successfully!",
+            message:
+              responseData.message ||
+              "Next invoice number fetched successfully",
           };
         }
 
         if (responseData && responseData.success === false) {
-          if (
-            retryCount < maxRetries &&
-            (responseData.message?.includes("temporary") ||
-              responseData.message?.includes("busy") ||
-              responseData.message?.includes("initialization"))
-          ) {
-            console.log(
-              "🔄 Retrying invoice creation due to temporary error:",
-              {
-                requestId,
-                baseRequestId,
-                retryCount: retryCount + 1,
-                error: responseData.message,
-              }
-            );
-            return await this.createInvoice(invoiceData, retryCount + 1);
-          }
-
           throw new Error(
             responseData.message ||
               responseData.error ||
-              "Backend rejected the request"
+              "Failed to get next invoice number"
           );
+        }
+
+        // Handle direct response
+        if (responseData && responseData.previewInvoiceNumber) {
+          return {
+            success: true,
+            data: responseData,
+            message: "Next invoice number fetched successfully",
+          };
         }
 
         return {
           success: true,
           data: responseData || null,
-          message: "Invoice created successfully!",
+          message: "Next invoice number fetched successfully",
         };
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
-      console.error("❌ Error in createInvoice:", {
-        requestId,
-        baseRequestId,
-        error: error.message,
-        retryCount,
-      });
+      console.error("❌ Error getting next invoice number:", error);
 
-      // Retry on server errors
-      if (
-        retryCount < maxRetries &&
-        error.response?.status &&
-        [500, 502, 503, 504].includes(error.response.status)
-      ) {
-        console.log("🔄 Retrying due to server error:", {
-          requestId,
-          baseRequestId,
-          status: error.response.status,
-          retryCount: retryCount + 1,
-        });
-
-        await new Promise((resolve) =>
-          setTimeout(resolve, (retryCount + 1) * 1000)
-        );
-        return await this.createInvoice(invoiceData, retryCount + 1);
-      }
-
-      // Retry on network errors
-      if (retryCount < maxRetries && !error.response && error.request) {
-        console.log("🔄 Retrying due to network error:", {
-          requestId,
-          baseRequestId,
-          retryCount: retryCount + 1,
-        });
-
-        await new Promise((resolve) =>
-          setTimeout(resolve, (retryCount + 1) * 800)
-        );
-        return await this.createInvoice(invoiceData, retryCount + 1);
-      }
-
-      // Return error
-      let errorMessage = "Failed to create invoice";
-      let errorDetails = {
-        requestId,
-        baseRequestId,
-        status: error.response?.status,
-        isNetworkError: !error.response && !!error.request,
-        isRetryExhausted: retryCount >= maxRetries,
-        totalAttempts: retryCount + 1,
-      };
+      let errorMessage = "Failed to get next invoice number";
 
       if (error.response?.data) {
         errorMessage =
@@ -523,27 +407,14 @@ class SalesService {
         errorMessage = error.message || "Unknown error occurred";
       }
 
-      if (retryCount >= maxRetries) {
-        errorMessage += ` (Failed after ${retryCount + 1} attempts)`;
-      }
-
       return {
         success: false,
         error: errorMessage,
         message: errorMessage,
-        details: errorDetails,
-        isDuplicate: false, // ✅ Not a duplicate, actual error
       };
-    } finally {
-      // ✅ CRITICAL: Clean up request tracking after delay to prevent rapid successive calls
-      setTimeout(() => {
-        if (this._activeRequests) {
-          this._activeRequests.delete(baseRequestId);
-          console.log("🧹 Cleaned up request tracking for:", baseRequestId);
-        }
-      }, 1500); // 1.5 second cleanup delay
     }
   }
+  ß;
 
   // ✅ NEW: Get single invoice by ID (enhanced for edit functionality)
   async getInvoiceById(id) {
@@ -768,32 +639,106 @@ class SalesService {
       };
     }
   }
-
   cleanInvoiceData(invoiceData) {
     try {
+      const companyId = invoiceData.companyId || this.getCompanyId();
+
+      // ✅ CRITICAL: Remove any manual invoice number - Model will generate
+      delete invoiceData.invoiceNumber;
+
       console.log(
-        "🧹 CLEANING INVOICE DATA - Input keys:",
-        Object.keys(invoiceData)
+        "🔢 Model-based numbering - No manual invoice number processing"
       );
 
-      // ✅ ENHANCED DEBUG: Log all preservation flags
-      console.log("🔍 PRESERVATION FLAGS CHECK:", {
-        preserveUICalculations: invoiceData.preserveUICalculations,
-        useExactAmounts: invoiceData.useExactAmounts,
-        skipRecalculation: invoiceData.skipRecalculation,
-        skipBackendCalculation: invoiceData.skipBackendCalculation,
-        BACKEND_SKIP_CALCULATION: invoiceData.BACKEND_SKIP_CALCULATION,
-        FRONTEND_AMOUNTS_FINAL: invoiceData.FRONTEND_AMOUNTS_FINAL,
-        authoritative: invoiceData.authoritative,
-        totals: invoiceData.totals
-          ? {
-              finalTotal: invoiceData.totals.finalTotal,
-              subtotal: invoiceData.totals.subtotal,
-              totalTax: invoiceData.totals.totalTax,
-            }
-          : null,
-      });
-      // ✅ CRITICAL: Check for preservation flags first
+      // Auto-detection configuration
+      const autoDetectSourceCompany =
+        invoiceData.autoDetectSourceCompany !== false;
+
+      // Determine sourceCompanyId with auto-detection
+      const sourceCompanyId = (() => {
+        if (
+          invoiceData.sourceCompanyId &&
+          invoiceData.sourceCompanyId !== companyId &&
+          invoiceData.sourceCompanyId.toString() !== companyId.toString()
+        ) {
+          console.log(
+            "🔧 Using explicitly provided sourceCompanyId:",
+            invoiceData.sourceCompanyId
+          );
+          return invoiceData.sourceCompanyId;
+        }
+
+        if (autoDetectSourceCompany) {
+          const customerLinkedCompanyId =
+            invoiceData.customer?.linkedCompanyId ||
+            invoiceData.selectedCustomer?.linkedCompanyId ||
+            invoiceData.selectedParty?.linkedCompanyId;
+
+          if (
+            customerLinkedCompanyId &&
+            customerLinkedCompanyId.toString() !== companyId.toString()
+          ) {
+            console.log(
+              "🔧 Auto-detected from customer's linkedCompanyId:",
+              customerLinkedCompanyId
+            );
+            return customerLinkedCompanyId;
+          }
+
+          const customerCompanyId =
+            invoiceData.customer?.companyId ||
+            invoiceData.selectedCustomer?.companyId ||
+            invoiceData.selectedParty?.companyId;
+
+          if (
+            customerCompanyId &&
+            customerCompanyId.toString() !== companyId.toString()
+          ) {
+            console.log(
+              "🔧 Auto-detected from customer's companyId:",
+              customerCompanyId
+            );
+            return customerCompanyId;
+          }
+        }
+
+        console.log(
+          "🔧 Same-company transaction - sourceCompanyId set to null"
+        );
+        return null;
+      })();
+
+      let sourceCompanyDetectionMethod = "none";
+      if (sourceCompanyId) {
+        if (invoiceData.sourceCompanyId) {
+          sourceCompanyDetectionMethod = "manual";
+        } else if (
+          invoiceData.customer?.linkedCompanyId ||
+          invoiceData.selectedCustomer?.linkedCompanyId
+        ) {
+          sourceCompanyDetectionMethod = "customer_linked_company";
+        } else {
+          sourceCompanyDetectionMethod = "customer_company_id";
+        }
+      } else if (invoiceData.sourceCompanyId === companyId) {
+        sourceCompanyDetectionMethod = "rejected_same_company";
+      }
+
+      const isCrossCompanyTransaction = !!sourceCompanyId;
+
+      console.log(
+        "🔧 Source company analysis (Model will generate invoice number):",
+        {
+          companyId: companyId?.toString(),
+          sourceCompanyId: sourceCompanyId?.toString(),
+          detectionMethod: sourceCompanyDetectionMethod,
+          isCrossCompanyTransaction: isCrossCompanyTransaction,
+          autoDetectEnabled: autoDetectSourceCompany,
+          modelNumbering: true,
+        }
+      );
+
+      // Check for preservation flags
       const shouldPreserveCalculations =
         invoiceData.preserveUICalculations ||
         invoiceData.useExactAmounts ||
@@ -804,40 +749,27 @@ class SalesService {
 
       if (shouldPreserveCalculations) {
         console.log(
-          "🔒 PRESERVATION MODE: Using exact amounts from frontend - NO RECALCULATION"
+          "🔒 PRESERVATION MODE: Using exact amounts - Model will generate invoice number"
         );
 
-        // Extract customer/party information (non-calculation related)
         const customerInfo = this.extractCustomerInfo(invoiceData);
-
-        // Extract payment information (non-calculation related)
         const paymentInfo = this.extractPaymentInfo(invoiceData);
 
-        // ✅ CRITICAL: Use items exactly as provided by frontend
         const preservedItems = (invoiceData.items || []).map((item, index) => ({
-          // Basic item info
           itemRef: item.itemRef || item.itemId || null,
           itemName: item.itemName || `Item ${index + 1}`,
           itemCode: item.itemCode || "",
           hsnCode: item.hsnCode || "0000",
           category: item.category || "",
-
-          // Quantity and pricing - EXACT from frontend
           quantity: parseFloat(item.quantity) || 0,
           unit: item.unit || "PCS",
           pricePerUnit: parseFloat(item.pricePerUnit) || 0,
-
-          // ✅ CRITICAL: Tax mode fields - EXACT from frontend
           taxMode: item.taxMode,
           priceIncludesTax: item.priceIncludesTax,
           gstMode: item.gstMode,
           taxRate: parseFloat(item.taxRate) || 0,
-
-          // ✅ CRITICAL: Discount fields - EXACT from frontend
           discountPercent: parseFloat(item.discountPercent) || 0,
           discountAmount: parseFloat(item.discountAmount) || 0,
-
-          // ✅ CRITICAL: Use EXACT tax amounts from frontend - NO RECALCULATION
           taxableAmount: parseFloat(item.taxableAmount) || 0,
           cgst: parseFloat(item.cgstAmount) || 0,
           sgst: parseFloat(item.sgstAmount) || 0,
@@ -849,29 +781,19 @@ class SalesService {
             (parseFloat(item.cgstAmount) || 0) +
             (parseFloat(item.sgstAmount) || 0) +
             (parseFloat(item.igstAmount) || 0),
-
-          // ✅ CRITICAL: Use EXACT final amounts from frontend
           amount: parseFloat(item.amount) || 0,
           itemAmount: parseFloat(item.amount) || 0,
           finalAmount: parseFloat(item.amount) || 0,
           totalAmount: parseFloat(item.amount) || 0,
-
-          // Line number for backend
           lineNumber: index + 1,
-
-          // Stock info (if available)
           currentStock: item.currentStock || 0,
-
-          // ✅ CRITICAL: Add preservation flags to each item
           _preservedFromFrontend: true,
           _skipCalculation: true,
           useExactAmounts: true,
           skipTaxRecalculation: true,
         }));
 
-        // ✅ CRITICAL: Use EXACT totals from frontend - NO RECALCULATION
         const preservedTotals = {
-          // Use authoritative total as the primary source
           finalTotal:
             invoiceData.authoritative || invoiceData.totals?.finalTotal || 0,
           grandTotal:
@@ -882,8 +804,6 @@ class SalesService {
             invoiceData.authoritative || invoiceData.totals?.finalTotal || 0,
           invoiceTotal:
             invoiceData.authoritative || invoiceData.totals?.finalTotal || 0,
-
-          // Use exact breakdown from frontend
           subtotal: parseFloat(invoiceData.totals?.subtotal) || 0,
           totalQuantity: preservedItems.reduce(
             (sum, item) => sum + item.quantity,
@@ -895,12 +815,8 @@ class SalesService {
           totalSGST: parseFloat(invoiceData.totals?.totalSGST) || 0,
           totalIGST: parseFloat(invoiceData.totals?.totalIGST) || 0,
           totalTaxableAmount: parseFloat(invoiceData.totals?.subtotal) || 0,
-
-          // Round off values
           roundOff: parseFloat(invoiceData.roundOffValue) || 0,
           roundOffValue: parseFloat(invoiceData.roundOffValue) || 0,
-
-          // ✅ CRITICAL: Add preservation metadata
           _preservedFromFrontend: true,
           _skipCalculation: true,
           _exactTotal:
@@ -908,62 +824,69 @@ class SalesService {
           _calculationSource: "frontend_preserved",
         };
 
-        console.log("🔒 PRESERVED DATA:", {
+        console.log("🔒 PRESERVED DATA (Model will generate invoice number):", {
           itemsCount: preservedItems.length,
           exactFinalTotal: preservedTotals.finalTotal,
           preservationApplied: true,
           authoritativeTotal: invoiceData.authoritative,
-          message: "NO BACKEND RECALCULATION PERFORMED",
+          modelNumbering: true,
         });
 
-        // Build preserved data for backend
         const preservedData = {
-          // Company and document info
-          companyId: invoiceData.companyId,
-          invoiceNumber: invoiceData.invoiceNumber,
+          // ✅ NO INVOICE NUMBER - Model will generate
+          companyId: companyId,
           invoiceDate: invoiceData.invoiceDate,
           invoiceType: invoiceData.gstEnabled ? "gst" : "non-gst",
           gstEnabled: Boolean(invoiceData.gstEnabled),
-
-          // Customer data
           customer: customerInfo.id,
           customerId: customerInfo.id,
           customerName: customerInfo.name,
           customerMobile: customerInfo.mobile,
-
-          // Tax configuration - preserve from frontend
           taxMode:
             invoiceData.taxMode || invoiceData.globalTaxMode || "without-tax",
           priceIncludesTax: Boolean(invoiceData.priceIncludesTax),
-
-          // ✅ CRITICAL: Use preserved items and totals - NO RECALCULATION
           items: preservedItems,
           totals: preservedTotals,
-
-          // Payment information
           payment: paymentInfo,
-
-          // Additional fields
           notes: invoiceData.notes || "",
           status: invoiceData.status || "completed",
           termsAndConditions: invoiceData.termsAndConditions || "",
-
-          // Round off - use exact values
           roundOffEnabled: Boolean(invoiceData.roundOffEnabled),
           roundOff: parseFloat(invoiceData.roundOffValue || 0),
 
-          // Document type for quotations
           ...(invoiceData.documentType === "quotation" && {
             documentType: "quotation",
             orderType: "quotation",
             quotationValidity: invoiceData.quotationValidity || 30,
           }),
 
-          // Metadata
+          ...(sourceCompanyId && {
+            sourceCompanyId: sourceCompanyId,
+            isCrossCompanyTransaction: true,
+            customerCompanyId: invoiceData.customer?.companyId || null,
+            customerLinkedCompanyId:
+              invoiceData.customer?.linkedCompanyId || null,
+            sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+          }),
+
+          ...(!sourceCompanyId && {
+            isCrossCompanyTransaction: false,
+            customerCompanyId: null,
+            customerLinkedCompanyId: null,
+            sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+          }),
+
+          autoDetectSourceCompany: autoDetectSourceCompany,
+          sourceOrderId: invoiceData.sourceOrderId || null,
+          sourceOrderNumber: invoiceData.sourceOrderNumber || null,
+          sourceOrderType: invoiceData.sourceOrderType || null,
+          isAutoGenerated: invoiceData.isAutoGenerated || false,
+          generatedFrom: invoiceData.generatedFrom || "manual",
+          convertedBy: invoiceData.convertedBy || null,
+
           createdAt: new Date().toISOString(),
           createdBy: "user",
 
-          // ✅ CRITICAL: Preserve all preservation flags for backend
           preserveUICalculations: true,
           useExactAmounts: true,
           skipRecalculation: true,
@@ -975,33 +898,40 @@ class SalesService {
           authoritative: invoiceData.authoritative,
         };
 
-        console.log("✅ PRESERVED INVOICE DATA (NO RECALCULATION):", {
-          hasCustomer: !!preservedData.customer,
-          hasItems: !!preservedData.items?.length,
-          hasTotals: !!preservedData.totals,
-          hasPayment: !!preservedData.payment,
-          exactFinalTotal: preservedData.totals?.finalTotal,
-          preservationFlags: {
-            preserveUICalculations: preservedData.preserveUICalculations,
-            BACKEND_SKIP_CALCULATION: preservedData.BACKEND_SKIP_CALCULATION,
-            FRONTEND_AMOUNTS_FINAL: preservedData.FRONTEND_AMOUNTS_FINAL,
-          },
-          documentType: preservedData.documentType,
-        });
+        console.log(
+          "✅ PRESERVED INVOICE DATA (NO INVOICE NUMBER - MODEL GENERATES):",
+          {
+            hasCustomer: !!preservedData.customer,
+            hasItems: !!preservedData.items?.length,
+            hasTotals: !!preservedData.totals,
+            hasPayment: !!preservedData.payment,
+            exactFinalTotal: preservedData.totals?.finalTotal,
+            sourceCompanyId:
+              preservedData.sourceCompanyId?.toString() || "null",
+            detectionMethod: preservedData.sourceCompanyDetectionMethod,
+            isCrossCompanyTransaction: preservedData.isCrossCompanyTransaction,
+            autoDetectEnabled: preservedData.autoDetectSourceCompany,
+            modelWillGenerateInvoiceNumber: true,
+            preservationFlags: {
+              preserveUICalculations: preservedData.preserveUICalculations,
+              BACKEND_SKIP_CALCULATION: preservedData.BACKEND_SKIP_CALCULATION,
+              FRONTEND_AMOUNTS_FINAL: preservedData.FRONTEND_AMOUNTS_FINAL,
+            },
+            documentType: preservedData.documentType,
+          }
+        );
 
         return preservedData;
       }
 
-      // ✅ Original calculation logic for non-preserved invoices
-      console.log("📊 CALCULATION MODE: Performing backend calculations");
+      // Original calculation logic for non-preserved invoices
+      console.log(
+        "📊 CALCULATION MODE: Performing backend calculations - Model will generate invoice number"
+      );
 
-      // Extract customer/party information with all field variations
       const customerInfo = this.extractCustomerInfo(invoiceData);
-
-      // Extract payment information with enhanced handling
       const paymentInfo = this.extractPaymentInfo(invoiceData);
 
-      // Clean items array with proper validation
       const validItems = (invoiceData.items || []).filter(
         (item) =>
           item.itemName &&
@@ -1010,66 +940,80 @@ class SalesService {
       );
 
       const cleanItems = this.cleanItems(validItems, invoiceData);
-
-      // Calculate or extract totals
       const totals = this.calculateTotals(invoiceData, cleanItems);
 
-      // Build clean data for backend
       const cleanData = {
-        // Company and document info
-        companyId: invoiceData.companyId,
-        invoiceNumber: invoiceData.invoiceNumber,
+        // ✅ NO INVOICE NUMBER - Model will generate
+        companyId: companyId,
         invoiceDate: invoiceData.invoiceDate,
         invoiceType: invoiceData.gstEnabled ? "gst" : "non-gst",
         gstEnabled: Boolean(invoiceData.gstEnabled),
-
-        // Customer data
         customer: customerInfo.id,
         customerId: customerInfo.id,
         customerName: customerInfo.name,
         customerMobile: customerInfo.mobile,
-
-        // Tax configuration
         taxMode:
-          invoiceData.taxMode || invoiceData.globalTaxMode || "exclusive",
+          invoiceData.taxMode || invoiceData.globalTaxMode || "without-tax",
         priceIncludesTax: Boolean(invoiceData.priceIncludesTax),
-
-        // Items and calculations
         items: cleanItems,
         totals: totals,
-
-        // Payment information
         payment: paymentInfo,
-
-        // Additional fields
         notes: invoiceData.notes || "",
         status: invoiceData.status || "completed",
         termsAndConditions: invoiceData.termsAndConditions || "",
-
-        // Round off
         roundOffEnabled: Boolean(invoiceData.roundOffEnabled),
         roundOff: parseFloat(invoiceData.roundOffValue || 0),
 
-        // Document type for quotations
         ...(invoiceData.documentType === "quotation" && {
           documentType: "quotation",
           orderType: "quotation",
           quotationValidity: invoiceData.quotationValidity || 30,
         }),
 
-        // Metadata
+        ...(sourceCompanyId && {
+          sourceCompanyId: sourceCompanyId,
+          isCrossCompanyTransaction: true,
+          customerCompanyId: invoiceData.customer?.companyId || null,
+          customerLinkedCompanyId:
+            invoiceData.customer?.linkedCompanyId || null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
+        ...(!sourceCompanyId && {
+          isCrossCompanyTransaction: false,
+          customerCompanyId: null,
+          customerLinkedCompanyId: null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
+        autoDetectSourceCompany: autoDetectSourceCompany,
+        sourceOrderId: invoiceData.sourceOrderId || null,
+        sourceOrderNumber: invoiceData.sourceOrderNumber || null,
+        sourceOrderType: invoiceData.sourceOrderType || null,
+        isAutoGenerated: invoiceData.isAutoGenerated || false,
+        generatedFrom: invoiceData.generatedFrom || "manual",
+        convertedBy: invoiceData.convertedBy || null,
+
         createdAt: new Date().toISOString(),
         createdBy: "user",
       };
 
-      console.log("✅ CALCULATED INVOICE DATA:", {
-        hasCustomer: !!cleanData.customer,
-        hasItems: !!cleanData.items?.length,
-        hasTotals: !!cleanData.totals,
-        hasPayment: !!cleanData.payment,
-        finalTotal: cleanData.totals?.finalTotal,
-        documentType: cleanData.documentType,
-      });
+      console.log(
+        "✅ CALCULATED INVOICE DATA (MODEL WILL GENERATE INVOICE NUMBER):",
+        {
+          hasCustomer: !!cleanData.customer,
+          hasItems: !!cleanData.items?.length,
+          hasTotals: !!cleanData.totals,
+          hasPayment: !!cleanData.payment,
+          finalTotal: cleanData.totals?.finalTotal,
+          sourceCompanyId: cleanData.sourceCompanyId?.toString() || "null",
+          detectionMethod: cleanData.sourceCompanyDetectionMethod,
+          isCrossCompanyTransaction: cleanData.isCrossCompanyTransaction,
+          autoDetectEnabled: cleanData.autoDetectSourceCompany,
+          modelWillGenerateInvoiceNumber: true,
+          documentType: cleanData.documentType,
+        }
+      );
 
       return cleanData;
     } catch (error) {
@@ -1078,6 +1022,459 @@ class SalesService {
     }
   }
 
+  cleanInvoiceDataForUpdate(invoiceData) {
+    try {
+      console.log(
+        "🧹 CLEANING UPDATE DATA - Input keys:",
+        Object.keys(invoiceData)
+      );
+
+      const companyId = invoiceData.companyId || this.getCompanyId();
+
+      // Extract customer/party information
+      const customerInfo = this.extractCustomerInfoForUpdate(invoiceData);
+      const paymentInfo = this.extractPaymentInfoForUpdate(invoiceData);
+
+      // Process items if provided
+      let cleanItems = [];
+      if (invoiceData.items && Array.isArray(invoiceData.items)) {
+        cleanItems = this.cleanItemsForUpdate(invoiceData.items, invoiceData);
+      }
+
+      // Calculate totals if items are provided
+      let totals = null;
+      if (cleanItems.length > 0) {
+        totals = this.calculateTotalsForUpdate(invoiceData, cleanItems);
+      } else if (invoiceData.totals) {
+        totals = {
+          subtotal: parseFloat(invoiceData.totals.subtotal) || 0,
+          totalQuantity: parseFloat(invoiceData.totals.totalQuantity) || 0,
+          totalDiscount:
+            parseFloat(
+              invoiceData.totals.totalDiscountAmount ||
+                invoiceData.totals.totalDiscount
+            ) || 0,
+          totalTax: parseFloat(invoiceData.totals.totalTax) || 0,
+          totalCGST:
+            parseFloat(
+              invoiceData.totals.totalCGST || invoiceData.totals.totalCgstAmount
+            ) || 0,
+          totalSGST:
+            parseFloat(
+              invoiceData.totals.totalSGST || invoiceData.totals.totalSgstAmount
+            ) || 0,
+          totalIGST:
+            parseFloat(
+              invoiceData.totals.totalIGST || invoiceData.totals.totalIgstAmount
+            ) || 0,
+          totalTaxableAmount:
+            parseFloat(invoiceData.totals.totalTaxableAmount) || 0,
+          finalTotal:
+            parseFloat(
+              invoiceData.totals.finalTotalWithRoundOff ||
+                invoiceData.totals.finalTotal
+            ) || 0,
+          roundOff:
+            parseFloat(
+              invoiceData.totals.roundOffValue || invoiceData.roundOff
+            ) || 0,
+        };
+      }
+
+      // Build clean update data
+      const cleanData = {
+        // ✅ ONLY include invoiceNumber if explicitly forcing an update (rare case)
+        ...(invoiceData.forceInvoiceNumberUpdate &&
+          invoiceData.invoiceNumber && {
+            invoiceNumber: invoiceData.invoiceNumber,
+          }),
+
+        // Customer updates
+        ...(customerInfo.id && {
+          customer: customerInfo.id,
+          customerId: customerInfo.id,
+          customerName: customerInfo.name,
+          customerMobile: customerInfo.mobile,
+        }),
+
+        // Invoice details (only if provided)
+        ...(invoiceData.invoiceDate && {invoiceDate: invoiceData.invoiceDate}),
+        ...(invoiceData.hasOwnProperty("gstEnabled") && {
+          gstEnabled: Boolean(invoiceData.gstEnabled),
+          invoiceType: invoiceData.gstEnabled ? "gst" : "non-gst",
+        }),
+
+        // Tax configuration
+        ...(invoiceData.taxMode && {taxMode: invoiceData.taxMode}),
+        ...(invoiceData.hasOwnProperty("priceIncludesTax") && {
+          priceIncludesTax: invoiceData.priceIncludesTax,
+        }),
+
+        // Items and totals (only if items are provided)
+        ...(cleanItems.length > 0 && {items: cleanItems}),
+        ...(totals && {totals: totals}),
+
+        // Payment information (only if provided)
+        ...(paymentInfo &&
+          Object.keys(paymentInfo).length > 0 && {payment: paymentInfo}),
+
+        // Additional fields
+        ...(invoiceData.notes !== undefined && {notes: invoiceData.notes}),
+        ...(invoiceData.status && {status: invoiceData.status}),
+        ...(invoiceData.termsAndConditions !== undefined && {
+          termsAndConditions: invoiceData.termsAndConditions,
+        }),
+
+        // Round off
+        ...(invoiceData.hasOwnProperty("roundOffEnabled") && {
+          roundOffEnabled: invoiceData.roundOffEnabled,
+        }),
+        ...(invoiceData.roundOffValue !== undefined && {
+          roundOff: parseFloat(invoiceData.roundOffValue) || 0,
+        }),
+
+        // Cross-company tracking
+        ...(invoiceData.sourceCompanyId && {
+          sourceCompanyId: invoiceData.sourceCompanyId,
+        }),
+        ...(invoiceData.sourceCompanyId && {
+          isCrossCompanyTransaction: true,
+          customerCompanyId: invoiceData.customer?.companyId || null,
+        }),
+
+        // Bidirectional fields if provided
+        ...(invoiceData.sourceOrderId && {
+          sourceOrderId: invoiceData.sourceOrderId,
+        }),
+        ...(invoiceData.sourceOrderNumber && {
+          sourceOrderNumber: invoiceData.sourceOrderNumber,
+        }),
+        ...(invoiceData.sourceOrderType && {
+          sourceOrderType: invoiceData.sourceOrderType,
+        }),
+        ...(invoiceData.hasOwnProperty("isAutoGenerated") && {
+          isAutoGenerated: invoiceData.isAutoGenerated,
+        }),
+        ...(invoiceData.generatedFrom && {
+          generatedFrom: invoiceData.generatedFrom,
+        }),
+        ...(invoiceData.convertedBy && {convertedBy: invoiceData.convertedBy}),
+
+        // Update metadata
+        lastModifiedAt: new Date().toISOString(),
+        lastModifiedBy: "user",
+      };
+
+      console.log("✅ CLEANED UPDATE DATA - Model preserves invoice numbers:", {
+        hasCustomer: !!cleanData.customer,
+        hasItems: !!cleanData.items?.length,
+        invoiceNumberUpdate: !!cleanData.invoiceNumber,
+        modelHandlesNumbering: true,
+        outputKeys: Object.keys(cleanData),
+      });
+
+      return cleanData;
+    } catch (error) {
+      console.error("❌ Error cleaning update data:", error);
+      throw new Error(`Data cleaning failed: ${error.message}`);
+    }
+  }
+  // ✅ NEW: Validate model-generated invoice number format
+  validateInvoiceNumberFormat(invoiceNumber) {
+    if (!invoiceNumber) return false;
+
+    // Match model's format: PREFIX-[GST-]YYYYMMDD-XXXX
+    const pattern = /^[A-Z]{3,4}-(GST-)?[0-9]{8}-[0-9]{4}$/;
+    return pattern.test(invoiceNumber);
+  }
+
+  // ✅ NEW: Extract company info from model-generated invoice number
+  extractInvoiceNumberInfo(invoiceNumber) {
+    if (!invoiceNumber) return null;
+
+    const match = invoiceNumber.match(
+      /^([A-Z]{3,4})-(GST-)?([0-9]{8})-([0-9]{4})$/
+    );
+
+    if (!match) return null;
+
+    return {
+      companyPrefix: match[1],
+      isGST: !!match[2],
+      date: match[3],
+      sequence: match[4],
+      generatedByModel: true,
+      format: "company-specific-sequential",
+    };
+  }
+
+  // ✅ NEW: Check if invoice number was generated by model
+  isModelGeneratedInvoiceNumber(invoiceNumber) {
+    return this.validateInvoiceNumberFormat(invoiceNumber);
+  }
+
+  // ✅ NEW: Get invoice number pattern info (for display only)
+  getInvoiceNumberPatternInfo(companyId, invoiceType = "gst") {
+    // This is just for UI display - actual numbers are generated by model
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    const prefix = "INV";
+    const gstPrefix = invoiceType === "gst" ? "GST-" : "";
+    const dateStr = `${year}${month}${day}`;
+
+    return {
+      pattern: `${prefix}-${gstPrefix}${dateStr}-XXXX`,
+      example: `${prefix}-${gstPrefix}${dateStr}-0001`,
+      description: "Sequential number generated automatically by model",
+      isPattern: true,
+      modelGenerated: true,
+    };
+  }
+
+  async createInvoice(invoiceData, retryCount = 0) {
+    const maxRetries = 2;
+    const requestId = `create_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+    const baseRequestId = invoiceData.submissionId || `create_${Date.now()}`;
+
+    if (this._activeRequests && this._activeRequests.has(baseRequestId)) {
+      console.log(
+        "⚠️ Create invoice request already in progress:",
+        baseRequestId
+      );
+      return {
+        success: false,
+        error: "Request already in progress",
+        message: "Invoice creation already in progress",
+        isDuplicate: true,
+      };
+    }
+
+    try {
+      if (!this._activeRequests) {
+        this._activeRequests = new Set();
+      }
+      this._activeRequests.add(baseRequestId);
+
+      console.log(
+        "💾 Creating invoice - Model will generate invoice number automatically:",
+        {
+          requestId,
+          baseRequestId,
+          timestamp: new Date().toISOString(),
+          retryCount,
+          modelNumbering: true,
+        }
+      );
+
+      if (!this.isWarmedUp && retryCount === 0) {
+        await this.warmupBackend();
+      }
+
+      if (invoiceData.paymentData) {
+        const validation = this.validatePaymentData(invoiceData.paymentData);
+        if (!validation.isValid) {
+          throw new Error(
+            `Payment validation failed: ${validation.errors.join(", ")}`
+          );
+        }
+      }
+
+      if (!invoiceData.companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!invoiceData.items || invoiceData.items.length === 0) {
+        throw new Error("At least one item is required");
+      }
+
+      // ✅ CRITICAL: Remove any manual invoice number - let model generate
+      delete invoiceData.invoiceNumber;
+
+      console.log(
+        "🔢 Removed manual invoice number - Model will generate sequential number"
+      );
+
+      const cleanData = this.cleanInvoiceData(invoiceData);
+
+      // ✅ ENSURE: No invoice number is sent to backend
+      delete cleanData.invoiceNumber;
+
+      console.log("📤 Sending to backend - Model handles invoice numbering:", {
+        hasCustomer: !!cleanData.customer,
+        hasItems: !!cleanData.items?.length,
+        hasTotals: !!cleanData.totals,
+        finalTotal: cleanData.totals?.finalTotal,
+        modelWillGenerateNumber: true,
+        companyId: cleanData.companyId,
+      });
+
+      if (retryCount > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryCount * 500));
+      }
+
+      const response = await api.post("/sales", cleanData);
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          console.log("✅ Invoice created with model-generated number:", {
+            requestId,
+            baseRequestId,
+            invoiceId: responseData.data?._id || responseData.data?.id,
+            generatedInvoiceNumber: responseData.data?.invoiceNumber, // ✅ From model
+            companyId: responseData.data?.companyId,
+            modelGenerated: true,
+          });
+
+          return {
+            success: true,
+            data: responseData.data,
+            message: responseData.message || "Invoice created successfully!",
+          };
+        }
+
+        if (
+          responseData &&
+          (responseData._id || responseData.id || responseData.invoiceNumber)
+        ) {
+          console.log(
+            "✅ Invoice created with model-generated number (direct response):",
+            {
+              requestId,
+              baseRequestId,
+              invoiceId: responseData._id || responseData.id,
+              generatedInvoiceNumber: responseData.invoiceNumber, // ✅ From model
+              modelGenerated: true,
+            }
+          );
+
+          return {
+            success: true,
+            data: responseData,
+            message: "Invoice created successfully!",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          if (
+            retryCount < maxRetries &&
+            (responseData.message?.includes("temporary") ||
+              responseData.message?.includes("busy") ||
+              responseData.message?.includes("initialization"))
+          ) {
+            console.log(
+              "🔄 Retrying invoice creation due to temporary error:",
+              {
+                requestId,
+                baseRequestId,
+                retryCount: retryCount + 1,
+                error: responseData.message,
+              }
+            );
+            return await this.createInvoice(invoiceData, retryCount + 1);
+          }
+
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Backend rejected the request"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Invoice created successfully!",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error in createInvoice:", {
+        requestId,
+        baseRequestId,
+        error: error.message,
+        retryCount,
+      });
+
+      if (
+        retryCount < maxRetries &&
+        error.response?.status &&
+        [500, 502, 503, 504].includes(error.response.status)
+      ) {
+        console.log("🔄 Retrying due to server error:", {
+          requestId,
+          baseRequestId,
+          status: error.response.status,
+          retryCount: retryCount + 1,
+        });
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, (retryCount + 1) * 1000)
+        );
+        return await this.createInvoice(invoiceData, retryCount + 1);
+      }
+
+      if (retryCount < maxRetries && !error.response && error.request) {
+        console.log("🔄 Retrying due to network error:", {
+          requestId,
+          baseRequestId,
+          retryCount: retryCount + 1,
+        });
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, (retryCount + 1) * 800)
+        );
+        return await this.createInvoice(invoiceData, retryCount + 1);
+      }
+
+      let errorMessage = "Failed to create invoice";
+      let errorDetails = {
+        requestId,
+        baseRequestId,
+        status: error.response?.status,
+        isNetworkError: !error.response && !!error.request,
+        isRetryExhausted: retryCount >= maxRetries,
+        totalAttempts: retryCount + 1,
+      };
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      if (retryCount >= maxRetries) {
+        errorMessage += ` (Failed after ${retryCount + 1} attempts)`;
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+        details: errorDetails,
+        isDuplicate: false,
+      };
+    } finally {
+      setTimeout(() => {
+        if (this._activeRequests) {
+          this._activeRequests.delete(baseRequestId);
+          console.log("🧹 Cleaned up request tracking for:", baseRequestId);
+        }
+      }, 1500);
+    }
+  }
   // ✅ CRITICAL FIX: Update extractPaymentInfo to use exact invoice total when available
   extractPaymentInfo(invoiceData) {
     let paymentAmount = 0;
@@ -1203,135 +1600,6 @@ class SalesService {
     }
 
     return paymentInfo;
-  }
-  // ✅ ENHANCED: Clean invoice data specifically for updates with proper field mapping
-  cleanInvoiceDataForUpdate(invoiceData) {
-    try {
-      console.log(
-        "🧹 CLEANING UPDATE DATA - Input keys:",
-        Object.keys(invoiceData)
-      );
-
-      // Extract customer/party information
-      const customerInfo = this.extractCustomerInfoForUpdate(invoiceData);
-      const paymentInfo = this.extractPaymentInfoForUpdate(invoiceData);
-
-      // Process items if provided
-      let cleanItems = [];
-      if (invoiceData.items && Array.isArray(invoiceData.items)) {
-        cleanItems = this.cleanItemsForUpdate(invoiceData.items, invoiceData);
-      }
-
-      // Calculate totals if items are provided
-      let totals = null;
-      if (cleanItems.length > 0) {
-        totals = this.calculateTotalsForUpdate(invoiceData, cleanItems);
-      } else if (invoiceData.totals) {
-        // Use existing totals if no new items
-        totals = {
-          subtotal: parseFloat(invoiceData.totals.subtotal) || 0,
-          totalQuantity: parseFloat(invoiceData.totals.totalQuantity) || 0,
-          totalDiscount:
-            parseFloat(
-              invoiceData.totals.totalDiscountAmount ||
-                invoiceData.totals.totalDiscount
-            ) || 0,
-          totalTax: parseFloat(invoiceData.totals.totalTax) || 0,
-          totalCGST:
-            parseFloat(
-              invoiceData.totals.totalCGST || invoiceData.totals.totalCgstAmount
-            ) || 0,
-          totalSGST:
-            parseFloat(
-              invoiceData.totals.totalSGST || invoiceData.totals.totalSgstAmount
-            ) || 0,
-          totalIGST:
-            parseFloat(
-              invoiceData.totals.totalIGST || invoiceData.totals.totalIgstAmount
-            ) || 0,
-          totalTaxableAmount:
-            parseFloat(invoiceData.totals.totalTaxableAmount) || 0,
-          finalTotal:
-            parseFloat(
-              invoiceData.totals.finalTotalWithRoundOff ||
-                invoiceData.totals.finalTotal
-            ) || 0,
-          roundOff:
-            parseFloat(
-              invoiceData.totals.roundOffValue || invoiceData.roundOff
-            ) || 0,
-        };
-      }
-
-      // Build clean update data with proper field mapping for backend
-      const cleanData = {
-        // Only include fields that are being updated
-        ...(customerInfo.id && {
-          customer: customerInfo.id,
-          customerId: customerInfo.id,
-          customerName: customerInfo.name,
-          customerMobile: customerInfo.mobile,
-        }),
-
-        // Invoice details (only if provided)
-        ...(invoiceData.invoiceNumber && {
-          invoiceNumber: invoiceData.invoiceNumber,
-        }),
-        ...(invoiceData.invoiceDate && {invoiceDate: invoiceData.invoiceDate}),
-        ...(invoiceData.hasOwnProperty("gstEnabled") && {
-          gstEnabled: Boolean(invoiceData.gstEnabled),
-          invoiceType: invoiceData.gstEnabled ? "gst" : "non-gst",
-        }),
-
-        // Tax configuration
-        ...(invoiceData.taxMode && {taxMode: invoiceData.taxMode}),
-        ...(invoiceData.hasOwnProperty("priceIncludesTax") && {
-          priceIncludesTax: invoiceData.priceIncludesTax,
-        }),
-
-        // Items and totals (only if items are provided)
-        ...(cleanItems.length > 0 && {items: cleanItems}),
-        ...(totals && {totals: totals}),
-
-        // Payment information (only if provided)
-        ...(paymentInfo &&
-          Object.keys(paymentInfo).length > 0 && {payment: paymentInfo}),
-
-        // Additional fields
-        ...(invoiceData.notes !== undefined && {notes: invoiceData.notes}),
-        ...(invoiceData.status && {status: invoiceData.status}),
-        ...(invoiceData.termsAndConditions !== undefined && {
-          termsAndConditions: invoiceData.termsAndConditions,
-        }),
-
-        // Round off
-        ...(invoiceData.hasOwnProperty("roundOffEnabled") && {
-          roundOffEnabled: invoiceData.roundOffEnabled,
-        }),
-        ...(invoiceData.roundOffValue !== undefined && {
-          roundOff: parseFloat(invoiceData.roundOffValue) || 0,
-        }),
-
-        // Update metadata
-        lastModifiedAt: new Date().toISOString(),
-        lastModifiedBy: "user", // You can pass this from the component if needed
-      };
-
-      console.log("✅ CLEANED UPDATE DATA:", {
-        hasCustomer: !!cleanData.customer,
-        hasItems: !!cleanData.items?.length,
-        hasTotals: !!cleanData.totals,
-        hasPayment: !!cleanData.payment,
-        status: cleanData.status,
-        finalTotal: cleanData.totals?.finalTotal,
-        outputKeys: Object.keys(cleanData),
-      });
-
-      return cleanData;
-    } catch (error) {
-      console.error("❌ Error cleaning update data:", error);
-      throw new Error(`Data cleaning failed: ${error.message}`);
-    }
   }
 
   // ✅ NEW: Enhanced customer info extraction for updates
@@ -2843,14 +3111,969 @@ class SalesService {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 
-  // Test connection
-  async testConnection() {
+  // ==================== 🔄 BIDIRECTIONAL CONVERSION FUNCTIONS ====================
+
+  async convertSalesOrderToInvoice(salesOrderId, conversionData = {}) {
     try {
-      const response = await api.get("/health");
-      return {success: true, message: "Connection successful"};
+      if (!salesOrderId) {
+        throw new Error("Sales Order ID is required");
+      }
+
+      console.log("🔄 Converting sales order to invoice:", salesOrderId);
+
+      // ✅ ENHANCED: Ensure sourceCompanyId is included in conversion
+      const enhancedConversionData = {
+        convertedBy: conversionData.convertedBy || "user",
+        sourceCompanyId:
+          conversionData.sourceCompanyId || conversionData.companyId, // ✅ Critical fix
+        sourceOrderId: salesOrderId,
+        sourceOrderType: "sales_order",
+        isAutoGenerated: true,
+        generatedFrom: "sales_order",
+        ...conversionData,
+      };
+
+      console.log("🔗 Enhanced conversion data:", {
+        sourceCompanyId: enhancedConversionData.sourceCompanyId,
+        sourceOrderId: enhancedConversionData.sourceOrderId,
+        sourceOrderType: enhancedConversionData.sourceOrderType,
+        isAutoGenerated: enhancedConversionData.isAutoGenerated,
+        generatedFrom: enhancedConversionData.generatedFrom,
+      });
+
+      const response = await api.post(
+        `/sales/convert-from-sales-order/${salesOrderId}`,
+        enhancedConversionData
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales order converted to invoice successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales order converted to invoice successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
     } catch (error) {
-      return {success: false, error: error.message};
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to convert sales order to invoice",
+        data: null,
+      };
     }
+  }
+
+  // ✅ NEW: Get purchase invoices created from sales invoices
+  async getPurchaseInvoicesFromSalesInvoices(companyId, filters = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {
+        companyId,
+        page: filters.page || 1,
+        limit: filters.limit || 10,
+        ...filters,
+      };
+
+      const response = await api.get("/sales/purchase-invoices-from-sales", {
+        params,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Purchase invoices from sales invoices fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {purchaseInvoices: [], pagination: {}},
+          message: "Purchase invoices from sales invoices fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch purchase invoices from sales invoices",
+        data: {purchaseInvoices: [], pagination: {}},
+      };
+    }
+  }
+
+  // ✅ NEW: Get bidirectional invoice analytics
+  async getBidirectionalInvoiceAnalytics(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/bidirectional-invoice-analytics", {
+        params: {companyId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Bidirectional invoice analytics fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Bidirectional invoice analytics fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch bidirectional invoice analytics",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get sales invoice conversion status
+  async getSalesInvoiceConversionStatus(companyId, salesInvoiceId) {
+    try {
+      if (!companyId || !salesInvoiceId) {
+        throw new Error("Company ID and Sales Invoice ID are required");
+      }
+
+      const response = await api.get("/sales/invoice-conversion-status", {
+        params: {companyId, salesInvoiceId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales invoice conversion status fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Sales invoice conversion status fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch sales invoice conversion status",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Bulk convert sales invoices to purchase invoices
+  async bulkConvertSalesInvoicesToPurchaseInvoices(
+    salesInvoiceIds,
+    conversionData = {}
+  ) {
+    try {
+      if (
+        !salesInvoiceIds ||
+        !Array.isArray(salesInvoiceIds) ||
+        salesInvoiceIds.length === 0
+      ) {
+        throw new Error("Sales invoice IDs array is required");
+      }
+
+      console.log(
+        "🔄 Bulk converting sales invoices to purchase invoices:",
+        salesInvoiceIds.length
+      );
+
+      const response = await api.post(
+        "/sales/bulk-convert-to-purchase-invoices",
+        {
+          salesInvoiceIds,
+          convertedBy: conversionData.convertedBy || "user",
+          targetCompanyId: conversionData.targetCompanyId || null,
+        }
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Bulk conversion completed successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Bulk conversion completed successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to perform bulk conversion",
+        data: null,
+      };
+    }
+  }
+
+  // ==================== 📄 SALES ORDER TO INVOICE CONVERSION ====================
+
+  // ✅ NEW: Convert sales order to invoice
+  async convertSalesOrderToInvoice(salesOrderId, conversionData = {}) {
+    try {
+      if (!salesOrderId) {
+        throw new Error("Sales Order ID is required");
+      }
+
+      console.log("🔄 Converting sales order to invoice:", salesOrderId);
+
+      const response = await api.post(
+        `/sales/convert-from-sales-order/${salesOrderId}`,
+        {
+          convertedBy: conversionData.convertedBy || "user",
+          ...conversionData,
+        }
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales order converted to invoice successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales order converted to invoice successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to convert sales order to invoice",
+        data: null,
+      };
+    }
+  }
+
+  // ✅ NEW: Get invoices created from sales orders
+  async getInvoicesFromSalesOrders(companyId, filters = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {
+        companyId,
+        page: filters.page || 1,
+        limit: filters.limit || 10,
+        ...filters,
+      };
+
+      const response = await api.get("/sales/from-sales-orders", {params});
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Invoices from sales orders fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {invoices: [], pagination: {}},
+          message: "Invoices from sales orders fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch invoices from sales orders",
+        data: {invoices: [], pagination: {}},
+      };
+    }
+  }
+
+  // ✅ NEW: Get bidirectional sales analytics
+  async getBidirectionalSalesAnalytics(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/analytics/bidirectional", {
+        params: {companyId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Bidirectional sales analytics fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Bidirectional sales analytics fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch bidirectional sales analytics",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get sales order conversion status
+  async getSalesOrderConversionStatus(companyId, salesOrderId) {
+    try {
+      if (!companyId || !salesOrderId) {
+        throw new Error("Company ID and Sales Order ID are required");
+      }
+
+      const response = await api.get("/sales/sales-order-conversion-status", {
+        params: {companyId, salesOrderId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales order conversion status fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Sales order conversion status fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch sales order conversion status",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Bulk convert sales orders to invoices
+  async bulkConvertSalesOrdersToInvoices(salesOrderIds, conversionData = {}) {
+    try {
+      if (
+        !salesOrderIds ||
+        !Array.isArray(salesOrderIds) ||
+        salesOrderIds.length === 0
+      ) {
+        throw new Error("Sales order IDs array is required");
+      }
+
+      console.log(
+        "🔄 Bulk converting sales orders to invoices:",
+        salesOrderIds.length
+      );
+
+      const response = await api.post("/sales/bulk-convert-sales-orders", {
+        salesOrderIds,
+        convertedBy: conversionData.convertedBy || "user",
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Bulk conversion completed successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Bulk conversion completed successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to perform bulk conversion",
+        data: null,
+      };
+    }
+  }
+
+  // ==================== 🔍 SOURCE TRACKING FUNCTIONS ====================
+
+  // ✅ NEW: Get invoice source tracking
+  async getInvoiceSourceTracking(invoiceId) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const response = await api.get(`/sales/${invoiceId}/source-tracking`);
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Invoice source tracking fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Invoice source tracking fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch invoice source tracking",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get detailed sales invoice source tracking
+  async getSalesInvoiceSourceTracking(invoiceId) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const response = await api.get(
+        `/sales/${invoiceId}/source-tracking-detailed`
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Detailed invoice source tracking fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Detailed invoice source tracking fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch detailed invoice source tracking",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get bidirectional information for an invoice
+  async getBidirectionalInvoiceInfo(invoiceId) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const response = await api.get(`/sales/${invoiceId}/bidirectional-info`);
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Bidirectional invoice information fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Bidirectional invoice information fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch bidirectional invoice information",
+        data: {},
+      };
+    }
+  }
+
+  // ==================== 📊 ENHANCED REPORTING FUNCTIONS ====================
+
+  // ✅ NEW: Get bidirectional summary report
+  async getBidirectionalSummaryReport(
+    companyId,
+    dateFrom = null,
+    dateTo = null
+  ) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {companyId};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+
+      const response = await api.get("/sales/reports/bidirectional-summary", {
+        params,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Bidirectional summary report fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Bidirectional summary report fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch bidirectional summary report",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get conversion analysis
+  async getConversionAnalysis(companyId, period = "month") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/reports/conversion-analysis", {
+        params: {companyId, period},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Conversion analysis fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Conversion analysis fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch conversion analysis",
+        data: {},
+      };
+    }
+  }
+
+  // ✅ NEW: Get sales source breakdown analytics
+  async getSalesSourceBreakdown(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/analytics/source-breakdown", {
+        params: {companyId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales source breakdown fetched successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Sales source breakdown fetched successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch sales source breakdown",
+        data: {},
+      };
+    }
+  }
+  // ✅ NEW: Convert sales invoice to purchase invoice (ADD THIS FUNCTION)
+  async convertSalesInvoiceToPurchaseInvoice(
+    salesInvoiceId,
+    conversionData = {}
+  ) {
+    try {
+      if (!salesInvoiceId) {
+        throw new Error("Sales Invoice ID is required");
+      }
+
+      console.log(
+        "🔄 Converting sales invoice to purchase invoice:",
+        salesInvoiceId
+      );
+
+      // ✅ ENHANCED: Ensure proper conversion data structure
+      const enhancedConversionData = {
+        convertedBy: conversionData.convertedBy || "user",
+        targetCompanyId: conversionData.targetCompanyId || null,
+        sourceInvoiceId: salesInvoiceId,
+        sourceInvoiceType: "sales_invoice",
+        isAutoGenerated: true,
+        generatedFrom: "sales_invoice",
+        preserveItemDetails: conversionData.preserveItemDetails !== false, // Default to true
+        preservePricing: conversionData.preservePricing !== false, // Default to true
+        ...conversionData,
+      };
+
+      console.log("🔗 Enhanced conversion data:", {
+        sourceInvoiceId: enhancedConversionData.sourceInvoiceId,
+        targetCompanyId: enhancedConversionData.targetCompanyId,
+        sourceInvoiceType: enhancedConversionData.sourceInvoiceType,
+        isAutoGenerated: enhancedConversionData.isAutoGenerated,
+        generatedFrom: enhancedConversionData.generatedFrom,
+      });
+
+      const response = await api.post(
+        `/sales/${salesInvoiceId}/convert-to-purchase-invoice`,
+        enhancedConversionData
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales invoice converted to purchase invoice successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales invoice converted to purchase invoice successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(
+        "❌ Error converting sales invoice to purchase invoice:",
+        error
+      );
+
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to convert sales invoice to purchase invoice",
+        data: null,
+      };
+    }
+  }
+
+  // ==================== 📄 EXPORT FUNCTIONS ====================
+
+  // ✅ NEW: Export bidirectional sales data as CSV
+  async exportBidirectionalCSV(companyId, dateFrom = null, dateTo = null) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {companyId};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+
+      const response = await api.get("/sales/export/bidirectional-csv", {
+        params,
+        responseType: "blob", // Important for file download
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        // Create downloadable blob
+        const blob = new Blob([response.data], {type: "text/csv"});
+        const url = window.URL.createObjectURL(blob);
+
+        // Create download link
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `bidirectional-sales-export-${
+          new Date().toISOString().split("T")[0]
+        }.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        return {
+          success: true,
+          message: "Bidirectional sales data exported successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to export bidirectional sales data",
+      };
+    }
+  }
+
+  // ==================== 🛠️ UTILITY FUNCTIONS ====================
+
+  // ✅ NEW: Check if invoice can be converted to purchase invoice
+  canConvertInvoiceToPurchaseInvoice(invoice) {
+    return (
+      invoice &&
+      !invoice.autoGeneratedPurchaseInvoice &&
+      ["draft", "completed"].includes(invoice.status)
+    );
+  }
+
+  // ✅ NEW: Check if sales order can be converted to invoice
+  canConvertSalesOrderToInvoice(salesOrder) {
+    return (
+      salesOrder &&
+      !salesOrder.convertedToInvoice &&
+      ["accepted", "confirmed"].includes(salesOrder.status)
+    );
+  }
+
+  // ✅ NEW: Get bidirectional status description for invoices
+  getBidirectionalInvoiceStatusDescription(invoice) {
+    const statuses = [];
+
+    if (invoice.isAutoGenerated) {
+      statuses.push(`Auto-generated from ${invoice.generatedFrom}`);
+    }
+
+    if (invoice.sourceInvoiceId) {
+      statuses.push("Generated from purchase invoice");
+    }
+
+    if (invoice.autoGeneratedPurchaseInvoice) {
+      statuses.push("Has generated purchase invoice");
+    }
+
+    if (invoice.notes && invoice.notes.includes("Converted from")) {
+      statuses.push("Converted from sales order");
+    }
+
+    return statuses.length > 0 ? statuses.join(" | ") : "Direct invoice";
+  }
+
+  // ✅ NEW: Format conversion data for API calls
+  formatConversionData(data) {
+    return {
+      convertedBy: data.convertedBy || data.userId || "user",
+      targetCompanyId: data.targetCompanyId || null,
+      notes: data.notes || "",
+      createdBy: data.createdBy || data.convertedBy || data.userId || "user",
+      ...data,
+    };
   }
 }
 

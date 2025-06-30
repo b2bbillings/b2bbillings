@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const salesOrderController = require("../controllers/salesOrderController");
-
+const purchaseOrderController = require("../controllers/purchaseOrderController"); // ✅ ADD THIS LINE
 // Middleware for validation
 const validateRequest = (req, res, next) => {
   next();
@@ -77,6 +77,159 @@ router.get(
   authenticate,
   validateCompany,
   salesOrderController.generateOrderNumber
+);
+
+/**
+ * @route   GET /api/sales-orders/check-number
+ * @desc    Check if order number exists
+ * @access  Private
+ */
+router.get("/check-number", authenticate, validateCompany, async (req, res) => {
+  try {
+    const {companyId, orderNumber} = req.query;
+
+    if (!companyId || !orderNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Company ID and order number are required",
+      });
+    }
+
+    const SalesOrder = require("../models/SalesOrder");
+    const existingOrder = await SalesOrder.findOne({
+      companyId,
+      orderNumber: orderNumber.trim(),
+    }).lean();
+
+    res.status(200).json({
+      success: true,
+      exists: !!existingOrder,
+      found: !!existingOrder,
+      data: existingOrder
+        ? {
+            id: existingOrder._id,
+            orderNumber: existingOrder.orderNumber,
+            createdAt: existingOrder.createdAt,
+          }
+        : null,
+      message: existingOrder
+        ? "Order number already exists"
+        : "Order number is available",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to check order number",
+      error: error.message,
+      exists: false,
+      found: false,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/sales-orders/exists
+ * @desc    Check if order number exists (alternative endpoint)
+ * @access  Private
+ */
+router.get("/exists", authenticate, validateCompany, async (req, res) => {
+  try {
+    const {companyId, orderNumber} = req.query;
+
+    if (!companyId || !orderNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Company ID and order number are required",
+      });
+    }
+
+    const SalesOrder = require("../models/SalesOrder");
+    const existingOrder = await SalesOrder.findOne({
+      companyId,
+      orderNumber: orderNumber.trim(),
+    }).lean();
+
+    res.status(200).json({
+      success: true,
+      exists: !!existingOrder,
+      found: !!existingOrder,
+      data: existingOrder
+        ? {
+            id: existingOrder._id,
+            orderNumber: existingOrder.orderNumber,
+            createdAt: existingOrder.createdAt,
+          }
+        : null,
+      message: existingOrder
+        ? "Order number already exists"
+        : "Order number is available",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to check order number existence",
+      error: error.message,
+      exists: false,
+      found: false,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/sales-orders/verify-unique
+ * @desc    Verify if order number is unique
+ * @access  Private
+ */
+router.get(
+  "/verify-unique",
+  authenticate,
+  validateCompany,
+  async (req, res) => {
+    try {
+      const {companyId, orderNumber} = req.query;
+
+      if (!companyId || !orderNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and order number are required",
+        });
+      }
+
+      const SalesOrder = require("../models/SalesOrder");
+      const existingOrder = await SalesOrder.findOne({
+        companyId,
+        orderNumber: orderNumber.trim(),
+      }).lean();
+
+      const isUnique = !existingOrder;
+
+      res.status(200).json({
+        success: true,
+        isUnique,
+        exists: !!existingOrder,
+        found: !!existingOrder,
+        data: existingOrder
+          ? {
+              id: existingOrder._id,
+              orderNumber: existingOrder.orderNumber,
+              createdAt: existingOrder.createdAt,
+            }
+          : null,
+        message: isUnique
+          ? "Order number is unique"
+          : "Order number already exists",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to verify order number uniqueness",
+        error: error.message,
+        isUnique: false,
+        exists: false,
+        found: false,
+      });
+    }
+  }
 );
 
 // ==================== BIDIRECTIONAL FUNCTIONALITY ROUTES ====================

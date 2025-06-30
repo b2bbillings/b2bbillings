@@ -42,6 +42,30 @@ router.get(
 );
 
 /**
+ * @route   GET /api/purchases/next-invoice-number
+ * @desc    Get next available purchase invoice number (alias for purchase number)
+ * @access  Private
+ */
+router.get(
+  "/next-invoice-number",
+  authenticate,
+  validateCompany,
+  purchaseController.getNextPurchaseNumber // ✅ FIXED: Use existing method
+);
+
+/**
+ * @route   GET /api/purchases/generate-invoice-number
+ * @desc    Generate next purchase invoice number (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/generate-invoice-number",
+  authenticate,
+  validateCompany,
+  purchaseController.getNextPurchaseNumber // ✅ FIXED: Use existing method
+);
+
+/**
  * @route   GET /api/purchases/check/:id
  * @desc    Check if purchase exists (for deletion validation)
  * @access  Private

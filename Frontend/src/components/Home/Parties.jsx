@@ -5,49 +5,45 @@ import {
   Col,
   Button,
   Card,
-  Form,
-  InputGroup,
-  Badge,
-  Dropdown,
   Alert,
   Spinner,
+  Badge,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
-  faSearch,
   faEdit,
   faPhone,
   faEnvelope,
   faMapMarkerAlt,
   faBuilding,
   faUser,
-  faEllipsisV,
   faArrowUp,
   faArrowDown,
-  faFilter,
-  faSort,
-  faSortUp,
-  faSortDown,
-  faTrash,
   faExclamationTriangle,
   faCheckCircle,
-  faPlus,
 } from "@fortawesome/free-solid-svg-icons";
-import {useParams} from "react-router-dom";
+import {useParams, useNavigate} from "react-router-dom";
 import "./Parties.css";
+
+// ✅ Import components
 import PartyHeader from "./Party/PartyHeader";
+import PartySidebar from "./Party/PartySidebar";
 import AddNewParty from "./Party/AddNewParty";
-import partyService from "../../services/partyService";
-import paymentService from "../../services/paymentService";
-import purchaseService from "../../services/purchaseService";
 import PayIn from "./Party/PayIn";
 import PayOut from "./Party/PayOut";
 import TransactionTable from "./Party/TransactionTable";
 
+// ✅ Import services
+import partyService from "../../services/partyService";
+import paymentService from "../../services/paymentService";
+import purchaseService from "../../services/purchaseService";
+import salesService from "../../services/salesService";
+
 function Parties() {
   const {companyId} = useParams();
+  const navigate = useNavigate();
 
-  // State management
+  // ✅ State management
   const [parties, setParties] = useState([]);
   const [selectedParty, setSelectedParty] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,7 +51,7 @@ function Parties() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Modal states
+  // ✅ Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingParty, setEditingParty] = useState(null);
   const [showPayIn, setShowPayIn] = useState(false);
@@ -63,24 +59,24 @@ function Parties() {
   const [payInData, setPayInData] = useState(null);
   const [payOutData, setPayOutData] = useState(null);
 
-  // Search and filter states
+  // ✅ Search and filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [transactionSearchQuery, setTransactionSearchQuery] = useState("");
   const [partyTypeFilter, setPartyTypeFilter] = useState("all");
 
   // ✅ Enhanced sorting state with mapping
   const [sortConfig, setSortConfig] = useState({
-    key: "currentBalance", // Use backend key directly
+    key: "currentBalance",
     direction: "desc",
   });
 
-  // Pagination states
+  // ✅ Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalParties, setTotalParties] = useState(0);
   const partiesPerPage = 20;
 
-  // Transaction states
+  // ✅ Transaction states
   const [transactions, setTransactions] = useState([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [transactionsPagination, setTransactionsPagination] = useState({
@@ -90,7 +86,7 @@ function Parties() {
   });
   const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0);
 
-  // Payment summary state
+  // ✅ Payment summary state
   const [paymentSummary, setPaymentSummary] = useState({
     totalPaymentsIn: 0,
     totalPaymentsOut: 0,
@@ -102,14 +98,14 @@ function Parties() {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(false);
 
-  // Company state
+  // ✅ Company state
   const [currentCompany, setCurrentCompany] = useState({
     id: companyId,
     _id: companyId,
     name: "Your Company Name",
   });
 
-  // Update company when companyId changes
+  // ✅ Update company when companyId changes
   useEffect(() => {
     if (companyId) {
       setCurrentCompany((prev) => ({
@@ -131,7 +127,6 @@ function Parties() {
       creditLimit: "creditLimit",
       gstType: "gstType",
     };
-
     return sortKeyMapping[frontendKey] || frontendKey;
   };
 
@@ -215,14 +210,13 @@ function Parties() {
       setBankAccounts(normalizedBankAccounts);
     } catch (error) {
       console.error("Error loading bank accounts:", error);
-      // Set empty array on error to prevent undefined issues
       setBankAccounts([]);
     } finally {
       setIsLoadingBankAccounts(false);
     }
   };
 
-  // Currency formatter
+  // ✅ Currency formatter
   const formatCurrency = (amount) => {
     const numericAmount = parseFloat(amount) || 0;
     return numericAmount.toLocaleString("en-IN", {
@@ -231,7 +225,7 @@ function Parties() {
     });
   };
 
-  // Normalize party data
+  // ✅ Normalize party data
   const normalizeParty = (party) => {
     return {
       id: party._id || party.id,
@@ -282,7 +276,7 @@ function Parties() {
     };
   };
 
-  // Get transaction type
+  // ✅ Get transaction type
   const getTransactionType = (paymentType, paymentMethod) => {
     if (paymentType === "payment_in") {
       return "Receipt Voucher";
@@ -292,7 +286,7 @@ function Parties() {
     return paymentMethod === "cash" ? "Cash Transaction" : "Bank Transaction";
   };
 
-  // Toast notification handler
+  // ✅ Toast notification handler
   const addToast = (message, type = "info") => {
     switch (type) {
       case "success":
@@ -309,13 +303,12 @@ function Parties() {
     }
   };
 
-  // Enhanced transaction handlers
+  // ✅ Enhanced transaction handlers
   const handleTransactionUpdated = async (updatedTransactionData) => {
     try {
       if (selectedParty && companyId) {
         await loadTransactions(selectedParty._id || selectedParty.id);
         await loadPaymentSummary(selectedParty._id || selectedParty.id);
-        // Reload bank accounts to get updated balances
         await loadBankAccounts();
       }
 
@@ -342,7 +335,6 @@ function Parties() {
           await loadTransactions(selectedParty._id || selectedParty.id);
           await loadPaymentSummary(selectedParty._id || selectedParty.id);
           await loadParties({page: currentPage});
-          // Reload bank accounts to get updated balances
           await loadBankAccounts();
         }
 
@@ -356,7 +348,7 @@ function Parties() {
     }
   };
 
-  // Load transactions with allocations
+  // ✅ Load transactions with allocations
   const loadTransactions = async (partyId, options = {}) => {
     if (!partyId || !companyId) {
       setTransactions([]);
@@ -417,7 +409,6 @@ function Parties() {
             0
           ),
           remainingAmount: payment.remainingAmount || 0,
-          // ✅ Enhanced bank information extraction
           bankAccountId:
             payment.bankAccountId ||
             payment.bankAccount?._id ||
@@ -438,7 +429,6 @@ function Parties() {
             payment.bankBalance || payment.bankAccount?.currentBalance || 0,
           bankAccount: payment.bankAccount,
           bankDetails: payment.bankDetails,
-          // Employee information
           employeeName: payment.employeeName || "",
           employeeId: payment.employeeId || "",
           partyName: payment.partyName || selectedParty?.name || "",
@@ -471,7 +461,7 @@ function Parties() {
     }
   };
 
-  // Load payment summary
+  // ✅ Load payment summary
   const loadPaymentSummary = async (partyId) => {
     if (!partyId || !companyId) return;
 
@@ -518,7 +508,7 @@ function Parties() {
         partyType:
           options.partyType ||
           (partyTypeFilter === "all" ? null : partyTypeFilter),
-        sortBy: String(backendSortKey), // Use mapped sort key
+        sortBy: String(backendSortKey),
         sortOrder: String(sortConfig.direction || "desc"),
       };
 
@@ -561,37 +551,27 @@ function Parties() {
     }
   };
 
-  // Search effect
-  useEffect(() => {
-    if (companyId) {
-      const searchTimeout = setTimeout(() => {
-        setCurrentPage(1);
-        let searchValue = searchQuery;
-        if (searchValue === undefined || searchValue === null) {
-          searchValue = "";
-        }
-        const searchString = String(searchValue).trim();
-        loadParties({
-          search: searchString,
-          page: 1,
-        });
-      }, 500);
-      return () => clearTimeout(searchTimeout);
+  // ✅ Enhanced sorting handler with proper key mapping
+  const handleSort = (frontendKey, backendKey) => {
+    let direction = "asc";
+    if (sortConfig.key === backendKey && sortConfig.direction === "asc") {
+      direction = "desc";
     }
-  }, [searchQuery, companyId]);
+    setSortConfig({key: backendKey, direction});
+  };
 
-  // Filter/sort effect
-  useEffect(() => {
+  // ✅ Party selection handler
+  const handlePartySelect = (party) => {
+    const normalizedParty = normalizeParty(party);
+    setSelectedParty(normalizedParty);
+
     if (companyId) {
-      setCurrentPage(1);
-      loadParties({
-        page: 1,
-        partyType: partyTypeFilter === "all" ? null : partyTypeFilter,
-      });
+      loadTransactions(normalizedParty._id || normalizedParty.id);
+      loadPaymentSummary(normalizedParty._id || normalizedParty.id);
     }
-  }, [partyTypeFilter, sortConfig, companyId]);
+  };
 
-  // Delete party handler
+  // ✅ Delete party handler
   const handleDeleteParty = async (party) => {
     if (!window.confirm(`Are you sure you want to delete "${party.name}"?`)) {
       return;
@@ -641,82 +621,7 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced initial load effect with bank accounts
-  useEffect(() => {
-    if (companyId) {
-      loadParties();
-      loadBankAccounts();
-    }
-  }, [companyId]);
-
-  // Transaction search effect
-  useEffect(() => {
-    if (selectedParty && companyId && transactionSearchQuery !== undefined) {
-      const searchTimeout = setTimeout(() => {
-        loadTransactions(selectedParty._id || selectedParty.id, {page: 1});
-      }, 500);
-      return () => clearTimeout(searchTimeout);
-    }
-  }, [transactionSearchQuery, companyId]);
-
-  // Transaction refresh effect
-  useEffect(() => {
-    if (selectedParty && companyId && transactionRefreshTrigger > 0) {
-      loadTransactions(selectedParty._id || selectedParty.id);
-      loadPaymentSummary(selectedParty._id || selectedParty.id);
-      // Also refresh bank accounts to get updated balances
-      loadBankAccounts();
-    }
-  }, [transactionRefreshTrigger, companyId]);
-
-  // Clear alerts effect
-  useEffect(() => {
-    if (error || success) {
-      const timer = setTimeout(() => {
-        setError("");
-        setSuccess("");
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [error, success]);
-
-  // ✅ Enhanced sorting handler with proper key mapping
-  const handleSort = (frontendKey) => {
-    let direction = "asc";
-
-    // Map frontend key to backend key for comparison
-    const backendKey = mapSortKey(frontendKey);
-
-    if (sortConfig.key === backendKey && sortConfig.direction === "asc") {
-      direction = "desc";
-    }
-
-    setSortConfig({key: backendKey, direction});
-  };
-
-  // Party selection handler
-  const handlePartySelect = (party) => {
-    const normalizedParty = normalizeParty(party);
-    setSelectedParty(normalizedParty);
-
-    if (companyId) {
-      loadTransactions(normalizedParty._id || normalizedParty.id);
-      loadPaymentSummary(normalizedParty._id || normalizedParty.id);
-    }
-  };
-
-  // ✅ Enhanced sort icon helper with proper key mapping
-  const getSortIcon = (frontendColumnKey) => {
-    // Map frontend display key to backend sort key
-    const backendKey = mapSortKey(frontendColumnKey);
-
-    if (sortConfig.key !== backendKey) {
-      return faSort;
-    }
-    return sortConfig.direction === "asc" ? faSortUp : faSortDown;
-  };
-
-  // Modal handlers
+  // ✅ Modal handlers
   const handleOpenModal = () => {
     setEditingParty(null);
     setShowAddModal(true);
@@ -732,7 +637,7 @@ function Parties() {
     setShowAddModal(true);
   };
 
-  // Save party handler
+  // ✅ Save party handler
   const handleSaveParty = async (
     partyData,
     isQuickAdd = false,
@@ -777,16 +682,16 @@ function Parties() {
     }
   };
 
-  // Refresh parties handler
+  // ✅ Refresh parties handler
   const handleRefreshParties = () => {
     if (companyId) {
       setCurrentPage(1);
       loadParties({page: 1});
-      loadBankAccounts(); // Also refresh bank accounts
+      loadBankAccounts();
     }
   };
 
-  // Enhanced PayIn/PayOut handlers with duplicate support
+  // ✅ Enhanced PayIn/PayOut handlers with duplicate support
   const handlePayIn = (duplicateData = null) => {
     if (selectedParty) {
       if (duplicateData) {
@@ -805,7 +710,7 @@ function Parties() {
     }
   };
 
-  // Enhanced payment recorded handler
+  // ✅ Enhanced payment recorded handler
   const handlePaymentRecorded = (paymentData, updatedParty) => {
     if (updatedParty) {
       const normalizedUpdatedParty = normalizeParty(updatedParty);
@@ -883,7 +788,7 @@ function Parties() {
     loadBankAccounts();
   };
 
-  // View payment allocations handler
+  // ✅ View payment allocations handler
   const handleViewPaymentAllocations = async (paymentId) => {
     try {
       const response = await paymentService.getPaymentAllocations(paymentId);
@@ -923,7 +828,7 @@ function Parties() {
     }
   };
 
-  // Pagination handler
+  // ✅ Pagination handler
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
     if (companyId) {
@@ -931,42 +836,316 @@ function Parties() {
     }
   };
 
-  // Placeholder handlers for PartyHeader
-  const handleAddSale = () => {
-    // TODO: Implement add sale functionality
+  // ✅ ENHANCED: Connected handlers for Sales and Purchase Invoice buttons
+  const handleAddSalesInvoice = async () => {
+    try {
+      if (!companyId) {
+        setError("Company ID is required to create sales invoice");
+        return;
+      }
+
+      // Check if we have a selected party
+      if (selectedParty) {
+        // Navigate to sales form with pre-selected customer
+        const customerData = {
+          id: selectedParty._id || selectedParty.id,
+          _id: selectedParty._id || selectedParty.id,
+          name: selectedParty.name,
+          mobile: selectedParty.phone,
+          phone: selectedParty.phone,
+          email: selectedParty.email,
+          address: selectedParty.address,
+          gstNumber: selectedParty.gstNumber,
+          partyType: selectedParty.partyType,
+        };
+
+        // Navigate with customer pre-filled
+        navigate(`/company/${companyId}/sales/create`, {
+          state: {
+            preSelectedCustomer: customerData,
+            from: "parties",
+            returnTo: `/company/${companyId}/parties`,
+          },
+        });
+      } else {
+        // Navigate to sales form without pre-selection
+        navigate(`/company/${companyId}/sales/create`, {
+          state: {
+            from: "parties",
+            returnTo: `/company/${companyId}/parties`,
+          },
+        });
+      }
+
+      setSuccess("Redirecting to Sales Invoice form...");
+    } catch (error) {
+      setError("Failed to navigate to Sales Invoice: " + error.message);
+    }
   };
 
-  const handleAddPurchase = () => {
-    // TODO: Implement add purchase functionality
+  const handleAddPurchaseInvoice = async () => {
+    try {
+      if (!companyId) {
+        setError("Company ID is required to create purchase invoice");
+        return;
+      }
+
+      // Check if we have a selected party and it's a vendor/supplier
+      if (
+        selectedParty &&
+        (selectedParty.partyType === "vendor" ||
+          selectedParty.partyType === "supplier")
+      ) {
+        // Navigate to purchase form with pre-selected supplier
+        const supplierData = {
+          id: selectedParty._id || selectedParty.id,
+          _id: selectedParty._id || selectedParty.id,
+          name: selectedParty.name,
+          mobile: selectedParty.phone,
+          phone: selectedParty.phone,
+          email: selectedParty.email,
+          address: selectedParty.address,
+          gstNumber: selectedParty.gstNumber,
+          partyType: selectedParty.partyType,
+        };
+
+        // Navigate with supplier pre-filled
+        navigate(`/company/${companyId}/purchases/create`, {
+          state: {
+            preSelectedSupplier: supplierData,
+            from: "parties",
+            returnTo: `/company/${companyId}/parties`,
+          },
+        });
+      } else if (selectedParty && selectedParty.partyType === "customer") {
+        // Show warning that customer is selected but purchase needs vendor
+        setError(
+          "Purchase invoices require vendors/suppliers. Please select a vendor or create a new purchase without pre-selection."
+        );
+
+        // Still navigate but without pre-selection
+        setTimeout(() => {
+          navigate(`/company/${companyId}/purchases/create`, {
+            state: {
+              from: "parties",
+              returnTo: `/company/${companyId}/parties`,
+              message: "Please select a vendor/supplier for the purchase",
+            },
+          });
+        }, 2000);
+      } else {
+        // Navigate to purchase form without pre-selection
+        navigate(`/company/${companyId}/purchases/create`, {
+          state: {
+            from: "parties",
+            returnTo: `/company/${companyId}/parties`,
+          },
+        });
+      }
+
+      setSuccess("Redirecting to Purchase Invoice form...");
+    } catch (error) {
+      setError("Failed to navigate to Purchase Invoice: " + error.message);
+    }
   };
 
+  // ✅ Enhanced More Options handler
   const handleMoreOptions = () => {
-    // TODO: Implement more options
+    // Show a dropdown menu or modal with more options
+    const moreOptionsMenu = [
+      "Export Parties Data",
+      "Import Parties",
+      "Party Reports",
+      "Backup Data",
+      "Party Settings",
+    ];
+
+    // For now, just show an alert with options
+    alert(
+      `More Options:\n\n${moreOptionsMenu
+        .map((option, index) => `${index + 1}. ${option}`)
+        .join("\n")}\n\nThis feature is coming soon!`
+    );
   };
 
+  // ✅ Settings handler
   const handleSettings = () => {
-    // TODO: Implement settings
+    // Navigate to party settings or show settings modal
+    if (companyId) {
+      navigate(`/company/${companyId}/settings/parties`);
+    } else {
+      alert(
+        "Party Settings:\n\n• Default Party Types\n• Custom Fields\n• Import/Export Settings\n• Auto-numbering\n\nThis feature is coming soon!"
+      );
+    }
   };
 
-  const handleExportParties = () => {
-    // TODO: Implement export functionality
+  // ✅ Export parties handler
+  const handleExportParties = async () => {
+    try {
+      if (!companyId) {
+        setError("Company ID is required for export");
+        return;
+      }
+
+      setIsLoading(true);
+      setSuccess("Preparing parties export...");
+
+      // Call export service
+      const response = await partyService.exportParties?.(companyId, {
+        format: "csv",
+        partyType: partyTypeFilter === "all" ? null : partyTypeFilter,
+        includeTransactions: true,
+        includeBalances: true,
+      });
+
+      if (response?.success) {
+        setSuccess(
+          "Parties exported successfully! Download should start automatically."
+        );
+      } else {
+        // Fallback: Create CSV from current parties data
+        const csvData = parties.map((party) => ({
+          Name: party.name,
+          Phone: party.phone,
+          Email: party.email,
+          Address: party.address,
+          "Party Type": party.partyType,
+          "Current Balance": party.currentBalance,
+          "Company Name": party.companyName,
+          "GST Number": party.gstNumber,
+          "Created Date": new Date(party.createdAt).toLocaleDateString("en-IN"),
+        }));
+
+        // Convert to CSV string
+        const csvString = [
+          Object.keys(csvData[0]).join(","),
+          ...csvData.map((row) => Object.values(row).join(",")),
+        ].join("\n");
+
+        // Download CSV
+        const blob = new Blob([csvString], {type: "text/csv"});
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `parties_export_${
+          new Date().toISOString().split("T")[0]
+        }.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        setSuccess("Parties exported successfully!");
+      }
+    } catch (error) {
+      setError("Failed to export parties: " + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Early return if no company ID
+  // ✅ Enhanced initial load effect with bank accounts
+  useEffect(() => {
+    if (companyId) {
+      loadParties();
+      loadBankAccounts();
+    }
+  }, [companyId]);
+
+  // ✅ Search effect
+  useEffect(() => {
+    if (companyId) {
+      const searchTimeout = setTimeout(() => {
+        setCurrentPage(1);
+        let searchValue = searchQuery;
+        if (searchValue === undefined || searchValue === null) {
+          searchValue = "";
+        }
+        const searchString = String(searchValue).trim();
+        loadParties({
+          search: searchString,
+          page: 1,
+        });
+      }, 500);
+      return () => clearTimeout(searchTimeout);
+    }
+  }, [searchQuery, companyId]);
+
+  // ✅ Filter/sort effect
+  useEffect(() => {
+    if (companyId) {
+      setCurrentPage(1);
+      loadParties({
+        page: 1,
+        partyType: partyTypeFilter === "all" ? null : partyTypeFilter,
+      });
+    }
+  }, [partyTypeFilter, sortConfig, companyId]);
+
+  // ✅ Transaction search effect
+  useEffect(() => {
+    if (selectedParty && companyId && transactionSearchQuery !== undefined) {
+      const searchTimeout = setTimeout(() => {
+        loadTransactions(selectedParty._id || selectedParty.id, {page: 1});
+      }, 500);
+      return () => clearTimeout(searchTimeout);
+    }
+  }, [transactionSearchQuery, companyId]);
+
+  // ✅ Transaction refresh effect
+  useEffect(() => {
+    if (selectedParty && companyId && transactionRefreshTrigger > 0) {
+      loadTransactions(selectedParty._id || selectedParty.id);
+      loadPaymentSummary(selectedParty._id || selectedParty.id);
+      loadBankAccounts();
+    }
+  }, [transactionRefreshTrigger, companyId]);
+
+  // ✅ Clear alerts effect
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError("");
+        setSuccess("");
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
+
+  // ✅ Early return if no company ID
   if (!companyId) {
     return (
-      <div className="parties-layout bg-light min-vh-100 d-flex align-items-center justify-content-center">
-        <Card className="border-0 bg-white text-center shadow-sm">
-          <Card.Body className="p-4">
-            <FontAwesomeIcon
-              icon={faExclamationTriangle}
-              size="2x"
-              className="text-warning mb-3"
-            />
-            <h6 className="text-muted" style={{fontSize: "14px"}}>
+      <div
+        className="d-flex align-items-center justify-content-center min-vh-100"
+        style={{
+          background: "#f5f5f5",
+        }}
+      >
+        <Card
+          className="border-0 text-center shadow-lg"
+          style={{
+            background: "rgba(255, 255, 255, 0.95)",
+            borderRadius: "12px",
+          }}
+        >
+          <Card.Body className="p-5">
+            <div
+              className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+              style={{
+                width: "80px",
+                height: "80px",
+                background: "#6f42c1",
+                color: "white",
+                boxShadow: "0 4px 20px rgba(111, 66, 193, 0.3)",
+              }}
+            >
+              <FontAwesomeIcon icon={faExclamationTriangle} size="2x" />
+            </div>
+            <h5 className="mb-2" style={{fontSize: "16px", color: "#6f42c1"}}>
               Company Required
-            </h6>
-            <p className="text-muted mb-0" style={{fontSize: "12px"}}>
+            </h5>
+            <p className="text-muted mb-0" style={{fontSize: "14px"}}>
               Please select a company to view parties and transactions
             </p>
           </Card.Body>
@@ -977,33 +1156,47 @@ function Parties() {
 
   return (
     <div
-      className="parties-layout bg-light min-vh-100"
-      style={{fontSize: "13px"}}
+      className="min-vh-100"
+      style={{
+        fontSize: "13px",
+        background: "#f5f5f5", // ✅ Grey background
+        margin: "-1rem",
+        marginTop: "-2rem",
+        padding: "0",
+      }}
     >
-      {/* Party Header */}
-      <PartyHeader
-        activeType={partyTypeFilter}
-        onTypeChange={setPartyTypeFilter}
-        transactionSearchQuery={transactionSearchQuery}
-        onTransactionSearchChange={setTransactionSearchQuery}
-        totalParties={totalParties}
-        onAddParty={handleOpenModal}
-        onAddSale={handleAddSale}
-        onAddPurchase={handleAddPurchase}
-        onRefreshParties={handleRefreshParties}
-        isLoadingParties={isLoadingParties}
-        onMoreOptions={handleMoreOptions}
-        onSettings={handleSettings}
-        onExportParties={handleExportParties}
-      />
+      {/* ✅ Party Header */}
+      <div style={{marginBottom: "0"}}>
+        <PartyHeader
+          companyId={companyId}
+          activeType={partyTypeFilter}
+          onTypeChange={setPartyTypeFilter}
+          transactionSearchQuery={transactionSearchQuery}
+          onTransactionSearchChange={setTransactionSearchQuery}
+          totalParties={totalParties}
+          onAddParty={handleOpenModal}
+          onAddSale={handleAddSalesInvoice}
+          onAddPurchase={handleAddPurchaseInvoice}
+          onRefreshParties={handleRefreshParties}
+          isLoadingParties={isLoadingParties}
+          onMoreOptions={handleMoreOptions}
+          onSettings={handleSettings}
+          onExportParties={handleExportParties}
+        />
+      </div>
 
-      {/* Alerts */}
+      {/* ✅ Alerts */}
       {error && (
         <Alert
           variant="danger"
-          className="m-3 mb-0"
+          className="mx-3 mb-0"
           dismissible
           onClose={() => setError("")}
+          style={{
+            background: "#ffe6e6",
+            border: "1px solid rgba(220, 53, 69, 0.2)",
+            borderRadius: "8px",
+          }}
         >
           <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
           <div style={{whiteSpace: "pre-line"}}>{error}</div>
@@ -1012,9 +1205,14 @@ function Parties() {
       {success && (
         <Alert
           variant="success"
-          className="m-3 mb-0"
+          className="mx-3 mb-0"
           dismissible
           onClose={() => setSuccess("")}
+          style={{
+            background: "#e6f7ff",
+            border: "1px solid rgba(40, 167, 69, 0.2)",
+            borderRadius: "8px",
+          }}
         >
           <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
           <div style={{whiteSpace: "pre-line"}}>{success}</div>
@@ -1023,391 +1221,111 @@ function Parties() {
 
       {/* ✅ Bank Accounts Loading Alert */}
       {isLoadingBankAccounts && (
-        <Alert variant="info" className="m-3 mb-0">
-          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+        <Alert
+          variant="info"
+          className="mx-3 mb-0"
+          style={{
+            background: "#e6f0ff",
+            border: "1px solid rgba(0, 123, 255, 0.2)",
+            borderRadius: "8px",
+          }}
+        >
+          <Spinner
+            animation="border"
+            size="sm"
+            className="me-2"
+            style={{color: "#007bff"}}
+          />
           Loading bank accounts...
         </Alert>
       )}
 
-      {/* Main Content */}
-      <Container fluid className="p-0">
-        <Row className="g-0" style={{height: "calc(100vh - 160px)"}}>
-          {/* Parties List Sidebar */}
-          <Col xl={3} lg={4} md={5} className="bg-white border-end">
-            <div className="h-100 d-flex flex-column">
-              {/* Search */}
-              <div className="p-2 border-bottom bg-light">
-                <InputGroup size="sm">
-                  <InputGroup.Text className="bg-white border-end-0 rounded-start-pill">
-                    <FontAwesomeIcon
-                      icon={faSearch}
-                      className="text-muted"
-                      size="sm"
-                    />
-                  </InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    placeholder="Search Party Name"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="border-start-0 rounded-end-pill"
-                    style={{fontSize: "13px"}}
-                  />
-                </InputGroup>
-              </div>
-
-              {/* List Header */}
-              <div className="bg-light border-bottom px-2 py-1">
-                <Row className="align-items-center">
-                  <Col>
-                    <small
-                      className="text-muted fw-bold text-uppercase d-flex align-items-center cursor-pointer"
-                      style={{fontSize: "11px"}}
-                      onClick={() => handleSort("name")}
-                    >
-                      <FontAwesomeIcon
-                        icon={faFilter}
-                        className="me-1"
-                        size="xs"
-                      />
-                      Party Name
-                      <FontAwesomeIcon
-                        icon={getSortIcon("name")}
-                        className="ms-auto"
-                        size="xs"
-                      />
-                    </small>
-                  </Col>
-                  <Col xs="auto">
-                    <small
-                      className="text-muted fw-bold text-uppercase d-flex align-items-center cursor-pointer"
-                      style={{fontSize: "11px"}}
-                      onClick={() => handleSort("balance")}
-                    >
-                      Amount
-                      <FontAwesomeIcon
-                        icon={getSortIcon("balance")}
-                        className="ms-1"
-                        size="xs"
-                      />
-                    </small>
-                  </Col>
-                </Row>
-              </div>
-
-              {/* Parties List */}
-              <div
-                className="flex-grow-1 overflow-auto"
-                style={{
-                  maxHeight: "calc(100vh - 350px)",
-                  scrollbarWidth: "thin",
-                  scrollbarColor: "rgba(0,0,0,0.3) transparent",
-                }}
-              >
-                {isLoadingParties ? (
-                  <div className="d-flex justify-content-center align-items-center py-5">
-                    <div className="text-center">
-                      <Spinner animation="border" size="sm" variant="primary" />
-                      <div className="mt-2 text-muted small">
-                        Loading parties...
-                      </div>
-                    </div>
-                  </div>
-                ) : parties.length === 0 ? (
-                  <div className="d-flex flex-column justify-content-center align-items-center py-5 px-3">
-                    <FontAwesomeIcon
-                      icon={faUser}
-                      size="2x"
-                      className="text-muted mb-3"
-                    />
-                    <h6
-                      className="text-muted text-center mb-2"
-                      style={{fontSize: "14px"}}
-                    >
-                      {searchQuery ? "No parties found" : "No parties yet"}
-                    </h6>
-                    <p
-                      className="text-muted text-center mb-3"
-                      style={{fontSize: "12px"}}
-                    >
-                      {searchQuery
-                        ? "Try adjusting your search terms"
-                        : "Get started by adding your first party"}
-                    </p>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleOpenModal}
-                      className="px-3"
-                      style={{fontSize: "12px"}}
-                    >
-                      <FontAwesomeIcon icon={faPlus} className="me-1" />
-                      Add Party
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="list-group list-group-flush">
-                    {parties.map((party) => {
-                      const isSelected =
-                        selectedParty &&
-                        (selectedParty.id === party.id ||
-                          selectedParty._id === party._id);
-                      return (
-                        <div
-                          key={party.id || party._id}
-                          className={`list-group-item list-group-item-action border-0 border-bottom px-3 py-2 ${
-                            isSelected ? "bg-primary text-white" : "bg-white"
-                          }`}
-                          style={{
-                            cursor: "pointer",
-                            transition: "all 0.2s ease",
-                            minHeight: "70px",
-                          }}
-                          onClick={() => handlePartySelect(party)}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) {
-                              e.target.classList.add("bg-light");
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) {
-                              e.target.classList.remove("bg-light");
-                            }
-                          }}
-                        >
-                          <Row className="align-items-center g-0">
-                            <Col className="pe-2">
-                              <div className="d-flex justify-content-between align-items-start mb-1">
-                                <div className="flex-grow-1 me-2">
-                                  <div
-                                    className={`fw-semibold mb-1 ${
-                                      isSelected ? "text-white" : "text-dark"
-                                    }`}
-                                    style={{
-                                      fontSize: "13px",
-                                      lineHeight: "1.2",
-                                      wordBreak: "break-word",
-                                    }}
-                                  >
-                                    {party.name}
-                                    <Badge
-                                      bg={
-                                        party.partyType === "customer"
-                                          ? "success"
-                                          : party.partyType === "vendor"
-                                          ? "warning"
-                                          : "info"
-                                      }
-                                      className="ms-2"
-                                      style={{fontSize: "9px"}}
-                                    >
-                                      {party.partyType}
-                                    </Badge>
-                                  </div>
-                                  <div
-                                    className={`small ${
-                                      isSelected
-                                        ? "text-white-50"
-                                        : "text-muted"
-                                    }`}
-                                    style={{fontSize: "11px"}}
-                                  >
-                                    <FontAwesomeIcon
-                                      icon={faPhone}
-                                      className="me-1"
-                                    />
-                                    {party.phone}
-                                  </div>
-                                </div>
-
-                                {/* Party Actions */}
-                                <div onClick={(e) => e.stopPropagation()}>
-                                  <Dropdown align="end">
-                                    <Dropdown.Toggle
-                                      variant="link"
-                                      className="p-0 border-0 shadow-none text-decoration-none"
-                                      style={{fontSize: "12px"}}
-                                    >
-                                      <FontAwesomeIcon
-                                        icon={faEllipsisV}
-                                        className={
-                                          isSelected
-                                            ? "text-white"
-                                            : "text-muted"
-                                        }
-                                        size="sm"
-                                      />
-                                    </Dropdown.Toggle>
-                                    <Dropdown.Menu className="shadow-sm">
-                                      <Dropdown.Item
-                                        onClick={() => handleEditParty(party)}
-                                        className="small"
-                                        style={{fontSize: "12px"}}
-                                      >
-                                        <FontAwesomeIcon
-                                          icon={faEdit}
-                                          className="me-2 text-primary"
-                                        />
-                                        Edit Party
-                                      </Dropdown.Item>
-                                      <Dropdown.Divider />
-                                      <Dropdown.Item
-                                        onClick={() => handleDeleteParty(party)}
-                                        className="text-danger small"
-                                        style={{fontSize: "12px"}}
-                                      >
-                                        <FontAwesomeIcon
-                                          icon={faTrash}
-                                          className="me-2"
-                                        />
-                                        Delete Party
-                                      </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                  </Dropdown>
-                                </div>
-                              </div>
-
-                              {/* Balance */}
-                              <div className="mt-1">
-                                <span
-                                  className={`fw-bold small ${
-                                    isSelected
-                                      ? "text-white"
-                                      : party.balance > 0
-                                      ? "text-success"
-                                      : party.balance < 0
-                                      ? "text-danger"
-                                      : "text-secondary"
-                                  }`}
-                                  style={{fontSize: "12px"}}
-                                >
-                                  ₹{formatCurrency(Math.abs(party.balance))}
-                                  <small
-                                    className={`ms-1 ${
-                                      isSelected
-                                        ? "text-white-50"
-                                        : "text-muted"
-                                    }`}
-                                  >
-                                    ({party.balance >= 0 ? "Credit" : "Debit"})
-                                  </small>
-                                </span>
-                              </div>
-                            </Col>
-                          </Row>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="p-2 border-top bg-light">
-                  <Row className="align-items-center g-2">
-                    <Col>
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        disabled={currentPage <= 1}
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        style={{fontSize: "11px"}}
-                      >
-                        Previous
-                      </Button>
-                    </Col>
-                    <Col xs="auto">
-                      <small className="text-muted" style={{fontSize: "11px"}}>
-                        Page {currentPage} of {totalPages}
-                      </small>
-                    </Col>
-                    <Col xs="auto">
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        disabled={currentPage >= totalPages}
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        style={{fontSize: "11px"}}
-                      >
-                        Next
-                      </Button>
-                    </Col>
-                  </Row>
-                </div>
-              )}
-
-              {/* Contact Info */}
-              <div className="p-2 border-top bg-light">
-                <Card className="border-0 bg-success bg-opacity-10">
-                  <Card.Body className="p-2 text-center">
-                    <FontAwesomeIcon
-                      icon={faPhone}
-                      className="text-success mb-1"
-                    />
-                    <div
-                      className="small text-muted"
-                      style={{fontSize: "11px", lineHeight: "1.3"}}
-                    >
-                      Use contacts from your Phone or Gmail to{" "}
-                      <strong className="text-dark">
-                        quickly create parties.
-                      </strong>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </div>
-            </div>
+      {/* ✅ Main Content - No gaps, no padding */}
+      <div className="w-100" style={{padding: "0", margin: "0"}}>
+        <Row className="g-0 m-0" style={{height: "calc(100vh - 140px)"}}>
+          {/* ✅ Parties List Sidebar - No gaps */}
+          <Col xl={3} lg={4} md={5} className="h-100 p-0">
+            <PartySidebar
+              parties={parties}
+              selectedParty={selectedParty}
+              isLoadingParties={isLoadingParties}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              onPartySelect={handlePartySelect}
+              onEditParty={handleEditParty}
+              onDeleteParty={handleDeleteParty}
+              onAddParty={handleOpenModal}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              formatCurrency={formatCurrency}
+              totalParties={totalParties}
+            />
           </Col>
 
-          {/* Party Details with Transactions */}
-          <Col xl={9} lg={8} md={7}>
+          {/* ✅ Party Details with Transactions - No gaps */}
+          <Col xl={9} lg={8} md={7} className="h-100 p-0">
             {selectedParty ? (
               <div className="h-100 bg-white">
-                {/* Party Header with Payment Summary */}
-                <div className="border-bottom p-3 bg-light">
-                  <Row className="align-items-center">
+                {/* ✅ Party Header with Payment Summary - Increased height */}
+                <div
+                  className="border-bottom p-4"
+                  style={{
+                    background: "#ffffff",
+                    borderColor: "#dee2e6",
+                    minHeight: "120px", // Increased from implicit height
+                  }}
+                >
+                  <Row className="align-items-center h-100">
                     <Col>
-                      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                      <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
                         <div className="flex-grow-1">
                           <h5
-                            className="mb-1 fw-bold d-flex align-items-center"
-                            style={{fontSize: "16px"}}
+                            className="mb-2 fw-bold d-flex align-items-center"
+                            style={{fontSize: "16px", color: "#495057"}}
                           >
                             {selectedParty.name}
                             <Badge
-                              bg={
-                                selectedParty.partyType === "customer"
-                                  ? "success"
-                                  : selectedParty.partyType === "vendor"
-                                  ? "warning"
-                                  : "info"
-                              }
+                              style={{
+                                fontSize: "11px",
+                                background:
+                                  selectedParty.partyType === "customer"
+                                    ? "#28a745"
+                                    : selectedParty.partyType === "vendor"
+                                    ? "#fd7e14"
+                                    : "#6f42c1",
+                                border: "none",
+                              }}
                               className="ms-2"
-                              style={{fontSize: "11px"}}
                             >
                               {selectedParty.partyType}
                             </Badge>
                             <Button
                               variant="link"
                               size="sm"
-                              className="p-1 ms-2 text-primary"
+                              className="p-1 ms-2"
                               onClick={() => handleEditParty(selectedParty)}
                               title="Edit Party"
+                              style={{color: "#6f42c1"}}
                             >
                               <FontAwesomeIcon icon={faEdit} size="sm" />
                             </Button>
                           </h5>
 
-                          {/* Payment Summary */}
+                          {/* ✅ Payment Summary */}
                           {paymentSummary.totalTransactions > 0 && (
-                            <div className="mb-2">
+                            <div className="mb-3">
                               <Row className="g-2">
                                 <Col xs="auto">
                                   <Badge
-                                    bg="success"
                                     className="px-2 py-1"
-                                    style={{fontSize: "10px"}}
+                                    style={{
+                                      fontSize: "10px",
+                                      background: "#28a745",
+                                      border: "none",
+                                    }}
                                   >
                                     <FontAwesomeIcon
                                       icon={faArrowDown}
@@ -1421,9 +1339,12 @@ function Parties() {
                                 </Col>
                                 <Col xs="auto">
                                   <Badge
-                                    bg="danger"
                                     className="px-2 py-1"
-                                    style={{fontSize: "10px"}}
+                                    style={{
+                                      fontSize: "10px",
+                                      background: "#dc3545",
+                                      border: "none",
+                                    }}
                                   >
                                     <FontAwesomeIcon
                                       icon={faArrowUp}
@@ -1437,13 +1358,15 @@ function Parties() {
                                 </Col>
                                 <Col xs="auto">
                                   <Badge
-                                    bg={
-                                      paymentSummary.netAmount >= 0
-                                        ? "primary"
-                                        : "warning"
-                                    }
                                     className="px-2 py-1"
-                                    style={{fontSize: "10px"}}
+                                    style={{
+                                      fontSize: "10px",
+                                      background:
+                                        paymentSummary.netAmount >= 0
+                                          ? "#6f42c1"
+                                          : "#ffc107",
+                                      border: "none",
+                                    }}
                                   >
                                     Net: ₹
                                     {formatCurrency(
@@ -1458,11 +1381,16 @@ function Parties() {
                             </div>
                           )}
 
+                          {/* ✅ Contact Information */}
                           <div
-                            className="text-muted"
+                            className="text-muted mb-2"
                             style={{fontSize: "12px"}}
                           >
-                            <FontAwesomeIcon icon={faPhone} className="me-1" />
+                            <FontAwesomeIcon
+                              icon={faPhone}
+                              className="me-1"
+                              style={{color: "#6f42c1"}}
+                            />
                             {selectedParty.phone}
                             {selectedParty.email && (
                               <>
@@ -1470,6 +1398,7 @@ function Parties() {
                                 <FontAwesomeIcon
                                   icon={faEnvelope}
                                   className="me-1"
+                                  style={{color: "#6f42c1"}}
                                 />
                                 {selectedParty.email}
                               </>
@@ -1480,6 +1409,7 @@ function Parties() {
                                 <FontAwesomeIcon
                                   icon={faMapMarkerAlt}
                                   className="me-1"
+                                  style={{color: "#6f42c1"}}
                                 />
                                 {selectedParty.address}
                               </>
@@ -1487,12 +1417,13 @@ function Parties() {
                           </div>
                           {selectedParty.companyName && (
                             <div
-                              className="text-muted mt-1"
+                              className="text-muted"
                               style={{fontSize: "12px"}}
                             >
                               <FontAwesomeIcon
                                 icon={faBuilding}
                                 className="me-1"
+                                style={{color: "#6f42c1"}}
                               />
                               {selectedParty.companyName}
                               {selectedParty.gstNumber && (
@@ -1503,13 +1434,19 @@ function Parties() {
                             </div>
                           )}
                         </div>
-                        <div className="d-flex gap-2 flex-shrink-0">
+
+                        {/* ✅ Action Buttons */}
+                        <div className="d-flex gap-2 flex-shrink-0 align-self-start">
                           <Button
                             variant="outline-success"
                             size="sm"
                             onClick={() => handlePayIn()}
                             className="px-3"
-                            style={{fontSize: "12px"}}
+                            style={{
+                              fontSize: "12px",
+                              color: "#28a745",
+                              borderColor: "#28a745",
+                            }}
                           >
                             <FontAwesomeIcon
                               icon={faArrowDown}
@@ -1522,7 +1459,11 @@ function Parties() {
                             size="sm"
                             onClick={() => handlePayOut()}
                             className="px-3"
-                            style={{fontSize: "12px"}}
+                            style={{
+                              fontSize: "12px",
+                              color: "#dc3545",
+                              borderColor: "#dc3545",
+                            }}
                           >
                             <FontAwesomeIcon
                               icon={faArrowUp}
@@ -1536,7 +1477,7 @@ function Parties() {
                   </Row>
                 </div>
 
-                {/* Transaction Table */}
+                {/* ✅ Transaction Table */}
                 <div className="p-3 h-100 overflow-hidden">
                   <TransactionTable
                     selectedParty={selectedParty}
@@ -1554,7 +1495,6 @@ function Parties() {
                     onViewAllocations={handleViewPaymentAllocations}
                     showAllocationDetails={true}
                     paymentSummary={paymentSummary}
-                    // ✅ Enhanced props with proper bank accounts
                     onTransactionUpdated={handleTransactionUpdated}
                     onTransactionDeleted={handleTransactionDeleted}
                     addToast={addToast}
@@ -1565,15 +1505,36 @@ function Parties() {
                 </div>
               </div>
             ) : (
-              <div className="h-100 d-flex align-items-center justify-content-center bg-light">
-                <Card className="border-0 bg-white text-center shadow-sm">
+              <div
+                className="h-100 d-flex align-items-center justify-content-center"
+                style={{
+                  background: "#ffffff",
+                }}
+              >
+                <Card
+                  className="border-0 text-center shadow-lg"
+                  style={{
+                    background: "rgba(255, 255, 255, 0.95)",
+                    borderRadius: "12px",
+                  }}
+                >
                   <Card.Body className="p-5">
-                    <FontAwesomeIcon
-                      icon={faUser}
-                      size="3x"
-                      className="text-muted mb-3"
-                    />
-                    <h5 className="text-muted mb-2" style={{fontSize: "16px"}}>
+                    <div
+                      className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                      style={{
+                        width: "80px",
+                        height: "80px",
+                        background: "#6f42c1",
+                        color: "white",
+                        boxShadow: "0 4px 20px rgba(111, 66, 193, 0.3)",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faUser} size="2x" />
+                    </div>
+                    <h5
+                      className="mb-2"
+                      style={{fontSize: "16px", color: "#6f42c1"}}
+                    >
                       Select a party to get started
                     </h5>
                     <p className="text-muted mb-0" style={{fontSize: "14px"}}>
@@ -1586,9 +1547,9 @@ function Parties() {
             )}
           </Col>
         </Row>
-      </Container>
+      </div>
 
-      {/* Modals */}
+      {/* ✅ Modals - All existing modals remain the same */}
       <AddNewParty
         show={showAddModal}
         onHide={handleCloseModal}
@@ -1628,19 +1589,32 @@ function Parties() {
         bankAccounts={bankAccounts}
       />
 
-      {/* Loading Overlay */}
+      {/* ✅ Loading Overlay */}
       {isLoading && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
           style={{
             zIndex: 9999,
             backgroundColor: "rgba(0, 0, 0, 0.5)",
+            backdropFilter: "blur(5px)",
           }}
         >
-          <Card className="border-0 shadow-lg">
+          <Card
+            className="border-0 shadow-lg"
+            style={{
+              background: "rgba(255, 255, 255, 0.95)",
+              borderRadius: "12px",
+            }}
+          >
             <Card.Body className="p-4 text-center">
-              <Spinner animation="border" variant="primary" className="mb-3" />
-              <h6 className="text-muted mb-0">Processing...</h6>
+              <Spinner
+                animation="border"
+                className="mb-3"
+                style={{color: "#6f42c1"}}
+              />
+              <h6 className="mb-0" style={{color: "#6f42c1"}}>
+                Processing...
+              </h6>
             </Card.Body>
           </Card>
         </div>

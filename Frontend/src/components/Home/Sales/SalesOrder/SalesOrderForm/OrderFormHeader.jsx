@@ -6,6 +6,12 @@ import {
   faUser,
   faSpinner,
   faRefresh,
+  faFileInvoice,
+  faEye,
+  faCog,
+  faCheckCircle,
+  faExclamationTriangle,
+  faCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import partyService from "../../../../../services/partyService";
 import saleOrderService from "../../../../../services/saleOrderService";
@@ -21,6 +27,9 @@ function OrderFormHeader({
   addToast,
   errors = {},
   disabled = false,
+  isQuotationMode = true,
+  displayQuotationNumber,
+  editMode = false,
 }) {
   const [currentUser, setCurrentUser] = useState(propCurrentUser || null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
@@ -30,10 +39,14 @@ function OrderFormHeader({
   const [isLoadingParties, setIsLoadingParties] = useState(false);
   const [partySearchTerm, setPartySearchTerm] = useState("");
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
-  const [isGeneratingOrderNumber, setIsGeneratingOrderNumber] = useState(false);
+
+  // ✅ UPDATED: Order number preview state (matching SalesFormHeader pattern)
+  const [orderNumberPreview, setOrderNumberPreview] = useState("");
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+
   const [selectedPartySuggestionIndex, setSelectedPartySuggestionIndex] =
     useState(-1);
-
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
   const [quickAddPartyData, setQuickAddPartyData] = useState(null);
 
@@ -41,7 +54,7 @@ function OrderFormHeader({
   const isSelectingPartyRef = useRef(false);
   const searchTimeoutRef = useRef(null);
   const shouldMaintainFocusRef = useRef(false);
-  const cursorPositionRef = useRef(0); // ✅ NEW: Track cursor position
+  const cursorPositionRef = useRef(0);
 
   const fieldRefs = useRef({
     gstType: null,
@@ -50,6 +63,87 @@ function OrderFormHeader({
     quotationDate: null,
   });
 
+  // ✅ UPDATED: Load order number preview (matching SalesFormHeader pattern)
+  const loadOrderNumberPreview = React.useCallback(async () => {
+    if (editMode || !companyId) {
+      return;
+    }
+
+    try {
+      setIsLoadingPreview(true);
+      setPreviewError(null);
+
+      // ✅ STEP 1: Try API endpoint first
+      try {
+        const response = await saleOrderService.generateOrderNumber(
+          companyId,
+          "quotation"
+        );
+
+        // ✅ FIXED: Check for nextOrderNumber (as shown in your API response)
+        if (response.success && response.data?.nextOrderNumber) {
+          const previewNumber = response.data.nextOrderNumber;
+          setOrderNumberPreview(previewNumber);
+          return;
+        }
+      } catch (apiError) {
+        console.log("⚠️ API endpoint not available, using pattern fallback");
+      }
+
+      // ✅ STEP 2: Try pattern method (if available)
+      try {
+        if (saleOrderService.getOrderNumberPatternInfo) {
+          const patternInfo = saleOrderService.getOrderNumberPatternInfo(
+            companyId,
+            "quotation"
+          );
+          if (patternInfo?.data?.example || patternInfo?.example) {
+            const example = patternInfo.data?.example || patternInfo.example;
+            setOrderNumberPreview(example);
+            setPreviewError("Using pattern preview");
+            return;
+          }
+        }
+      } catch (patternError) {
+        console.log("⚠️ Pattern method failed, using manual fallback");
+      }
+
+      // ✅ STEP 3: Manual fallback pattern
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const day = String(today.getDate()).padStart(2, "0");
+
+      // Generate company prefix
+      let companyPrefix = "QUO";
+      if (currentCompany?.businessName) {
+        companyPrefix =
+          currentCompany.businessName
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "")
+            .substring(0, 3) || "QUO";
+      }
+
+      const fallbackPreview = `${companyPrefix}-QUO-${year}${month}${day}-XXXX`;
+      setOrderNumberPreview(fallbackPreview);
+      setPreviewError("Using fallback pattern");
+    } catch (error) {
+      console.error("❌ Error loading order number preview:", error);
+      setPreviewError(error.message || "Preview failed");
+
+      // ✅ EMERGENCY FALLBACK
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const day = String(today.getDate()).padStart(2, "0");
+      const emergencyPreview = `QUO-${year}${month}${day}-XXXX`;
+      setOrderNumberPreview(emergencyPreview);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }, [companyId, editMode, currentCompany]);
+
+  // ✅ EXISTING: Keep user management functions unchanged
   const fetchCurrentUser = async () => {
     try {
       setIsLoadingUser(true);
@@ -158,7 +252,6 @@ function OrderFormHeader({
     }
   };
 
-  // ✅ FIXED: Maintain focus and cursor position
   const maintainFocus = () => {
     if (partyInputRef.current && shouldMaintainFocusRef.current) {
       const currentPosition = cursorPositionRef.current;
@@ -229,7 +322,6 @@ function OrderFormHeader({
           setShowPartySuggestions(true);
         }
 
-        // ✅ FIXED: Maintain focus after loading parties
         setTimeout(maintainFocus, 10);
       } else {
         setParties([]);
@@ -241,42 +333,21 @@ function OrderFormHeader({
     }
   };
 
-  const generateOrderNumber = async () => {
-    if (!companyId) return;
-
-    try {
-      setIsGeneratingOrderNumber(true);
-
-      const response = await saleOrderService.generateOrderNumber(
-        companyId,
-        "quotation"
-      );
-
-      if (response.success && response.data?.nextOrderNumber) {
-        onFormDataChange("quotationNumber", response.data.nextOrderNumber);
-      } else {
-        const now = new Date();
-        const year = now.getFullYear().toString().slice(-2);
-        const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        const day = now.getDate().toString().padStart(2, "0");
-        const hours = now.getHours().toString().padStart(2, "0");
-        const minutes = now.getMinutes().toString().padStart(2, "0");
-        const seconds = now.getSeconds().toString().padStart(2, "0");
-
-        const fallbackNumber = `QUO-${year}${month}${day}-${hours}${minutes}${seconds}`;
-        onFormDataChange("quotationNumber", fallbackNumber);
-      }
-    } catch (error) {
-      const timestamp = Date.now().toString();
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      const emergencyNumber = `QUO-${timestamp.slice(-8)}-${randomNum}`;
-
-      onFormDataChange("quotationNumber", emergencyNumber);
-    } finally {
-      setIsGeneratingOrderNumber(false);
-    }
+  // ✅ SIMPLIFIED: Clear and regenerate preview
+  const regenerateOrderNumberPreview = async () => {
+    setOrderNumberPreview(""); // Clear current
+    await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay for UI update
+    await loadOrderNumberPreview();
   };
 
+  // ✅ UPDATED: Load preview when component mounts
+  useEffect(() => {
+    if (!editMode && companyId) {
+      loadOrderNumberPreview();
+    }
+  }, [loadOrderNumberPreview]);
+
+  // ✅ EXISTING: Keep all other functions unchanged
   const focusNextField = (currentField) => {
     const fieldOrder = [
       "gstType",
@@ -415,13 +486,11 @@ function OrderFormHeader({
     }, 100);
   };
 
-  // ✅ FIXED: Party search change handler with proper focus management
   const handlePartySearchChange = (value) => {
     if (isSelectingPartyRef.current) {
       return;
     }
 
-    // ✅ Store cursor position before any state changes
     if (partyInputRef.current) {
       cursorPositionRef.current =
         partyInputRef.current.selectionStart || value.length;
@@ -432,7 +501,6 @@ function OrderFormHeader({
     setPartySearchTerm(value);
     onFormDataChange("partyName", value);
 
-    // Clear selected party if search term changes
     if (formData.selectedParty && value !== formData.partyName) {
       onFormDataChange("selectedParty", "");
       onFormDataChange("partyPhone", "");
@@ -443,13 +511,12 @@ function OrderFormHeader({
 
     if (shouldShowSuggestions) {
       setShowPartySuggestions(true);
-      shouldMaintainFocusRef.current = true; // ✅ Mark to maintain focus
+      shouldMaintainFocusRef.current = true;
     } else {
       setShowPartySuggestions(false);
       setSelectedPartySuggestionIndex(-1);
     }
 
-    // ✅ Use setTimeout to maintain focus after React updates
     setTimeout(() => {
       if (
         partyInputRef.current &&
@@ -517,9 +584,7 @@ function OrderFormHeader({
     }
   };
 
-  // ✅ FIXED: Better blur handling
   const handlePartyInputBlur = (e) => {
-    // Don't blur if clicking on suggestions
     const relatedTarget = e.relatedTarget;
     const suggestionsContainer = document.querySelector(
       ".party-suggestions-container"
@@ -531,7 +596,6 @@ function OrderFormHeader({
       suggestionsContainer.contains(relatedTarget)
     ) {
       e.preventDefault();
-      // ✅ Immediately refocus the input
       setTimeout(() => {
         if (partyInputRef.current) {
           partyInputRef.current.focus();
@@ -579,7 +643,7 @@ function OrderFormHeader({
     }
   };
 
-  // ✅ EFFECTS
+  // ✅ UPDATED EFFECTS
   useEffect(() => {
     if (companyId) {
       loadParties();
@@ -596,12 +660,6 @@ function OrderFormHeader({
       } else {
         autoFillUserData(currentUser);
       }
-
-      if (!formData.quotationNumber || formData.quotationNumber.trim() === "") {
-        setTimeout(() => {
-          generateOrderNumber();
-        }, 500);
-      }
     }
   }, [companyId, propCurrentUser]);
 
@@ -613,14 +671,13 @@ function OrderFormHeader({
     }
   }, [propCurrentUser]);
 
-  // ✅ FIXED: Search timeout with better focus management
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
     if (partySearchTerm.length >= 2 && !isSelectingPartyRef.current) {
-      shouldMaintainFocusRef.current = true; // ✅ Mark to maintain focus
+      shouldMaintainFocusRef.current = true;
       searchTimeoutRef.current = setTimeout(async () => {
         try {
           await loadParties(partySearchTerm);
@@ -644,6 +701,7 @@ function OrderFormHeader({
     };
   }, [partySearchTerm, companyId]);
 
+  // ✅ COMPUTED VALUES
   const filteredParties = getFilteredParties();
   const userDisplayInfo = getUserDisplayInfo();
 
@@ -662,7 +720,6 @@ function OrderFormHeader({
   return (
     <div className="order-form-header">
       <Row className="mb-3">
-        {/* Left Column */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label
@@ -766,7 +823,6 @@ function OrderFormHeader({
               )}
             </div>
 
-            {/* ✅ FIXED: Suggestions dropdown with better event handling */}
             {showPartySuggestions &&
               !formData.selectedParty &&
               partySearchTerm.length >= 2 && (
@@ -779,7 +835,7 @@ function OrderFormHeader({
                     borderColor: "#000",
                   }}
                   onMouseDown={(e) => {
-                    e.preventDefault(); // ✅ Prevent blur when clicking in suggestions area
+                    e.preventDefault();
                   }}
                 >
                   {filteredParties.length > 0 ? (
@@ -832,7 +888,6 @@ function OrderFormHeader({
                         </div>
                       ))}
 
-                      {/* Add New Customer Option */}
                       <div
                         className={`p-2 cursor-pointer bg-light border-top ${
                           selectedPartySuggestionIndex ===
@@ -904,7 +959,6 @@ function OrderFormHeader({
                 </div>
               )}
 
-            {/* Selected party display */}
             {formData.selectedParty && formData.partyName && (
               <div
                 className="mt-2 p-2 bg-light border-2 rounded"
@@ -949,7 +1003,6 @@ function OrderFormHeader({
           </Form.Group>
         </Col>
 
-        {/* Right Column */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label
@@ -980,56 +1033,145 @@ function OrderFormHeader({
             )}
           </Form.Group>
 
+          {/* ✅ UPDATED: Order number field (matching SalesFormHeader pattern) */}
           <Form.Group className="mb-3">
             <Form.Label
-              className="fw-bold text-danger"
+              className="fw-bold text-danger d-flex align-items-center"
               style={{fontSize: "14px"}}
             >
+              <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
               Quotation No. *
-              {!formData.quotationNumber && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="p-0 ms-2 text-decoration-none"
-                  style={{fontSize: "12px"}}
-                  onClick={generateOrderNumber}
-                  disabled={isGeneratingOrderNumber}
-                >
-                  Generate Now
-                </Button>
-              )}
             </Form.Label>
-            <div className="position-relative">
-              <Form.Control
-                type="text"
-                value={formData.quotationNumber || ""}
-                className="border-2"
-                style={{
-                  ...getInputStyleWithError("quotationNumber"),
-                  backgroundColor: isGeneratingOrderNumber
-                    ? "#f8f9fa"
-                    : "#e9ecef",
-                }}
-                disabled
-                readOnly
-                isInvalid={!!errors.quotationNumber}
-                placeholder={
-                  isGeneratingOrderNumber
-                    ? "Auto-generating..."
-                    : "Will be generated automatically"
-                }
-              />
-              {isGeneratingOrderNumber && (
-                <div className="position-absolute top-50 end-0 translate-middle-y me-2">
-                  <Spinner size="sm" />
+
+            {/* ✅ NEW QUOTATION: Show preview */}
+            {!editMode ? (
+              <div>
+                <div className="input-group">
+                  <Form.Control
+                    type="text"
+                    value={
+                      isLoadingPreview
+                        ? "Loading preview..."
+                        : orderNumberPreview || "Loading..."
+                    }
+                    style={{
+                      ...getInputStyleWithError("quotationNumber"),
+                      backgroundColor: "#f8f9fa",
+                      color: "#6c757d",
+                      fontWeight: "500",
+                    }}
+                    disabled
+                    placeholder="Quotation number will be generated when saved"
+                    title="This is a preview. Actual number will be generated when you save."
+                  />
+                  <span
+                    className="input-group-text"
+                    style={{
+                      backgroundColor: "#f8f9fa",
+                      borderColor: "#000",
+                      borderWidth: "1px",
+                    }}
+                  >
+                    {isLoadingPreview ? (
+                      <FontAwesomeIcon
+                        icon={faSpinner}
+                        spin
+                        className="text-primary"
+                      />
+                    ) : (
+                      <FontAwesomeIcon icon={faEye} className="text-primary" />
+                    )}
+                  </span>
                 </div>
-              )}
-            </div>
-            {formData.quotationNumber && (
-              <Form.Text className="text-success" style={{fontSize: "12px"}}>
-                ✅ Order number generated successfully
-              </Form.Text>
+
+                <div className="mt-1">
+                  <span className="badge bg-secondary me-2">
+                    <FontAwesomeIcon icon={faEye} className="me-1" />
+                    Preview Mode
+                  </span>
+                  <span className="badge bg-primary">
+                    <FontAwesomeIcon icon={faFileInvoice} className="me-1" />
+                    Save to Generate
+                  </span>
+                  {previewError && (
+                    <span className="badge bg-warning ms-2">
+                      <FontAwesomeIcon
+                        icon={faExclamationTriangle}
+                        className="me-1"
+                      />
+                      {previewError.includes("pattern")
+                        ? "Pattern"
+                        : "Fallback"}
+                    </span>
+                  )}
+
+                  {/* ✅ ADDED: Regenerate button */}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="p-0 ms-2 text-decoration-none"
+                    style={{fontSize: "12px"}}
+                    onClick={regenerateOrderNumberPreview}
+                    disabled={isLoadingPreview}
+                  >
+                    🔄 New Preview
+                  </Button>
+                </div>
+
+                <small className="text-muted mt-1 d-block">
+                  🔢 Preview:{" "}
+                  {isLoadingPreview
+                    ? "Loading..."
+                    : orderNumberPreview || "Will be auto-generated"}
+                  {previewError && ` (${previewError})`}
+                </small>
+              </div>
+            ) : (
+              // ✅ EDIT MODE: Show actual model-generated number (read-only)
+              <div>
+                <div className="input-group">
+                  <Form.Control
+                    type="text"
+                    value={formData.quotationNumber || ""}
+                    style={{
+                      ...getInputStyleWithError("quotationNumber"),
+                      backgroundColor: "#e8f5e8",
+                      fontWeight: "600",
+                      color: "#0f5132",
+                    }}
+                    disabled // ✅ Always disabled in edit mode to preserve model-generated number
+                    placeholder="Edit Quotation Number"
+                    title="Model-generated quotation number (preserved during edits)"
+                  />
+                  <span
+                    className="input-group-text"
+                    style={{
+                      backgroundColor: "#e8f5e8",
+                      borderColor: "#000",
+                      borderWidth: "1px",
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCog} className="text-success" />
+                  </span>
+                </div>
+
+                <div className="mt-1">
+                  <span className="badge bg-success">
+                    <FontAwesomeIcon icon={faCheck} className="me-1" />
+                    QUO: {formData.quotationNumber}
+                  </span>
+                  <span className="badge bg-info ms-2">
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                    Model Generated
+                  </span>
+                </div>
+
+                <small className="text-success mt-1 d-block">
+                  ✅ System-generated number (preserved during edits)
+                </small>
+              </div>
             )}
+
             {errors.quotationNumber && (
               <Form.Control.Feedback type="invalid" style={{fontSize: "12px"}}>
                 {errors.quotationNumber}

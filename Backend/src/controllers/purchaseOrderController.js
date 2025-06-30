@@ -338,108 +338,6 @@ const findOrCreateSupplier = async (
   }
 };
 
-// Generate next purchase order number with automatic incrementing
-const generateNextPurchaseOrderNumber = async (
-  companyId,
-  orderType = "purchase_order"
-) => {
-  try {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    const datePrefix = `${year}${month}${day}`;
-
-    const basePattern = `PO-${datePrefix}`;
-
-    const latestOrder = await PurchaseOrder.findOne({
-      companyId: companyId,
-      orderNumber: {$regex: `^${basePattern}-`},
-    })
-      .sort({orderNumber: -1})
-      .select("orderNumber")
-      .lean();
-
-    let nextSequence = 1;
-
-    if (latestOrder && latestOrder.orderNumber) {
-      const match = latestOrder.orderNumber.match(/-(\d+)$/);
-      if (match) {
-        nextSequence = parseInt(match[1]) + 1;
-      }
-    }
-
-    const sequenceStr = String(nextSequence).padStart(4, "0");
-    const newOrderNumber = `${basePattern}-${sequenceStr}`;
-
-    const existingOrder = await PurchaseOrder.findOne({
-      orderNumber: newOrderNumber,
-      companyId: companyId,
-    });
-
-    if (existingOrder) {
-      const fallbackSequence = String(nextSequence + 1).padStart(4, "0");
-      const fallbackOrderNumber = `${basePattern}-${fallbackSequence}`;
-
-      const fallbackExists = await PurchaseOrder.findOne({
-        orderNumber: fallbackOrderNumber,
-        companyId: companyId,
-      });
-
-      if (fallbackExists) {
-        const timestamp = Date.now().toString().slice(-6);
-        return `${basePattern}-${timestamp}`;
-      }
-
-      return fallbackOrderNumber;
-    }
-
-    return newOrderNumber;
-  } catch (error) {
-    const timestamp = Date.now();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const emergencyNumber = `PO-EMRG-${timestamp}-${randomNum}`;
-
-    return emergencyNumber;
-  }
-};
-
-// Add this near other helper functions like generateNextPurchaseOrderNumber
-const generateNextSalesOrderNumber = async (companyId) => {
-  try {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    const datePrefix = `${year}${month}${day}`;
-
-    const basePattern = `SO-${datePrefix}`;
-
-    const latestOrder = await SalesOrder.findOne({
-      companyId: companyId,
-      orderNumber: {$regex: `^${basePattern}-`},
-    })
-      .sort({orderNumber: -1})
-      .select("orderNumber")
-      .lean();
-
-    let nextSequence = 1;
-    if (latestOrder && latestOrder.orderNumber) {
-      const match = latestOrder.orderNumber.match(/-(\d+)$/);
-      if (match) {
-        nextSequence = parseInt(match[1]) + 1;
-      }
-    }
-
-    const sequenceStr = String(nextSequence).padStart(4, "0");
-    return `${basePattern}-${sequenceStr}`;
-  } catch (error) {
-    const timestamp = Date.now();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    return `SO-EMRG-${timestamp}-${randomNum}`;
-  }
-};
-
 // Auto-detection function to find linked company for supplier
 const findLinkedCompanyForSupplier = async (supplier) => {
   try {
@@ -506,6 +404,68 @@ const findLinkedCompanyForSupplier = async (supplier) => {
   }
 };
 
+const generateNextSalesOrderNumber = async (companyId) => {
+  try {
+    const company = await Company.findById(companyId).select(
+      "businessName code"
+    );
+
+    if (!company) {
+      throw new Error("Company not found for sales order number generation");
+    }
+
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${year}${month}${day}`;
+
+    // Get company prefix
+    let companyPrefix = "SO";
+    if (company?.code) {
+      companyPrefix = company.code
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .substring(0, 6);
+    } else if (company?.businessName) {
+      companyPrefix = company.businessName
+        .replace(/[^A-Za-z]/g, "")
+        .substring(0, 3)
+        .toUpperCase();
+    }
+
+    const gstPrefix = "GST-";
+    const basePattern = `${companyPrefix}-SO-${gstPrefix}${dateStr}`;
+
+    // Find next sequence for today
+    const todayStart = new Date(year, date.getMonth(), date.getDate());
+    const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+    const lastOrder = await SalesOrder.findOne({
+      companyId: companyId,
+      orderDate: {$gte: todayStart, $lt: todayEnd},
+      orderNumber: {
+        $regex: new RegExp(
+          `^${basePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+$`
+        ),
+      },
+    }).sort({orderNumber: -1, createdAt: -1});
+
+    let nextSequence = 1;
+    if (lastOrder && lastOrder.orderNumber) {
+      const match = lastOrder.orderNumber.match(/-(\d+)$/);
+      if (match) {
+        nextSequence = parseInt(match[1]) + 1;
+      }
+    }
+
+    const sequenceStr = nextSequence.toString().padStart(4, "0");
+    return `${basePattern}-${sequenceStr}`;
+  } catch (error) {
+    console.error("❌ Error generating sales order number:", error);
+    throw new Error(`Failed to generate sales order number: ${error.message}`);
+  }
+};
 // Automatically create supplier from company details
 const autoCreateSupplierFromCompany = async (
   sourceCompany,
@@ -575,7 +535,6 @@ const purchaseOrderController = {
         supplierMobile,
         supplierEmail,
         supplier,
-        orderNumber,
         orderDate,
         orderType = "purchase_order",
         validUntil,
@@ -601,7 +560,7 @@ const purchaseOrderController = {
         sourceOrderId,
         sourceOrderNumber,
         sourceOrderType,
-        sourceCompanyId, // Can be provided manually or auto-detected
+        sourceCompanyId,
         isAutoGenerated = false,
         generatedFrom = "manual",
         generatedBy,
@@ -611,7 +570,7 @@ const purchaseOrderController = {
         employeeId,
         createdBy,
         lastModifiedBy,
-        autoDetectSourceCompany = true, // ✅ NEW: Enable auto-detection
+        autoDetectSourceCompany = true, // ✅ Default to true
       } = req.body;
 
       if (!companyId) {
@@ -688,52 +647,7 @@ const purchaseOrderController = {
         });
       }
 
-      // ✅ ENHANCED: Generate order number
-      let finalOrderNumber = orderNumber;
-      if (!finalOrderNumber || finalOrderNumber.trim() === "") {
-        try {
-          finalOrderNumber = await generateNextPurchaseOrderNumber(
-            companyId,
-            orderType
-          );
-        } catch (generationError) {
-          return res.status(500).json({
-            success: false,
-            message: "Failed to generate order number",
-            error: generationError.message,
-            code: "ORDER_NUMBER_GENERATION_FAILED",
-          });
-        }
-      } else {
-        finalOrderNumber = finalOrderNumber.trim();
-
-        if (finalOrderNumber.length < 3 || finalOrderNumber.length > 50) {
-          return res.status(400).json({
-            success: false,
-            message: "Order number must be between 3 and 50 characters",
-            code: "INVALID_ORDER_NUMBER_LENGTH",
-            provided: finalOrderNumber,
-          });
-        }
-
-        const existingOrder = await PurchaseOrder.findOne({
-          orderNumber: finalOrderNumber,
-          companyId: companyId,
-        }).lean();
-
-        if (existingOrder) {
-          return res.status(400).json({
-            success: false,
-            message: `Purchase order number "${finalOrderNumber}" already exists for this company`,
-            error: "DUPLICATE_ORDER_NUMBER",
-            code: "DUPLICATE_ORDER_NUMBER",
-            suggestion:
-              "Use a different order number or leave empty to auto-generate",
-          });
-        }
-      }
-
-      // ✅ ENHANCED: Find or create supplier with full population
+      // ✅ ENHANCED: Find or create supplier with full population and better error handling
       let supplierRecord;
       try {
         supplierRecord = await findOrCreateSupplier(
@@ -744,7 +658,7 @@ const purchaseOrderController = {
           req.user?.id || employeeId || companyId
         );
 
-        // ✅ NEW: Populate supplier with linkedCompanyId details
+        // ✅ CRITICAL: Populate supplier with linkedCompanyId details PROPERLY
         if (supplierRecord && supplierRecord._id) {
           supplierRecord = await Party.findById(supplierRecord._id)
             .populate(
@@ -752,6 +666,16 @@ const purchaseOrderController = {
               "businessName email phoneNumber gstin isActive"
             )
             .lean();
+
+          console.log("🔍 Supplier details after population:", {
+            supplierId: supplierRecord._id,
+            supplierName: supplierRecord.name,
+            hasLinkedCompanyId: !!supplierRecord.linkedCompanyId,
+            linkedCompanyId:
+              supplierRecord.linkedCompanyId?._id ||
+              supplierRecord.linkedCompanyId,
+            linkedCompanyName: supplierRecord.linkedCompanyId?.businessName,
+          });
         }
       } catch (supplierError) {
         return res.status(400).json({
@@ -770,16 +694,22 @@ const purchaseOrderController = {
         });
       }
 
-      // ✅ NEW: Auto-detect sourceCompanyId from supplier's linkedCompanyId
+      // ✅ ENHANCED: Auto-detect sourceCompanyId from supplier's linkedCompanyId
       let finalSourceCompanyId = sourceCompanyId;
       let sourceCompanyDetectionMethod = "manual";
       let sourceCompanyDetails = null;
 
-      if (
-        autoDetectSourceCompany &&
-        !finalSourceCompanyId &&
-        supplierRecord.linkedCompanyId
-      ) {
+      // ✅ STEP 1: Check if manual sourceCompanyId provided
+      if (sourceCompanyId && mongoose.Types.ObjectId.isValid(sourceCompanyId)) {
+        finalSourceCompanyId = sourceCompanyId;
+        sourceCompanyDetectionMethod = "manual";
+        console.log(
+          "✅ Using manually provided sourceCompanyId:",
+          sourceCompanyId
+        );
+      }
+      // ✅ STEP 2: Auto-detect from supplier's linkedCompanyId
+      else if (autoDetectSourceCompany && supplierRecord.linkedCompanyId) {
         console.log(
           "🔍 Auto-detecting sourceCompanyId from supplier's linkedCompanyId:",
           {
@@ -795,7 +725,7 @@ const purchaseOrderController = {
         const linkedCompanyId =
           supplierRecord.linkedCompanyId._id || supplierRecord.linkedCompanyId;
 
-        // ✅ Ensure it's different from current company (avoid circular reference)
+        // ✅ CRITICAL: Ensure it's different from current company (avoid circular reference)
         if (linkedCompanyId.toString() !== companyId.toString()) {
           try {
             // Verify the linked company exists and is active
@@ -817,22 +747,95 @@ const purchaseOrderController = {
                 detectionMethod: sourceCompanyDetectionMethod,
               });
             } else {
-              console.log("⚠️ Linked company is inactive or not found:", {
-                linkedCompanyId: linkedCompanyId.toString(),
-                isActive: linkedCompany?.isActive,
-                exists: !!linkedCompany,
-              });
+              console.log(
+                "⚠️ Linked company not found or inactive:",
+                linkedCompanyId
+              );
             }
           } catch (companyError) {
             console.error("❌ Error validating linked company:", companyError);
           }
         } else {
           console.log(
-            "⚠️ Supplier's linkedCompanyId points to same company - skipping auto-detection:",
-            {
-              linkedCompanyId: linkedCompanyId.toString(),
-              currentCompanyId: companyId.toString(),
-            }
+            "⚠️ Supplier's linkedCompanyId is same as current company - skipping to avoid circular reference"
+          );
+        }
+      }
+      // ✅ STEP 3: Try to auto-detect by supplier details (GST, phone, email, name)
+      else if (autoDetectSourceCompany) {
+        console.log(
+          "🔍 Attempting to auto-detect sourceCompanyId by supplier details..."
+        );
+
+        try {
+          const companiesResponse = await Company.find({
+            _id: {$ne: companyId}, // Exclude current company
+            isActive: {$ne: false}, // Only active companies
+            $or: [
+              // Match by GST
+              ...(supplierRecord.gstNumber
+                ? [{gstin: supplierRecord.gstNumber}]
+                : []),
+              // Match by phone
+              ...(supplierRecord.phoneNumber
+                ? [{phoneNumber: supplierRecord.phoneNumber}]
+                : []),
+              ...(supplierRecord.mobile
+                ? [{phoneNumber: supplierRecord.mobile}]
+                : []),
+              // Match by email
+              ...(supplierRecord.email ? [{email: supplierRecord.email}] : []),
+              // Match by name
+              ...(supplierRecord.name
+                ? [
+                    {
+                      businessName: {
+                        $regex: new RegExp(
+                          `^${supplierRecord.name.trim()}$`,
+                          "i"
+                        ),
+                      },
+                    },
+                  ]
+                : []),
+            ],
+          }).limit(1);
+
+          if (companiesResponse && companiesResponse.length > 0) {
+            const matchedCompany = companiesResponse[0];
+            finalSourceCompanyId = matchedCompany._id;
+            sourceCompanyDetectionMethod = "supplier_details_matching";
+            sourceCompanyDetails = {
+              id: matchedCompany._id,
+              businessName: matchedCompany.businessName,
+              email: matchedCompany.email,
+              phone: matchedCompany.phoneNumber,
+              gstin: matchedCompany.gstin,
+            };
+
+            console.log(
+              "✅ Auto-detected sourceCompanyId by supplier details:",
+              {
+                sourceCompanyId: finalSourceCompanyId.toString(),
+                sourceCompanyName: matchedCompany.businessName,
+                detectionMethod: sourceCompanyDetectionMethod,
+                matchedBy:
+                  supplierRecord.gstNumber === matchedCompany.gstin
+                    ? "GST"
+                    : supplierRecord.phoneNumber === matchedCompany.phoneNumber
+                    ? "Phone"
+                    : supplierRecord.email === matchedCompany.email
+                    ? "Email"
+                    : "Name",
+              }
+            );
+          } else {
+            console.log("ℹ️ No matching company found for supplier details");
+          }
+        } catch (detectionError) {
+          console.error(
+            "❌ Error during company auto-detection:",
+            detectionError
           );
         }
       }
@@ -851,6 +854,15 @@ const purchaseOrderController = {
         });
       }
 
+      // ✅ Log final result
+      console.log("🎯 Final sourceCompanyId detection result:", {
+        finalSourceCompanyId: finalSourceCompanyId?.toString() || null,
+        sourceCompanyDetectionMethod,
+        sourceCompanyDetails: sourceCompanyDetails?.businessName || null,
+        wasDetected: !!finalSourceCompanyId,
+        autoDetectionEnabled: autoDetectSourceCompany,
+      });
+
       // ✅ Continue with existing logic for GST, tax calculations, etc.
       const finalGstType = gstType || (gstEnabled ? "gst" : "non-gst");
       const finalTaxMode =
@@ -859,7 +871,7 @@ const purchaseOrderController = {
         finalTaxMode === "with-tax" || finalTaxMode === "inclusive";
       const finalGstEnabled = finalGstType === "gst";
 
-      // ... [Keep existing item processing logic] ...
+      // ... [Keep all your existing item processing logic] ...
       const processedItems = [];
       let subtotal = 0;
       let totalDiscount = 0;
@@ -905,6 +917,7 @@ const purchaseOrderController = {
           });
         }
 
+        // ... [Keep all your existing item processing calculations] ...
         const itemGstMode = item.gstMode || item.taxMode || finalTaxMode;
         const itemPriceIncludesTax =
           itemGstMode === "include" ||
@@ -1022,7 +1035,7 @@ const purchaseOrderController = {
         processedItems.push(processedItem);
       }
 
-      // ... [Keep existing totals and payment logic] ...
+      // ... [Keep all your existing totals and payment logic] ...
       const baseTotal = processedItems.reduce(
         (sum, item) => sum + item.amount,
         0
@@ -1131,9 +1144,8 @@ const purchaseOrderController = {
         orderValidUntil.setDate(orderValidUntil.getDate() + 30);
       }
 
-      // ✅ ENHANCED: Create purchase order data with auto-detected sourceCompanyId
+      // ✅ CRITICAL: Create purchase order data WITHOUT orderNumber (let model generate it)
       const purchaseOrderData = {
-        orderNumber: finalOrderNumber,
         orderDate: orderDate ? new Date(orderDate) : new Date(),
         orderType,
         validUntil: orderValidUntil,
@@ -1164,14 +1176,21 @@ const purchaseOrderController = {
           )
             ? sourceOrderType
             : null,
-
-        // ✅ ENHANCED: Include auto-detected or manual sourceCompanyId
+        // ✅ CRITICAL: Use the auto-detected or provided sourceCompanyId
         sourceCompanyId:
           finalSourceCompanyId &&
           mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
             ? finalSourceCompanyId
             : null,
-
+        // ✅ CRITICAL: Set targetCompanyId to the detected sourceCompanyId for bidirectional flow
+        targetCompanyId:
+          finalSourceCompanyId &&
+          mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
+            ? finalSourceCompanyId
+            : targetCompanyId &&
+              mongoose.Types.ObjectId.isValid(targetCompanyId)
+            ? targetCompanyId
+            : null,
         isAutoGenerated: isAutoGenerated || false,
         generatedFrom:
           generatedFrom &&
@@ -1188,10 +1207,6 @@ const purchaseOrderController = {
         salesOrderNumber: null,
         salesOrderGeneratedAt: null,
         salesOrderGeneratedBy: null,
-        targetCompanyId:
-          targetCompanyId && mongoose.Types.ObjectId.isValid(targetCompanyId)
-            ? targetCompanyId
-            : null,
         items: processedItems,
         totals,
         payment: paymentDetails,
@@ -1233,49 +1248,30 @@ const purchaseOrderController = {
         }
       });
 
-      if (purchaseOrderData.payment) {
-        Object.keys(purchaseOrderData.payment).forEach((key) => {
-          if (purchaseOrderData.payment[key] === undefined) {
-            delete purchaseOrderData.payment[key];
-          }
-        });
-      }
-
-      if (purchaseOrderData.totals) {
-        Object.keys(purchaseOrderData.totals).forEach((key) => {
-          if (purchaseOrderData.totals[key] === undefined) {
-            delete purchaseOrderData.totals[key];
-          }
-        });
-      }
-
-      if (!supplierRecord || !supplierRecord._id) {
-        throw new Error("Supplier not found or invalid supplier data");
-      }
-
-      if (!purchaseOrderData.items || purchaseOrderData.items.length === 0) {
-        throw new Error("No valid items found for purchase order creation");
-      }
-
-      console.log("💾 Creating purchase order with enhanced tracking:", {
-        orderNumber: purchaseOrderData.orderNumber,
+      console.log("💾 Creating purchase order with auto-generated number:", {
         supplierId: supplierRecord._id,
         supplierName: supplierRecord.name,
         companyId: purchaseOrderData.companyId,
         sourceCompanyId: purchaseOrderData.sourceCompanyId?.toString(),
-        sourceCompanyDetectionMethod,
-        hasSourceCompany: !!purchaseOrderData.sourceCompanyId,
-        autoDetectedSource:
-          sourceCompanyDetectionMethod === "supplier_linked_company",
+        targetCompanyId: purchaseOrderData.targetCompanyId?.toString(),
+        willAutoGenerateNumber: true,
       });
 
-      // ✅ Create purchase order
+      // ✅ Create purchase order (model will auto-generate orderNumber)
       const purchaseOrder = new PurchaseOrder(purchaseOrderData);
       await purchaseOrder.save();
 
+      console.log("✅ Purchase order created with auto-generated number:", {
+        orderId: purchaseOrder._id,
+        orderNumber: purchaseOrder.orderNumber,
+        numberingInfo: purchaseOrder.numberingInfo,
+        sourceCompanyId: purchaseOrder.sourceCompanyId?.toString(),
+        targetCompanyId: purchaseOrder.targetCompanyId?.toString(),
+      });
+
       // ✅ Auto-create corresponding sales order if enabled
       let correspondingSalesOrder = null;
-      if (autoCreateCorrespondingSO && targetCompanyId) {
+      if (autoCreateCorrespondingSO && purchaseOrder.targetCompanyId) {
         try {
           if (
             typeof purchaseOrder.createCorrespondingSalesOrder === "function"
@@ -1288,7 +1284,6 @@ const purchaseOrderController = {
             "⚠️ Failed to create corresponding sales order:",
             correspondingOrderError.message
           );
-          // Don't fail the main purchase order creation
         }
       }
 
@@ -1308,20 +1303,7 @@ const purchaseOrderController = {
         await purchaseOrder.populate("targetCompanyId", "businessName email");
       }
 
-      console.log(
-        "✅ Purchase order created successfully with enhanced tracking:",
-        {
-          orderId: purchaseOrder._id,
-          orderNumber: purchaseOrder.orderNumber,
-          supplierName: supplierRecord.name,
-          sourceCompanyId: purchaseOrder.sourceCompanyId?.toString(),
-          sourceCompanyName: sourceCompanyDetails?.businessName,
-          detectionMethod: sourceCompanyDetectionMethod,
-          hasCorrespondingSO: !!correspondingSalesOrder,
-        }
-      );
-
-      // ✅ ENHANCED: Response with source company tracking details
+      // ✅ Enhanced response with model-generated order number info
       res.status(201).json({
         success: true,
         message: `${
@@ -1349,15 +1331,7 @@ const purchaseOrderController = {
               linkedCompanyName: supplierRecord.linkedCompanyId?.businessName,
             },
             totals: purchaseOrder.totals,
-            payment: {
-              ...purchaseOrder.payment,
-              dueDate: purchaseOrder.payment.dueDate,
-              creditDays: purchaseOrder.payment.creditDays,
-            },
-            gstType: purchaseOrder.gstType,
-            gstEnabled: purchaseOrder.gstEnabled,
-            taxMode: purchaseOrder.taxMode,
-            priceIncludesTax: purchaseOrder.priceIncludesTax,
+            payment: purchaseOrder.payment,
             status: purchaseOrder.status,
             priority: purchaseOrder.priority,
             trackingInfo: {
@@ -1368,9 +1342,8 @@ const purchaseOrderController = {
               hasSource: !!purchaseOrder.sourceOrderId,
               hasCorresponding: !!purchaseOrder.correspondingSalesOrderId,
               hasGenerated: !!purchaseOrder.salesOrderRef,
-
-              // ✅ NEW: Source company tracking
               sourceCompanyId: purchaseOrder.sourceCompanyId?.toString(),
+              targetCompanyId: purchaseOrder.targetCompanyId?.toString(),
               sourceCompanyDetails,
               sourceCompanyDetectionMethod,
               autoDetectedSourceCompany:
@@ -1387,10 +1360,16 @@ const purchaseOrderController = {
               }
             : null,
           orderNumberInfo: {
-            orderNumber: finalOrderNumber,
-            wasAutoGenerated: !orderNumber,
-            generatedAt: !orderNumber ? new Date().toISOString() : null,
+            orderNumber: purchaseOrder.orderNumber,
+            wasAutoGenerated:
+              purchaseOrder.numberingInfo?.wasAutoGenerated || true,
+            generatedBy: purchaseOrder.numberingInfo?.generatedBy || "model",
+            generationMethod:
+              purchaseOrder.numberingInfo?.generationMethod || "sequential",
+            sequenceNumber: purchaseOrder.numberingInfo?.sequenceNumber,
+            generatedAt: purchaseOrder.numberingInfo?.generatedAt || new Date(),
             isUnique: true,
+            pattern: "Company-OrderType-GST-YYYYMMDD-NNNN",
           },
           supplierInfo: {
             supplierId: supplierRecord._id,
@@ -1407,13 +1386,12 @@ const purchaseOrderController = {
               supplierRecord.linkedCompanyId,
             linkedCompanyName: supplierRecord.linkedCompanyId?.businessName,
           },
-
-          // ✅ NEW: Enhanced source company tracking info
           sourceCompanyTracking: {
             enabled: autoDetectSourceCompany,
             detected: !!finalSourceCompanyId,
             detectionMethod: sourceCompanyDetectionMethod,
             sourceCompanyId: finalSourceCompanyId?.toString(),
+            targetCompanyId: purchaseOrder.targetCompanyId?.toString(),
             sourceCompanyDetails,
             supplierLinkedCompany: {
               id:
@@ -1427,6 +1405,8 @@ const purchaseOrderController = {
             explanation:
               sourceCompanyDetectionMethod === "supplier_linked_company"
                 ? "Source company auto-detected from supplier's linked company account"
+                : sourceCompanyDetectionMethod === "supplier_details_matching"
+                ? "Source company auto-detected by matching supplier details"
                 : sourceCompanyDetectionMethod === "manual"
                 ? "Source company provided manually"
                 : "No source company detected or provided",
@@ -1468,8 +1448,173 @@ const purchaseOrderController = {
       });
     }
   },
+  generateOrderNumber: async (req, res) => {
+    try {
+      const {
+        companyId,
+        orderType = "purchase_order",
+        gstType = "gst",
+      } = req.query;
 
-  // Retrieve all purchase orders with advanced filtering and pagination
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+          code: "MISSING_COMPANY_ID",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+          code: "INVALID_COMPANY_ID",
+        });
+      }
+
+      const company = await Company.findById(companyId).select(
+        "businessName code isActive"
+      );
+
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message: "Company not found",
+          code: "COMPANY_NOT_FOUND",
+        });
+      }
+
+      if (company.isActive === false) {
+        return res.status(400).json({
+          success: false,
+          message: "Company is not active",
+          code: "COMPANY_INACTIVE",
+        });
+      }
+
+      const validOrderTypes = [
+        "purchase_order",
+        "purchase_quotation",
+        "proforma_purchase",
+      ];
+      if (!validOrderTypes.includes(orderType)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid order type",
+          code: "INVALID_ORDER_TYPE",
+          provided: orderType,
+          validTypes: validOrderTypes,
+        });
+      }
+
+      // ✅ Generate preview using same logic as model
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const dateStr = `${year}${month}${day}`;
+
+      // Get company prefix
+      let companyPrefix = "PO";
+      if (company?.code) {
+        companyPrefix = company.code
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .substring(0, 6);
+      } else if (company?.businessName) {
+        companyPrefix = company.businessName
+          .replace(/[^A-Za-z]/g, "")
+          .substring(0, 3)
+          .toUpperCase();
+      }
+
+      // Order type prefix
+      let orderTypePrefix = "PO";
+      if (orderType === "purchase_quotation") {
+        orderTypePrefix = "QUO";
+      } else if (orderType === "proforma_purchase") {
+        orderTypePrefix = "PPO";
+      }
+
+      // ✅ RESTORED: GST prefix for proper differentiation
+      const gstPrefix = gstType === "gst" ? "GST-" : "NGST-";
+
+      // Find next sequence for same GST type
+      const todayStart = new Date(year, date.getMonth(), date.getDate());
+      const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+      // ✅ FIXED: Include GST prefix in pattern
+      const basePattern = `${companyPrefix}-${orderTypePrefix}-${gstPrefix}${dateStr}`;
+
+      const lastOrder = await PurchaseOrder.findOne({
+        companyId: companyId,
+        orderDate: {$gte: todayStart, $lt: todayEnd},
+        orderType: orderType,
+        gstType: gstType, // ✅ CRITICAL: Filter by GST type
+        orderNumber: {
+          $regex: new RegExp(
+            `^${basePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+$`
+          ),
+        },
+      }).sort({orderNumber: -1, createdAt: -1});
+
+      let nextSequence = 1;
+      if (lastOrder && lastOrder.orderNumber) {
+        const regex = new RegExp(
+          `^${basePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+)$`
+        );
+        const match = lastOrder.orderNumber.match(regex);
+        if (match) {
+          const lastNumber = parseInt(match[1]);
+          if (!isNaN(lastNumber)) {
+            nextSequence = lastNumber + 1;
+          }
+        }
+      }
+
+      const sequenceStr = nextSequence.toString().padStart(4, "0");
+      const previewOrderNumber = `${basePattern}-${sequenceStr}`;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          previewOrderNumber,
+          nextOrderNumber: previewOrderNumber,
+          orderType,
+          gstType,
+          companyId,
+          companyName: company.businessName,
+          generatedAt: new Date().toISOString(),
+          date: new Date().toISOString().split("T")[0],
+          isPreview: true,
+          note: "This is a preview. Actual number will be generated when saving.",
+          numbering: {
+            companyPrefix,
+            orderTypePrefix,
+            gstPrefix,
+            dateString: dateStr,
+            sequenceNumber: nextSequence,
+            pattern: `${companyPrefix}-${orderTypePrefix}-${gstPrefix}YYYYMMDD-NNNN`,
+          },
+        },
+        message: "Preview order number generated successfully",
+        metadata: {
+          pattern: `${companyPrefix}-${orderTypePrefix}-${gstPrefix}YYYYMMDD-NNNN`,
+          sequenceType: "sequential",
+          timestamp: Date.now(),
+          willBeGeneratedByModel: true,
+          gstTypeConsidered: gstType,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate preview order number",
+        error: error.message,
+        code: "PREVIEW_ORDER_NUMBER_GENERATION_FAILED",
+      });
+    }
+  },
   getAllPurchaseOrders: async (req, res) => {
     try {
       const {companyId} = req.query;
@@ -1762,151 +1907,6 @@ const purchaseOrderController = {
         success: false,
         message: "Failed to retrieve purchase orders",
         error: error.message,
-      });
-    }
-  },
-
-  // Generate unique purchase order number with validation
-  generateOrderNumber: async (req, res) => {
-    try {
-      const {companyId, orderType = "purchase_order"} = req.query;
-
-      if (!companyId) {
-        return res.status(400).json({
-          success: false,
-          message: "Company ID is required",
-          code: "MISSING_COMPANY_ID",
-        });
-      }
-
-      if (!mongoose.Types.ObjectId.isValid(companyId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid company ID format",
-          code: "INVALID_COMPANY_ID",
-          provided: companyId,
-        });
-      }
-
-      const company = await mongoose.connection.db
-        .collection("companies")
-        .findOne(
-          {_id: new mongoose.Types.ObjectId(companyId)},
-          {projection: {businessName: 1, isActive: 1}}
-        );
-
-      if (!company) {
-        return res.status(404).json({
-          success: false,
-          message: "Company not found",
-          code: "COMPANY_NOT_FOUND",
-          companyId,
-        });
-      }
-
-      if (company.isActive === false) {
-        return res.status(400).json({
-          success: false,
-          message: "Company is not active",
-          code: "COMPANY_INACTIVE",
-          companyName: company.businessName,
-        });
-      }
-
-      const validOrderTypes = [
-        "purchase_order",
-        "purchase_quotation",
-        "proforma_purchase",
-      ];
-      if (!validOrderTypes.includes(orderType)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid order type",
-          code: "INVALID_ORDER_TYPE",
-          provided: orderType,
-          validTypes: validOrderTypes,
-        });
-      }
-
-      let nextOrderNumber;
-      let generationAttempts = 0;
-      const maxAttempts = 3;
-
-      while (generationAttempts < maxAttempts) {
-        try {
-          nextOrderNumber = await generateNextPurchaseOrderNumber(
-            companyId,
-            orderType
-          );
-
-          const finalCheck = await PurchaseOrder.findOne({
-            orderNumber: nextOrderNumber,
-            companyId: companyId,
-          }).lean();
-
-          if (!finalCheck) {
-            break;
-          }
-
-          generationAttempts++;
-
-          if (generationAttempts >= maxAttempts) {
-            throw new Error(
-              "Failed to generate unique order number after multiple attempts"
-            );
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 10));
-        } catch (generationError) {
-          generationAttempts++;
-
-          if (generationAttempts >= maxAttempts) {
-            throw generationError;
-          }
-        }
-      }
-
-      if (!nextOrderNumber) {
-        throw new Error("Order number generation returned empty result");
-      }
-
-      res.status(200).json({
-        success: true,
-        data: {
-          nextOrderNumber,
-          orderType,
-          companyId,
-          companyName: company.businessName,
-          generatedAt: new Date().toISOString(),
-          date: new Date().toISOString().split("T")[0],
-          generationAttempts: generationAttempts + 1,
-          isUnique: true,
-        },
-        message: "Order number generated successfully",
-        metadata: {
-          pattern: nextOrderNumber.includes("PO-")
-            ? "PO-YYYYMMDD-NNNN"
-            : "Emergency format",
-          sequenceType: nextOrderNumber.includes("EMRG")
-            ? "emergency"
-            : "sequential",
-          timestamp: Date.now(),
-        },
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Failed to generate order number",
-        error: error.message,
-        code: "ORDER_NUMBER_GENERATION_FAILED",
-        details: {
-          companyId: req.query.companyId,
-          orderType: req.query.orderType,
-          timestamp: new Date().toISOString(),
-          errorType: error.name || "UnknownError",
-        },
-        suggestion:
-          "Please try again. If the problem persists, contact support.",
       });
     }
   },
@@ -2792,244 +2792,36 @@ const purchaseOrderController = {
         });
       }
 
+      // ✅ CRITICAL: Prevent orderNumber from being updated manually
+      if (updateData.orderNumber) {
+        delete updateData.orderNumber;
+        console.warn("⚠️ Attempted to manually update orderNumber - ignored");
+      }
+
       updateData.lastModifiedBy = req.user?.id || "system";
 
       const updatedPurchaseOrder = await PurchaseOrder.findByIdAndUpdate(
         id,
         updateData,
-        {new: true, runValidators: true}
+        {
+          new: true,
+          runValidators: true,
+        }
       ).populate("supplier", "name mobile phoneNumber email address");
 
       res.status(200).json({
         success: true,
         message: "Purchase order updated successfully",
-        data: updatedPurchaseOrder,
+        data: {
+          purchaseOrder: updatedPurchaseOrder,
+          orderNumber: updatedPurchaseOrder.orderNumber, // Show current (unchanged) number
+          numberingInfo: updatedPurchaseOrder.numberingInfo,
+        },
       });
     } catch (error) {
       res.status(500).json({
         success: false,
         message: "Failed to update purchase order",
-        error: error.message,
-      });
-    }
-  },
-
-  // Delete purchase order (cancel)
-  deletePurchaseOrder: async (req, res) => {
-    try {
-      const {id} = req.params;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid purchase order ID",
-        });
-      }
-
-      const purchaseOrder = await PurchaseOrder.findById(id);
-      if (!purchaseOrder) {
-        return res.status(404).json({
-          success: false,
-          message: "Purchase order not found",
-        });
-      }
-
-      if (purchaseOrder.convertedToPurchaseInvoice) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Cannot delete purchase order that has been converted to invoice",
-        });
-      }
-
-      purchaseOrder.status = "cancelled";
-      purchaseOrder.lastModifiedBy = req.user?.id || "system";
-      await purchaseOrder.save();
-
-      res.status(200).json({
-        success: true,
-        message: "Purchase order cancelled successfully",
-      });
-    } catch (error) {
-      console.error("❌ Error deleting purchase order:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to delete purchase order",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get pending orders for payment
-  getPendingOrdersForPayment: async (req, res) => {
-    try {
-      const {companyId, supplierId} = req.query;
-
-      const filter = {
-        companyId,
-        status: {$nin: ["cancelled", "draft"]},
-        "payment.pendingAmount": {$gt: 0},
-      };
-
-      if (supplierId) {
-        filter.supplier = supplierId;
-      }
-
-      const pendingOrders = await PurchaseOrder.find(filter)
-        .populate("supplier", "name mobile phoneNumber email")
-        .select("orderNumber orderDate supplier totals payment")
-        .sort({orderDate: -1});
-
-      res.status(200).json({
-        success: true,
-        data: pendingOrders,
-      });
-    } catch (error) {
-      console.error("❌ Error getting pending orders:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get pending orders for payment",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get supplier pending documents
-  getSupplierPendingDocuments: async (req, res) => {
-    try {
-      const {companyId, supplierId} = req.query;
-
-      if (!supplierId) {
-        return res.status(400).json({
-          success: false,
-          message: "Supplier ID is required",
-        });
-      }
-
-      const pendingOrders = await PurchaseOrder.find({
-        companyId,
-        supplier: supplierId,
-        status: {$nin: ["cancelled", "completed"]},
-        "payment.pendingAmount": {$gt: 0},
-      })
-        .select("orderNumber orderDate orderType totals payment status")
-        .sort({orderDate: -1});
-
-      const summary = {
-        totalPendingAmount: pendingOrders.reduce(
-          (sum, order) => sum + (order.payment?.pendingAmount || 0),
-          0
-        ),
-        totalOrders: pendingOrders.length,
-        overdueOrders: pendingOrders.filter((order) => {
-          const dueDate = order.payment?.dueDate;
-          return dueDate && new Date() > dueDate;
-        }).length,
-      };
-
-      res.status(200).json({
-        success: true,
-        data: {
-          orders: pendingOrders,
-          summary,
-        },
-      });
-    } catch (error) {
-      console.error("❌ Error getting supplier pending documents:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get supplier pending documents",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get expired orders
-  getExpiredOrders: async (req, res) => {
-    try {
-      const {companyId} = req.query;
-
-      const expiredOrders = await PurchaseOrder.find({
-        companyId,
-        validUntil: {$lt: new Date()},
-        status: {$nin: ["completed", "cancelled", "converted"]},
-      })
-        .populate("supplier", "name mobile phoneNumber")
-        .sort({validUntil: 1});
-
-      res.status(200).json({
-        success: true,
-        data: expiredOrders,
-        message: `Found ${expiredOrders.length} expired orders`,
-      });
-    } catch (error) {
-      console.error("❌ Error getting expired orders:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get expired orders",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get orders awaiting approval
-  getOrdersAwaitingApproval: async (req, res) => {
-    try {
-      const {companyId} = req.query;
-
-      const awaitingApproval = await PurchaseOrder.find({
-        companyId,
-        status: "draft",
-        approvedBy: {$exists: false},
-      })
-        .populate("supplier", "name mobile phoneNumber")
-        .sort({orderDate: -1});
-
-      res.status(200).json({
-        success: true,
-        data: awaitingApproval,
-        message: `Found ${awaitingApproval.length} orders awaiting approval`,
-      });
-    } catch (error) {
-      console.error("❌ Error getting orders awaiting approval:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get orders awaiting approval",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get orders required by date
-  getOrdersRequiredByDate: async (req, res) => {
-    try {
-      const {companyId, date} = req.query;
-
-      if (!date) {
-        return res.status(400).json({
-          success: false,
-          message: "Date is required",
-        });
-      }
-
-      const requiredOrders = await PurchaseOrder.find({
-        companyId,
-        requiredBy: {$lte: new Date(date)},
-        status: {$nin: ["completed", "cancelled", "received"]},
-      })
-        .populate("supplier", "name mobile phoneNumber")
-        .sort({requiredBy: 1});
-
-      res.status(200).json({
-        success: true,
-        data: requiredOrders,
-        message: `Found ${requiredOrders.length} orders required by ${date}`,
-      });
-    } catch (error) {
-      console.error("❌ Error getting orders required by date:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get orders required by date",
         error: error.message,
       });
     }
@@ -3259,15 +3051,12 @@ const purchaseOrderController = {
         orderValidUntil.setDate(orderValidUntil.getDate() + 30);
       }
 
-      // Generate purchase order data with validated supplier
+      // ✅ CRITICAL: Generate purchase order data WITHOUT orderNumber (let model handle it)
       const purchaseOrderData = {
-        orderNumber: await generateNextPurchaseOrderNumber(
-          targetCompanyId,
-          "purchase_order"
-        ),
+        // ❌ REMOVED: orderNumber - let model auto-generate
         orderDate: new Date(),
         orderType: orderType,
-        supplier: supplierRecord._id, // ✅ FIXED: Use supplierRecord instead of supplier
+        supplier: supplierRecord._id,
         supplierMobile: supplierRecord.phoneNumber || supplierRecord.mobile,
         companyId: targetCompanyId,
 
@@ -3315,20 +3104,27 @@ const purchaseOrderController = {
         }
       });
 
-      console.log("💾 Creating purchase order with data:", {
-        orderNumber: purchaseOrderData.orderNumber,
-        sourceOrderType: purchaseOrderData.sourceOrderType, // Should be "sales_order"
-        targetCompany: targetCompanyId,
-        supplier: supplierRecord.name, // ✅ FIXED: Use supplierRecord instead of supplier
-        totalAmount: purchaseOrderData.totals?.finalTotal,
-        isAutoGenerated: true,
-        hasSupplier: !!supplierRecord,
-        supplierId: supplierRecord?._id,
-      });
+      console.log(
+        "💾 Creating purchase order - model will auto-generate order number:",
+        {
+          targetCompany: targetCompanyId,
+          supplier: supplierRecord.name,
+          totalAmount: purchaseOrderData.totals?.finalTotal,
+          isAutoGenerated: true,
+          hasSupplier: !!supplierRecord,
+          supplierId: supplierRecord?._id,
+        }
+      );
 
-      // Create purchase order
+      // ✅ Create purchase order (model will auto-generate orderNumber)
       const purchaseOrder = new PurchaseOrder(purchaseOrderData);
       await purchaseOrder.save();
+
+      console.log("✅ Purchase order created with auto-generated number:", {
+        orderId: purchaseOrder._id,
+        orderNumber: purchaseOrder.orderNumber, // Generated by model
+        numberingInfo: purchaseOrder.numberingInfo,
+      });
 
       // 🔥 UPDATE SALES ORDER WITH BIDIRECTIONAL LINKS
       salesOrder.autoGeneratedPurchaseOrder = true;
@@ -3408,6 +3204,18 @@ const purchaseOrderController = {
             },
             linkageComplete: true,
           },
+          // ✅ NEW: Order number info from model
+          orderNumberInfo: {
+            orderNumber: purchaseOrder.orderNumber,
+            wasAutoGenerated:
+              purchaseOrder.numberingInfo?.wasAutoGenerated || true,
+            generatedBy: purchaseOrder.numberingInfo?.generatedBy || "model",
+            generationMethod:
+              purchaseOrder.numberingInfo?.generationMethod || "sequential",
+            sequenceNumber: purchaseOrder.numberingInfo?.sequenceNumber,
+            generatedAt: purchaseOrder.numberingInfo?.generatedAt || new Date(),
+            isUnique: true,
+          },
         },
       });
     } catch (error) {
@@ -3425,6 +3233,227 @@ const purchaseOrderController = {
           errorType: error.name || "GenerationError",
           suggestion: "Check customer-company linkage and supplier details",
         },
+      });
+    }
+  },
+
+  // Delete purchase order (cancel)
+  deletePurchaseOrder: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID",
+        });
+      }
+
+      const purchaseOrder = await PurchaseOrder.findById(id);
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      if (purchaseOrder.convertedToPurchaseInvoice) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot delete purchase order that has been converted to invoice",
+        });
+      }
+
+      purchaseOrder.status = "cancelled";
+      purchaseOrder.lastModifiedBy = req.user?.id || "system";
+      await purchaseOrder.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Purchase order cancelled successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error deleting purchase order:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete purchase order",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get pending orders for payment
+  getPendingOrdersForPayment: async (req, res) => {
+    try {
+      const {companyId, supplierId} = req.query;
+
+      const filter = {
+        companyId,
+        status: {$nin: ["cancelled", "draft"]},
+        "payment.pendingAmount": {$gt: 0},
+      };
+
+      if (supplierId) {
+        filter.supplier = supplierId;
+      }
+
+      const pendingOrders = await PurchaseOrder.find(filter)
+        .populate("supplier", "name mobile phoneNumber email")
+        .select("orderNumber orderDate supplier totals payment")
+        .sort({orderDate: -1});
+
+      res.status(200).json({
+        success: true,
+        data: pendingOrders,
+      });
+    } catch (error) {
+      console.error("❌ Error getting pending orders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get pending orders for payment",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get supplier pending documents
+  getSupplierPendingDocuments: async (req, res) => {
+    try {
+      const {companyId, supplierId} = req.query;
+
+      if (!supplierId) {
+        return res.status(400).json({
+          success: false,
+          message: "Supplier ID is required",
+        });
+      }
+
+      const pendingOrders = await PurchaseOrder.find({
+        companyId,
+        supplier: supplierId,
+        status: {$nin: ["cancelled", "completed"]},
+        "payment.pendingAmount": {$gt: 0},
+      })
+        .select("orderNumber orderDate orderType totals payment status")
+        .sort({orderDate: -1});
+
+      const summary = {
+        totalPendingAmount: pendingOrders.reduce(
+          (sum, order) => sum + (order.payment?.pendingAmount || 0),
+          0
+        ),
+        totalOrders: pendingOrders.length,
+        overdueOrders: pendingOrders.filter((order) => {
+          const dueDate = order.payment?.dueDate;
+          return dueDate && new Date() > dueDate;
+        }).length,
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          orders: pendingOrders,
+          summary,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error getting supplier pending documents:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get supplier pending documents",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get expired orders
+  getExpiredOrders: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      const expiredOrders = await PurchaseOrder.find({
+        companyId,
+        validUntil: {$lt: new Date()},
+        status: {$nin: ["completed", "cancelled", "converted"]},
+      })
+        .populate("supplier", "name mobile phoneNumber")
+        .sort({validUntil: 1});
+
+      res.status(200).json({
+        success: true,
+        data: expiredOrders,
+        message: `Found ${expiredOrders.length} expired orders`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting expired orders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get expired orders",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get orders awaiting approval
+  getOrdersAwaitingApproval: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      const awaitingApproval = await PurchaseOrder.find({
+        companyId,
+        status: "draft",
+        approvedBy: {$exists: false},
+      })
+        .populate("supplier", "name mobile phoneNumber")
+        .sort({orderDate: -1});
+
+      res.status(200).json({
+        success: true,
+        data: awaitingApproval,
+        message: `Found ${awaitingApproval.length} orders awaiting approval`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting orders awaiting approval:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get orders awaiting approval",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get orders required by date
+  getOrdersRequiredByDate: async (req, res) => {
+    try {
+      const {companyId, date} = req.query;
+
+      if (!date) {
+        return res.status(400).json({
+          success: false,
+          message: "Date is required",
+        });
+      }
+
+      const requiredOrders = await PurchaseOrder.find({
+        companyId,
+        requiredBy: {$lte: new Date(date)},
+        status: {$nin: ["completed", "cancelled", "received"]},
+      })
+        .populate("supplier", "name mobile phoneNumber")
+        .sort({requiredBy: 1});
+
+      res.status(200).json({
+        success: true,
+        data: requiredOrders,
+        message: `Found ${requiredOrders.length} orders required by ${date}`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting orders required by date:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get orders required by date",
+        error: error.message,
       });
     }
   },
@@ -3546,7 +3575,532 @@ const purchaseOrderController = {
     }
   },
 
-  // ✅ NEW: Get auto-generated purchase orders
+  getNextInvoiceNumber: async (req, res) => {
+    try {
+      const {companyId, invoiceType = "purchase_invoice"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const company = await Company.findById(companyId).select(
+        "businessName code isActive"
+      );
+
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message: "Company not found",
+        });
+      }
+
+      // Generate preview invoice number
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const dateStr = `${year}${month}${day}`;
+
+      let companyPrefix = "PI";
+      if (company?.code) {
+        companyPrefix = company.code.toUpperCase();
+      }
+
+      const gstPrefix = "GST-";
+      const basePattern = `${companyPrefix}-PI-${gstPrefix}${dateStr}`;
+
+      // Find next sequence for purchase invoices
+      const todayStart = new Date(year, date.getMonth(), date.getDate());
+      const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+      const Purchase = require("../models/Purchase");
+      const lastInvoice = await Purchase.findOne({
+        companyId: companyId,
+        invoiceDate: {$gte: todayStart, $lt: todayEnd},
+        invoiceNumber: {
+          $regex: new RegExp(
+            `^${basePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+$`
+          ),
+        },
+      }).sort({invoiceNumber: -1, createdAt: -1});
+
+      let nextSequence = 1;
+      if (lastInvoice && lastInvoice.invoiceNumber) {
+        const match = lastInvoice.invoiceNumber.match(/-(\d+)$/);
+        if (match) {
+          nextSequence = parseInt(match[1]) + 1;
+        }
+      }
+
+      const sequenceStr = nextSequence.toString().padStart(4, "0");
+      const previewInvoiceNumber = `${basePattern}-${sequenceStr}`;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          nextNumber: previewInvoiceNumber,
+          previewInvoiceNumber,
+          invoiceType: "purchase_invoice",
+          companyId,
+          companyName: company.businessName,
+          generatedAt: new Date().toISOString(),
+          isPreview: true,
+          note: "This is a preview. Actual number will be generated when saving.",
+        },
+        message: "Preview purchase invoice number generated successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate preview invoice number",
+        error: error.message,
+      });
+    }
+  },
+  generateSalesOrderFromPurchaseOrder: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {
+        targetCompanyId,
+        autoLinkCustomer = true,
+        validateBidirectionalSetup = true,
+        skipCircularValidation = false,
+        autoCreateCustomer = true,
+        preserveItemDetails = true,
+        preservePricing = true,
+        preserveTerms = true,
+        generationNotes = "",
+      } = req.body;
+
+      console.log(
+        "🔄 Starting ENHANCED bidirectional sales order generation:",
+        {
+          purchaseOrderId: id,
+          targetCompanyId,
+          targetCompanyIdType: typeof targetCompanyId,
+          autoLinkCustomer,
+          validateBidirectionalSetup,
+          logic: "Generate sales order in SUPPLIER's company selling to BUYER",
+        }
+      );
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID",
+          code: "INVALID_PO_ID",
+        });
+      }
+
+      // ✅ Fetch purchase order with enhanced population
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate(
+          "supplier",
+          "name mobile phoneNumber email address type linkedCompanyId gstNumber isActive"
+        )
+        .populate(
+          "companyId",
+          "businessName email phoneNumber gstin address isActive"
+        )
+        .populate(
+          "sourceCompanyId",
+          "businessName email phoneNumber gstin address isActive"
+        )
+        .populate(
+          "targetCompanyId",
+          "businessName email phoneNumber gstin address isActive"
+        );
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+          code: "PO_NOT_FOUND",
+        });
+      }
+
+      // ✅ CRITICAL: Extract targetCompanyId properly from different formats
+      let finalTargetCompanyId = null;
+      let detectionMethod = "manual";
+
+      // ✅ PRIORITY 1: Use manually provided targetCompanyId (handle object or string)
+      if (targetCompanyId) {
+        let companyIdValue = targetCompanyId;
+
+        // Handle if targetCompanyId is sent as an object
+        if (typeof targetCompanyId === "object" && targetCompanyId.id) {
+          companyIdValue = targetCompanyId.id;
+        } else if (typeof targetCompanyId === "object" && targetCompanyId._id) {
+          companyIdValue = targetCompanyId._id;
+        } else if (
+          typeof targetCompanyId === "object" &&
+          targetCompanyId.value
+        ) {
+          companyIdValue = targetCompanyId.value;
+        }
+
+        if (mongoose.Types.ObjectId.isValid(companyIdValue)) {
+          finalTargetCompanyId = companyIdValue;
+          detectionMethod = "manual";
+          console.log("✅ Using manually provided targetCompanyId:", {
+            original: targetCompanyId,
+            extracted: finalTargetCompanyId,
+            type: typeof targetCompanyId,
+          });
+        } else {
+          console.log("❌ Invalid targetCompanyId format:", {
+            original: targetCompanyId,
+            extracted: companyIdValue,
+            type: typeof targetCompanyId,
+          });
+        }
+      }
+
+      // ✅ PRIORITY 2: Use sourceCompanyId from purchase order (auto-detected)
+      if (!finalTargetCompanyId && purchaseOrder.sourceCompanyId) {
+        finalTargetCompanyId =
+          purchaseOrder.sourceCompanyId._id || purchaseOrder.sourceCompanyId;
+        detectionMethod = "purchase_order_source_company";
+        console.log(
+          "✅ Using sourceCompanyId from purchase order:",
+          finalTargetCompanyId
+        );
+      }
+
+      // ✅ PRIORITY 3: Use targetCompanyId from purchase order
+      if (!finalTargetCompanyId && purchaseOrder.targetCompanyId) {
+        finalTargetCompanyId =
+          purchaseOrder.targetCompanyId._id || purchaseOrder.targetCompanyId;
+        detectionMethod = "purchase_order_target_company";
+        console.log(
+          "✅ Using targetCompanyId from purchase order:",
+          finalTargetCompanyId
+        );
+      }
+
+      // ✅ FALLBACK: Try supplier's linkedCompanyId (if exists)
+      if (!finalTargetCompanyId && purchaseOrder.supplier?.linkedCompanyId) {
+        finalTargetCompanyId =
+          purchaseOrder.supplier.linkedCompanyId._id ||
+          purchaseOrder.supplier.linkedCompanyId;
+        detectionMethod = "supplier_linked_company";
+        console.log(
+          "✅ Using supplier's linkedCompanyId:",
+          finalTargetCompanyId
+        );
+      }
+
+      if (!finalTargetCompanyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot determine target company for sales order generation",
+          code: "MISSING_TARGET_COMPANY",
+          debug: {
+            providedTargetCompanyId: targetCompanyId,
+            targetCompanyIdType: typeof targetCompanyId,
+            purchaseOrderSourceCompanyId:
+              purchaseOrder.sourceCompanyId?.toString(),
+            purchaseOrderTargetCompanyId:
+              purchaseOrder.targetCompanyId?.toString(),
+            supplierLinkedCompanyId:
+              purchaseOrder.supplier?.linkedCompanyId?.toString(),
+          },
+          solutions: [
+            "Provide targetCompanyId as a valid ObjectId string",
+            "Ensure purchase order has sourceCompanyId or targetCompanyId",
+            "Link the supplier to a company account (optional)",
+          ],
+        });
+      }
+
+      // ✅ Enhanced supplier analysis
+      console.log("🔍 ENHANCED SUPPLIER ANALYSIS:", {
+        supplier: {
+          id: purchaseOrder.supplier._id,
+          name: purchaseOrder.supplier.name,
+          linkedCompanyId: purchaseOrder.supplier.linkedCompanyId,
+          isLinkedSupplier: !!purchaseOrder.supplier.linkedCompanyId,
+          gstNumber: purchaseOrder.supplier.gstNumber,
+          phoneNumber:
+            purchaseOrder.supplier.phoneNumber || purchaseOrder.supplier.mobile,
+          email: purchaseOrder.supplier.email,
+        },
+        buyerCompany: {
+          id: purchaseOrder.companyId._id || purchaseOrder.companyId,
+          name: purchaseOrder.companyId?.businessName || "Unknown",
+        },
+        finalTargetCompanyId: finalTargetCompanyId.toString(),
+        detectionMethod,
+      });
+
+      // ✅ Validate target company exists and is active
+      const targetCompany = await Company.findById(finalTargetCompanyId);
+      if (!targetCompany) {
+        return res.status(404).json({
+          success: false,
+          message: "Target company not found",
+          code: "TARGET_COMPANY_NOT_FOUND",
+          targetCompanyId: finalTargetCompanyId.toString(),
+        });
+      }
+
+      if (targetCompany.isActive === false) {
+        return res.status(400).json({
+          success: false,
+          message: "Target company is inactive",
+          code: "TARGET_COMPANY_INACTIVE",
+          companyName: targetCompany.businessName,
+        });
+      }
+
+      // ✅ Prevent circular reference (same company)
+      const buyerCompanyId =
+        purchaseOrder.companyId._id || purchaseOrder.companyId;
+      if (
+        !skipCircularValidation &&
+        finalTargetCompanyId.toString() === buyerCompanyId.toString()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "🚨 CIRCULAR REFERENCE: Cannot create sales order in the same company that made the purchase",
+          code: "CIRCULAR_COMPANY_REFERENCE",
+          details: {
+            buyerCompanyId: buyerCompanyId.toString(),
+            targetCompanyId: finalTargetCompanyId.toString(),
+            explanation:
+              "The target company cannot be the same as the buyer company",
+            detectionMethod,
+          },
+          solutions: [
+            "Provide a different targetCompanyId",
+            "Use skipCircularValidation: true to override this check",
+            "Ensure purchase order has correct sourceCompanyId/targetCompanyId",
+          ],
+        });
+      }
+
+      // ✅ Check if sales order already generated
+      if (
+        purchaseOrder.autoGeneratedSalesOrder &&
+        purchaseOrder.salesOrderRef
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Sales order already generated from this purchase order",
+          code: "SALES_ORDER_ALREADY_EXISTS",
+          data: {
+            salesOrderId: purchaseOrder.salesOrderRef,
+            salesOrderNumber: purchaseOrder.salesOrderNumber,
+            generatedAt: purchaseOrder.salesOrderGeneratedAt,
+          },
+        });
+      }
+
+      // ✅ Find or create customer in target company
+      const buyerCompany = purchaseOrder.companyId;
+      let customerRecord = null;
+
+      if (autoCreateCustomer) {
+        // Try to find existing customer
+        customerRecord = await Party.findOne({
+          companyId: finalTargetCompanyId,
+          $or: [
+            {name: {$regex: new RegExp(`^${buyerCompany.businessName}$`, "i")}},
+            ...(buyerCompany.gstin ? [{gstNumber: buyerCompany.gstin}] : []),
+            ...(buyerCompany.phoneNumber
+              ? [{phoneNumber: buyerCompany.phoneNumber}]
+              : []),
+            ...(buyerCompany.email ? [{email: buyerCompany.email}] : []),
+          ],
+          $or: [
+            {partyType: "customer"},
+            {isCustomer: true},
+            {type: "customer"},
+          ],
+        });
+
+        // Create customer if not found
+        if (!customerRecord) {
+          console.log(
+            "👤 Auto-creating customer from buyer company details..."
+          );
+
+          customerRecord = new Party({
+            name: buyerCompany.businessName,
+            companyName: buyerCompany.businessName,
+            phoneNumber: buyerCompany.phoneNumber || "",
+            mobile: buyerCompany.phoneNumber || "",
+            email: buyerCompany.email || "",
+            companyId: finalTargetCompanyId,
+            partyType: "customer",
+            type: "customer",
+            isCustomer: true,
+            isSupplier: false,
+            gstNumber: buyerCompany.gstin || "",
+            gstType: buyerCompany.gstin ? "regular" : "unregistered",
+            isActive: true,
+            linkedCompanyId: buyerCompany._id, // Link back to buyer company
+            homeAddressLine: buyerCompany.address || "",
+            address: buyerCompany.address || "",
+            creditLimit: 0,
+            currentBalance: 0,
+            openingBalance: 0,
+            paymentTerms: "credit",
+          });
+
+          await customerRecord.save();
+          console.log("✅ Customer created:", customerRecord.name);
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Customer creation is required but disabled",
+          code: "CUSTOMER_CREATION_DISABLED",
+        });
+      }
+
+      // ✅ Generate sales order number
+      const salesOrderNumber = await generateNextSalesOrderNumber(
+        finalTargetCompanyId
+      );
+
+      // ✅ Create sales order data
+      const salesOrderData = {
+        orderNumber: salesOrderNumber,
+        orderDate: new Date(),
+        orderType: "sales_order",
+        customer: customerRecord._id,
+        customerMobile: customerRecord.phoneNumber || customerRecord.mobile,
+        companyId: finalTargetCompanyId,
+
+        // ✅ CRITICAL: Bidirectional tracking
+        isAutoGenerated: true,
+        sourceOrderId: purchaseOrder._id,
+        sourceOrderNumber: purchaseOrder.orderNumber,
+        sourceOrderType: "purchase_order",
+        sourceCompanyId: buyerCompanyId,
+        generatedFrom: "purchase_order",
+        generatedAt: new Date(),
+        generatedBy: req.user?.id || null,
+
+        // Copy order details
+        items: purchaseOrder.items.map((item) => ({
+          ...item.toObject(),
+          _id: undefined, // Remove _id to create new ones
+        })),
+        totals: {...purchaseOrder.totals},
+
+        // Payment settings
+        payment: {
+          method: "credit",
+          creditDays: 30,
+          paidAmount: 0,
+          pendingAmount: purchaseOrder.totals?.finalTotal || 0,
+          status: "pending",
+        },
+
+        // Copy settings
+        gstEnabled: purchaseOrder.gstEnabled,
+        gstType: purchaseOrder.gstType,
+        taxMode: purchaseOrder.taxMode,
+        priceIncludesTax: purchaseOrder.priceIncludesTax,
+
+        status: "draft",
+        priority: purchaseOrder.priority || "normal",
+        notes:
+          generationNotes ||
+          `Generated from Purchase Order ${purchaseOrder.orderNumber}`,
+
+        // Link back to purchase order
+        correspondingPurchaseOrderId: purchaseOrder._id,
+        correspondingPurchaseOrderNumber: purchaseOrder.orderNumber,
+      };
+
+      // ✅ Create sales order
+      const salesOrder = new SalesOrder(salesOrderData);
+      await salesOrder.save();
+
+      // ✅ Update purchase order
+      purchaseOrder.autoGeneratedSalesOrder = true;
+      purchaseOrder.salesOrderRef = salesOrder._id;
+      purchaseOrder.salesOrderNumber = salesOrder.orderNumber;
+      purchaseOrder.salesOrderGeneratedAt = new Date();
+      purchaseOrder.salesOrderGeneratedBy = req.user?.id || null;
+      purchaseOrder.targetCompanyId = finalTargetCompanyId;
+
+      await purchaseOrder.save();
+
+      console.log("✅ ENHANCED: Sales order generated successfully:", {
+        purchaseOrderId: purchaseOrder._id,
+        purchaseOrderNumber: purchaseOrder.orderNumber,
+        salesOrderId: salesOrder._id,
+        salesOrderNumber: salesOrder.orderNumber,
+        targetCompany: targetCompany.businessName,
+        customer: customerRecord.name,
+        detectionMethod,
+        usedSourceCompanyId:
+          detectionMethod === "purchase_order_source_company",
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "Sales order generated successfully from purchase order",
+        data: {
+          salesOrder: {
+            id: salesOrder._id,
+            orderNumber: salesOrder.orderNumber,
+            companyId: finalTargetCompanyId,
+            companyName: targetCompany.businessName,
+            customer: {
+              id: customerRecord._id,
+              name: customerRecord.name,
+              wasAutoCreated: autoCreateCustomer,
+            },
+            status: salesOrder.status,
+            totalAmount: salesOrder.totals.finalTotal,
+            orderDate: salesOrder.orderDate,
+          },
+          purchaseOrder: {
+            id: purchaseOrder._id,
+            orderNumber: purchaseOrder.orderNumber,
+            autoGeneratedSalesOrder: true,
+            salesOrderRef: salesOrder._id,
+            salesOrderNumber: salesOrder.orderNumber,
+          },
+          bidirectionalTracking: {
+            method: "enhanced_with_source_company_id",
+            detectionMethod,
+            sourceCompanyId: buyerCompanyId.toString(),
+            targetCompanyId: finalTargetCompanyId.toString(),
+            linkageComplete: true,
+            usedSupplierLinkedCompany:
+              detectionMethod === "supplier_linked_company",
+            usedPurchaseOrderSourceCompany:
+              detectionMethod === "purchase_order_source_company",
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ ENHANCED: Sales order generation failed:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate sales order from purchase order",
+        error: error.message,
+        code: "SALES_ORDER_GENERATION_FAILED",
+      });
+    }
+  },
   getAutoGeneratedOrders: async (req, res) => {
     try {
       const {companyId, page = 1, limit = 10} = req.query;

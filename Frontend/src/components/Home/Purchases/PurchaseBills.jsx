@@ -4,21 +4,16 @@ import {useParams, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faPlus, faRefresh} from "@fortawesome/free-solid-svg-icons";
 
-// Import components
 import PurchaseBillsHeader from "./PurchaseBill/PurchaseBillsHeader";
+import PurchaseBillsPageTitle from "./PurchaseBill/PurchaseBillsPageTitle";
 import PurchaseBillsFilter from "./PurchaseBill/PurchaseBillsFilter";
 import PurchaseBillsSummary from "./PurchaseBill/PurchaseBillsSummary";
 import PurchaseBillsTable from "./PurchaseBill/PurchaseBillsTable";
 
-// Import services
 import purchaseService from "../../../services/purchaseService";
 import itemService from "../../../services/itemService";
 import transactionService from "../../../services/transactionService";
 
-// Import styles
-import "./PurchaseBills.css";
-
-// Debounce hook for optimizing search
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -44,11 +39,9 @@ function PurchaseBills({
   const {companyId: urlCompanyId} = useParams();
   const location = useLocation();
 
-  // ✅ ADD REF TO PREVENT INFINITE LOOPS
   const loadedRef = useRef(false);
   const enhancementInProgress = useRef(false);
 
-  // Resolve effective company ID from multiple sources
   const effectiveCompanyId = useMemo(() => {
     return (
       propCompanyId ||
@@ -61,7 +54,6 @@ function PurchaseBills({
     );
   }, [propCompanyId, urlCompanyId, currentCompany]);
 
-  // ✅ ENHANCED STATE - Include bank account data loading
   const [dateRange, setDateRange] = useState("This Month");
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -79,14 +71,11 @@ function PurchaseBills({
     withBankData: 0,
   });
 
-  // Debounced search term for better performance
   const debouncedSearchTerm = useDebounce(topSearchTerm, 300);
 
-  // Data states
   const [purchases, setPurchases] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
 
-  // Categories for items
   const categories = useMemo(
     () => [
       {
@@ -141,7 +130,6 @@ function PurchaseBills({
     []
   );
 
-  // Enhanced summary calculation
   const summary = useMemo(() => {
     const totalAmount = purchases.reduce(
       (sum, p) =>
@@ -155,7 +143,6 @@ function PurchaseBills({
     );
     const paidAmount = totalAmount - totalBalance;
 
-    // Calculate today's purchases
     const today = new Date().toDateString();
     const todaysPurchases = purchases
       .filter((p) => {
@@ -176,7 +163,7 @@ function PurchaseBills({
 
     const avgPurchaseValue =
       purchases.length > 0 ? totalAmount / purchases.length : 0;
-    const growthPercentage = Math.random() * 20 - 10; // Mock growth percentage
+    const growthPercentage = Math.random() * 20 - 10;
 
     return {
       totalPurchaseAmount: totalAmount,
@@ -199,7 +186,6 @@ function PurchaseBills({
     };
   }, [purchases, enhancementStats]);
 
-  // Options
   const dateRangeOptions = useMemo(
     () => [
       "Today",
@@ -216,7 +202,6 @@ function PurchaseBills({
 
   const firmOptions = useMemo(() => ["All Firms"], []);
 
-  // Filtered purchases
   const filteredPurchases = useMemo(() => {
     if (!debouncedSearchTerm) return purchases;
 
@@ -235,7 +220,6 @@ function PurchaseBills({
     );
   }, [purchases, debouncedSearchTerm]);
 
-  // ✅ FIXED: Load bank accounts - removed from dependencies
   const loadBankAccounts = useCallback(async () => {
     if (!effectiveCompanyId) {
       setBankAccounts([]);
@@ -243,13 +227,11 @@ function PurchaseBills({
     }
 
     try {
-      console.log("🏦 Loading bank accounts for company:", effectiveCompanyId);
-
       const endpoints = [
         `/companies/${effectiveCompanyId}/bank-accounts`,
         `/companies/${effectiveCompanyId}/bank-accounts?active=true`,
-        `/companies/${effectiveCompanyId}/accounts`,
         `/bank-accounts?companyId=${effectiveCompanyId}`,
+        `/companies/${effectiveCompanyId}/transactions/bank-accounts`,
       ];
 
       let bankAccountData = [];
@@ -278,6 +260,7 @@ function PurchaseBills({
                 data.data?.bankAccounts ||
                 data.data ||
                 data.accounts ||
+                data.banks ||
                 [];
             } else if (Array.isArray(data)) {
               bankAccountData = data;
@@ -285,64 +268,41 @@ function PurchaseBills({
 
             if (bankAccountData.length > 0) {
               setBankAccounts(bankAccountData);
-              console.log(
-                `✅ Loaded ${bankAccountData.length} bank accounts from: ${endpoint}`
-              );
               break;
             }
           }
         } catch (endpointError) {
-          console.warn(
-            `⚠️ Bank account endpoint ${endpoint} failed:`,
-            endpointError.message
-          );
           continue;
         }
       }
 
       if (bankAccountData.length === 0) {
-        console.warn("⚠️ No bank accounts found from any endpoint");
         setBankAccounts([]);
       }
     } catch (error) {
-      console.warn("⚠️ Failed to load bank accounts:", error);
       setBankAccounts([]);
     }
-  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId in dependencies
+  }, [effectiveCompanyId]);
 
-  // ✅ FIXED: Transform purchase data - memoized to prevent recreation
   const enhancePurchaseData = useCallback(
     async (rawPurchases) => {
       if (!Array.isArray(rawPurchases) || rawPurchases.length === 0) {
         return rawPurchases;
       }
 
-      // ✅ PREVENT MULTIPLE SIMULTANEOUS ENHANCEMENTS
       if (enhancementInProgress.current) {
-        console.log("⚠️ Enhancement already in progress, skipping...");
         return rawPurchases;
       }
 
       enhancementInProgress.current = true;
 
       try {
-        console.log(
-          "🔄 Enhancing purchase data with bank account information..."
-        );
-
         let enhancedCount = 0;
         let withBankDataCount = 0;
 
         const enhancedPurchases = await Promise.all(
           rawPurchases.map(async (purchase, index) => {
             try {
-              console.log(
-                `🔍 Processing purchase ${index + 1}/${rawPurchases.length}: ${
-                  purchase.purchaseNumber || purchase._id
-                }`
-              );
-
-              // ✅ Basic data transformation
               let enhancedPurchase = {
                 ...purchase,
                 id: purchase._id || purchase.id,
@@ -361,22 +321,12 @@ function PurchaseBills({
                   purchase.supplier?.id,
               };
 
-              // ✅ Check if payment method indicates bank transaction
               const paymentMethod =
                 transactionService.normalizePaymentMethodForFrontend(
                   purchase.paymentMethod || purchase.payment?.method || "cash"
                 );
 
-              console.log(
-                `💳 Purchase ${purchase.purchaseNumber} payment method: ${paymentMethod}`
-              );
-
               if (paymentMethod === "bank") {
-                console.log(
-                  "🔍 Bank payment detected, searching for transaction data..."
-                );
-
-                // ✅ Strategy 1: Try to get transaction data for bank account info
                 try {
                   const transactionResponse =
                     await transactionService.getPurchaseTransactions(
@@ -390,17 +340,6 @@ function PurchaseBills({
                   ) {
                     const transaction =
                       transactionResponse.data.transactions[0];
-
-                    console.log(
-                      `✅ Found transaction for purchase ${purchase.purchaseNumber}:`,
-                      {
-                        transactionId: transaction._id,
-                        bankAccountId: transaction.bankAccountId,
-                        bankAccountName: transaction.bankAccountName,
-                        amount: transaction.amount,
-                        strategy: transactionResponse.data.searchStrategy,
-                      }
-                    );
 
                     enhancedPurchase = {
                       ...enhancedPurchase,
@@ -422,11 +361,6 @@ function PurchaseBills({
 
                     withBankDataCount++;
                   } else {
-                    console.log(
-                      `⚠️ No transaction found for purchase ${purchase.purchaseNumber}`
-                    );
-
-                    // ✅ Strategy 2: Fallback to first available bank account
                     if (bankAccounts.length > 0) {
                       const defaultAccount =
                         bankAccounts.find(
@@ -453,26 +387,10 @@ function PurchaseBills({
                           hasTransactionData: false,
                           enhancementStrategy: "default-bank-account",
                         };
-
-                        console.log(
-                          `✅ Applied default bank account to purchase ${purchase.purchaseNumber}:`,
-                          {
-                            bankAccountId:
-                              defaultAccount._id || defaultAccount.id,
-                            bankAccountName:
-                              defaultAccount.accountName || defaultAccount.name,
-                          }
-                        );
                       }
                     }
                   }
                 } catch (transactionError) {
-                  console.warn(
-                    `⚠️ Transaction search failed for purchase ${purchase.purchaseNumber}:`,
-                    transactionError.message
-                  );
-
-                  // ✅ Strategy 3: Still apply default bank account even if transaction search fails
                   if (bankAccounts.length > 0) {
                     const defaultAccount = bankAccounts[0];
                     enhancedPurchase = {
@@ -488,7 +406,6 @@ function PurchaseBills({
                   }
                 }
               } else {
-                // ✅ For non-bank payments, still check if there's existing bank account data
                 if (purchase.bankAccountId || purchase.payment?.bankAccountId) {
                   enhancedPurchase.hasTransactionData = true;
                   enhancedPurchase.enhancementStrategy = "existing-bank-data";
@@ -501,12 +418,6 @@ function PurchaseBills({
               enhancedCount++;
               return enhancedPurchase;
             } catch (enhanceError) {
-              console.warn(
-                `⚠️ Failed to enhance purchase ${
-                  purchase.purchaseNumber || purchase._id
-                }:`,
-                enhanceError.message
-              );
               return {
                 ...purchase,
                 id: purchase._id || purchase.id,
@@ -517,26 +428,20 @@ function PurchaseBills({
           })
         );
 
-        // ✅ Update enhancement statistics
         setEnhancementStats({
           enhanced: enhancedCount,
           total: rawPurchases.length,
           withBankData: withBankDataCount,
         });
 
-        console.log(
-          `✅ Enhanced ${enhancedCount}/${rawPurchases.length} purchases (${withBankDataCount} with bank data)`
-        );
-
         return enhancedPurchases;
       } finally {
         enhancementInProgress.current = false;
       }
     },
-    [effectiveCompanyId, bankAccounts] // ✅ STABLE DEPENDENCIES
+    [effectiveCompanyId, bankAccounts]
   );
 
-  // ✅ FIXED: Load purchases data - removed circular dependencies
   const loadPurchasesData = useCallback(async () => {
     if (!effectiveCompanyId) {
       setPurchases([]);
@@ -555,8 +460,6 @@ function PurchaseBills({
         endDate: endDate.toISOString().split("T")[0],
       };
 
-      console.log("📊 Loading purchases for company:", effectiveCompanyId);
-
       const response = await purchaseService.getPurchases(
         effectiveCompanyId,
         filters
@@ -574,7 +477,6 @@ function PurchaseBills({
           transformedPurchases = [rawData];
         }
 
-        // ✅ Apply service transformation first if available
         if (
           purchaseService.transformPurchaseData &&
           transformedPurchases.length > 0
@@ -583,13 +485,11 @@ function PurchaseBills({
             try {
               return purchaseService.transformPurchaseData(purchase);
             } catch (transformError) {
-              console.warn("Purchase transform error:", transformError);
               return purchase;
             }
           });
         }
 
-        // ✅ Then enhance with bank account information ONLY if bank accounts are loaded
         if (transformedPurchases.length > 0 && bankAccounts.length > 0) {
           transformedPurchases = await enhancePurchaseData(
             transformedPurchases
@@ -597,9 +497,6 @@ function PurchaseBills({
         }
 
         setPurchases(transformedPurchases);
-        console.log(
-          `✅ Loaded and enhanced ${transformedPurchases.length} purchases`
-        );
       } else {
         setPurchases([]);
         if (
@@ -613,7 +510,6 @@ function PurchaseBills({
         }
       }
     } catch (error) {
-      console.error("❌ Error loading purchases:", error);
       setPurchases([]);
 
       let errorMessage = "Failed to load purchases data";
@@ -661,9 +557,8 @@ function PurchaseBills({
     addToast,
     bankAccounts,
     enhancePurchaseData,
-  ]); // ✅ STABLE DEPENDENCIES
+  ]);
 
-  // Load inventory items
   const loadInventoryItems = useCallback(async () => {
     if (!effectiveCompanyId) {
       setInventoryItems([]);
@@ -680,75 +575,61 @@ function PurchaseBills({
         setInventoryItems([]);
       }
     } catch (error) {
-      console.warn("Failed to load inventory items:", error);
       setInventoryItems([]);
     }
-  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId
+  }, [effectiveCompanyId]);
 
-  // ✅ FIXED: Check for refresh trigger from edit page - only once
   useEffect(() => {
     const stateData = location.state;
     if (stateData?.refreshData || stateData?.updatedPurchase) {
-      console.log("🔄 Refreshing purchase data after edit");
-
-      // Show success message if provided
       if (stateData.message) {
         addToast?.(stateData.message, "success");
       }
 
-      // Clear the state to prevent multiple refreshes
       window.history.replaceState({}, document.title);
 
-      // ✅ ONLY trigger if not already loaded
       if (loadedRef.current) {
         loadPurchasesData();
       }
     }
-  }, [location.state]); // ✅ ONLY location.state
+  }, [location.state]);
 
-  // ✅ FIXED: Load data on mount - prevent infinite loops
   useEffect(() => {
     if (effectiveCompanyId && !loadedRef.current) {
       loadedRef.current = true;
 
       const loadData = async () => {
         try {
-          // Load bank accounts first
           await loadBankAccounts();
 
-          // Small delay to ensure bank accounts are set before loading purchases
           setTimeout(async () => {
             await loadPurchasesData();
             await loadInventoryItems();
           }, 100);
         } catch (error) {
-          console.error("Error loading initial data:", error);
-          loadedRef.current = false; // Allow retry
+          loadedRef.current = false;
         }
       };
 
       loadData();
     } else if (!effectiveCompanyId) {
-      // Reset when company changes
       loadedRef.current = false;
       setPurchases([]);
       setBankAccounts([]);
       setEnhancementStats({enhanced: 0, total: 0, withBankData: 0});
     }
-  }, [effectiveCompanyId]); // ✅ ONLY effectiveCompanyId
+  }, [effectiveCompanyId]);
 
-  // ✅ FIXED: Date range changes - only reload if already loaded
   useEffect(() => {
     if (effectiveCompanyId && loadedRef.current) {
       const timer = setTimeout(() => {
         loadPurchasesData();
-      }, 500); // Debounce date changes
+      }, 500);
 
       return () => clearTimeout(timer);
     }
-  }, [startDate, endDate]); // ✅ ONLY date dependencies
+  }, [startDate, endDate]);
 
-  // Event handlers
   const handleDateRangeChange = useCallback((range) => {
     setDateRange(range);
   }, []);
@@ -765,22 +646,11 @@ function PurchaseBills({
     setDateRange("Custom Range");
   }, []);
 
-  // ✅ ENHANCED: Navigate to separate create page
   const handleCreatePurchase = useCallback(() => {
     window.location.href = `/companies/${effectiveCompanyId}/purchases/add`;
   }, [effectiveCompanyId]);
 
-  // ✅ ENHANCED: Pass enhanced purchase data to edit
   const handleEditPurchase = useCallback((purchase) => {
-    console.log("📝 Edit purchase requested with enhanced data:", {
-      purchaseId: purchase.id || purchase._id,
-      bankAccountId: purchase.bankAccountId,
-      bankAccountName: purchase.bankAccountName,
-      hasTransactionData: purchase.hasTransactionData,
-      paymentMethod: purchase.paymentMethod,
-      enhancementStrategy: purchase.enhancementStrategy,
-    });
-
     // The table will handle navigation with enhanced data
   }, []);
 
@@ -817,7 +687,6 @@ function PurchaseBills({
     setTopSearchTerm(e.target.value);
   }, []);
 
-  // ✅ Purchase transaction handlers
   const handleViewPurchase = useCallback(
     (purchase) => {
       addToast?.(
@@ -832,23 +701,16 @@ function PurchaseBills({
     [addToast]
   );
 
-  // ✅ REPLACE the existing handleDeletePurchase with this simple version:
   const handleDeletePurchase = useCallback(
     (purchase) => {
-      // ✅ Simple refresh handler - no API calls here
-      console.log("🔄 Parent: Purchase deleted, refreshing list");
-
-      // ✅ Remove from local state for immediate feedback
       setPurchases((prev) =>
         prev.filter((p) => (p.id || p._id) !== (purchase.id || purchase._id))
       );
 
-      // ✅ Refresh data after a short delay
       setTimeout(() => {
         loadPurchasesData();
       }, 1000);
 
-      // ✅ Show success message
       addToast?.(
         `Purchase ${purchase.purchaseNumber || "item"} removed from list`,
         "success"
@@ -856,6 +718,7 @@ function PurchaseBills({
     },
     [loadPurchasesData, addToast]
   );
+
   const handlePrintPurchase = useCallback(
     (purchase) => {
       addToast?.(
@@ -908,7 +771,6 @@ function PurchaseBills({
     [addToast]
   );
 
-  // Utility handlers
   const handleMoreOptions = useCallback(() => {
     addToast?.("More options feature coming soon!", "info");
   }, [addToast]);
@@ -925,10 +787,9 @@ function PurchaseBills({
     window.print();
   }, []);
 
-  // ✅ FIXED: Manual refresh handler
   const handleRefresh = useCallback(() => {
-    loadedRef.current = false; // Allow reload
-    enhancementInProgress.current = false; // Reset enhancement flag
+    loadedRef.current = false;
+    enhancementInProgress.current = false;
 
     const refreshData = async () => {
       try {
@@ -939,60 +800,86 @@ function PurchaseBills({
           loadedRef.current = true;
         }, 100);
       } catch (error) {
-        console.error("Error refreshing data:", error);
         addToast?.("Error refreshing data", "error");
-        loadedRef.current = true; // Set back to prevent infinite attempts
+        loadedRef.current = true;
       }
     };
 
     refreshData();
   }, [loadBankAccounts, loadPurchasesData, addToast]);
 
-  // Early returns for better UX
   if (!isOnline) {
     return (
-      <div className="purchase-bills-wrapper">
-        <Container fluid>
-          <Alert variant="warning" className="text-center">
-            <h5>📡 No Internet Connection</h5>
-            <p>
-              Purchase data requires an internet connection. Please check your
-              network and try again.
-            </p>
-            <Button
-              variant="outline-warning"
-              onClick={() => window.location.reload()}
-            >
-              Retry
-            </Button>
-          </Alert>
-        </Container>
-      </div>
+      <Container fluid>
+        <Alert variant="warning" className="text-center">
+          <h5>📡 No Internet Connection</h5>
+          <p>
+            Purchase data requires an internet connection. Please check your
+            network and try again.
+          </p>
+          <Button
+            variant="outline-warning"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </Button>
+        </Alert>
+      </Container>
     );
   }
 
   if (!effectiveCompanyId) {
     return (
-      <div className="purchase-bills-wrapper">
-        <Container fluid>
-          <Alert variant="warning" className="text-center">
-            <h5>⚠️ No Company Selected</h5>
-            <p>Please select a company to view purchase bills.</p>
-            <Button
-              variant="outline-primary"
-              onClick={() => window.location.reload()}
-            >
-              Refresh Page
-            </Button>
-          </Alert>
-        </Container>
-      </div>
+      <Container fluid>
+        <Alert variant="warning" className="text-center">
+          <h5>⚠️ No Company Selected</h5>
+          <p>Please select a company to view purchase bills.</p>
+          <Button
+            variant="outline-primary"
+            onClick={() => window.location.reload()}
+          >
+            Refresh Page
+          </Button>
+        </Alert>
+      </Container>
     );
   }
 
-  // ✅ ENHANCED MAIN RENDER: With bank account pre-loading and enhancement stats
   return (
-    <div className="purchase-bills-wrapper">
+    <div
+      style={{
+        width: "100%",
+        minHeight: "100vh",
+        backgroundColor: "#f8f9fa",
+        margin: 0,
+        padding: 0,
+      }}
+    >
+      <style>
+        {`
+          .main-content {
+            padding: 0 !important;
+            margin: 0 !important;
+            min-height: auto !important;
+          }
+          
+          .table-responsive {
+            overflow-x: auto;
+            overflow-y: visible;
+          }
+          
+          .card-body {
+            overflow: visible !important;
+          }
+          
+          .container-fluid,
+          .row,
+          .col {
+            overflow: visible;
+          }
+        `}
+      </style>
+
       <PurchaseBillsHeader
         searchTerm={topSearchTerm}
         onSearchChange={handleSearchChange}
@@ -1002,71 +889,45 @@ function PurchaseBills({
         companyId={effectiveCompanyId}
       />
 
-      <div className="purchase-page-title">
-        <Container fluid className="px-4">
-          <Row className="align-items-center py-3">
-            <Col>
-              <div className="d-flex align-items-center justify-content-between">
-                <div>
-                  <h4 className="mb-1 text-warning">
-                    <i className="fas fa-shopping-cart me-2"></i>
-                    Purchase Bills
-                  </h4>
-                  <p className="text-muted mb-0">
-                    Manage your purchase transactions ({purchases.length} bills)
-                    {bankAccounts.length > 0 &&
-                      ` • ${bankAccounts.length} bank accounts loaded`}
-                    {enhancementStats.total > 0 &&
-                      ` • ${enhancementStats.withBankData}/${enhancementStats.total} enhanced with bank data`}
-                  </p>
-                </div>
-                <div className="d-flex gap-2">
-                  <Button
-                    variant="outline-secondary"
-                    onClick={handleRefresh}
-                    disabled={loading}
-                    title="Refresh Data"
-                  >
-                    <FontAwesomeIcon
-                      icon={faRefresh}
-                      className={loading ? "fa-spin" : ""}
-                    />
-                  </Button>
-                  <Button
-                    variant="warning"
-                    onClick={handleCreatePurchase}
-                    className="px-4"
-                    disabled={loading}
-                  >
-                    <FontAwesomeIcon icon={faPlus} className="me-2" />
-                    Add Purchase
-                  </Button>
-                </div>
-              </div>
-            </Col>
-          </Row>
-        </Container>
-      </div>
-
-      <PurchaseBillsFilter
-        dateRange={dateRange}
-        startDate={startDate}
-        endDate={endDate}
-        selectedFirm={selectedFirm}
-        dateRangeOptions={dateRangeOptions}
-        firmOptions={firmOptions}
-        onDateRangeChange={handleDateRangeChange}
-        onStartDateChange={handleStartDateChange}
-        onEndDateChange={handleEndDateChange}
-        onFirmChange={setSelectedFirm}
-        onExcelExport={handleExcelExport}
-        onPrint={handlePrint}
-        resultCount={filteredPurchases.length}
+      <PurchaseBillsPageTitle
+        onAddPurchase={handleCreatePurchase}
+        billCount={purchases.length}
+        companyId={effectiveCompanyId}
+        mode="bills"
+        documentType="bill"
+        title="Purchase Bills"
+        subtitle={`Manage your purchase transactions and supplier bills${
+          bankAccounts.length > 0
+            ? ` • ${bankAccounts.length} bank accounts loaded`
+            : ""
+        }${
+          enhancementStats.total > 0
+            ? ` • ${enhancementStats.withBankData}/${enhancementStats.total} enhanced with bank data`
+            : ""
+        }`}
       />
 
-      <Container fluid className="px-4 py-3">
+      <div className="px-3">
+        <PurchaseBillsFilter
+          dateRange={dateRange}
+          startDate={startDate}
+          endDate={endDate}
+          selectedFirm={selectedFirm}
+          dateRangeOptions={dateRangeOptions}
+          firmOptions={firmOptions}
+          onDateRangeChange={handleDateRangeChange}
+          onStartDateChange={handleStartDateChange}
+          onEndDateChange={handleEndDateChange}
+          onFirmChange={setSelectedFirm}
+          onExcelExport={handleExcelExport}
+          onPrint={handlePrint}
+          resultCount={filteredPurchases.length}
+        />
+      </div>
+
+      <div className="px-3 pb-3">
         <Row className="g-3">
-          <Col xl={2} lg={3} md={3} sm={12} className="sidebar-col">
+          <Col xl={2} lg={3} md={3} sm={12}>
             <PurchaseBillsSummary
               summary={summary}
               loading={loading}
@@ -1074,7 +935,7 @@ function PurchaseBills({
             />
           </Col>
 
-          <Col xl={10} lg={9} md={9} sm={12} className="content-col">
+          <Col xl={10} lg={9} md={9} sm={12}>
             <PurchaseBillsTable
               purchases={filteredPurchases}
               onCreatePurchase={handleCreatePurchase}
@@ -1094,89 +955,13 @@ function PurchaseBills({
               addToast={addToast}
               title="Purchase Bills"
               searchPlaceholder="Search purchase bills by supplier, number..."
-              // ✅ Pass enhanced data and bank accounts
               bankAccounts={bankAccounts}
               enhancedPurchases={true}
               enhancementStats={enhancementStats}
             />
           </Col>
         </Row>
-      </Container>
-
-      {/* Enhanced styling */}
-      <style jsx>{`
-        .purchase-bills-wrapper {
-          background-color: #f8f9fa;
-          min-height: 100vh;
-        }
-
-        .purchase-page-title {
-          background: linear-gradient(
-            135deg,
-            rgba(255, 193, 7, 0.1) 0%,
-            rgba(253, 126, 20, 0.05) 100%
-          );
-          border-bottom: 1px solid rgba(255, 193, 7, 0.1);
-        }
-
-        .sidebar-col {
-          padding-right: 1rem;
-        }
-
-        .content-col {
-          padding-left: 1rem;
-        }
-
-        @media (max-width: 768px) {
-          .sidebar-col,
-          .content-col {
-            padding: 0.5rem;
-          }
-
-          .purchase-page-title .d-flex {
-            flex-direction: column;
-            gap: 1rem;
-            align-items: stretch !important;
-          }
-        }
-
-        /* Loading state */
-        .purchase-bills-wrapper.loading {
-          opacity: 0.8;
-          pointer-events: none;
-        }
-
-        /* Responsive design */
-        @media (max-width: 992px) {
-          .sidebar-col {
-            order: 2;
-          }
-          .content-col {
-            order: 1;
-          }
-        }
-
-        /* Enhancement indicator */
-        .enhancement-indicator {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          margin-left: 8px;
-        }
-
-        .enhancement-indicator.enhanced {
-          background-color: #28a745;
-        }
-
-        .enhancement-indicator.default {
-          background-color: #ffc107;
-        }
-
-        .enhancement-indicator.none {
-          background-color: #6c757d;
-        }
-      `}</style>
+      </div>
     </div>
   );
 }

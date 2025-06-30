@@ -333,20 +333,21 @@ class PurchaseOrderService {
   }
 
   // ==================== UTILITY FUNCTIONS ====================
-
   /**
-   * Generate order number with fallback
+   * Generate order number with fallback and GST type support
    */
   async generateOrderNumber(
     companyId,
     orderType = "purchase_order",
-    userId = null
+    userId = null,
+    gstType = "gst"
   ) {
     // Always provide fallback first for immediate response
     const fallbackNumber = this.generateFallbackOrderNumber(
       companyId,
       orderType,
-      userId
+      userId,
+      gstType
     );
 
     // Try the exact endpoints that exist in your backend routes
@@ -362,6 +363,7 @@ class PurchaseOrderService {
           companyId,
           orderType,
           type: orderType,
+          gstType,
         };
 
         const response = await apiClient.get(endpoint, {params});
@@ -379,6 +381,8 @@ class PurchaseOrderService {
               data: {nextOrderNumber: serverNumber},
               message: "Order number generated successfully",
               source: "server",
+              gstType,
+              orderType,
             };
           }
         }
@@ -393,74 +397,50 @@ class PurchaseOrderService {
       data: {nextOrderNumber: fallbackNumber},
       message: "Order number generated (fallback)",
       source: "fallback",
+      gstType,
+      orderType,
     };
   }
 
   /**
-   * Generate fallback order number
+   * Generate fallback matching backend pattern exactly (WITH GST prefix)
    */
   generateFallbackOrderNumber(
     companyId,
     orderType = "purchase_order",
-    userId = null
+    userId = null,
+    gstType = "gst"
   ) {
     const date = new Date();
     const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${year}${month}${day}`;
 
-    // Use company ID and user ID for uniqueness
-    const companyHash = companyId ? companyId.slice(-3) : "001";
-    const userHash = userId ? userId.slice(-2) : "01";
-    const random = Math.floor(100 + Math.random() * 900);
+    // Company prefix (will be updated by actual company data in frontend)
+    let companyPrefix = "PO";
 
-    let prefix = "DOC";
+    // Order type prefix (matching backend exactly)
+    let orderTypePrefix = "PO";
     switch (orderType) {
       case "purchase_quotation":
-        prefix = "PQU";
-        break;
-      case "purchase_order":
-        prefix = "PO";
+        orderTypePrefix = "QUO";
         break;
       case "proforma_purchase":
-        prefix = "PPO";
+        orderTypePrefix = "PPO";
         break;
       default:
-        prefix = "PO";
+        orderTypePrefix = "PO";
     }
 
-    return `${prefix}-${year}${month}${day}${hours}${minutes}-${companyHash}${userHash}${random}`;
-  }
+    // GST prefix for proper differentiation
+    const gstPrefix = gstType === "gst" ? "GST-" : "NGST-";
 
-  /**
-   * Search orders
-   */
-  async searchOrders(companyId, searchTerm, filters = {}) {
-    try {
-      const params = {
-        companyId,
-        q: searchTerm,
-        ...filters,
-      };
-      const response = await apiClient.get("/api/purchase-orders/search", {
-        params,
-      });
-      return {
-        success: true,
-        data: response.data,
-        message: "Search completed successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message:
-          error.response?.data?.message || error.message || "Search failed",
-      };
-    }
-  }
+    // Backend pattern: CompanyPrefix-OrderType-GST/NGST-YYYYMMDD-XXXX
+    const fallbackNumber = `${companyPrefix}-${orderTypePrefix}-${gstPrefix}${dateStr}-XXXX`;
 
+    return fallbackNumber;
+  }
   // ==================== STATUS & CONVERSION ====================
 
   /**

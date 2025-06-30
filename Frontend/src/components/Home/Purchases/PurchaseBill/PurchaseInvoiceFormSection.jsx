@@ -55,7 +55,30 @@ import {
 import itemsTableLogic from "../../Sales/SalesInvoice/SalesForm/itemsTableWithTotals/itemsTableLogic";
 import PaymentModal from "../../Sales/SalesInvoice/SalesForm/itemsTableWithTotals/PaymentModal";
 import itemService from "../../../../services/itemService";
-import purchaseService from "../../../../services/purchaseService"; // Added proper import
+import purchaseService from "../../../../services/purchaseService";
+
+// ✅ PURPLE THEME CONSTANTS - Defined directly in the component
+const purpleTheme = {
+  primary: "#6366f1",
+  primaryLight: "#8b5cf6",
+  primaryDark: "#4f46e5",
+  primaryRgb: "99, 102, 241",
+  secondary: "#8b5cf6",
+  accent: "#a855f7",
+  background: "#f8fafc",
+  surface: "#ffffff",
+  success: "#10b981",
+  warning: "#f59e0b",
+  error: "#ef4444",
+  text: "#1e293b",
+  textMuted: "#64748b",
+  border: "#e2e8f0",
+  borderDark: "#cbd5e1",
+  gradient: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+  shadowSm: "0 1px 3px rgba(99, 102, 241, 0.1)",
+  shadowMd: "0 4px 12px rgba(99, 102, 241, 0.15)",
+  shadowLg: "0 8px 25px rgba(99, 102, 241, 0.2)",
+};
 
 function PurchaseInvoiceFormSection({
   formData,
@@ -76,6 +99,86 @@ function PurchaseInvoiceFormSection({
   saving = false,
   labels = {},
 }) {
+  // ✅ ENHANCED STYLING FUNCTIONS WITH PURPLE THEME
+  const getInputStyle = (hasError = false) => ({
+    borderColor: hasError ? purpleTheme.error : purpleTheme.border,
+    fontSize: "14px",
+    padding: "12px 16px",
+    height: "48px",
+    borderWidth: "2px",
+    borderRadius: "8px",
+    transition: "all 0.3s ease",
+    backgroundColor: purpleTheme.surface,
+    boxShadow: hasError
+      ? `0 0 0 3px rgba(239, 68, 68, 0.1)`
+      : `0 1px 3px rgba(${purpleTheme.primaryRgb}, 0.1)`,
+    fontWeight: "500",
+  });
+
+  const getCardStyle = () => ({
+    borderRadius: "12px",
+    border: `2px solid ${purpleTheme.border}`,
+    boxShadow: purpleTheme.shadowMd,
+    backgroundColor: purpleTheme.surface,
+    overflow: "hidden",
+  });
+
+  const getButtonStyle = (variant = "primary", size = "md") => {
+    const baseStyle = {
+      borderRadius: "8px",
+      fontWeight: "600",
+      transition: "all 0.3s ease",
+      border: "2px solid transparent",
+      textTransform: "none",
+      letterSpacing: "0.02em",
+    };
+
+    const sizeStyles = {
+      sm: {padding: "6px 12px", fontSize: "13px"},
+      md: {padding: "10px 20px", fontSize: "14px"},
+      lg: {padding: "12px 24px", fontSize: "16px"},
+    };
+
+    const variantStyles = {
+      primary: {
+        backgroundColor: purpleTheme.primary,
+        borderColor: purpleTheme.primary,
+        color: "white",
+        boxShadow: `0 2px 8px rgba(${purpleTheme.primaryRgb}, 0.3)`,
+      },
+      secondary: {
+        backgroundColor: purpleTheme.secondary,
+        borderColor: purpleTheme.secondary,
+        color: "white",
+        boxShadow: `0 2px 8px rgba(139, 92, 246, 0.3)`,
+      },
+      success: {
+        backgroundColor: purpleTheme.success,
+        borderColor: purpleTheme.success,
+        color: "white",
+        boxShadow: `0 2px 8px rgba(16, 185, 129, 0.3)`,
+      },
+      warning: {
+        backgroundColor: purpleTheme.warning,
+        borderColor: purpleTheme.warning,
+        color: "white",
+        boxShadow: `0 2px 8px rgba(245, 158, 11, 0.3)`,
+      },
+      outline: {
+        backgroundColor: "transparent",
+        borderColor: purpleTheme.border,
+        color: purpleTheme.text,
+        boxShadow: "none",
+      },
+    };
+
+    return {
+      ...baseStyle,
+      ...sizeStyles[size],
+      ...variantStyles[variant],
+    };
+  };
+
   // ======================== STATE MANAGEMENT ========================
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionRef = useRef(false);
@@ -94,7 +197,7 @@ function PurchaseInvoiceFormSection({
     formData.items || [],
     (newItems) => onFormDataChange("items", newItems),
     formData.gstEnabled,
-    "without-tax" // Purchase default tax mode
+    "without-tax"
   );
 
   const {
@@ -124,7 +227,6 @@ function PurchaseInvoiceFormSection({
     retryLoadBankAccounts,
   } = useBankAccounts(companyId);
 
-  // Purchase-specific party selection (supplier instead of customer)
   const {
     getSelectedParty,
     getPartyType,
@@ -134,12 +236,7 @@ function PurchaseInvoiceFormSection({
     getSecondaryPartyName,
     getSecondaryPartyType,
     validatePaymentRequirements,
-  } = usePartySelection(
-    formData.customer, // In purchase, supplier is stored in customer field
-    null, // No secondary party for purchases
-    "purchase", // Purchase mode
-    addToast
-  );
+  } = usePartySelection(formData.customer, null, "purchase", addToast);
 
   // ======================== PURCHASE CONFIGURATION ========================
   const currentConfig = useMemo(() => {
@@ -252,11 +349,11 @@ function PurchaseInvoiceFormSection({
     handleDueDateChange,
     handleBankAccountChange,
   } = usePaymentManagement(
-    "purchase", // Purchase mode
+    "purchase",
     companyId,
     displayTotal,
-    null, // No customer for purchases
-    formData.customer, // Supplier stored in customer field
+    null,
+    formData.customer,
     formData.invoiceNumber,
     currentUser?.id,
     currentConfig,
@@ -265,11 +362,15 @@ function PurchaseInvoiceFormSection({
 
   // ======================== CONSTANTS AND HELPERS ========================
   const inputStyle = {
-    borderColor: "#000",
-    fontSize: "13px",
-    padding: "10px 14px",
-    height: "42px",
+    borderColor: purpleTheme.border,
+    fontSize: "14px",
+    padding: "12px 16px",
+    height: "48px",
     borderWidth: "2px",
+    borderRadius: "8px",
+    transition: "all 0.3s ease",
+    backgroundColor: purpleTheme.surface,
+    boxShadow: `0 1px 3px rgba(${purpleTheme.primaryRgb}, 0.1)`,
   };
 
   const hasValidItems = useMemo(() => {
@@ -333,7 +434,6 @@ function PurchaseInvoiceFormSection({
         searchResults = response;
       }
 
-      // Purchase-specific enhancement: focus on purchase prices
       const enhancedResults = searchResults.map((product) => ({
         ...product,
         stock:
@@ -342,7 +442,6 @@ function PurchaseInvoiceFormSection({
           product.currentStock || product.stock || product.availableStock || 0,
         availableStock:
           product.availableStock || product.stock || product.currentStock || 0,
-        // Purchase price priority
         purchasePrice:
           product.purchasePrice || product.costPrice || product.buyPrice || 0,
         displayPrice:
@@ -416,7 +515,6 @@ function PurchaseInvoiceFormSection({
         itemName: product.name,
         itemCode: product.code || product.itemCode || "",
         description: product.description || "",
-        // Purchase-specific: Use purchase price instead of sale price
         pricePerUnit: (
           product.purchasePrice ||
           product.costPrice ||
@@ -580,13 +678,12 @@ function PurchaseInvoiceFormSection({
           paymentType: data.paymentType || "Cash",
           invoiceNumber: formData.invoiceNumber,
           companyId: companyId,
-          formType: "purchase", // Purchase-specific
+          formType: "purchase",
           transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
           entityType: "supplier",
           createdAt: new Date().toISOString(),
         };
 
-        // Handle due date properly for purchases
         if (data.dueDate) {
           if (data.dueDate instanceof Date) {
             formatted.dueDate = data.dueDate.toISOString();
@@ -693,7 +790,6 @@ function PurchaseInvoiceFormSection({
         return;
       }
 
-      // Purchase-specific validation: check for supplier instead of customer
       if (!formData.customer && !isPurchaseOrdersMode) {
         addToast?.("Please select a supplier", "warning");
         return;
@@ -704,7 +800,6 @@ function PurchaseInvoiceFormSection({
         return;
       }
 
-      // ✅ FIXED: Ensure companyId is valid
       const validCompanyId = companyId || formData.companyId;
       if (!validCompanyId) {
         addToast?.(
@@ -714,7 +809,6 @@ function PurchaseInvoiceFormSection({
         return;
       }
 
-      // ✅ FIXED: Transform supplier data properly
       const supplierData = formData.customer
         ? {
             id: formData.customer.id || formData.customer._id,
@@ -727,15 +821,9 @@ function PurchaseInvoiceFormSection({
           }
         : null;
 
-      // In the handleSavePurchase function, update the data preparation section:
-
-      // ✅ FIXED: Enhanced purchase data preparation with proper validation
       const purchaseDataForService = {
-        // ✅ CRITICAL: Ensure companyId is always present and valid
         companyId: validCompanyId,
-
-        // ✅ CRITICAL: Supplier information - use customer field which contains supplier data
-        customer: formData.customer, // This contains the supplier data
+        customer: formData.customer,
         supplier: formData.customer
           ? {
               id: formData.customer.id || formData.customer._id,
@@ -748,8 +836,6 @@ function PurchaseInvoiceFormSection({
               gstNumber: formData.customer.gstNumber || "",
             }
           : null,
-
-        // ✅ Additional supplier fields for backend compatibility
         supplierName:
           formData.customer?.name || formData.customer?.businessName || "",
         supplierMobile:
@@ -758,8 +844,6 @@ function PurchaseInvoiceFormSection({
         supplierAddress: formData.customer?.address || "",
         supplierGstNumber: formData.customer?.gstNumber || "",
         supplierId: formData.customer?.id || formData.customer?._id || null,
-
-        // ✅ Legacy party fields
         partyName:
           formData.customer?.name || formData.customer?.businessName || "",
         partyPhone: formData.customer?.mobile || formData.customer?.phone || "",
@@ -767,59 +851,38 @@ function PurchaseInvoiceFormSection({
         partyAddress: formData.customer?.address || "",
         mobileNumber:
           formData.customer?.mobile || formData.customer?.phone || "",
-
-        // ✅ CRITICAL: Items with proper validation and structure
         items: validItemsForValidation.map((item, index) => ({
-          // Basic item info
           itemRef: item.itemRef || item.selectedProduct || null,
           itemName: item.itemName?.trim() || "",
           itemCode: item.itemCode || "",
           description: item.description || "",
-
-          // Quantities and pricing
           quantity: parseFloat(item.quantity) || 0,
           unit: item.unit || "PCS",
           pricePerUnit: parseFloat(item.pricePerUnit) || 0,
-
-          // Tax information
           hsnCode: item.hsnCode || "0000",
           taxRate: parseFloat(item.taxRate || 18),
           taxMode: item.taxMode || "without-tax",
           priceIncludesTax: item.taxMode === "with-tax",
-
-          // Discount
           discountPercent: parseFloat(item.discountPercent || 0),
           discountAmount: parseFloat(item.discountAmount || 0),
-
-          // Tax amounts
           cgstAmount: parseFloat(item.cgstAmount || 0),
           sgstAmount: parseFloat(item.sgstAmount || 0),
-
-          // Final amount
           amount: parseFloat(item.amount || 0),
           itemAmount: parseFloat(item.amount || 0),
-
-          // Additional fields
           lineNumber: index + 1,
           category: item.category || "",
           currentStock: parseFloat(item.currentStock || 0),
         })),
-
-        // ✅ Document information
         purchaseNumber: formData.invoiceNumber || `PB-${Date.now()}`,
         invoiceNumber: formData.invoiceNumber || `PB-${Date.now()}`,
         purchaseDate:
           formData.invoiceDate || new Date().toISOString().split("T")[0],
         invoiceDate:
           formData.invoiceDate || new Date().toISOString().split("T")[0],
-
-        // ✅ Purchase configuration
         gstEnabled: Boolean(formData.gstEnabled),
         purchaseType: formData.gstEnabled ? "gst" : "non-gst",
         globalTaxMode: "without-tax",
         priceIncludesTax: false,
-
-        // ✅ Totals - ensure all required total fields are present
         totals: {
           subtotal: totals.subtotal || 0,
           totalDiscount: totals.totalDiscount || 0,
@@ -831,8 +894,6 @@ function PurchaseInvoiceFormSection({
           grandTotal: displayTotal,
           amount: displayTotal,
         },
-
-        // ✅ Top-level totals for compatibility
         amount: displayTotal,
         total: displayTotal,
         finalTotal: displayTotal,
@@ -840,8 +901,6 @@ function PurchaseInvoiceFormSection({
         subtotal: totals.subtotal || 0,
         totalTax: totals.totalTax || 0,
         totalDiscount: totals.totalDiscount || 0,
-
-        // ✅ Payment information
         paymentReceived: paymentData?.amount || 0,
         paymentAmount: paymentData?.amount || 0,
         paymentMethod: paymentData?.paymentMethod || "cash",
@@ -849,95 +908,21 @@ function PurchaseInvoiceFormSection({
         bankAccountId: paymentData?.bankAccountId || null,
         dueDate: paymentData?.dueDate || null,
         creditDays: paymentData?.creditDays || 0,
-
-        // ✅ Payment data object
         paymentData: paymentData || {},
-
-        // ✅ Additional fields
         notes: formData.notes || "",
         termsAndConditions: formData.termsAndConditions || "",
         status: isPurchaseOrdersMode ? "draft" : "completed",
-
-        // ✅ Round off
         roundOff: roundOffValue || 0,
         roundOffEnabled: roundOffEnabled || false,
-
-        // ✅ Employee context
         employeeName: currentUser?.name || "",
         employeeId: currentUser?.id || currentUser?._id || "",
         createdBy: currentUser?.id || currentUser?._id || "",
-
-        // ✅ Form metadata
         formType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
         documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
         transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
       };
 
-      // ✅ Enhanced validation before sending to service
-      console.log("📋 Purchase data validation before service call:", {
-        hasCompanyId: !!purchaseDataForService.companyId,
-        hasSupplier: !!purchaseDataForService.customer,
-        supplierName: purchaseDataForService.supplierName,
-        itemsCount: purchaseDataForService.items?.length || 0,
-        firstItemName: purchaseDataForService.items?.[0]?.itemName,
-        totalAmount: purchaseDataForService.totals?.finalTotal,
-        paymentAmount: purchaseDataForService.paymentReceived,
-      });
-
-      // ✅ Comprehensive validation
-      if (!purchaseDataForService.companyId) {
-        throw new Error("Company ID is missing - cannot proceed");
-      }
-
-      if (!purchaseDataForService.customer && !isPurchaseOrdersMode) {
-        throw new Error(
-          "Supplier information is missing - please select a supplier"
-        );
-      }
-
-      if (!purchaseDataForService.supplierName && !isPurchaseOrdersMode) {
-        throw new Error(
-          "Supplier name is missing - please enter supplier details"
-        );
-      }
-
-      if (
-        !purchaseDataForService.items ||
-        purchaseDataForService.items.length === 0
-      ) {
-        throw new Error("No items provided - please add at least one item");
-      }
-
-      const invalidItems = purchaseDataForService.items.filter(
-        (item) =>
-          !item.itemName ||
-          !item.itemName.trim() ||
-          parseFloat(item.quantity) <= 0 ||
-          parseFloat(item.pricePerUnit) < 0
-      );
-
-      if (invalidItems.length > 0) {
-        throw new Error(
-          `Invalid items found: ${invalidItems.length} items have missing name, zero quantity, or invalid price`
-        );
-      }
-
-      if (purchaseDataForService.totals?.finalTotal <= 0) {
-        throw new Error(
-          "Invalid total amount - total must be greater than zero"
-        );
-      }
-
       console.log("✅ All validations passed, sending to purchase service...");
-
-      // ✅ Final validation before sending
-      console.log("📋 Final purchase data validation:", {
-        companyId: purchaseDataForService.companyId,
-        supplierProvided: !!purchaseDataForService.supplier,
-        supplierName: purchaseDataForService.supplierName,
-        itemsCount: purchaseDataForService.items?.length || 0,
-        totalAmount: purchaseDataForService.totals?.finalTotal,
-      });
 
       if (!purchaseDataForService.companyId) {
         throw new Error("Company ID is missing");
@@ -961,9 +946,7 @@ function PurchaseInvoiceFormSection({
       let result;
 
       try {
-        // Check if this is an edit operation
         if (editMode && formData.id) {
-          // For edit mode, always use updatePurchase
           result = await purchaseService.updatePurchase(
             formData.id,
             purchaseDataForService,
@@ -973,7 +956,6 @@ function PurchaseInvoiceFormSection({
             }
           );
 
-          // Handle payment separately for updates if needed
           if (
             result?.success &&
             paymentData?.amount > 0 &&
@@ -1013,14 +995,12 @@ function PurchaseInvoiceFormSection({
             }
           }
         } else {
-          // For new purchases, check if payment with transaction is needed
           const hasPaymentWithBankAccount =
             paymentData?.amount > 0 &&
             paymentData.bankAccountId &&
             paymentData.paymentMethod !== "cash";
 
           if (hasPaymentWithBankAccount) {
-            // ✅ Use the correct method for combined purchase + transaction
             try {
               console.log(
                 "🔄 Attempting combined purchase with transaction..."
@@ -1034,7 +1014,6 @@ function PurchaseInvoiceFormSection({
                 combinedError
               );
 
-              // ✅ Fallback: Create purchase without payment first
               const purchaseDataWithoutPayment = {
                 ...purchaseDataForService,
                 paymentReceived: 0,
@@ -1047,7 +1026,6 @@ function PurchaseInvoiceFormSection({
                 purchaseDataWithoutPayment
               );
 
-              // Then add payment with transaction separately
               if (result?.success && paymentData.amount > 0) {
                 try {
                   const purchaseId = result.data?._id || result.data?.id;
@@ -1068,7 +1046,6 @@ function PurchaseInvoiceFormSection({
                     );
 
                   if (paymentResult?.success) {
-                    // Merge transaction data into result
                     result.data.transaction = paymentResult.data.transaction;
                     result.data.transactionId =
                       paymentResult.data.transactionId;
@@ -1091,7 +1068,6 @@ function PurchaseInvoiceFormSection({
               }
             }
           } else {
-            // ✅ No payment or cash payment - use simple create
             console.log("🔄 Creating purchase without payment transaction...");
             result = await purchaseService.createPurchase(
               purchaseDataForService
@@ -1099,7 +1075,6 @@ function PurchaseInvoiceFormSection({
           }
         }
 
-        // Handle successful result
         if (result?.success) {
           const savedAmount =
             result.data?.totals?.finalTotal ||
@@ -1107,7 +1082,6 @@ function PurchaseInvoiceFormSection({
             result.data?.amount ||
             displayTotal;
 
-          // Show success message
           addToast?.(
             `${currentConfig.documentName} ${
               editMode ? "updated" : "created"
@@ -1115,17 +1089,14 @@ function PurchaseInvoiceFormSection({
             "success"
           );
 
-          // Show transaction warning if applicable
           if (result.data?.transactionWarning) {
             addToast?.(result.data.transactionWarning, "warning");
           }
 
-          // Reset payment data and call parent handlers
           if (resetPaymentData) {
             resetPaymentData();
           }
 
-          // Call the parent onSave if provided (for additional handling)
           if (onSave && typeof onSave === "function") {
             try {
               await onSave(result.data);
@@ -1134,7 +1105,6 @@ function PurchaseInvoiceFormSection({
             }
           }
 
-          // Navigate back or close modal
           if (onCancel) {
             setTimeout(() => onCancel(), 1000);
           }
@@ -1151,7 +1121,6 @@ function PurchaseInvoiceFormSection({
       } catch (serviceError) {
         console.error("Purchase service error:", serviceError);
 
-        // Handle specific service errors
         if (serviceError.message?.includes("not a function")) {
           addToast?.(
             `Service method error: ${serviceError.message}. Please check the purchase service configuration.`,
@@ -1163,7 +1132,6 @@ function PurchaseInvoiceFormSection({
             "error"
           );
         } else if (serviceError.message?.includes("already in progress")) {
-          // Ignore duplicate submission errors
           return;
         } else {
           addToast?.(
@@ -1180,7 +1148,6 @@ function PurchaseInvoiceFormSection({
     } catch (error) {
       console.error("HandleSavePurchase error:", error);
 
-      // Prevent duplicate error messages for known duplicate submission scenarios
       if (
         error.message === "Purchase creation already in progress" ||
         error.message === "Request already in progress" ||
@@ -1189,7 +1156,6 @@ function PurchaseInvoiceFormSection({
         return;
       }
 
-      // Only show error toast if not already shown by service error handling
       if (
         !error.message?.includes("Service method error") &&
         !error.message?.includes("Network error")
@@ -1361,20 +1327,41 @@ function PurchaseInvoiceFormSection({
   return (
     <div
       className="purchase-invoice-form-section"
-      style={{maxWidth: "1400px", margin: "0 auto"}}
+      style={{
+        maxWidth: "1400px",
+        margin: "0 auto",
+        backgroundColor: purpleTheme.background,
+        minHeight: "100vh",
+        padding: "1rem",
+      }}
     >
+      {/* ✅ ENHANCED HEADER SECTION */}
       <div className="mb-4">
         <Row className="align-items-center">
           <Col md={8}>
             {hasValidItems ? (
-              <div className="d-flex align-items-center">
-                <FontAwesomeIcon
-                  icon={currentConfig.formIcon}
-                  className="me-2 text-primary"
-                  size="lg"
-                />
+              <div
+                className="d-flex align-items-center p-3 rounded-3"
+                style={{
+                  background: purpleTheme.gradient,
+                  color: "white",
+                  boxShadow: purpleTheme.shadowMd,
+                }}
+              >
+                <div
+                  className="d-flex align-items-center justify-content-center rounded-circle me-3"
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    backgroundColor: "rgba(255, 255, 255, 0.2)",
+                    backdropFilter: "blur(10px)",
+                    border: "2px solid rgba(255, 255, 255, 0.3)",
+                  }}
+                >
+                  <FontAwesomeIcon icon={currentConfig.formIcon} size="lg" />
+                </div>
                 <div>
-                  <h5 className="mb-0 text-dark">
+                  <h5 className="mb-0 fw-bold">
                     <strong>
                       {localItems.filter((item) => item.itemName).length}
                     </strong>{" "}
@@ -1383,7 +1370,7 @@ function PurchaseInvoiceFormSection({
                       : "Items"}{" "}
                     Added
                   </h5>
-                  <small className="text-muted">
+                  <small className="opacity-90">
                     Ready to{" "}
                     {isPurchaseOrdersMode
                       ? "create purchase order"
@@ -1392,11 +1379,30 @@ function PurchaseInvoiceFormSection({
                 </div>
               </div>
             ) : (
-              <div className="d-flex align-items-center text-muted">
-                <FontAwesomeIcon icon={faBoxOpen} className="me-2" size="lg" />
+              <div
+                className="d-flex align-items-center p-3 rounded-3"
+                style={{
+                  backgroundColor: `rgba(${purpleTheme.primaryRgb}, 0.05)`,
+                  border: `2px dashed ${purpleTheme.border}`,
+                  color: purpleTheme.textMuted,
+                }}
+              >
+                <div
+                  className="d-flex align-items-center justify-content-center rounded-circle me-3"
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    backgroundColor: `rgba(${purpleTheme.primaryRgb}, 0.1)`,
+                    color: purpleTheme.primary,
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBoxOpen} size="lg" />
+                </div>
                 <div>
-                  <h5 className="mb-0 text-muted">No Items Added</h5>
-                  <small className="text-muted">
+                  <h5 className="mb-0" style={{color: purpleTheme.textMuted}}>
+                    No Items Added
+                  </h5>
+                  <small style={{color: purpleTheme.textMuted}}>
                     Click "Add Item" to start building your{" "}
                     {isPurchaseOrdersMode ? "purchase order" : "purchase bill"}
                   </small>
@@ -1406,18 +1412,21 @@ function PurchaseInvoiceFormSection({
           </Col>
           <Col md={4} className="text-end">
             <Button
-              variant="primary"
               onClick={handleAddProductClick}
               disabled={disabled || isSubmitting || submissionRef.current}
               style={{
-                backgroundColor: "#007bff",
-                borderColor: "#000",
-                fontSize: "14px",
-                fontWeight: "bold",
-                padding: "8px 16px",
-                borderWidth: "2px",
-                opacity:
-                  disabled || isSubmitting || submissionRef.current ? 0.6 : 1,
+                ...getButtonStyle("primary", "lg"),
+                minWidth: "140px",
+              }}
+              onMouseEnter={(e) => {
+                if (!e.target.disabled) {
+                  e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow = `0 4px 15px rgba(${purpleTheme.primaryRgb}, 0.4)`;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = "translateY(0)";
+                e.target.style.boxShadow = `0 2px 8px rgba(${purpleTheme.primaryRgb}, 0.3)`;
               }}
             >
               <FontAwesomeIcon icon={faPlus} className="me-2" />
@@ -1426,157 +1435,105 @@ function PurchaseInvoiceFormSection({
           </Col>
         </Row>
       </div>
-      {hasValidItems && (
-        <Card className="mb-4 border-2" style={{borderColor: "#000"}}>
-          <Card.Header
-            className="bg-light border-bottom-2 d-flex justify-content-between align-items-center"
-            style={{borderBottomColor: "#000"}}
+
+      {/* ✅ FIXED: EMPTY STATE WITH PROPER SPACING */}
+      {!hasValidItems && (
+        <div
+          className="text-center py-5 my-4"
+          style={{
+            backgroundColor: `rgba(${purpleTheme.primaryRgb}, 0.03)`,
+            borderRadius: "16px",
+            border: `2px dashed ${purpleTheme.border}`,
+            minHeight: "300px", // ✅ FIXED: Controlled height instead of auto-expanding
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div
+            className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
+            style={{
+              width: "80px",
+              height: "80px",
+              backgroundColor: `rgba(${purpleTheme.primaryRgb}, 0.1)`,
+              color: purpleTheme.primary,
+            }}
           >
-            <h5 className="mb-0">
-              <FontAwesomeIcon icon={currentConfig.formIcon} className="me-2" />
-              Added Items ({localItems.filter((item) => item.itemName).length})
-            </h5>
-          </Card.Header>
-          <Card.Body className="p-0">
-            <div className="table-responsive">
-              <Table hover className="mb-0">
-                <thead className="bg-light">
-                  <tr>
-                    <th style={{fontSize: "12px", padding: "10px"}}>#</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>ITEM</th>
-                    {formData.gstEnabled && (
-                      <th style={{fontSize: "12px", padding: "10px"}}>HSN</th>
-                    )}
-                    <th style={{fontSize: "12px", padding: "10px"}}>QTY</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>UNIT</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>
-                      PURCHASE PRICE
-                    </th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>
-                      DISCOUNT
-                    </th>
-                    {formData.gstEnabled && (
-                      <th style={{fontSize: "12px", padding: "10px"}}>TAX</th>
-                    )}
-                    <th style={{fontSize: "12px", padding: "10px"}}>AMOUNT</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {localItems
-                    .filter((item) => item.itemName)
-                    .map((item, index) => (
-                      <tr key={item.id || index}>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          {index + 1}
-                        </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <div>
-                            <strong>{item.itemName}</strong>
-                            {item.itemCode && (
-                              <Badge
-                                bg="secondary"
-                                className="ms-1"
-                                style={{fontSize: "9px"}}
-                              >
-                                {item.itemCode}
-                              </Badge>
-                            )}
-                          </div>
-                          {item.description && (
-                            <small className="text-muted d-block">
-                              {item.description.length > 40
-                                ? `${item.description.substring(0, 40)}...`
-                                : item.description}
-                            </small>
-                          )}
-                        </td>
-                        {formData.gstEnabled && (
-                          <td style={{fontSize: "11px", padding: "8px"}}>
-                            {item.hsnCode || "N/A"}
-                          </td>
-                        )}
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          {item.quantity}
-                        </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          {item.unit}
-                        </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <div>
-                            ₹{parseFloat(item.pricePerUnit || 0).toFixed(2)}
-                          </div>
-                        </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          {item.discountPercent > 0 && (
-                            <span className="text-warning">
-                              {item.discountPercent}%
-                            </span>
-                          )}
-                          {item.discountAmount > 0 && (
-                            <div className="text-warning">
-                              ₹{item.discountAmount.toFixed(2)}
-                            </div>
-                          )}
-                        </td>
-                        {formData.gstEnabled && (
-                          <td style={{fontSize: "12px", padding: "8px"}}>
-                            {item.cgstAmount + item.sgstAmount > 0 ? (
-                              <div>
-                                <small>C: ₹{item.cgstAmount.toFixed(2)}</small>
-                                <br />
-                                <small>S: ₹{item.sgstAmount.toFixed(2)}</small>
-                              </div>
-                            ) : (
-                              <Badge bg="secondary" style={{fontSize: "9px"}}>
-                                No Tax
-                              </Badge>
-                            )}
-                          </td>
-                        )}
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <strong className="text-success">
-                            ₹{(item.amount || 0).toFixed(2)}
-                          </strong>
-                        </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <div className="d-flex gap-1">
-                            <Button
-                              variant="outline-primary"
-                              size="sm"
-                              onClick={() => handleEditProduct(index)}
-                              disabled={
-                                disabled ||
-                                isSubmitting ||
-                                submissionRef.current
-                              }
-                              style={{padding: "2px 6px"}}
-                            >
-                              <FontAwesomeIcon icon={faEdit} size="xs" />
-                            </Button>
-                            <Button
-                              variant="outline-danger"
-                              size="sm"
-                              onClick={() => handleRemoveProduct(index)}
-                              disabled={
-                                disabled ||
-                                localItems.length === 1 ||
-                                isSubmitting ||
-                                submissionRef.current
-                              }
-                              style={{padding: "2px 6px"}}
-                            >
-                              <FontAwesomeIcon icon={faTrash} size="xs" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </Table>
-            </div>
-          </Card.Body>
-        </Card>
+            <FontAwesomeIcon icon={faBoxOpen} size="2x" />
+          </div>
+          <h5
+            style={{
+              color: purpleTheme.text,
+              marginBottom: "12px",
+              fontWeight: "600",
+            }}
+          >
+            No Items Added Yet
+          </h5>
+          <p
+            style={{
+              color: purpleTheme.textMuted,
+              fontSize: "15px",
+              maxWidth: "400px",
+              margin: "0 auto 24px",
+              lineHeight: "1.5",
+            }}
+          >
+            Click the "Add Item" button above to start adding items to your{" "}
+            {isPurchaseOrdersMode ? "purchase order" : "purchase bill"}.
+          </p>
+          <Button
+            onClick={handleAddProductClick}
+            disabled={disabled || isSubmitting || submissionRef.current}
+            style={{
+              ...getButtonStyle("primary", "lg"),
+              minWidth: "180px",
+              borderRadius: "25px",
+            }}
+            onMouseEnter={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.transform = "translateY(-2px)";
+                e.target.style.boxShadow = `0 4px 15px rgba(${purpleTheme.primaryRgb}, 0.4)`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = "translateY(0)";
+              e.target.style.boxShadow = `0 2px 8px rgba(${purpleTheme.primaryRgb}, 0.3)`;
+            }}
+          >
+            <FontAwesomeIcon icon={faPlus} className="me-2" />
+            Add Your First Item
+          </Button>
+
+          {/* ✅ Optional: Quick tips */}
+          <div className="mt-4">
+            <Row className="justify-content-center">
+              <Col md={8}>
+                <div className="d-flex justify-content-center gap-4 small text-muted">
+                  <div className="text-center">
+                    <FontAwesomeIcon
+                      icon={faShoppingCart}
+                      className="d-block mb-1"
+                    />
+                    <span>Add Products</span>
+                  </div>
+                  <div className="text-center">
+                    <FontAwesomeIcon
+                      icon={faCalculator}
+                      className="d-block mb-1"
+                    />
+                    <span>Auto Calculate</span>
+                  </div>
+                  <div className="text-center">
+                    <FontAwesomeIcon icon={faSave} className="d-block mb-1" />
+                    <span>Save & Print</span>
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </div>
+        </div>
       )}
       {hasValidItems && (
         <Card className="border-0 shadow-sm">
@@ -1813,19 +1770,362 @@ function PurchaseInvoiceFormSection({
           </Card.Body>
         </Card>
       )}
-      {!hasValidItems && (
-        <div className="text-center text-muted py-5">
-          <FontAwesomeIcon
-            icon={faBoxOpen}
-            size="3x"
-            className="mb-3 opacity-50"
-          />
-          <h5 className="text-muted">No Items Added Yet</h5>
-          <p className="text-muted">
-            Click the "Add Item" button above to start adding items to your{" "}
-            {isPurchaseOrdersMode ? "purchase order" : "purchase bill"}.
-          </p>
-        </div>
+
+      {hasValidItems && (
+        <Card
+          style={{
+            ...getCardStyle(),
+            background: purpleTheme.gradient,
+            border: "none",
+            color: "white",
+          }}
+        >
+          <Card.Body style={{padding: "2rem"}}>
+            <Row className="g-4">
+              <Col lg={gridLayout.payment || 5} md={6}>
+                <Button
+                  onClick={handlePaymentClick}
+                  disabled={
+                    !hasValidItems ||
+                    (!isPurchaseOrdersMode && !formData.customer) ||
+                    isSubmitting ||
+                    submissionRef.current
+                  }
+                  style={{
+                    width: "100%",
+                    minHeight: "120px",
+                    borderRadius: "16px",
+                    fontSize: "15px",
+                    fontWeight: "600",
+                    backgroundColor:
+                      paymentData.amount > 0
+                        ? "rgba(16, 185, 129, 0.9)"
+                        : "rgba(255, 255, 255, 0.15)",
+                    border: "2px solid rgba(255, 255, 255, 0.3)",
+                    color: "white",
+                    backdropFilter: "blur(10px)",
+                    transition: "all 0.3s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!e.target.disabled) {
+                      e.target.style.transform = "translateY(-4px)";
+                      e.target.style.boxShadow =
+                        "0 8px 25px rgba(0, 0, 0, 0.2)";
+                      e.target.style.backgroundColor =
+                        paymentData.amount > 0
+                          ? "rgba(16, 185, 129, 1)"
+                          : "rgba(255, 255, 255, 0.25)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "none";
+                    e.target.style.backgroundColor =
+                      paymentData.amount > 0
+                        ? "rgba(16, 185, 129, 0.9)"
+                        : "rgba(255, 255, 255, 0.15)";
+                  }}
+                >
+                  <FontAwesomeIcon
+                    icon={
+                      paymentData.amount > 0
+                        ? faCheckCircle
+                        : currentConfig.paymentIcon
+                    }
+                    size="2x"
+                  />
+                  <span>
+                    {paymentData.amount > 0
+                      ? isPurchaseOrdersMode
+                        ? "Update Terms"
+                        : "Update Payment"
+                      : currentConfig.paymentAction}
+                  </span>
+                  <small className="opacity-90">
+                    {paymentData.amount > 0
+                      ? `₹${itemsTableLogic.formatCurrency(paymentData.amount)}`
+                      : `₹${itemsTableLogic.formatCurrency(displayTotal)}`}
+                  </small>
+                </Button>
+              </Col>
+
+              {formData.gstEnabled && totals.totalTax > 0 && (
+                <Col lg={gridLayout.tax || 3} md={6}>
+                  <Card
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      border: "2px solid rgba(255, 255, 255, 0.2)",
+                      borderRadius: "16px",
+                      height: "100%",
+                      backdropFilter: "blur(10px)",
+                    }}
+                  >
+                    <Card.Body style={{padding: "1.5rem"}}>
+                      <div className="text-center mb-3">
+                        <FontAwesomeIcon
+                          icon={faPercent}
+                          className="me-2"
+                          size="lg"
+                          style={{color: "rgba(255, 255, 255, 0.8)"}}
+                        />
+                        <span className="fw-bold" style={{fontSize: "14px"}}>
+                          GST Breakdown
+                        </span>
+                      </div>
+                      <div style={{fontSize: "13px"}}>
+                        <div className="d-flex justify-content-between mb-2">
+                          <span className="opacity-90">Subtotal:</span>
+                          <span className="fw-semibold">
+                            ₹{itemsTableLogic.formatCurrency(totals.subtotal)}
+                          </span>
+                        </div>
+                        <div className="d-flex justify-content-between mb-2">
+                          <span className="opacity-90">CGST:</span>
+                          <span className="fw-semibold">
+                            ₹{itemsTableLogic.formatCurrency(totals.totalCGST)}
+                          </span>
+                        </div>
+                        <div className="d-flex justify-content-between mb-2">
+                          <span className="opacity-90">SGST:</span>
+                          <span className="fw-semibold">
+                            ₹{itemsTableLogic.formatCurrency(totals.totalSGST)}
+                          </span>
+                        </div>
+                        <hr
+                          style={{
+                            borderColor: "rgba(255, 255, 255, 0.3)",
+                            margin: "12px 0",
+                          }}
+                        />
+                        <div className="d-flex justify-content-between">
+                          <span className="fw-bold">Total:</span>
+                          <span className="fw-bold" style={{fontSize: "15px"}}>
+                            ₹{itemsTableLogic.formatCurrency(totals.finalTotal)}
+                          </span>
+                        </div>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              )}
+
+              <Col lg={gridLayout.total || 2} md={6}>
+                <Card
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.15)",
+                    border: "2px solid rgba(255, 255, 255, 0.3)",
+                    borderRadius: "16px",
+                    height: "100%",
+                    backdropFilter: "blur(10px)",
+                  }}
+                >
+                  <Card.Body style={{padding: "1.5rem"}}>
+                    <div className="text-center mb-3">
+                      <FontAwesomeIcon
+                        icon={currentConfig.formIcon}
+                        className="me-2"
+                        style={{color: "rgba(255, 255, 255, 0.8)"}}
+                      />
+                      <span className="fw-bold" style={{fontSize: "14px"}}>
+                        {currentConfig.totalLabel}
+                      </span>
+                    </div>
+
+                    <div className="fw-bold h4 mb-3 text-center">
+                      ₹{itemsTableLogic.formatCurrency(displayTotal)}
+                    </div>
+
+                    <div
+                      style={{
+                        borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+                        paddingTop: "12px",
+                      }}
+                    >
+                      <div className="d-flex align-items-center justify-content-between mb-2">
+                        <span
+                          className="fw-semibold"
+                          style={{fontSize: "13px"}}
+                        >
+                          Round Off
+                        </span>
+                        <Form.Check
+                          type="switch"
+                          checked={roundOffEnabled}
+                          onChange={(e) => setRoundOffEnabled(e.target.checked)}
+                          disabled={isSubmitting || submissionRef.current}
+                          style={{
+                            "--bs-form-switch-bg": "rgba(255, 255, 255, 0.3)",
+                            "--bs-form-switch-checked-bg":
+                              "rgba(255, 255, 255, 0.9)",
+                          }}
+                        />
+                      </div>
+
+                      {roundOffDisplayInfo?.showRoundOffBreakdown && (
+                        <div
+                          style={{
+                            padding: "12px",
+                            backgroundColor: "rgba(255, 255, 255, 0.1)",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                          }}
+                        >
+                          <div className="d-flex justify-content-between mb-1">
+                            <span className="opacity-90">
+                              {roundOffDisplayInfo.baseTotalLabel ||
+                                "Base Total"}
+                              :
+                            </span>
+                            <span>
+                              ₹
+                              {itemsTableLogic.formatCurrency(
+                                roundOffDisplayInfo.baseTotalAmount
+                              )}
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between">
+                            <span className="opacity-90">Round Off:</span>
+                            <span
+                              className={roundOffDisplayInfo.roundOffColorClass}
+                            >
+                              {roundOffDisplayInfo.roundOffLabel}₹
+                              {itemsTableLogic.formatCurrency(
+                                Math.abs(roundOffDisplayInfo.roundOffAmount)
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+
+              <Col lg={gridLayout.actions || 2} md={6}>
+                <div className="d-grid gap-3 h-100">
+                  <Button
+                    onClick={onShare}
+                    disabled={
+                      !hasValidItems || isSubmitting || submissionRef.current
+                    }
+                    style={{
+                      ...getButtonStyle("outline", "md"),
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      borderColor: "rgba(255, 255, 255, 0.3)",
+                      color: "white",
+                      backdropFilter: "blur(10px)",
+                      flex: "1",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!e.target.disabled) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.2)";
+                        e.target.style.transform = "translateY(-2px)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor =
+                        "rgba(255, 255, 255, 0.1)";
+                      e.target.style.transform = "translateY(0)";
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faShare} className="me-2" />
+                    Share
+                  </Button>
+
+                  <Button
+                    onClick={handleSavePurchase}
+                    disabled={
+                      !hasValidItems ||
+                      saving ||
+                      isSubmitting ||
+                      submissionRef.current ||
+                      (!isPurchaseOrdersMode && !formData.customer)
+                    }
+                    style={{
+                      ...getButtonStyle("success", "md"),
+                      backgroundColor:
+                        saving || isSubmitting
+                          ? "rgba(255, 255, 255, 0.3)"
+                          : "rgba(16, 185, 129, 0.9)",
+                      borderColor: "rgba(255, 255, 255, 0.3)",
+                      color: "white",
+                      backdropFilter: "blur(10px)",
+                      flex: "2",
+                      fontSize: "15px",
+                      fontWeight: "700",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!e.target.disabled) {
+                        e.target.style.backgroundColor =
+                          "rgba(16, 185, 129, 1)";
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow =
+                          "0 4px 15px rgba(16, 185, 129, 0.3)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor =
+                        saving || isSubmitting
+                          ? "rgba(255, 255, 255, 0.3)"
+                          : "rgba(16, 185, 129, 0.9)";
+                      e.target.style.transform = "translateY(0)";
+                      e.target.style.boxShadow = "none";
+                    }}
+                  >
+                    {saving || isSubmitting ? (
+                      <>
+                        <FontAwesomeIcon
+                          icon={faSpinner}
+                          className="fa-spin me-2"
+                        />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <FontAwesomeIcon icon={faSave} className="me-2" />
+                        {currentConfig.saveButtonText}
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={onCancel}
+                    disabled={isSubmitting || submissionRef.current}
+                    style={{
+                      ...getButtonStyle("outline", "md"),
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      borderColor: "rgba(255, 255, 255, 0.3)",
+                      color: "white",
+                      backdropFilter: "blur(10px)",
+                      flex: "1",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!e.target.disabled) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.2)";
+                        e.target.style.transform = "translateY(-2px)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor =
+                        "rgba(255, 255, 255, 0.1)";
+                      e.target.style.transform = "translateY(0)";
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCancel} className="me-2" />
+                    Cancel
+                  </Button>
+                </div>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
       )}
       <Modal
         show={showProductFormModal}
@@ -2310,7 +2610,6 @@ function PurchaseInvoiceFormSection({
           </Button>
         </Modal.Footer>
       </Modal>
-
       {/* ✅ FIXED: Purchase-specific PaymentModal */}
       <PaymentModal
         show={showPaymentModal}

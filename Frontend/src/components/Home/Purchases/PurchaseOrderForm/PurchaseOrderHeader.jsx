@@ -15,8 +15,9 @@ import {
   faPlus,
   faEllipsisH,
   faCog,
-  faClipboardList,
+  faShoppingCart,
   faFileInvoice,
+  faClipboardList,
 } from "@fortawesome/free-solid-svg-icons";
 import {useNavigate, useParams} from "react-router-dom";
 
@@ -27,30 +28,29 @@ function PurchaseOrderHeader({
   onAddPurchase,
   onMoreOptions,
   onSettings,
+  pageTitle = "Purchase Orders",
+  companyId: propCompanyId,
   currentCompany,
   addToast,
-  onNavigate, // ✅ Added for navigation support
+  onNavigate,
+  totalOrders = 0,
+  pendingOrders = 0,
+  completedOrders = 0,
 }) {
   const navigate = useNavigate();
-  const {companyId} = useParams();
+  const {companyId: urlCompanyId} = useParams();
 
-  // Get effective company ID from URL params or currentCompany prop
   const getCompanyId = () => {
-    return companyId || currentCompany?.id || currentCompany?._id;
+    return (
+      propCompanyId || urlCompanyId || currentCompany?.id || currentCompany?._id
+    );
   };
 
-  // ✅ Enhanced Add Purchase Order handler
   const handleAddPurchaseOrder = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-
-    console.log("🔄 Add Purchase Order clicked");
-
     const effectiveCompanyId = getCompanyId();
-    console.log("🏢 Company ID:", effectiveCompanyId);
 
     if (!effectiveCompanyId) {
-      console.warn("⚠️ No company selected for Add Purchase Order");
       addToast?.(
         "Please select a company first to create a purchase order",
         "warning"
@@ -59,76 +59,51 @@ function PurchaseOrderHeader({
     }
 
     try {
-      // ✅ FIXED: Use onNavigate if available, otherwise direct navigation
       if (onNavigate && typeof onNavigate === "function") {
-        console.log("🔄 Using onNavigate for purchase order creation");
         onNavigate("createPurchaseOrder");
       } else if (
         onAddPurchaseOrder &&
         typeof onAddPurchaseOrder === "function"
       ) {
-        console.log("🔄 Calling onAddPurchaseOrder callback");
         onAddPurchaseOrder();
       } else {
-        // Direct navigation as fallback
         const targetUrl = `/companies/${effectiveCompanyId}/purchase-orders/add`;
-        console.log("🔄 Direct navigation to:", targetUrl);
         navigate(targetUrl);
       }
-
       addToast?.("Opening purchase order form...", "info");
     } catch (error) {
-      console.error("❌ Error in handleAddPurchaseOrder:", error);
       addToast?.("Failed to open purchase order form", "error");
     }
   };
 
-  // ✅ Enhanced Add Purchase handler
   const handleAddPurchase = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-
-    console.log("🔄 Add Purchase clicked");
-
     const effectiveCompanyId = getCompanyId();
-    console.log("🏢 Company ID:", effectiveCompanyId);
 
     if (!effectiveCompanyId) {
-      console.warn("⚠️ No company selected for Add Purchase");
       addToast?.(
-        "Please select a company first to create a purchase bill",
+        "Please select a company first to create a purchase",
         "warning"
       );
       return;
     }
 
     try {
-      // ✅ FIXED: Use onNavigate if available, otherwise direct navigation
       if (onNavigate && typeof onNavigate === "function") {
-        console.log("🔄 Using onNavigate for purchase bill creation");
-        onNavigate("createPurchaseBill");
+        onNavigate("createPurchase");
       } else if (onAddPurchase && typeof onAddPurchase === "function") {
-        console.log("🔄 Calling onAddPurchase callback");
         onAddPurchase();
       } else {
-        // Direct navigation as fallback
-        const targetUrl = `/companies/${effectiveCompanyId}/purchases/add`;
-        console.log("🔄 Direct navigation to:", targetUrl);
-        navigate(targetUrl);
+        navigate(`/companies/${effectiveCompanyId}/purchases/add`);
       }
-
-      addToast?.("Opening purchase bill form...", "info");
+      addToast?.("Opening purchase form...", "info");
     } catch (error) {
-      console.error("❌ Error in handleAddPurchase:", error);
       addToast?.("Failed to open purchase form", "error");
     }
   };
 
-  // Handle More Options
   const handleMoreOptions = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-
     if (onMoreOptions && typeof onMoreOptions === "function") {
       onMoreOptions();
     } else {
@@ -136,11 +111,8 @@ function PurchaseOrderHeader({
     }
   };
 
-  // Handle Settings
   const handleSettings = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-
     if (onSettings && typeof onSettings === "function") {
       onSettings();
     } else {
@@ -158,175 +130,79 @@ function PurchaseOrderHeader({
   };
 
   return (
-    <>
+    <div className="p-3">
       <Navbar
         expand="lg"
-        className="purchase-order-header-navbar sticky-top bg-light border-bottom shadow-sm"
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(108, 99, 255, 0.02) 0%, rgba(156, 136, 255, 0.02) 100%)",
-          backdropFilter: "blur(10px)",
-          zIndex: 1020,
-        }}
+        className="bg-light border border-2 border-start-0 border-end-0 border-top-0 shadow-sm purchase-navbar"
+        style={{borderRadius: 0}}
       >
-        <Container fluid className="px-3">
+        <Container fluid>
           <Row className="w-100 align-items-center g-3">
-            {/* Left side - Search */}
-            <Col md={6} lg={5}>
-              <InputGroup size="sm" className="shadow-sm">
-                <InputGroup.Text className="bg-white border-end-0 text-primary">
-                  <FontAwesomeIcon icon={faSearch} />
+            <Col lg={6} md={7}>
+              <InputGroup>
+                <InputGroup.Text
+                  className="bg-white border-end-0 custom-input-text"
+                  style={{borderRadius: 0}}
+                >
+                  <FontAwesomeIcon icon={faSearch} className="text-primary" />
                 </InputGroup.Text>
                 <Form.Control
                   type="text"
                   placeholder="Search purchase orders, suppliers, order numbers..."
                   value={searchTerm || ""}
                   onChange={onSearchChange}
-                  className="border-start-0 shadow-none"
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.95)",
-                    color: "#495057",
-                  }}
+                  className="border-start-0 custom-form-control"
+                  style={{borderRadius: 0}}
                 />
               </InputGroup>
             </Col>
 
-            {/* Right side - Action buttons */}
-            <Col md={6} lg={7}>
-              <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
-                {/* Primary Action Buttons */}
-                <div className="d-flex gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="d-flex align-items-center px-3 py-2 fw-semibold"
-                    onClick={handleAddPurchaseOrder}
-                    disabled={!getCompanyId()}
-                    style={{
-                      background:
-                        "linear-gradient(135deg, #6c63ff 0%, #9c88ff 100%)",
-                      border: "none",
-                      borderRadius: "0.375rem",
-                      boxShadow: "0 2px 8px rgba(108, 99, 255, 0.2)",
-                      transition: "all 0.2s ease",
-                      whiteSpace: "nowrap",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.transform = "translateY(-1px)";
-                      e.target.style.boxShadow =
-                        "0 4px 15px rgba(108, 99, 255, 0.3)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.transform = "translateY(0)";
-                      e.target.style.boxShadow =
-                        "0 2px 8px rgba(108, 99, 255, 0.2)";
-                    }}
-                  >
-                    <FontAwesomeIcon
-                      icon={faClipboardList}
-                      className="me-2"
-                      style={{pointerEvents: "none"}}
-                    />
-                    <span style={{pointerEvents: "none"}}>Add Order</span>
-                  </Button>
+            <Col lg={6} md={5}>
+              <div className="d-flex justify-content-end gap-2 flex-wrap">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="d-flex align-items-center px-3 fw-semibold custom-primary-btn"
+                  onClick={handleAddPurchaseOrder}
+                  disabled={!getCompanyId()}
+                  style={{borderRadius: 0}}
+                >
+                  <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+                  <span className="d-none d-sm-inline">Add Order</span>
+                  <span className="d-sm-none">Order</span>
+                </Button>
 
-                  <Button
-                    variant="success"
-                    size="sm"
-                    className="d-flex align-items-center px-3 py-2 fw-semibold"
-                    onClick={handleAddPurchase}
-                    disabled={!getCompanyId()}
-                    style={{
-                      background:
-                        "linear-gradient(135deg, #10b981 0%, #34d399 100%)",
-                      border: "none",
-                      borderRadius: "0.375rem",
-                      boxShadow: "0 2px 8px rgba(16, 185, 129, 0.2)",
-                      transition: "all 0.2s ease",
-                      whiteSpace: "nowrap",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.transform = "translateY(-1px)";
-                      e.target.style.boxShadow =
-                        "0 4px 15px rgba(16, 185, 129, 0.3)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.transform = "translateY(0)";
-                      e.target.style.boxShadow =
-                        "0 2px 8px rgba(16, 185, 129, 0.2)";
-                    }}
-                  >
-                    <FontAwesomeIcon
-                      icon={faFileInvoice}
-                      className="me-2"
-                      style={{pointerEvents: "none"}}
-                    />
-                    <span style={{pointerEvents: "none"}}>Add Purchase</span>
-                  </Button>
-                </div>
+                <Button
+                  variant="success"
+                  size="sm"
+                  className="d-flex align-items-center px-3 fw-semibold custom-success-btn"
+                  onClick={handleAddPurchase}
+                  disabled={!getCompanyId()}
+                  style={{borderRadius: 0}}
+                >
+                  <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+                  <span className="d-none d-sm-inline">Add Purchase</span>
+                  <span className="d-sm-none">Purchase</span>
+                </Button>
 
-                {/* Settings ButtonGroup */}
                 <ButtonGroup size="sm">
                   <Button
                     variant="outline-secondary"
-                    className="d-flex align-items-center justify-content-center"
                     onClick={handleMoreOptions}
                     title="More Options"
-                    style={{
-                      minWidth: "38px",
-                      backgroundColor: "rgba(255, 255, 255, 0.8)",
-                      borderColor: "rgba(108, 99, 255, 0.2)",
-                      color: "#6c63ff",
-                      transition: "all 0.2s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor =
-                        "rgba(108, 99, 255, 0.1)";
-                      e.target.style.borderColor = "rgba(108, 99, 255, 0.3)";
-                      e.target.style.color = "#5a52d5";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor =
-                        "rgba(255, 255, 255, 0.8)";
-                      e.target.style.borderColor = "rgba(108, 99, 255, 0.2)";
-                      e.target.style.color = "#6c63ff";
-                    }}
+                    className="d-flex align-items-center justify-content-center custom-outline-primary"
+                    style={{minWidth: "38px", borderRadius: 0}}
                   >
-                    <FontAwesomeIcon
-                      icon={faEllipsisH}
-                      style={{pointerEvents: "none"}}
-                    />
+                    <FontAwesomeIcon icon={faEllipsisH} />
                   </Button>
-
                   <Button
                     variant="outline-secondary"
-                    className="d-flex align-items-center justify-content-center"
                     onClick={handleSettings}
                     title="Settings"
-                    style={{
-                      minWidth: "38px",
-                      backgroundColor: "rgba(255, 255, 255, 0.8)",
-                      borderColor: "rgba(108, 99, 255, 0.2)",
-                      color: "#6c63ff",
-                      transition: "all 0.2s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor =
-                        "rgba(108, 99, 255, 0.1)";
-                      e.target.style.borderColor = "rgba(108, 99, 255, 0.3)";
-                      e.target.style.color = "#5a52d5";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor =
-                        "rgba(255, 255, 255, 0.8)";
-                      e.target.style.borderColor = "rgba(108, 99, 255, 0.2)";
-                      e.target.style.color = "#6c63ff";
-                    }}
+                    className="d-flex align-items-center justify-content-center custom-outline-primary"
+                    style={{minWidth: "38px", borderRadius: 0}}
                   >
-                    <FontAwesomeIcon
-                      icon={faCog}
-                      style={{pointerEvents: "none"}}
-                    />
+                    <FontAwesomeIcon icon={faCog} />
                   </Button>
                 </ButtonGroup>
               </div>
@@ -335,66 +211,97 @@ function PurchaseOrderHeader({
         </Container>
       </Navbar>
 
-      {/* ✅ MINIMAL: Bootstrap-only responsive styles */}
       <style jsx>{`
-        /* Bootstrap Enhancement Styles Only */
-        .purchase-order-header-navbar {
-          padding: 0.75rem 0;
+        .p-3 {
+          margin: 0.75rem 0;
         }
 
-        .purchase-order-header-navbar .container-fluid {
-          max-width: 100%;
-        }
-
-        /* Search Input Focus Enhancement */
-        .form-control:focus {
-          border-color: rgba(108, 99, 255, 0.3) !important;
-          box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.1) !important;
-        }
-
-        .input-group-text {
+        .purchase-navbar {
           background: linear-gradient(
             135deg,
-            rgba(108, 99, 255, 0.05) 0%,
-            rgba(156, 136, 255, 0.05) 100%
+            rgba(99, 102, 241, 0.03) 0%,
+            rgba(139, 92, 246, 0.02) 100%
           ) !important;
-          border-color: rgba(108, 99, 255, 0.15) !important;
+          border-color: #6366f1 !important;
+          backdrop-filter: blur(10px);
+          margin-bottom: 0.5rem;
         }
 
-        /* Button Focus States */
-        .btn:focus {
-          box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.25) !important;
+        .custom-form-control:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
         }
 
-        .btn-outline-secondary:focus {
-          box-shadow: 0 0 0 0.2rem rgba(108, 99, 255, 0.15) !important;
+        .custom-input-text {
+          background: rgba(99, 102, 241, 0.05);
+          border-color: rgba(99, 102, 241, 0.15);
         }
 
-        /* Disable pointer events for child elements */
-        .btn * {
-          pointer-events: none !important;
+        .custom-primary-btn {
+          background: linear-gradient(
+            135deg,
+            #6366f1 0%,
+            #8b5cf6 100%
+          ) !important;
+          border-color: #6366f1 !important;
+          transition: all 0.15s ease-in-out;
         }
 
-        /* Responsive adjustments */
+        .custom-primary-btn:hover {
+          background: linear-gradient(
+            135deg,
+            #4f46e5 0%,
+            #7c3aed 100%
+          ) !important;
+          border-color: #4f46e5 !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .custom-primary-btn:focus {
+          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
+        }
+
+        .custom-success-btn {
+          background: linear-gradient(
+            135deg,
+            #10b981 0%,
+            #059669 100%
+          ) !important;
+          border-color: #10b981 !important;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .custom-success-btn:hover {
+          background: linear-gradient(
+            135deg,
+            #059669 0%,
+            #047857 100%
+          ) !important;
+          border-color: #059669 !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .custom-outline-primary {
+          border-color: #6366f1 !important;
+          color: #6366f1 !important;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .custom-outline-primary:hover {
+          background-color: #6366f1 !important;
+          border-color: #6366f1 !important;
+          color: white !important;
+        }
+
+        .custom-outline-primary:focus {
+          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
+        }
+
         @media (max-width: 767.98px) {
-          .purchase-order-header-navbar .row {
-            gap: 1rem !important;
-          }
-
-          .d-flex.justify-content-end {
-            justify-content: center !important;
-          }
-
-          .d-flex.gap-2 .btn {
-            flex: 1;
-            min-width: 110px;
-            max-width: 150px;
-          }
-        }
-
-        @media (max-width: 575.98px) {
-          .purchase-order-header-navbar {
-            padding: 0.5rem 0;
+          .gap-2 {
+            gap: 0.5rem !important;
           }
 
           .btn-sm {
@@ -402,22 +309,27 @@ function PurchaseOrderHeader({
             padding: 0.375rem 0.5rem;
           }
 
-          .btn-sm .me-2 {
-            margin-right: 0.25rem !important;
+          .p-3 {
+            margin: 0.5rem 0;
+            padding: 0.75rem !important;
           }
         }
 
-        /* ButtonGroup styling */
-        .btn-group .btn:not(:last-child) {
-          border-right: 1px solid rgba(108, 99, 255, 0.1) !important;
-        }
+        @media (max-width: 575.98px) {
+          .d-flex.justify-content-end {
+            justify-content: center !important;
+          }
 
-        /* Ensure proper z-index for dropdown menus */
-        .btn-group {
-          z-index: 1025;
+          .flex-wrap {
+            justify-content: center;
+          }
+
+          .p-3 {
+            padding: 0.5rem !important;
+          }
         }
       `}</style>
-    </>
+    </div>
   );
 }
 

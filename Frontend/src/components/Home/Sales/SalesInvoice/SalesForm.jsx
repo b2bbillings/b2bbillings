@@ -153,28 +153,37 @@ function SalesForm({
 
   const labels = getFieldLabels();
 
-  // Generate document number
-  const generateDocumentNumber = (invoiceType = "non-gst") => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const random = Math.floor(1000 + Math.random() * 9000);
+  // ✅ HELPER: Display helper for invoice number (no generation)
+  const getInvoiceNumberDisplayInfo = (invoiceType = "gst") => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
 
-    if (isQuotationsMode) {
-      const companyPrefix = currentCompany?.code || "QT";
-      return invoiceType === "gst"
-        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
-        : `${companyPrefix}-${year}${month}${day}-${random}`;
-    } else {
-      const companyPrefix = currentCompany?.code || "INV";
-      return invoiceType === "gst"
-        ? `${companyPrefix}-GST-${year}${month}${day}-${random}`
-        : `${companyPrefix}-${year}${month}${day}-${random}`;
-    }
+    const prefix = isQuotationsMode
+      ? currentCompany?.code || "QT"
+      : currentCompany?.code || "INV";
+    const gstPrefix = invoiceType === "gst" ? "GST-" : "";
+
+    return {
+      pattern: `${prefix}-${gstPrefix}${year}${month}${day}-XXXX`,
+      description: "Number will be generated automatically when saved",
+      isPreview: true,
+      modelGenerated: true,
+    };
   };
 
-  // Initialize form data
+  // ✅ HELPER: Get invoice number placeholder for UI
+  const getInvoiceNumberPlaceholder = () => {
+    if (editMode && formData.invoiceNumber) {
+      return formData.invoiceNumber; // Keep existing number in edit mode
+    }
+
+    const info = getInvoiceNumberDisplayInfo(formData.invoiceType);
+    return `${info.pattern} (Auto-generated)`;
+  };
+
+  // ✅ UPDATED: Initialize form data WITHOUT manual invoice number generation
   const [formData, setFormData] = useState(() => {
     const initialCompanyId = getEffectiveCompanyId();
 
@@ -185,7 +194,8 @@ function SalesForm({
       priceIncludesTax: false,
       customer: null,
       mobileNumber: "",
-      invoiceNumber: generateDocumentNumber("gst"),
+      // ✅ FIXED: No manual invoice number generation - Model will generate
+      invoiceNumber: "", // Model will generate on save
       invoiceDate: new Date().toISOString().split("T")[0],
       items: [],
       paymentMethod: "cash",
@@ -213,6 +223,9 @@ function SalesForm({
       documentMode: isQuotationsMode ? "quotation" : "invoice",
       createdBy: currentUser?.name || currentUser?.email || "System",
       companyId: initialCompanyId,
+      // ✅ CRITICAL: Don't initialize sourceCompanyId
+      // sourceCompanyId will only be set when a cross-company customer is selected
+      isCrossCompanyTransaction: false,
       termsAndConditions: isQuotationsMode
         ? "This quotation is valid for 30 days from the date of issue."
         : "",
@@ -248,33 +261,88 @@ function SalesForm({
     localCompanyId,
   ]);
 
-  // Update form data function
   const updateFormData = useCallback(
     (field, value) => {
       setFormData((prev) => {
         const updated = {...prev, [field]: value};
+
+        // ✅ CRITICAL: Always ensure companyId is set
         if (!updated.companyId) {
           updated.companyId = effectiveCompanyId;
         }
+
+        // ✅ CRITICAL FIX: Only set sourceCompanyId for cross-company transactions
+        if (field === "customer" && value) {
+          // When customer is selected, check if it's from a different company
+          if (value.companyId && value.companyId !== effectiveCompanyId) {
+            console.log("🔧 Cross-company customer selected:", {
+              customerCompanyId: value.companyId,
+              currentCompanyId: effectiveCompanyId,
+              customerName: value.name,
+            });
+            updated.sourceCompanyId = value.companyId;
+            updated.isCrossCompanyTransaction = true;
+          } else {
+            // Same company transaction - don't set sourceCompanyId
+            console.log("🔧 Same-company customer selected:", {
+              customerName: value.name,
+              companyId: effectiveCompanyId,
+            });
+            delete updated.sourceCompanyId;
+            updated.isCrossCompanyTransaction = false;
+          }
+        }
+
+        // ✅ CRITICAL: Don't automatically set sourceCompanyId to effectiveCompanyId
+        // This was causing the same-company issue
+
         return updated;
       });
     },
     [effectiveCompanyId]
   );
 
-  // Update company ID when it changes
   useEffect(() => {
     const currentEffectiveCompanyId = getEffectiveCompanyId();
     if (
       currentEffectiveCompanyId &&
       currentEffectiveCompanyId !== formData.companyId
     ) {
-      setFormData((prev) => ({
-        ...prev,
-        companyId: currentEffectiveCompanyId,
-      }));
+      setFormData((prev) => {
+        const updated = {
+          ...prev,
+          companyId: currentEffectiveCompanyId,
+        };
+
+        // ✅ CRITICAL FIX: Only set sourceCompanyId if there's a cross-company customer
+        if (
+          prev.customer?.companyId &&
+          prev.customer.companyId !== currentEffectiveCompanyId
+        ) {
+          updated.sourceCompanyId = prev.customer.companyId;
+          updated.isCrossCompanyTransaction = true;
+          console.log(
+            "🔧 Maintained cross-company sourceCompanyId:",
+            prev.customer.companyId
+          );
+        } else {
+          // Same company - don't set sourceCompanyId
+          delete updated.sourceCompanyId;
+          updated.isCrossCompanyTransaction = false;
+          console.log(
+            "🔧 Removed sourceCompanyId for same-company transaction"
+          );
+        }
+
+        return updated;
+      });
     }
-  }, [effectiveCompanyId, formData.companyId, getEffectiveCompanyId]);
+  }, [
+    effectiveCompanyId,
+    formData.companyId,
+    formData.customer, // ✅ Add customer to dependencies
+    getEffectiveCompanyId,
+  ]);
 
   // ✅ Enhanced initialization for edit mode
   useEffect(() => {
@@ -338,7 +406,7 @@ function SalesForm({
     }
   };
 
-  // ✅ Enhanced initialize form from transaction data with proper payment handling
+  // ✅ UPDATED: Enhanced initialize form from transaction data with PRESERVED model-generated invoice numbers
   const initializeFormFromTransaction = useCallback(
     async (transaction) => {
       if (initializationComplete) {
@@ -354,7 +422,7 @@ function SalesForm({
           throw new Error("No transaction data provided");
         }
 
-        // ✅ Enhanced customer transformation
+        // ✅ Enhanced customer transformation with cross-company detection
         let transformedCustomer = null;
         if (transaction.customer && typeof transaction.customer === "object") {
           transformedCustomer = {
@@ -369,6 +437,8 @@ function SalesForm({
             email: transaction.customer.email || "",
             address: transaction.customer.address || "",
             gstNumber: transaction.customer.gstNumber || "",
+            // ✅ CRITICAL: Include customer's companyId for cross-company detection
+            companyId: transaction.customer.companyId || null,
           };
         } else if (
           transaction.customerId ||
@@ -388,6 +458,8 @@ function SalesForm({
             address:
               transaction.customerAddress || transaction.partyAddress || "",
             gstNumber: transaction.customerGstNumber || "",
+            // ✅ CRITICAL: Include customer's companyId for cross-company detection
+            companyId: transaction.sourceCompanyId || null,
           };
         }
 
@@ -532,15 +604,55 @@ function SalesForm({
           return new Date().toISOString().split("T")[0];
         };
 
-        // ✅ Create comprehensive form data with proper payment information
+        // ✅ CRITICAL: Determine sourceCompanyId and cross-company status
+        let sourceCompanyId = null;
+        let isCrossCompanyTransaction = false;
+
+        if (
+          transformedCustomer?.companyId &&
+          transformedCustomer.companyId !== effectiveCompanyId &&
+          transformedCustomer.companyId.toString() !==
+            effectiveCompanyId.toString()
+        ) {
+          sourceCompanyId = transformedCustomer.companyId;
+          isCrossCompanyTransaction = true;
+          console.log("🔧 Cross-company transaction detected in edit mode:", {
+            customerCompanyId: transformedCustomer.companyId,
+            currentCompanyId: effectiveCompanyId,
+            customerName: transformedCustomer.name,
+          });
+        } else if (
+          transaction.sourceCompanyId &&
+          transaction.sourceCompanyId !== effectiveCompanyId &&
+          transaction.sourceCompanyId.toString() !==
+            effectiveCompanyId.toString()
+        ) {
+          sourceCompanyId = transaction.sourceCompanyId;
+          isCrossCompanyTransaction = true;
+          console.log(
+            "🔧 Cross-company transaction from existing sourceCompanyId:",
+            {
+              sourceCompanyId: transaction.sourceCompanyId,
+              currentCompanyId: effectiveCompanyId,
+            }
+          );
+        } else {
+          console.log("🔧 Same-company transaction in edit mode:", {
+            companyId: effectiveCompanyId,
+            customerName: transformedCustomer?.name || "Unknown",
+          });
+        }
+
+        // ✅ UPDATED: Create comprehensive form data - PRESERVE model-generated invoice number
         const newFormData = {
-          // Document identification
-          invoiceNumber:
-            transaction.invoiceNumber ||
-            transaction.invoiceNo ||
-            transaction.quotationNumber ||
-            transaction.orderNo ||
-            "",
+          // ✅ CRITICAL: Keep existing model-generated invoice number in edit mode
+          invoiceNumber: editMode
+            ? transaction.invoiceNumber ||
+              transaction.invoiceNo ||
+              transaction.quotationNumber ||
+              transaction.orderNo ||
+              ""
+            : "", // For new invoices, let model generate
 
           // Document dates
           invoiceDate: parseDate(
@@ -637,24 +749,34 @@ function SalesForm({
           createdBy: transaction.createdBy || currentUser?.name || "System",
           companyId: effectiveCompanyId,
 
+          // ✅ CRITICAL: Cross-company fields
+          ...(sourceCompanyId && {sourceCompanyId: sourceCompanyId}),
+          isCrossCompanyTransaction: isCrossCompanyTransaction,
+
           // ✅ Financial totals
           totalAmount: totalAmount,
           balance: balanceAmount,
           amount: totalAmount,
         };
 
-        console.log("✅ Setting form data with payment info:", {
+        console.log("✅ Setting form data with preserved invoice number:", {
+          invoiceNumber: newFormData.invoiceNumber, // ✅ Preserved from model
           paymentMethod: newFormData.paymentMethod,
           paymentReceived: newFormData.paymentReceived,
           paidAmount: newFormData.paidAmount,
           pendingAmount: newFormData.pendingAmount,
           totalAmount: newFormData.totalAmount,
           paymentData: newFormData.paymentData,
+          sourceCompanyId: newFormData.sourceCompanyId,
+          isCrossCompanyTransaction: newFormData.isCrossCompanyTransaction,
+          modelGeneratedNumber: !!newFormData.invoiceNumber,
         });
 
         setFormData((prev) => ({...prev, ...newFormData}));
 
-        console.log("✅ Form initialized successfully with payment data");
+        console.log(
+          "✅ Form initialized successfully with preserved model-generated invoice number"
+        );
       } catch (error) {
         console.error("❌ Error initializing form:", error);
         effectiveAddToast(
@@ -675,10 +797,10 @@ function SalesForm({
       initializationComplete,
       currentUser,
       effectiveCompanyId,
+      editMode, // ✅ Add editMode to dependencies
     ]
   );
 
-  // ✅ Enhanced save handler
   const handleSave = useCallback(
     async (invoiceDataFromTable) => {
       if (saving) {
@@ -692,14 +814,15 @@ function SalesForm({
       try {
         setSaving(true);
 
-        console.log("💾 Save operation:", {
+        console.log("💾 Save operation - Model will generate invoice number:", {
           editMode,
           transactionId,
           isQuotationsMode,
           data: invoiceDataFromTable,
+          modelHandlesNumbering: true,
         });
 
-        // ✅ Enhanced data preparation
+        // ✅ CRITICAL FIX: Enhanced data preparation with proper sourceCompanyId validation
         const enhancedData = {
           ...invoiceDataFromTable,
           companyId: effectiveCompanyId,
@@ -716,11 +839,54 @@ function SalesForm({
             }),
         };
 
+        // ✅ CRITICAL: Only set sourceCompanyId for cross-company transactions
+        if (
+          invoiceDataFromTable.customer?.companyId &&
+          invoiceDataFromTable.customer.companyId !== effectiveCompanyId
+        ) {
+          enhancedData.sourceCompanyId =
+            invoiceDataFromTable.customer.companyId;
+          enhancedData.isCrossCompanyTransaction = true;
+
+          console.log("🔗 Cross-company transaction detected:", {
+            companyId: enhancedData.companyId,
+            sourceCompanyId: enhancedData.sourceCompanyId,
+            customerCompanyId: invoiceDataFromTable.customer.companyId,
+            customerName: invoiceDataFromTable.customer.name,
+            modelWillGenerateNumber: true,
+          });
+        } else {
+          // Same company transaction - don't include sourceCompanyId
+          delete enhancedData.sourceCompanyId;
+          enhancedData.isCrossCompanyTransaction = false;
+
+          console.log(
+            "🔗 Same-company transaction - Model will generate invoice number:",
+            {
+              companyId: enhancedData.companyId,
+              customerName: invoiceDataFromTable.customer?.name || "Unknown",
+              sourceCompanyId: "null (same company)",
+              modelWillGenerateNumber: true,
+            }
+          );
+        }
+
+        // ✅ CRITICAL: Remove any manual invoice number for new invoices
+        if (!editMode) {
+          delete enhancedData.invoiceNumber;
+          console.log(
+            "🔢 Removed manual invoice number - Model will generate sequential number"
+          );
+        }
+
         let result;
 
         if (editMode && transactionId) {
-          // ✅ UPDATE operation
-          console.log("🔄 Updating existing transaction:", transactionId);
+          // ✅ UPDATE operation - preserves existing model-generated invoice number
+          console.log(
+            "🔄 Updating existing transaction with model-preserved invoice number:",
+            transactionId
+          );
 
           if (isQuotationsMode && quotationService) {
             result = await quotationService.updateQuotation(
@@ -734,8 +900,10 @@ function SalesForm({
             );
           }
         } else {
-          // ✅ CREATE operation
-          console.log("🆕 Creating new transaction");
+          // ✅ CREATE operation - model generates new invoice number
+          console.log(
+            "🆕 Creating new transaction - Model will generate invoice number"
+          );
 
           if (isQuotationsMode && quotationService) {
             result = await quotationService.createQuotation(enhancedData);
@@ -749,8 +917,22 @@ function SalesForm({
           const operation = editMode ? "updated" : "created";
           const successMessage = `${labels.documentName} ${operation} successfully!`;
 
+          // ✅ Log model-generated invoice number
+          if (responseData.invoiceNumber) {
+            console.log("✅ Model generated invoice number:", {
+              invoiceNumber: responseData.invoiceNumber,
+              operation: operation,
+              documentType: labels.documentName,
+              modelGenerated: true,
+            });
+          }
+
           effectiveAddToast(
-            `${successMessage} Amount: ₹${
+            `${successMessage} ${
+              responseData.invoiceNumber
+                ? `(${responseData.invoiceNumber})`
+                : ""
+            } Amount: ₹${
               responseData.total ||
               responseData.grandTotal ||
               responseData.amount ||
@@ -782,6 +964,7 @@ function SalesForm({
             data: responseData,
             message: successMessage,
             operation: operation,
+            invoiceNumber: responseData.invoiceNumber, // ✅ Model-generated number
           };
         } else {
           throw new Error(
@@ -832,8 +1015,9 @@ function SalesForm({
 
   // Simple share handler
   const handleShare = () => {
+    const displayNumber = formData.invoiceNumber || "Auto-generated";
     effectiveAddToast(
-      `${labels.documentName} ${formData.invoiceNumber} ready to share!`,
+      `${labels.documentName} ${displayNumber} ready to share!`,
       "info"
     );
   };
@@ -999,6 +1183,9 @@ function SalesForm({
             isQuotationsMode={isQuotationsMode}
             labels={labels}
             editMode={editMode}
+            // ✅ Pass helper functions for invoice number display
+            getInvoiceNumberPlaceholder={getInvoiceNumberPlaceholder}
+            getInvoiceNumberDisplayInfo={getInvoiceNumberDisplayInfo}
           />
         </div>
 
@@ -1024,6 +1211,9 @@ function SalesForm({
             labels={labels}
             inventoryItems={inventoryItems}
             onAddItem={onAddItem}
+            // ✅ Pass helper functions for invoice number display
+            getInvoiceNumberPlaceholder={getInvoiceNumberPlaceholder}
+            getInvoiceNumberDisplayInfo={getInvoiceNumberDisplayInfo}
           />
         </div>
       </Container>
@@ -1043,6 +1233,11 @@ function SalesForm({
               Please wait while we {editMode ? "update" : "save"} your changes.
             </p>
             {editMode && transactionId && <small>ID: {transactionId}</small>}
+            <small className="d-block mt-2">
+              {editMode
+                ? "Preserving model-generated invoice number"
+                : "Model will generate invoice number automatically"}
+            </small>
           </div>
         </div>
       )}

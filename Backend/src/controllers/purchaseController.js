@@ -27,37 +27,284 @@ const normalizePaymentMethod = (method) => {
 };
 
 const purchaseController = {
-  createPurchase: async (req, res) => {
+  // ✅ UPDATED: Generate actual preview purchase number (not just pattern)
+  getNextPurchaseNumber: async (req, res) => {
     try {
-      const {
-        companyId,
-        supplier,
-        supplierMobile,
-        purchaseNumber,
-        purchaseDate,
-        purchaseType = "gst",
-        gstEnabled = true,
-        taxMode = "without-tax",
-        priceIncludesTax = false,
-        items = [],
-        totals = {},
-        payment = {},
-        notes = "",
-        termsAndConditions = "",
-        status = "draft",
-        createdBy = "system",
-        lastModifiedBy = "system",
-      } = req.body;
+      const {companyId, purchaseType = "gst"} = req.query;
 
-      // Validate required fields
-      if (!companyId || !supplier || !items || items.length === 0) {
+      if (!companyId) {
         return res.status(400).json({
           success: false,
-          message: "Missing required fields: companyId, supplier, or items",
+          message: "Company ID is required",
         });
       }
 
-      // FIXED: Sync tax mode fields (matching Sale controller)
+      console.log(
+        "🔢 Generating preview purchase number for company:",
+        companyId
+      );
+
+      // ✅ Get company details
+      const Company = require("../models/Company");
+      const company = await Company.findById(companyId).select(
+        "businessName code gstin"
+      );
+
+      if (!company) {
+        return res.status(400).json({
+          success: false,
+          message: "Company not found",
+        });
+      }
+
+      // ✅ Generate preview purchase number using same logic as model
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const day = String(today.getDate()).padStart(2, "0");
+      const dateStr = `${year}${month}${day}`;
+
+      // Get company prefix (same as model logic)
+      let companyPrefix = "PO";
+      if (company?.code) {
+        companyPrefix = company.code
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .substring(0, 6);
+      } else if (company?.businessName) {
+        companyPrefix = company.businessName
+          .replace(/[^A-Za-z]/g, "")
+          .substring(0, 3)
+          .toUpperCase();
+      }
+
+      // ✅ Find the next sequence number for today
+      const todayStart = new Date(year, today.getMonth(), today.getDate());
+      const todayEnd = new Date(year, today.getMonth(), today.getDate() + 1);
+
+      const latestPurchase = await Purchase.findOne({
+        companyId: companyId,
+        purchaseDate: {$gte: todayStart, $lt: todayEnd},
+        purchaseNumber: {$exists: true, $ne: null},
+      })
+        .sort({purchaseNumber: -1})
+        .select("purchaseNumber");
+
+      let nextSequence = 1;
+      if (latestPurchase && latestPurchase.purchaseNumber) {
+        // Extract sequence from purchase number pattern: PREFIX-GST-YYYYMMDD-XXXX
+        const match = latestPurchase.purchaseNumber.match(/-(\d{4})$/);
+        if (match) {
+          nextSequence = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      const sequenceStr = String(nextSequence).padStart(4, "0");
+
+      // ✅ Generate actual preview number (same format as model)
+      const gstPrefix = purchaseType === "gst" ? "GST-" : "";
+      const previewPurchaseNumber = `${companyPrefix}-PO-${gstPrefix}${dateStr}-${sequenceStr}`;
+
+      console.log("✅ Preview purchase number generated:", {
+        companyId,
+        companyPrefix,
+        dateStr,
+        nextSequence,
+        previewPurchaseNumber,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          previewPurchaseNumber,
+          nextPurchaseNumber: previewPurchaseNumber, // ✅ Actual preview number
+          purchaseType,
+          company: {
+            id: company._id,
+            name: company.businessName,
+            code: company.code,
+            prefix: companyPrefix,
+          },
+          numbering: {
+            prefix: companyPrefix,
+            gstPrefix: purchaseType === "gst" ? "GST-" : "",
+            dateString: dateStr,
+            sequence: nextSequence,
+            formattedSequence: sequenceStr,
+          },
+          pattern: `${companyPrefix}-PO-[GST-]YYYYMMDD-XXXX`,
+          date: today.toISOString().split("T")[0],
+          isSequential: true,
+          companySpecific: true,
+          isPreview: true, // ✅ This is a preview number
+          actualNumberGeneratedBy: "model_pre_save_middleware",
+          note: "This is a preview. Actual number will be confirmed when saving.",
+        },
+        message: "Preview purchase number generated successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error generating preview purchase number:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate preview purchase number",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ UPDATED: Enhanced createPurchase with model-based automatic numbering
+  createPurchase: async (req, res) => {
+    try {
+      const {
+        supplierName,
+        supplierMobile,
+        supplier,
+        supplierId,
+        // ❌ REMOVED: purchaseNumber, // Don't accept manual purchase numbers
+        purchaseDate,
+        gstEnabled = true,
+        companyId,
+        items,
+        payment,
+        notes,
+        termsAndConditions,
+        roundOff = 0,
+        roundOffEnabled = false,
+        status = "draft",
+        taxMode = "without-tax",
+        priceIncludesTax = false,
+        sourceOrderId,
+        sourceOrderNumber,
+        sourceOrderType = "purchase_order",
+        sourceCompanyId,
+        isAutoGenerated = false,
+        generatedFrom = "manual",
+        convertedBy,
+        autoDetectSourceCompany = true,
+      } = req.body;
+
+      console.log(
+        "📥 Creating purchase with model-based automatic numbering:",
+        {
+          supplierName,
+          supplier,
+          supplierId,
+          taxMode,
+          priceIncludesTax,
+          gstEnabled,
+          itemCount: items?.length || 0,
+          companyId,
+          sourceOrderId,
+          sourceOrderType,
+          sourceCompanyId,
+          isAutoGenerated,
+          generatedFrom,
+          autoDetectSourceCompany,
+          modelHandlesNumbering: true, // ✅ Clear indication
+        }
+      );
+
+      // Validate required fields
+      if (!companyId || !items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Items are required",
+        });
+      }
+
+      // ✅ Get company details for response only (not for numbering)
+      const Company = require("../models/Company");
+      const currentCompany = await Company.findById(companyId).select(
+        "businessName code gstin"
+      );
+
+      if (!currentCompany) {
+        return res.status(400).json({
+          success: false,
+          message: "Company not found",
+        });
+      }
+
+      console.log(
+        "🏢 Company details (model will handle numbering automatically):",
+        {
+          companyId,
+          businessName: currentCompany.businessName,
+          code: currentCompany.code,
+          modelHandlesPurchaseNumberGeneration: true, // ✅ Emphasize model responsibility
+        }
+      );
+
+      // ✅ Handle supplier validation (existing code)
+      let supplierRecord = null;
+      const finalSupplierId = supplier || supplierId;
+
+      if (finalSupplierId && mongoose.Types.ObjectId.isValid(finalSupplierId)) {
+        console.log("🔍 Finding supplier by ID:", finalSupplierId);
+        supplierRecord = await Party.findById(finalSupplierId);
+
+        if (!supplierRecord) {
+          return res.status(400).json({
+            success: false,
+            message: "Supplier not found with provided ID",
+          });
+        }
+
+        console.log("✅ Found supplier:", {
+          id: supplierRecord._id,
+          name: supplierRecord.name,
+          mobile: supplierRecord.mobile,
+          supplierCompanyId: supplierRecord.companyId,
+          linkedCompanyId: supplierRecord.linkedCompanyId,
+        });
+      } else if (supplierName && supplierMobile) {
+        console.log(
+          "🔍 Finding supplier by name and mobile:",
+          supplierName,
+          supplierMobile
+        );
+
+        supplierRecord = await Party.findOne({
+          $and: [
+            {companyId: companyId},
+            {type: "supplier"},
+            {
+              $or: [{mobile: supplierMobile}, {phoneNumber: supplierMobile}],
+            },
+          ],
+        });
+
+        if (!supplierRecord) {
+          // Auto-create supplier
+          supplierRecord = new Party({
+            name: supplierName,
+            mobile: supplierMobile,
+            phoneNumber: supplierMobile,
+            type: "supplier",
+            partyType: "supplier",
+            companyId: companyId,
+            status: "active",
+            createdBy: req.user?.id || "system",
+          });
+          await supplierRecord.save();
+          console.log("✅ Auto-created supplier:", supplierRecord.name);
+        }
+
+        console.log("✅ Found supplier by search:", {
+          id: supplierRecord._id,
+          name: supplierRecord.name,
+          mobile: supplierRecord.mobile,
+          supplierCompanyId: supplierRecord?.companyId,
+          linkedCompanyId: supplierRecord?.linkedCompanyId,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Supplier ID or supplier name and mobile are required",
+        });
+      }
+
+      // FIXED: Sync tax mode fields
       const finalTaxMode =
         taxMode || (priceIncludesTax ? "with-tax" : "without-tax");
       const finalPriceIncludesTax = finalTaxMode === "with-tax";
@@ -69,296 +316,469 @@ const purchaseController = {
         finalPriceIncludesTax,
       });
 
-      // Find or create supplier (matching Sale controller logic)
-      let supplierRecord;
-
-      if (supplier && mongoose.Types.ObjectId.isValid(supplier)) {
-        supplierRecord = await Party.findById(supplier);
-        if (!supplierRecord) {
-          return res.status(400).json({
-            success: false,
-            message: "Supplier not found with provided ID",
-          });
-        }
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: "Valid supplier ID is required",
-        });
-      }
-
-      // Process items with proper tax calculations (matching Sale controller)
+      // Process items (similar to sales controller...)
       const processedItems = [];
-      let calculatedTotals = {
-        subtotal: 0,
-        totalQuantity: 0,
-        totalDiscountAmount: 0,
-        totalTax: 0,
-        totalCGST: 0,
-        totalSGST: 0,
-        totalIGST: 0,
-        totalTaxableAmount: 0,
-        finalTotal: 0,
-        withTaxTotal: 0,
-        withoutTaxTotal: 0,
-      };
+      let subtotal = 0;
+      let totalDiscount = 0;
+      let totalTax = 0;
+      let totalTaxableAmount = 0;
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
 
-        // Parse basic values
-        const quantity = parseFloat(item.quantity) || 0;
-        const pricePerUnit = parseFloat(item.pricePerUnit) || 0;
-        const discountPercent = parseFloat(item.discountPercent) || 0;
-        const discountAmount = parseFloat(item.discountAmount) || 0;
-        const taxRate = parseFloat(item.taxRate) || 18;
+        console.log(`🔄 Processing item ${i + 1}:`, {
+          itemName: item.itemName,
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit,
+          taxRate: item.taxRate,
+        });
 
-        // Skip invalid items
-        if (quantity <= 0 || pricePerUnit <= 0) {
-          console.log(`⚠️ Skipping item ${i + 1} - invalid quantity or price`);
-          continue;
+        // Basic validation
+        if (!item.itemName || !item.quantity || !item.pricePerUnit) {
+          return res.status(400).json({
+            success: false,
+            message: `Item ${i + 1}: Name, quantity, and price are required`,
+          });
         }
 
-        // Determine item tax mode (matching Sale controller)
+        // Parse item values
+        const quantity = parseFloat(item.quantity);
+        const pricePerUnit = parseFloat(item.pricePerUnit);
+        const discountPercent = parseFloat(item.discountPercent || 0);
+        const discountAmount = parseFloat(item.discountAmount || 0);
+        const taxRate = parseFloat(item.taxRate || 18);
+
+        // Validate numeric values
+        if (
+          isNaN(quantity) ||
+          isNaN(pricePerUnit) ||
+          quantity <= 0 ||
+          pricePerUnit < 0
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: `Item ${i + 1}: Invalid quantity or price values`,
+          });
+        }
+
+        // FIXED: Determine item-level tax mode
         const itemTaxMode = item.taxMode || finalTaxMode;
         const itemPriceIncludesTax = itemTaxMode === "with-tax";
-        const lineTotalBeforeDiscount = quantity * pricePerUnit;
-        const itemDiscountAmount =
-          discountAmount || (lineTotalBeforeDiscount * discountPercent) / 100;
-        const lineTotalAfterDiscount = Math.max(
-          0,
-          lineTotalBeforeDiscount - itemDiscountAmount
-        );
 
-        // FIXED: Calculate taxes based on item tax mode (matching Sale controller)
+        // Calculate base amount
+        const baseAmount = quantity * pricePerUnit;
+
+        // Calculate discount
+        let itemDiscountAmount = discountAmount;
+        if (discountAmount === 0 && discountPercent > 0) {
+          itemDiscountAmount = (baseAmount * discountPercent) / 100;
+        }
+
+        const amountAfterDiscount = baseAmount - itemDiscountAmount;
+
+        // Calculate taxes
         let cgst = 0;
         let sgst = 0;
         let igst = 0;
+        let itemAmount = 0;
         let itemTaxableAmount = 0;
-        let finalItemAmount = 0;
 
         if (gstEnabled && taxRate > 0) {
+          const cgstRate = taxRate / 2;
+          const sgstRate = taxRate / 2;
+
           if (itemPriceIncludesTax) {
-            // WITH TAX MODE - Extract tax from amount
-            console.log(`🟢 Item ${i + 1}: WITH TAX calculation`);
-
+            // Tax included in price
             const taxMultiplier = 1 + taxRate / 100;
-            itemTaxableAmount = lineTotalAfterDiscount / taxMultiplier;
-
-            const totalTaxAmount = lineTotalAfterDiscount - itemTaxableAmount;
+            itemTaxableAmount = amountAfterDiscount / taxMultiplier;
+            const totalTaxAmount = amountAfterDiscount - itemTaxableAmount;
             cgst = totalTaxAmount / 2;
             sgst = totalTaxAmount / 2;
             igst = totalTaxAmount;
-            finalItemAmount = lineTotalAfterDiscount; // Amount stays same (tax included)
+            itemAmount = amountAfterDiscount;
           } else {
-            itemTaxableAmount = lineTotalAfterDiscount;
-            const totalTaxAmount = (itemTaxableAmount * taxRate) / 100;
-
-            cgst = totalTaxAmount / 2;
-            sgst = totalTaxAmount / 2;
-            igst = totalTaxAmount;
-
-            finalItemAmount = itemTaxableAmount + totalTaxAmount;
+            // Tax added to price
+            itemTaxableAmount = amountAfterDiscount;
+            cgst = (itemTaxableAmount * cgstRate) / 100;
+            sgst = (itemTaxableAmount * sgstRate) / 100;
+            igst = (itemTaxableAmount * taxRate) / 100;
+            itemAmount = itemTaxableAmount + cgst + sgst + igst;
           }
         } else {
-          // No GST calculation
-          itemTaxableAmount = lineTotalAfterDiscount;
-          finalItemAmount = lineTotalAfterDiscount;
-          cgst = 0;
-          sgst = 0;
-          igst = 0;
-
-          console.log(`❌ Item ${i + 1}: NO GST calculation`);
+          itemTaxableAmount = amountAfterDiscount;
+          itemAmount = amountAfterDiscount;
         }
 
-        // Create processed item with all required fields (matching Sale controller)
+        // Update totals
+        subtotal += baseAmount;
+        totalDiscount += itemDiscountAmount;
+        totalTaxableAmount += itemTaxableAmount;
+        const itemTotalTax = cgst + sgst + igst;
+        totalTax += itemTotalTax;
+
+        // Create processed item
         const processedItem = {
           itemRef: item.itemRef || null,
-          itemName: item.itemName,
+          itemName: item.itemName.trim(),
           itemCode: item.itemCode || "",
           hsnCode: item.hsnCode || "0000",
           category: item.category || "",
-          quantity: quantity,
+          quantity,
           unit: item.unit || "PCS",
-          pricePerUnit: pricePerUnit,
+          pricePerUnit,
           taxRate: taxRate,
-
-          // FIXED: Both tax mode fields for compatibility
           taxMode: itemTaxMode,
           priceIncludesTax: itemPriceIncludesTax,
-
-          // Discount fields
-          discountPercent: parseFloat(discountPercent.toFixed(2)),
+          discountPercent,
           discountAmount: parseFloat(itemDiscountAmount.toFixed(2)),
-
-          // Tax amounts - both field sets for compatibility
           cgst: parseFloat(cgst.toFixed(2)),
           sgst: parseFloat(sgst.toFixed(2)),
           igst: parseFloat(igst.toFixed(2)),
           cgstAmount: parseFloat(cgst.toFixed(2)),
           sgstAmount: parseFloat(sgst.toFixed(2)),
           igstAmount: parseFloat(igst.toFixed(2)),
-
-          // Calculated amounts
           taxableAmount: parseFloat(itemTaxableAmount.toFixed(2)),
-          totalTaxAmount: parseFloat((cgst + sgst + igst).toFixed(2)),
-
-          // Final amounts - both field names for compatibility
-          amount: parseFloat(finalItemAmount.toFixed(2)),
-          itemAmount: parseFloat(finalItemAmount.toFixed(2)),
-
-          // Purchase-specific fields
+          totalTaxAmount: parseFloat(itemTotalTax.toFixed(2)),
+          amount: parseFloat(itemAmount.toFixed(2)),
+          itemAmount: parseFloat(itemAmount.toFixed(2)),
           receivedQuantity: 0,
           pendingQuantity: quantity,
-
-          // Line number
           lineNumber: i + 1,
         };
 
         processedItems.push(processedItem);
 
-        // Update calculated totals
-        calculatedTotals.totalQuantity += quantity;
-        calculatedTotals.totalDiscountAmount += itemDiscountAmount;
-        calculatedTotals.totalCGST += cgst;
-        calculatedTotals.totalSGST += sgst;
-        calculatedTotals.totalIGST += igst;
-        calculatedTotals.totalTaxableAmount += itemTaxableAmount;
-        calculatedTotals.finalTotal += finalItemAmount;
+        console.log(`✅ Item ${i + 1} processed:`, {
+          itemName: processedItem.itemName,
+          taxableAmount: processedItem.taxableAmount,
+          totalTax: processedItem.totalTaxAmount,
+          finalAmount: processedItem.amount,
+        });
       }
 
-      // Calculate final totals (matching Sale controller)
-      calculatedTotals.totalTax =
-        calculatedTotals.totalCGST +
-        calculatedTotals.totalSGST +
-        calculatedTotals.totalIGST;
-      calculatedTotals.subtotal = calculatedTotals.totalTaxableAmount;
-      calculatedTotals.withTaxTotal = calculatedTotals.finalTotal;
-      calculatedTotals.withoutTaxTotal = calculatedTotals.totalTaxableAmount;
+      // Calculate final totals
+      const finalTotal = processedItems.reduce(
+        (sum, item) => sum + item.amount,
+        0
+      );
 
-      const normalizedPaymentMethod = normalizePaymentMethod(payment.method);
+      // Apply round off if enabled
+      let appliedRoundOff = 0;
+      let adjustedFinalTotal = finalTotal;
+      if (roundOffEnabled && roundOff !== 0) {
+        appliedRoundOff = parseFloat(roundOff);
+        adjustedFinalTotal = finalTotal + appliedRoundOff;
+      }
 
-      const purchaseData = {
-        companyId,
-        supplier: supplierRecord._id,
-        supplierMobile: supplierMobile || supplierRecord.mobile || "",
-        purchaseNumber,
-        purchaseDate: new Date(purchaseDate),
-        purchaseType,
-        gstEnabled,
-
-        // FIXED: Tax mode fields
-        taxMode: finalTaxMode,
-        priceIncludesTax: finalPriceIncludesTax,
-
-        // Items
-        items: processedItems,
-
-        // Totals - use calculated values or provided values
-        totals: {
-          subtotal: totals.subtotal || calculatedTotals.subtotal,
-          totalQuantity: calculatedTotals.totalQuantity,
-          totalDiscountAmount: calculatedTotals.totalDiscountAmount,
-          totalTax: calculatedTotals.totalTax,
-          totalCGST: calculatedTotals.totalCGST,
-          totalSGST: calculatedTotals.totalSGST,
-          totalIGST: calculatedTotals.totalIGST,
-          totalTaxableAmount: calculatedTotals.totalTaxableAmount,
-          finalTotal: totals.finalTotal || calculatedTotals.finalTotal,
-          roundOff: totals.roundOff || 0,
-          withTaxTotal: calculatedTotals.withTaxTotal,
-          withoutTaxTotal: calculatedTotals.withoutTaxTotal,
-        },
-
-        // ✅ FIXED: Payment information with normalized payment method
-        payment: {
-          method: normalizedPaymentMethod, // Use normalized method
-          status: payment.status || "pending",
-          paidAmount: payment.paidAmount || 0,
-          pendingAmount: payment.pendingAmount || calculatedTotals.finalTotal,
-          paymentDate: payment.paymentDate
-            ? new Date(payment.paymentDate)
-            : new Date(),
-          dueDate: payment.dueDate ? new Date(payment.dueDate) : null,
-          creditDays: payment.creditDays || 0,
-          reference: payment.reference || "",
-          notes: payment.notes || "",
-        },
-
-        // Additional fields
-        notes,
-        termsAndConditions,
-        status,
-        receivingStatus: "pending",
-        createdBy,
-        lastModifiedBy,
+      // Prepare totals object
+      const totals = {
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        totalQuantity: processedItems.reduce(
+          (sum, item) => sum + item.quantity,
+          0
+        ),
+        totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+        totalTax: parseFloat(totalTax.toFixed(2)),
+        totalCGST: parseFloat(
+          processedItems.reduce((sum, item) => sum + item.cgst, 0).toFixed(2)
+        ),
+        totalSGST: parseFloat(
+          processedItems.reduce((sum, item) => sum + item.sgst, 0).toFixed(2)
+        ),
+        totalIGST: parseFloat(
+          processedItems.reduce((sum, item) => sum + item.igst, 0).toFixed(2)
+        ),
+        totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2)),
+        finalTotal: parseFloat(adjustedFinalTotal.toFixed(2)),
+        roundOff: parseFloat(appliedRoundOff.toFixed(2)),
       };
 
-      console.log("💾 Creating purchase with processed data:", {
-        globalTaxMode: purchaseData.taxMode,
-        globalPriceIncludesTax: purchaseData.priceIncludesTax,
-        itemCount: purchaseData.items.length,
-        finalTotal: purchaseData.totals.finalTotal,
-        paymentMethod: purchaseData.payment.method, // Log the final payment method
-      });
+      console.log("💰 Final totals calculated:", totals);
 
-      // Create and save the purchase
+      // Enhanced payment details
+      const paymentDetails = {
+        method: payment?.method || "credit",
+        status: payment?.status || "pending",
+        paidAmount: parseFloat(payment?.paidAmount || 0),
+        pendingAmount: 0,
+        paymentDate: payment?.paymentDate
+          ? new Date(payment.paymentDate)
+          : new Date(),
+        dueDate: payment?.dueDate ? new Date(payment.dueDate) : null,
+        creditDays: parseInt(payment?.creditDays || 0),
+        reference: payment?.reference || "",
+        notes: payment?.notes || "",
+      };
+
+      const paidAmount = paymentDetails.paidAmount;
+      paymentDetails.pendingAmount = parseFloat(
+        (adjustedFinalTotal - paidAmount).toFixed(2)
+      );
+
+      // Auto-determine payment status
+      if (paidAmount >= adjustedFinalTotal) {
+        paymentDetails.status = "paid";
+        paymentDetails.pendingAmount = 0;
+        paymentDetails.dueDate = null;
+      } else if (paidAmount > 0) {
+        paymentDetails.status = "partial";
+        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
+          const calculatedDueDate = new Date();
+          calculatedDueDate.setDate(
+            calculatedDueDate.getDate() + paymentDetails.creditDays
+          );
+          paymentDetails.dueDate = calculatedDueDate;
+        }
+      } else {
+        paymentDetails.status = "pending";
+        paymentDetails.pendingAmount = adjustedFinalTotal;
+        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
+          const calculatedDueDate = new Date();
+          calculatedDueDate.setDate(
+            calculatedDueDate.getDate() + paymentDetails.creditDays
+          );
+          paymentDetails.dueDate = calculatedDueDate;
+        }
+      }
+
+      if (paymentDetails.pendingAmount < 0) {
+        paymentDetails.pendingAmount = 0;
+      }
+
+      // Initialize payment history
+      let paymentHistory = [];
+      if (paidAmount > 0) {
+        paymentHistory.push({
+          amount: paidAmount,
+          method: paymentDetails.method,
+          reference: paymentDetails.reference,
+          paymentDate: paymentDetails.paymentDate,
+          notes: paymentDetails.notes || "Initial payment",
+          createdAt: new Date(),
+          createdBy: req.user?.id || "system",
+        });
+      }
+
+      // Enhanced source company detection
+      let finalNotes = notes || "";
+      if (sourceOrderId && sourceOrderType) {
+        const conversionNote = `Converted from ${sourceOrderType} ${
+          sourceOrderNumber || sourceOrderId
+        }`;
+        finalNotes = finalNotes
+          ? `${finalNotes} | ${conversionNote}`
+          : conversionNote;
+      }
+
+      let finalSourceCompanyId = sourceCompanyId;
+      let sourceCompanyDetectionMethod = sourceCompanyId ? "manual" : "none";
+
+      // ✅ Create purchase object WITHOUT manual purchaseNumber - model will auto-generate
+      const purchaseData = {
+        purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
+        purchaseType: gstEnabled ? "gst" : "non-gst",
+        supplier: supplierRecord._id,
+        // ❌ NO purchaseNumber field - let model's pre-save middleware generate it
+        supplierMobile: supplierRecord.mobile || supplierMobile,
+        gstEnabled,
+        taxMode: finalTaxMode,
+        priceIncludesTax: finalPriceIncludesTax,
+        companyId, // ✅ Required for model's automatic numbering
+        items: processedItems,
+        totals,
+        payment: paymentDetails,
+        paymentHistory: paymentHistory,
+        notes: finalNotes,
+        termsAndConditions: termsAndConditions || "",
+        status,
+
+        // Enhanced source tracking
+        sourceOrderId: sourceOrderId || null,
+        sourceOrderNumber: sourceOrderNumber || null,
+        sourceOrderType: sourceOrderId ? sourceOrderType : null,
+
+        ...(finalSourceCompanyId && {
+          sourceCompanyId: finalSourceCompanyId,
+          isCrossCompanyTransaction: true,
+          supplierCompanyId: supplierRecord?.companyId || null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
+        ...(!finalSourceCompanyId && {
+          isCrossCompanyTransaction: false,
+          supplierCompanyId: null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
+        isAutoGenerated: isAutoGenerated || false,
+        generatedFrom: sourceOrderId ? "purchase_order" : generatedFrom,
+        convertedBy: convertedBy || null,
+
+        autoGeneratedSalesInvoice: false,
+        salesInvoiceRef: null,
+        salesInvoiceNumber: null,
+        targetCompanyId: null,
+
+        convertedFromPurchaseOrder:
+          !!sourceOrderId && sourceOrderType === "purchase_order",
+        purchaseOrderRef:
+          sourceOrderId && sourceOrderType === "purchase_order"
+            ? sourceOrderId
+            : null,
+        purchaseOrderNumber:
+          sourceOrderId && sourceOrderType === "purchase_order"
+            ? sourceOrderNumber
+            : null,
+
+        correspondingSalesInvoiceId: null,
+        correspondingSalesInvoiceNumber: null,
+        correspondingSalesInvoiceCompany: null,
+
+        createdBy: req.user?.id || "system",
+        lastModifiedBy: req.user?.id || "system",
+      };
+
+      console.log(
+        "💾 Creating purchase - model will auto-generate purchase number:",
+        {
+          companyId: companyId.toString(),
+          companyName: currentCompany.businessName,
+          companyCode: currentCompany.code,
+          supplier: supplierRecord.name,
+          itemCount: purchaseData.items.length,
+          finalTotal: purchaseData.totals.finalTotal,
+          modelHandlesNumbering: true, // ✅ Emphasize model responsibility
+        }
+      );
+
+      // ✅ Create the purchase - purchase number will be auto-generated by model's pre-save middleware
       const purchase = new Purchase(purchaseData);
-      await purchase.save();
+      await purchase.save(); // ✅ Model's pre-save middleware generates purchaseNumber automatically
 
       // Populate supplier details for response
-      await purchase.populate("supplier", "name mobile email address type");
+      await purchase.populate(
+        "supplier",
+        "name mobile email address type companyId linkedCompanyId"
+      );
 
       // Update item stock (ADD to stock for purchase)
       for (const item of processedItems) {
         if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
-          await Item.findByIdAndUpdate(
-            item.itemRef,
-            {$inc: {currentStock: item.quantity}},
-            {new: true}
+          try {
+            await Item.findByIdAndUpdate(
+              item.itemRef,
+              {$inc: {currentStock: item.quantity}},
+              {new: true}
+            );
+            console.log(
+              `📦 Added stock for ${item.itemName}: +${item.quantity}`
+            );
+          } catch (stockError) {
+            console.warn(
+              `⚠️ Could not update stock for ${item.itemName}:`,
+              stockError.message
+            );
+          }
+        }
+      }
+
+      // Update source purchase order if conversion
+      if (sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)) {
+        try {
+          const PurchaseOrder = require("../models/PurchaseOrder");
+          await PurchaseOrder.findByIdAndUpdate(sourceOrderId, {
+            convertedToInvoice: true,
+            invoiceRef: purchase._id,
+            invoiceNumber: purchase.purchaseNumber,
+            convertedAt: new Date(),
+            convertedBy: convertedBy || req.user?.id || "system",
+            status: "completed",
+          });
+
+          console.log("🔗 Updated source purchase order:", {
+            sourceOrderId,
+            invoiceId: purchase._id,
+            invoiceNumber: purchase.purchaseNumber,
+          });
+        } catch (updateError) {
+          console.warn(
+            "Failed to update source purchase order:",
+            updateError.message
           );
         }
       }
 
-      console.log("✅ Purchase created successfully:", {
-        id: purchase._id,
-        purchaseNumber: purchase.purchaseNumber,
-        taxMode: purchase.taxMode,
-        priceIncludesTax: purchase.priceIncludesTax,
-        finalTotal: purchase.totals.finalTotal,
-        paymentMethod: purchase.payment.method,
-      });
+      console.log(
+        "✅ Purchase created successfully with model-generated sequential numbering:",
+        {
+          id: purchase._id,
+          purchaseNumber: purchase.purchaseNumber, // ✅ Generated by model's pre-save middleware
+          companyId: purchase.companyId.toString(),
+          companyName: currentCompany.businessName,
+          supplier: supplierRecord.name,
+          finalTotal: purchase.totals.finalTotal,
+          numberingSource: "model_pre_save_middleware", // ✅ Clear source
+        }
+      );
 
+      // ✅ Enhanced response
       res.status(201).json({
         success: true,
-        message: "Purchase created successfully",
+        message:
+          "Purchase created successfully with automatic model-based sequential numbering",
         data: {
           purchase,
           bill: {
-            purchaseNumber: purchase.purchaseNumber,
+            purchaseNumber: purchase.purchaseNumber, // ✅ Generated by model
             purchaseDate: purchase.purchaseDate,
+            companyInfo: {
+              id: currentCompany._id,
+              name: currentCompany.businessName,
+              code: currentCompany.code,
+              prefix: purchase.purchaseNumber.split("-")[0], // Extract prefix from generated number
+            },
             supplier: {
+              id: supplierRecord._id,
               name: supplierRecord.name,
               mobile: supplierRecord.mobile,
+              companyId: supplierRecord.companyId,
+              linkedCompanyId: supplierRecord.linkedCompanyId,
             },
             totals: purchase.totals,
-            payment: purchase.payment,
+            payment: {
+              ...purchase.payment,
+              dueDate: purchase.payment.dueDate,
+              creditDays: purchase.payment.creditDays,
+            },
             taxMode: purchase.taxMode,
             priceIncludesTax: purchase.priceIncludesTax,
             gstEnabled: purchase.gstEnabled,
+            numberingInfo: {
+              isSequential: true,
+              companySpecific: true,
+              autoGenerated: true,
+              generatedBy: "model_pre_save_middleware", // ✅ Clear source
+              pattern: `${
+                purchase.purchaseNumber.split("-")[0]
+              }-PO-[GST-]YYYYMMDD-XXXX`,
+              modelBased: true, // ✅ Indicate model-based generation
+            },
           },
         },
       });
     } catch (error) {
-      console.error("❌ Error creating purchase:", error);
-      res.status(400).json({
+      console.error(
+        "❌ Error creating purchase with model-based numbering:",
+        error
+      );
+      res.status(500).json({
         success: false,
         message: "Failed to create purchase",
         error: error.message,
       });
     }
   },
-  // FIXED: Get purchase by ID with proper field mapping (matching Sale controller)
+
   getPurchaseById: async (req, res) => {
     try {
       const {id} = req.params;
@@ -779,62 +1199,6 @@ const purchaseController = {
       res.status(400).json({
         success: false,
         message: "Failed to add payment",
-        error: error.message,
-      });
-    }
-  },
-
-  // Get next purchase number (matching Sale controller)
-  getNextPurchaseNumber: async (req, res) => {
-    try {
-      const {companyId, purchaseType = "gst"} = req.query;
-
-      if (!companyId) {
-        return res.status(400).json({
-          success: false,
-          message: "Company ID is required",
-        });
-      }
-
-      const date = new Date();
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-
-      // Find the last purchase for today
-      const todayStart = new Date(year, date.getMonth(), date.getDate());
-      const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
-
-      const lastPurchase = await Purchase.findOne({
-        companyId,
-        purchaseDate: {$gte: todayStart, $lt: todayEnd},
-        purchaseNumber: new RegExp(
-          `^${purchaseType.toUpperCase()}-${year}${month}${day}`
-        ),
-      }).sort({purchaseNumber: -1});
-
-      let sequence = 1;
-      if (lastPurchase) {
-        const lastSequence = parseInt(
-          lastPurchase.purchaseNumber.split("-")[2]
-        );
-        sequence = lastSequence + 1;
-      }
-
-      const prefix = purchaseType === "gst" ? "PO-GST" : "PO";
-      const nextPurchaseNumber = `${prefix}-${year}${month}${day}-${String(
-        sequence
-      ).padStart(4, "0")}`;
-
-      res.json({
-        success: true,
-        data: {nextPurchaseNumber},
-      });
-    } catch (error) {
-      console.error("❌ Error generating purchase number:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to generate purchase number",
         error: error.message,
       });
     }

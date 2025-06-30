@@ -1423,11 +1423,72 @@ class PurchaseService {
     return await this.apiCall(`/purchases/dashboard?companyId=${companyId}`);
   }
 
-  async getNextPurchaseNumber(companyId, purchaseType = "gst") {
-    this.validateCompanyId(companyId);
-    return await this.apiCall(
-      `/purchases/next-purchase-number?companyId=${companyId}&purchaseType=${purchaseType}`
-    );
+  async getNextPurchaseNumber(params = {}) {
+    try {
+      if (!params.companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      console.log("🔢 Getting next purchase number preview:", params);
+
+      const response = await this.apiCall(
+        "/purchases/next-purchase-number",
+        {
+          method: "GET",
+        },
+        {
+          params: {
+            companyId: params.companyId,
+            purchaseType: params.purchaseType || "gst",
+            documentType: params.documentType || "purchase",
+          },
+        }
+      );
+
+      if (response && response.success === true) {
+        return {
+          success: true,
+          data: response.data,
+          message:
+            response.message || "Next purchase number fetched successfully",
+        };
+      }
+
+      if (response && response.previewPurchaseNumber) {
+        return {
+          success: true,
+          data: response,
+          message: "Next purchase number fetched successfully",
+        };
+      }
+
+      return {
+        success: true,
+        data: response || null,
+        message: "Next purchase number fetched successfully",
+      };
+    } catch (error) {
+      console.error("❌ Error getting next purchase number:", error);
+
+      let errorMessage = "Failed to get next purchase number";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
   }
 
   async getTodaysPurchases(companyId) {

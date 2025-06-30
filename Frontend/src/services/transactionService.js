@@ -106,7 +106,6 @@ class TransactionService {
     }
   }
 
-  // Create transaction with validation
   async createTransaction(companyId, transactionData) {
     try {
       if (!companyId) {
@@ -118,7 +117,6 @@ class TransactionService {
         transactionData.paymentType === "Cash" ||
         transactionData.cashPayment === true;
 
-      // Validate bank account for non-cash payments
       if (!isCashPayment && !transactionData.bankAccountId) {
         throw new Error("Bank account ID is required for non-cash payments");
       }
@@ -132,7 +130,6 @@ class TransactionService {
         throw new Error("Transaction description is required");
       }
 
-      // Prepare clean transaction data
       const cleanTransactionData = {
         companyId,
         amount: amount,
@@ -143,7 +140,6 @@ class TransactionService {
           transactionData.transactionDate || new Date().toISOString(),
         status: transactionData.status || "completed",
 
-        // Bank account for non-cash payments
         ...(transactionData.bankAccountId &&
           !isCashPayment && {
             bankAccountId: transactionData.bankAccountId,
@@ -154,7 +150,6 @@ class TransactionService {
             branchName: transactionData.branchName,
           }),
 
-        // Cash payment fields
         ...(isCashPayment && {
           isCashTransaction: true,
           cashAmount: amount,
@@ -162,21 +157,18 @@ class TransactionService {
             transactionData.direction === "out" ? "cash_out" : "cash_in",
         }),
 
-        // Party information
         ...(transactionData.partyId && {
           partyId: transactionData.partyId,
           partyName: transactionData.partyName?.trim() || "",
           partyType: transactionData.partyType || "",
         }),
 
-        // Reference information
         ...(transactionData.referenceId && {
           referenceId: transactionData.referenceId,
           referenceType: transactionData.referenceType || "payment",
           referenceNumber: transactionData.referenceNumber?.trim() || "",
         }),
 
-        // Payment specific details
         ...(transactionData.chequeNumber && {
           chequeNumber: transactionData.chequeNumber.trim(),
           chequeDate: transactionData.chequeDate,
@@ -191,7 +183,6 @@ class TransactionService {
           upiTransactionId: transactionData.upiTransactionId.trim(),
         }),
 
-        // Additional fields
         notes: transactionData.notes?.trim() || "",
         ...(transactionData.invoiceNumber && {
           invoiceNumber: transactionData.invoiceNumber.trim(),
@@ -207,7 +198,6 @@ class TransactionService {
         }),
       };
 
-      // Remove empty values
       Object.keys(cleanTransactionData).forEach((key) => {
         const value = cleanTransactionData[key];
         if (value === "" || value === null || value === undefined) {
@@ -258,7 +248,6 @@ class TransactionService {
     }
   }
 
-  // Update transaction
   async updateTransaction(transactionId, updateData) {
     try {
       if (!transactionId) {
@@ -286,7 +275,6 @@ class TransactionService {
         status: updateData.status || "completed",
       };
 
-      // Add bank account if not cash payment
       if (updateData.paymentMethod !== "cash" && updateData.bankAccountId) {
         updatePayload.bankAccountId = updateData.bankAccountId;
       }
@@ -324,7 +312,6 @@ class TransactionService {
     }
   }
 
-  // Delete/Cancel transaction
   async deleteTransaction(transactionId, reason = "") {
     try {
       if (!transactionId) {
@@ -363,7 +350,6 @@ class TransactionService {
     }
   }
 
-  // ✅ ENHANCED: Get all transactions with filters including reference search
   async getTransactions(companyId, filters = {}) {
     try {
       if (!companyId) {
@@ -374,12 +360,10 @@ class TransactionService {
         throw new Error(`Invalid company ID format: ${companyId}`);
       }
 
-      // Build query parameters
       const queryParams = new URLSearchParams();
       queryParams.append("page", filters.page || 1);
       queryParams.append("limit", filters.limit || 50);
 
-      // Standard filters
       if (filters.sortBy) queryParams.append("sortBy", filters.sortBy);
       if (filters.sortOrder) queryParams.append("sortOrder", filters.sortOrder);
       if (filters.transactionType)
@@ -403,8 +387,6 @@ class TransactionService {
       if (filters.endDate)
         queryParams.append("endDate", this.formatDateForAPI(filters.endDate));
       if (filters.search) queryParams.append("search", filters.search);
-
-      // ✅ Enhanced reference search parameters for EditPurchaseBill
       if (filters.referenceId)
         queryParams.append("referenceId", filters.referenceId);
       if (filters.referenceType)
@@ -414,8 +396,6 @@ class TransactionService {
       if (filters.amount) queryParams.append("amount", filters.amount);
       if (filters.amountMin) queryParams.append("amountMin", filters.amountMin);
       if (filters.amountMax) queryParams.append("amountMax", filters.amountMax);
-
-      // ✅ Additional search criteria
       if (filters.purchaseId)
         queryParams.append("purchaseId", filters.purchaseId);
       if (filters.purchaseNumber)
@@ -459,7 +439,6 @@ class TransactionService {
             hasPrev: pagination.hasPrev || false,
           },
           summary: response.data?.summary || {},
-          // ✅ Add search metadata for debugging
           searchCriteria: filters,
           resultCount: transactions.length,
         },
@@ -480,7 +459,6 @@ class TransactionService {
     }
   }
 
-  // ✅ NEW: Enhanced search method specifically for purchase transactions
   async searchTransactionsByReference(companyId, searchCriteria = {}) {
     try {
       if (!companyId) {
@@ -499,14 +477,7 @@ class TransactionService {
         paymentMethod,
       } = searchCriteria;
 
-      console.log(
-        "🔍 TransactionService: Searching transactions with criteria:",
-        searchCriteria
-      );
-
-      // ✅ Strategy 1: Search by reference ID and type
       if (referenceId && referenceType) {
-        console.log("🔍 Strategy 1: Reference search");
         const referenceResponse = await this.getTransactions(companyId, {
           referenceId,
           referenceType,
@@ -519,10 +490,6 @@ class TransactionService {
           referenceResponse.success &&
           referenceResponse.data.transactions.length > 0
         ) {
-          console.log(
-            "✅ Found transactions by reference:",
-            referenceResponse.data.transactions.length
-          );
           return {
             success: true,
             data: {
@@ -534,9 +501,7 @@ class TransactionService {
         }
       }
 
-      // ✅ Strategy 2: Search by purchase number in description
       if (purchaseNumber) {
-        console.log("🔍 Strategy 2: Purchase number search");
         const numberResponse = await this.getTransactions(companyId, {
           search: purchaseNumber,
           limit: 50,
@@ -548,10 +513,6 @@ class TransactionService {
           numberResponse.success &&
           numberResponse.data.transactions.length > 0
         ) {
-          console.log(
-            "✅ Found transactions by purchase number:",
-            numberResponse.data.transactions.length
-          );
           return {
             success: true,
             data: {
@@ -563,9 +524,7 @@ class TransactionService {
         }
       }
 
-      // ✅ Strategy 3: Search by supplier ID with optional amount and date filtering
       if (supplierId) {
-        console.log("🔍 Strategy 3: Supplier transactions search");
         const supplierFilters = {
           partyId: supplierId,
           limit: 100,
@@ -588,7 +547,6 @@ class TransactionService {
         ) {
           let matchingTransactions = supplierResponse.data.transactions;
 
-          // ✅ Filter by amount if provided (allow ±10 difference)
           if (amount && amount > 0) {
             matchingTransactions = matchingTransactions.filter((t) => {
               const amountDiff = Math.abs(t.amount - amount);
@@ -596,10 +554,6 @@ class TransactionService {
             });
           }
 
-          console.log(
-            "✅ Found supplier transactions:",
-            matchingTransactions.length
-          );
           return {
             success: true,
             data: {
@@ -611,9 +565,7 @@ class TransactionService {
         }
       }
 
-      // ✅ Strategy 4: Search by supplier name in descriptions
       if (supplierName) {
-        console.log("🔍 Strategy 4: Supplier name search");
         const nameResponse = await this.getTransactions(companyId, {
           search: supplierName,
           limit: 50,
@@ -622,10 +574,6 @@ class TransactionService {
         });
 
         if (nameResponse.success && nameResponse.data.transactions.length > 0) {
-          console.log(
-            "✅ Found transactions by supplier name:",
-            nameResponse.data.transactions.length
-          );
           return {
             success: true,
             data: {
@@ -637,7 +585,6 @@ class TransactionService {
         }
       }
 
-      // ✅ Strategy 5: General search with all criteria
       const generalFilters = {
         limit: 100,
         sortBy: "createdAt",
@@ -649,17 +596,12 @@ class TransactionService {
       if (paymentMethod) generalFilters.paymentMethod = paymentMethod;
       if (amount) generalFilters.amount = amount;
 
-      console.log("🔍 Strategy 5: General search with filters");
       const generalResponse = await this.getTransactions(
         companyId,
         generalFilters
       );
 
       if (generalResponse.success) {
-        console.log(
-          "✅ General search completed:",
-          generalResponse.data.transactions.length
-        );
         return {
           success: true,
           data: {
@@ -670,8 +612,6 @@ class TransactionService {
         };
       }
 
-      // ✅ No transactions found
-      console.log("❌ No transactions found with any search strategy");
       return {
         success: true,
         data: {
@@ -681,7 +621,6 @@ class TransactionService {
         },
       };
     } catch (error) {
-      console.error("❌ TransactionService search error:", error);
       return {
         success: false,
         data: {
@@ -695,7 +634,6 @@ class TransactionService {
     }
   }
 
-  // ✅ NEW: Get transactions by reference (specific method)
   async getTransactionsByReference(
     companyId,
     referenceId,
@@ -747,7 +685,6 @@ class TransactionService {
     }
   }
 
-  // ✅ NEW: Enhanced method specifically for purchase-related transactions
   async getPurchaseTransactions(companyId, purchaseData) {
     try {
       const searchCriteria = {
@@ -768,20 +705,11 @@ class TransactionService {
         paymentMethod: purchaseData.paymentMethod,
       };
 
-      console.log(
-        "🔍 TransactionService: Getting purchase transactions with criteria:",
-        searchCriteria
-      );
-
       return await this.searchTransactionsByReference(
         companyId,
         searchCriteria
       );
     } catch (error) {
-      console.error(
-        "❌ TransactionService: Error getting purchase transactions:",
-        error
-      );
       return {
         success: false,
         data: {
@@ -795,7 +723,6 @@ class TransactionService {
     }
   }
 
-  // Get transaction by ID
   async getTransactionById(companyId, transactionId) {
     try {
       if (!companyId || !transactionId) {
@@ -826,7 +753,6 @@ class TransactionService {
     }
   }
 
-  // Get bank account transactions
   async getBankAccountTransactions(companyId, bankAccountId, filters = {}) {
     try {
       if (!companyId || !bankAccountId) {
@@ -852,7 +778,6 @@ class TransactionService {
     }
   }
 
-  // Get transaction summary
   async getTransactionSummary(companyId, options = {}) {
     try {
       if (!companyId) {
@@ -929,7 +854,6 @@ class TransactionService {
     }
   }
 
-  // Create payment in transaction
   async createPaymentInTransaction(companyId, paymentData) {
     try {
       if (!companyId) {
@@ -960,7 +884,6 @@ class TransactionService {
     }
   }
 
-  // Create payment out transaction
   async createPaymentOutTransaction(companyId, paymentData) {
     try {
       if (!companyId) {
@@ -985,13 +908,11 @@ class TransactionService {
     }
   }
 
-  // ✅ ENHANCED: Payment method normalization utilities
   normalizePaymentMethodForBackend(method) {
     if (!method) return "cash";
 
     const methodStr = method.toString().toLowerCase();
     const methodMappings = {
-      // Bank transfer variations - map to backend format
       bank: "bank_transfer",
       bank_transfer: "bank_transfer",
       banktransfer: "bank_transfer",
@@ -1002,21 +923,18 @@ class TransactionService {
       net_banking: "bank_transfer",
       netbanking: "bank_transfer",
 
-      // UPI variations
       upi: "upi",
       upi_payment: "upi",
       paytm: "upi",
       gpay: "upi",
       phonepe: "upi",
 
-      // Card variations
       card: "card",
       credit_card: "card",
       debit_card: "card",
       creditcard: "card",
       debitcard: "card",
 
-      // Other methods
       cash: "cash",
       cheque: "cheque",
       credit: "credit",
@@ -1031,7 +949,6 @@ class TransactionService {
 
     const methodStr = method.toString().toLowerCase();
     const methodMappings = {
-      // All bank variations map to 'bank' for frontend
       bank_transfer: "bank",
       neft: "bank",
       rtgs: "bank",
@@ -1040,7 +957,6 @@ class TransactionService {
       netbanking: "bank",
       bank: "bank",
 
-      // Other methods stay the same
       upi: "upi",
       upi_payment: "upi",
       paytm: "upi",
@@ -1062,7 +978,6 @@ class TransactionService {
     return methodMappings[methodStr] || methodStr;
   }
 
-  // ✅ ENHANCED: Get payment methods with backend mapping
   getPaymentMethods() {
     return [
       {value: "cash", label: "Cash", backend: "cash"},
@@ -1074,7 +989,6 @@ class TransactionService {
     ];
   }
 
-  // Get transaction types
   getTransactionTypes() {
     return [
       {value: "payment_in", label: "Payment In"},
@@ -1088,7 +1002,6 @@ class TransactionService {
     ];
   }
 
-  // Utility methods
   formatCurrency(amount, options = {}) {
     const {
       currency = "INR",
@@ -1160,7 +1073,6 @@ class TransactionService {
     }
   }
 
-  // Test API connection
   async testConnection() {
     try {
       const response = await this.apiCall("/health", {

@@ -1,4 +1,5 @@
-import React, {useState, useCallback, useMemo} from "react";
+import React, {useState, useCallback, useMemo, useEffect, useRef} from "react";
+import {createPortal} from "react-dom";
 import {
   Container,
   Row,
@@ -6,7 +7,6 @@ import {
   Button,
   Table,
   Badge,
-  Dropdown,
   InputGroup,
   Form,
   Spinner,
@@ -20,7 +20,7 @@ import {
   faFileExcel,
   faPrint,
   faSort,
-  faEllipsisV,
+  faEllipsisVertical,
   faEye,
   faEdit,
   faTrash,
@@ -36,10 +36,241 @@ import {
   faExchangeAlt,
   faFilter,
   faPlus,
-  faSpinner, // ✅ Added faSpinner import
+  faSpinner,
+  faChevronUp,
+  faChevronDown,
+  faUndo,
+  faBan,
+  faCheckCircle,
+  faExclamationTriangle,
+  faClock,
 } from "@fortawesome/free-solid-svg-icons";
 import purchaseOrderService from "../../../../services/purchaseOrderService";
 import purchaseService from "../../../../services/purchaseService";
+// ✅ ADD: Import UniversalViewModal
+import UniversalViewModal from "../../../Common/UniversalViewModal";
+
+const PortalDropdown = ({
+  children,
+  isOpen,
+  onClose,
+  triggerRef,
+  className = "",
+  style = {},
+}) => {
+  const dropdownRef = useRef(null);
+  const [position, setPosition] = useState({top: 0, left: 0});
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const scrollTop =
+        window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft =
+        window.pageXOffset || document.documentElement.scrollLeft;
+
+      setPosition({
+        top: triggerRect.bottom + scrollTop + 4,
+        left: triggerRect.right + scrollLeft - 200, // Align to right
+      });
+    }
+  }, [isOpen, triggerRef]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target)
+      ) {
+        onClose();
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen, onClose, triggerRef]);
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      ref={dropdownRef}
+      className={`dropdown-menu show ${className}`}
+      style={{
+        position: "absolute",
+        top: position.top,
+        left: position.left,
+        zIndex: 9999,
+        minWidth: "200px",
+        maxHeight: "300px",
+        overflowY: "auto",
+        borderRadius: 0,
+        border: "1px solid #e9ecef",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        backgroundColor: "white",
+        ...style,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+};
+
+// Custom Dropdown Item Component
+const DropdownItem = ({
+  children,
+  onClick,
+  disabled = false,
+  className = "",
+  variant = "default",
+}) => {
+  const handleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!disabled && onClick) {
+      onClick(e);
+    }
+  };
+
+  const getVariantClass = () => {
+    switch (variant) {
+      case "danger":
+        return "text-danger";
+      case "warning":
+        return "text-warning";
+      case "success":
+        return "text-success";
+      case "info":
+        return "text-info";
+      case "primary":
+        return "text-primary";
+      default:
+        return "";
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start d-flex align-items-center ${
+        disabled ? "disabled" : ""
+      } ${getVariantClass()} ${className}`}
+      onClick={handleClick}
+      disabled={disabled}
+      style={{
+        fontSize: "14px",
+        transition: "all 0.2s ease",
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.target.style.backgroundColor = "#f8f9ff";
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.target.style.backgroundColor = "transparent";
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
+// Custom Dropdown Divider Component
+const DropdownDivider = () => (
+  <div className="dropdown-divider my-1" style={{margin: "4px 0"}} />
+);
+
+// Custom Dropdown Header Component
+const DropdownHeader = ({children}) => (
+  <div className="dropdown-header text-muted small fw-bold py-1 px-3">
+    {children}
+  </div>
+);
+
+const PurchaseSourceFilter = ({
+  activeFilter,
+  onFilterChange,
+  purchaseCounts,
+  isLoading,
+}) => {
+  const filterOptions = [
+    {
+      key: "all",
+      label: "All Invoices",
+      icon: faClipboardList,
+      color: "primary",
+      description: "All purchase invoices from any source",
+    },
+    {
+      key: "self_generated", // ✅ CHANGED: Created by your company
+      label: "Self Generated",
+      icon: faExchangeAlt,
+      color: "info",
+      description: "Created by your company from your sales invoices",
+    },
+    {
+      key: "from_suppliers", // ✅ CHANGED: Created by suppliers
+      label: "From Suppliers",
+      icon: faTruck,
+      color: "success",
+      description: "Created by suppliers (manual or from their sales)",
+    },
+  ];
+
+  return (
+    <div className="purchase-source-filter mb-3">
+      <div className="d-flex flex-wrap gap-2">
+        {filterOptions.map((option) => {
+          const count = purchaseCounts[option.key] || 0;
+          const isActive = activeFilter === option.key;
+
+          return (
+            <button
+              key={option.key}
+              type="button"
+              className={`btn ${
+                isActive ? `btn-${option.color}` : `btn-outline-${option.color}`
+              } d-flex align-items-center position-relative`}
+              onClick={() => onFilterChange(option.key)}
+              disabled={isLoading}
+              style={{borderRadius: 0}}
+              title={option.description}
+            >
+              <FontAwesomeIcon icon={option.icon} className="me-2" />
+              {option.label}
+              <Badge
+                bg={isActive ? "light" : option.color}
+                text={isActive ? "dark" : "white"}
+                className="ms-2"
+              >
+                {count}
+              </Badge>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 function PurchaseBillsTable({
   purchases = [],
@@ -62,7 +293,6 @@ function PurchaseBillsTable({
   addToast,
   currentUser,
   currentCompany,
-  // ✅ Enhanced props for better functionality
   searchTerm = "",
   onSearchChange,
   sortBy = "date",
@@ -79,20 +309,25 @@ function PurchaseBillsTable({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ Enhanced state for view modal with additional features
   const [viewModalShow, setViewModalShow] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
-
-  // ✅ FIXED: Add better state management for delete operations
   const [deletingPurchases, setDeletingPurchases] = useState(new Set());
+  const [showCancelledPurchases, setShowCancelledPurchases] = useState(false);
 
-  // ✅ Local search and filter state if not provided
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [localSortBy, setLocalSortBy] = useState(sortBy);
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
   const [localFilterStatus, setLocalFilterStatus] = useState(filterStatus);
+
+  // ✅ UPDATED: Source filter state with new default
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [filteredPurchases, setFilteredPurchases] = useState(purchases);
+
+  // Portal dropdown state
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const dropdownRefs = useRef({});
 
   const isPurchaseOrdersMode = useMemo(() => {
     return (
@@ -102,10 +337,102 @@ function PurchaseBillsTable({
     );
   }, [isPurchaseOrderView, location.pathname, title]);
 
-  // ✅ Add this helper function near the top of the component (around line 50)
+  const purchaseCounts = useMemo(() => {
+    const counts = {
+      all: purchases.length,
+      self_generated: 0,
+      from_suppliers: 0,
+    };
+
+    purchases.forEach((purchase) => {
+      // ✅ CORRECTED: Check if this purchase was created by YOUR company
+      const isCreatedByYourCompany =
+        // Manual creation by your company (no external source)
+        (purchase.companyId?.toString() === companyId?.toString() &&
+          !purchase.sourceCompanyId &&
+          !purchase.isAutoGenerated) ||
+        // Auto-generated from YOUR sales invoice (you sold to someone else)
+        (purchase.isAutoGenerated === true &&
+          purchase.generatedFrom === "sales_invoice" &&
+          purchase.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
+
+      if (isCreatedByYourCompany) {
+        counts.self_generated++;
+      } else {
+        // Created by suppliers or auto-generated from supplier's sales
+        counts.from_suppliers++;
+      }
+    });
+
+    console.log("🔢 Purchase counts by creator:", {
+      all: counts.all,
+      selfGenerated: counts.self_generated,
+      fromSuppliers: counts.from_suppliers,
+      companyId: companyId,
+    });
+
+    return counts;
+  }, [purchases, companyId]);
+
+  // ✅ FIXED: Filter purchases based on WHO created them
+  const filterPurchasesBySource = useCallback(
+    (purchases, filter) => {
+      if (filter === "all") {
+        return purchases;
+      }
+
+      return purchases.filter((purchase) => {
+        // ✅ CORRECTED: Check if this purchase was created by YOUR company
+        const isCreatedByYourCompany =
+          // Manual creation by your company (no external source)
+          (purchase.companyId?.toString() === companyId?.toString() &&
+            !purchase.sourceCompanyId &&
+            !purchase.isAutoGenerated) ||
+          // Auto-generated from YOUR sales invoice (you sold to someone else)
+          (purchase.isAutoGenerated === true &&
+            purchase.generatedFrom === "sales_invoice" &&
+            purchase.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
+
+        console.log(`🔍 Purchase ${purchase.purchaseNumber || purchase._id}:`, {
+          isAutoGenerated: purchase.isAutoGenerated,
+          generatedFrom: purchase.generatedFrom,
+          targetCompanyId: purchase.targetCompanyId,
+          sourceCompanyId: purchase.sourceCompanyId,
+          companyId: purchase.companyId,
+          currentCompanyId: companyId,
+          isCreatedByYourCompany: isCreatedByYourCompany,
+          filterMatch:
+            filter === "self_generated"
+              ? isCreatedByYourCompany
+              : !isCreatedByYourCompany,
+        });
+
+        if (filter === "self_generated") {
+          return isCreatedByYourCompany;
+        } else if (filter === "from_suppliers") {
+          return !isCreatedByYourCompany;
+        }
+
+        return true;
+      });
+    },
+    [companyId]
+  );
+
+  // ✅ NEW: Update filtered purchases when source filter changes
+  useEffect(() => {
+    const filtered = filterPurchasesBySource(purchases, sourceFilter);
+    setFilteredPurchases(filtered);
+  }, [purchases, sourceFilter, filterPurchasesBySource]);
+
+  // ✅ NEW: Handle source filter change
+  const handleSourceFilterChange = (newFilter) => {
+    setSourceFilter(newFilter);
+    console.log(`🔍 Source filter changed to: ${newFilter}`);
+  };
+
   const getDocumentType = useCallback(
     (purchase) => {
-      // Check various indicators to determine document type
       if (
         purchase.documentType === "purchase-order" ||
         purchase.orderType === "purchase_order" ||
@@ -124,15 +451,12 @@ function PurchaseBillsTable({
         return "purchase-invoice";
       }
 
-      // Default based on current mode
       return isPurchaseOrdersMode ? "purchase-order" : "purchase-invoice";
     },
     [isPurchaseOrdersMode]
   );
-  // In PurchaseBillsTable.jsx, update the getDocumentLabels function:
 
   const getDocumentLabels = (documentType = null) => {
-    // If specific document type is passed, use it
     if (documentType === "purchase-order") {
       return {
         documentName: "Purchase Order",
@@ -143,15 +467,14 @@ function PurchaseBillsTable({
       };
     } else if (documentType === "purchase-invoice") {
       return {
-        documentName: "Purchase Invoice", // ✅ Changed from "Purchase Bill"
-        documentNamePlural: "Purchase Invoices", // ✅ Changed from "Purchase Bills"
+        documentName: "Purchase Invoice",
+        documentNamePlural: "Purchase Invoices",
         listPath: "purchases",
         editPath: "purchases",
         createPath: "purchases/new",
       };
     }
 
-    // Default based on current mode/path
     return isPurchaseOrdersMode
       ? {
           documentName: "Purchase Order",
@@ -161,8 +484,8 @@ function PurchaseBillsTable({
           createPath: "purchase-orders/new",
         }
       : {
-          documentName: "Purchase Invoice", // ✅ Changed from "Purchase Bill"
-          documentNamePlural: "Purchase Invoices", // ✅ Changed from "Purchase Bills"
+          documentName: "Purchase Invoice",
+          documentNamePlural: "Purchase Invoices",
           listPath: "purchases",
           editPath: "purchases",
           createPath: "purchases/new",
@@ -171,12 +494,10 @@ function PurchaseBillsTable({
 
   const labels = getDocumentLabels();
 
-  // ✅ Enhanced data transformation for consistent structure
   const transformPurchaseForEdit = useCallback(
     (purchase) => {
       console.log("🔧 Transforming purchase for edit:", purchase);
 
-      // ✅ Transform items to ensure proper structure
       const transformedItems = (purchase.items || []).map((item, index) => {
         const quantity = parseFloat(item.quantity || item.qty || 1);
         const pricePerUnit = parseFloat(
@@ -190,7 +511,6 @@ function PurchaseBillsTable({
         );
         const taxRate = parseFloat(item.taxRate || item.gstRate || 18);
 
-        // Calculate amounts
         const subtotal = quantity * pricePerUnit;
         const discountAmount = parseFloat(item.discountAmount || 0);
         const taxableAmount = subtotal - discountAmount;
@@ -223,7 +543,6 @@ function PurchaseBillsTable({
           priceIncludesTax: Boolean(
             item.priceIncludesTax || purchase.priceIncludesTax
           ),
-          // ✅ Add selected product info for form compatibility
           selectedProduct: item.itemRef
             ? {
                 id: item.itemRef,
@@ -238,7 +557,6 @@ function PurchaseBillsTable({
         };
       });
 
-      // ✅ Transform supplier data
       const supplierData =
         purchase.supplier && typeof purchase.supplier === "object"
           ? {
@@ -265,7 +583,6 @@ function PurchaseBillsTable({
               gstNumber: purchase.supplierGstNumber || "",
             };
 
-      // ✅ Calculate financial data
       const totalAmount = parseFloat(
         purchase.amount ||
           purchase.total ||
@@ -286,7 +603,6 @@ function PurchaseBillsTable({
           totalAmount - balanceAmount
       );
 
-      // ✅ Enhanced payment data
       const paymentMethod =
         purchase.payment?.method ||
         purchase.paymentMethod ||
@@ -320,7 +636,6 @@ function PurchaseBillsTable({
           purchase.payment?.reference || purchase.paymentReference || "",
         status:
           balanceAmount <= 0 ? "paid" : paidAmount > 0 ? "partial" : "pending",
-        // ✅ Bank account information
         bankAccountId:
           purchase.payment?.bankAccountId || purchase.bankAccountId || null,
         bankAccountName:
@@ -330,16 +645,10 @@ function PurchaseBillsTable({
           purchase.payment?.accountNumber || purchase.accountNumber || "",
       };
 
-      // ✅ Comprehensive transformed purchase
       const transformedPurchase = {
-        // ✅ IDs
         id: purchase._id || purchase.id,
         _id: purchase._id || purchase.id,
-
-        // ✅ Document type
         documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
-
-        // ✅ Document numbers with comprehensive mapping
         purchaseNumber:
           purchase.purchaseNumber ||
           purchase.billNumber ||
@@ -359,8 +668,6 @@ function PurchaseBillsTable({
           purchase.invoiceNumber ||
           purchase.purchaseNumber ||
           purchase.billNumber,
-
-        // ✅ Dates with multiple fallbacks
         purchaseDate:
           purchase.purchaseDate ||
           purchase.billDate ||
@@ -381,12 +688,8 @@ function PurchaseBillsTable({
           purchase.purchaseDate ||
           purchase.billDate ||
           purchase.invoiceDate,
-
-        // ✅ Supplier information (store in customer field for form compatibility)
-        customer: supplierData, // Store supplier as customer for form compatibility
+        customer: supplierData,
         supplier: supplierData,
-
-        // ✅ Legacy supplier fields for compatibility
         supplierId: supplierData?.id,
         supplierName: supplierData?.name || "",
         supplierMobile: supplierData?.mobile || "",
@@ -397,19 +700,13 @@ function PurchaseBillsTable({
         partyEmail: supplierData?.email || "",
         partyAddress: supplierData?.address || "",
         mobileNumber: supplierData?.mobile || "",
-
-        // ✅ Items - CRITICAL: Ensure items are properly structured
         items: transformedItems,
         lineItems: transformedItems,
-
-        // ✅ Financial data
         amount: totalAmount,
         total: totalAmount,
         grandTotal: totalAmount,
         balance: balanceAmount,
         balanceAmount: balanceAmount,
-
-        // ✅ Payment information
         payment: {
           ...purchase.payment,
           ...paymentData,
@@ -427,14 +724,10 @@ function PurchaseBillsTable({
         paymentStatus: paymentData.status,
         creditDays: paymentData.creditDays,
         dueDate: paymentData.dueDate,
-
-        // ✅ Bank account information
         bankAccountId: paymentData.bankAccountId,
         bankAccountName: paymentData.bankAccountName,
         bankName: paymentData.bankName,
         accountNumber: paymentData.accountNumber,
-
-        // ✅ Totals object
         totals: purchase.totals || {
           subtotal: purchase.subtotal || totalAmount,
           finalTotal: totalAmount,
@@ -446,37 +739,25 @@ function PurchaseBillsTable({
           igst: purchase.igst || 0,
           discount: purchase.discount || purchase.discountAmount || 0,
         },
-
-        // ✅ Status and configuration
         status: purchase.status,
         purchaseOrderStatus: purchase.purchaseOrderStatus || purchase.status,
         gstEnabled:
           purchase.gstEnabled !== undefined ? purchase.gstEnabled : true,
-
-        // ✅ Additional fields
         notes: purchase.notes || purchase.description || "",
         terms: purchase.terms || purchase.termsAndConditions || "",
         description: purchase.description || purchase.notes || "",
         termsAndConditions: purchase.termsAndConditions || purchase.terms || "",
-
-        // ✅ Purchase-specific fields
         purchaseType: purchase.purchaseType || "purchase",
         invoiceType: purchase.invoiceType || "gst",
         taxMode: purchase.taxMode || "without-tax",
         priceIncludesTax: Boolean(purchase.priceIncludesTax),
-
-        // ✅ Company and employee context
         companyId: purchase.companyId || companyId,
         employeeName: purchase.employeeName,
         employeeId: purchase.employeeId,
         createdBy: purchase.createdBy,
         createdByName: purchase.createdByName,
-
-        // ✅ Timestamps
         createdAt: purchase.createdAt,
         updatedAt: purchase.updatedAt,
-
-        // ✅ Additional metadata for modal
         isTransformed: true,
         transformedAt: new Date().toISOString(),
       };
@@ -495,16 +776,13 @@ function PurchaseBillsTable({
     [isPurchaseOrdersMode, companyId]
   );
 
-  // ✅ Enhanced edit handler
   const handleEditPurchase = useCallback(
     (purchase) => {
       console.log("📝 Edit purchase clicked:", purchase);
 
       try {
-        // Transform purchase data for proper editing
         const transformedPurchase = transformPurchaseForEdit(purchase);
 
-        // Navigate to edit page with enhanced state
         const editPath = `/companies/${companyId}/${labels.editPath}/${
           purchase._id || purchase.id
         }/edit`;
@@ -523,13 +801,13 @@ function PurchaseBillsTable({
           },
         });
 
-        // Close view modal if open
         if (viewModalShow) {
           setViewModalShow(false);
           setSelectedPurchase(null);
         }
 
-        // Also call parent handler if provided
+        setOpenDropdownId(null);
+
         if (onEditPurchase) {
           onEditPurchase(purchase);
         }
@@ -551,7 +829,6 @@ function PurchaseBillsTable({
     ]
   );
 
-  // ✅ Enhanced view handler with loading states
   const handleViewPurchase = useCallback(
     async (purchase) => {
       console.log("👁️ View purchase clicked:", purchase);
@@ -560,13 +837,10 @@ function PurchaseBillsTable({
         setModalLoading(true);
         setModalError(null);
 
-        // Transform purchase data for viewing
         const transformedPurchase = transformPurchaseForEdit(purchase);
 
-        // Add additional view-specific data
         const enhancedPurchase = {
           ...transformedPurchase,
-          // ✅ Add display-friendly fields
           displayNumber:
             transformedPurchase.purchaseNumber ||
             transformedPurchase.billNumber ||
@@ -585,6 +859,7 @@ function PurchaseBillsTable({
 
         setSelectedPurchase(enhancedPurchase);
         setViewModalShow(true);
+        setOpenDropdownId(null);
 
         if (onViewPurchase) {
           onViewPurchase(purchase);
@@ -600,7 +875,6 @@ function PurchaseBillsTable({
     [transformPurchaseForEdit, onViewPurchase, addToast]
   );
 
-  // ✅ Updated delete handler
   const handleDeletePurchase = useCallback(
     async (purchase) => {
       const purchaseId = purchase._id || purchase.id;
@@ -618,6 +892,7 @@ function PurchaseBillsTable({
       try {
         setDeletingPurchases((prev) => new Set(prev).add(purchaseId));
         setModalLoading(true);
+        setOpenDropdownId(null);
 
         const purchaseNumber =
           purchase.purchaseNumber || purchase.billNumber || "this purchase";
@@ -653,7 +928,6 @@ function PurchaseBillsTable({
 
         console.log("🗑️ Deleting purchase:", purchaseId, deleteOptions);
 
-        // ✅ Use the correct service based on mode
         const deleteResponse = isPurchaseOrdersMode
           ? await purchaseOrderService.deletePurchaseOrder(
               purchaseId,
@@ -787,7 +1061,7 @@ function PurchaseBillsTable({
       isPurchaseOrdersMode,
     ]
   );
-  // ✅ Enhanced duplicate handler
+
   const handleDuplicatePurchase = useCallback(
     (purchase) => {
       console.log("📋 Duplicate purchase clicked:", purchase);
@@ -795,7 +1069,6 @@ function PurchaseBillsTable({
       try {
         const transformedPurchase = transformPurchaseForEdit(purchase);
 
-        // Remove ID fields for duplication
         const duplicateData = {
           ...transformedPurchase,
           id: undefined,
@@ -806,15 +1079,12 @@ function PurchaseBillsTable({
           purchaseOrderNumber: undefined,
           createdAt: undefined,
           updatedAt: undefined,
-          // Reset to draft status
           status: "draft",
-          // Set current date
           purchaseDate: new Date().toISOString(),
           date: new Date().toISOString(),
           billDate: new Date().toISOString(),
         };
 
-        // Navigate to create page with duplicate data
         const createPath = `/companies/${companyId}/${labels.createPath}`;
 
         navigate(createPath, {
@@ -826,11 +1096,12 @@ function PurchaseBillsTable({
           },
         });
 
-        // Close view modal if open
         if (viewModalShow) {
           setViewModalShow(false);
           setSelectedPurchase(null);
         }
+
+        setOpenDropdownId(null);
 
         if (onDuplicatePurchase) {
           onDuplicatePurchase(purchase);
@@ -852,116 +1123,12 @@ function PurchaseBillsTable({
     ]
   );
 
-  // ✅ Modal action handlers
-  const handleModalEdit = useCallback(() => {
-    if (selectedPurchase) {
-      handleEditPurchase(selectedPurchase);
-    }
-  }, [selectedPurchase, handleEditPurchase]);
-
-  const handleModalPrint = useCallback(() => {
-    if (selectedPurchase && onPrintPurchase) {
-      onPrintPurchase(selectedPurchase);
-    }
-  }, [selectedPurchase, onPrintPurchase]);
-
-  const handleModalShare = useCallback(() => {
-    if (selectedPurchase && onSharePurchase) {
-      onSharePurchase(selectedPurchase);
-    }
-  }, [selectedPurchase, onSharePurchase]);
-
-  const handleModalDownload = useCallback(() => {
-    if (selectedPurchase && onDownloadPurchase) {
-      onDownloadPurchase(selectedPurchase);
-    }
-  }, [selectedPurchase, onDownloadPurchase]);
-
-  const handleModalDelete = useCallback(() => {
-    if (selectedPurchase && !modalLoading) {
-      const purchaseId = selectedPurchase._id || selectedPurchase.id;
-      if (!deletingPurchases.has(purchaseId)) {
-        handleDeletePurchase(selectedPurchase);
-      }
-    }
-  }, [selectedPurchase, handleDeletePurchase, modalLoading, deletingPurchases]);
-
-  const handleModalDuplicate = useCallback(() => {
-    if (selectedPurchase) {
-      handleDuplicatePurchase(selectedPurchase);
-    }
-  }, [selectedPurchase, handleDuplicatePurchase]);
-
-  // ✅ Other action handlers
-  const handlePrintPurchase = useCallback(
-    (purchase) => {
-      if (onPrintPurchase) {
-        onPrintPurchase(purchase);
-      }
-    },
-    [onPrintPurchase]
-  );
-
-  const handleSharePurchase = useCallback(
-    (purchase) => {
-      if (onSharePurchase) {
-        onSharePurchase(purchase);
-      }
-    },
-    [onSharePurchase]
-  );
-
-  const handleDownloadPurchase = useCallback(
-    (purchase) => {
-      if (onDownloadPurchase) {
-        onDownloadPurchase(purchase);
-      }
-    },
-    [onDownloadPurchase]
-  );
-
-  const handleConvertPurchase = useCallback(
-    (purchase) => {
-      if (onConvertPurchase) {
-        onConvertPurchase(purchase);
-      }
-    },
-    [onConvertPurchase]
-  );
-
-  const handleMarkAsOrdered = useCallback(
-    (purchase) => {
-      if (onMarkAsOrdered) {
-        onMarkAsOrdered(purchase);
-      }
-    },
-    [onMarkAsOrdered]
-  );
-
-  const handleMarkAsReceived = useCallback(
-    (purchase) => {
-      if (onMarkAsReceived) {
-        onMarkAsReceived(purchase);
-      }
-    },
-    [onMarkAsReceived]
-  );
-
-  const handleCompletePurchase = useCallback(
-    (purchase) => {
-      if (onCompletePurchase) {
-        onCompletePurchase(purchase);
-      }
-    },
-    [onCompletePurchase]
-  );
-
-  // ✅ ENHANCED: Filter and separate cancelled purchases
+  // ✅ Updated: Separate active and cancelled purchases using filtered purchases
   const separatedPurchases = useMemo(() => {
     const active = [];
     const cancelled = [];
 
-    purchases.forEach((purchase) => {
+    filteredPurchases.forEach((purchase) => {
       if (purchase.status === "cancelled" || purchase.status === "deleted") {
         cancelled.push(purchase);
       } else {
@@ -970,179 +1137,27 @@ function PurchaseBillsTable({
     });
 
     return {active, cancelled};
-  }, [purchases]);
+  }, [filteredPurchases]);
 
-  // ✅ Update the ActionButton component around line 750
-  const ActionButton = ({purchase}) => {
-    const purchaseId = purchase._id || purchase.id;
-    const isDeleting = deletingPurchases.has(purchaseId);
-    const isCancelled =
-      purchase.status === "cancelled" || purchase.status === "deleted";
-
-    // ✅ Detect document type for this specific purchase
-    const docType = getDocumentType(purchase);
-    const isOrder = docType === "purchase-order";
-    const docLabels = getDocumentLabels(docType);
-
-    const handleDelete = useCallback(
-      async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (isDeleting || isCancelled) {
-          console.warn(
-            "⚠️ Cannot delete - purchase is cancelled or being deleted"
-          );
-          return;
-        }
-
-        await handleDeletePurchase(purchase);
-      },
-      [purchase, isDeleting, isCancelled, handleDeletePurchase]
-    );
-
-    const handleEdit = useCallback(
-      (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (isCancelled) {
-          addToast?.("Cannot edit cancelled purchase", "warning");
-          return;
-        }
-
-        handleEditPurchase(purchase);
-      },
-      [purchase, isCancelled, handleEditPurchase, addToast]
-    );
-
-    return (
-      <Dropdown>
-        <Dropdown.Toggle
-          variant={isCancelled ? "outline-secondary" : "outline-secondary"}
-          size="sm"
-          className={`border-0 ${isCancelled ? "opacity-50" : ""}`}
-          id={`dropdown-${purchaseId}`}
-          disabled={isDeleting || modalLoading}
-        >
-          <FontAwesomeIcon icon={faEllipsisV} />
-        </Dropdown.Toggle>
-
-        <Dropdown.Menu align="end">
-          <Dropdown.Item onClick={() => handleViewPurchase(purchase)}>
-            <FontAwesomeIcon icon={faEye} className="me-2" />
-            View Details
-          </Dropdown.Item>
-
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Item
-                onClick={handleEdit}
-                disabled={isDeleting || modalLoading}
-              >
-                <FontAwesomeIcon icon={faEdit} className="me-2" />
-                Edit {docLabels.documentName}
-              </Dropdown.Item>
-
-              <Dropdown.Item
-                onClick={() => handleDuplicatePurchase(purchase)}
-                disabled={isDeleting || modalLoading}
-              >
-                <FontAwesomeIcon icon={faCopy} className="me-2" />
-                Duplicate
-              </Dropdown.Item>
-
-              <Dropdown.Divider />
-            </>
-          )}
-
-          {/* ✅ Always show print/download options */}
-          <Dropdown.Item onClick={() => handlePrintPurchase(purchase)}>
-            <FontAwesomeIcon icon={faPrint} className="me-2" />
-            Print
-          </Dropdown.Item>
-
-          <Dropdown.Item onClick={() => handleSharePurchase(purchase)}>
-            <FontAwesomeIcon icon={faShare} className="me-2" />
-            Share
-          </Dropdown.Item>
-
-          <Dropdown.Item onClick={() => handleDownloadPurchase(purchase)}>
-            <FontAwesomeIcon icon={faDownload} className="me-2" />
-            Download
-          </Dropdown.Item>
-
-          {/* ✅ Show order-specific actions for purchase orders */}
-          {isOrder && !isCancelled && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Header>Order Actions</Dropdown.Header>
-              <Dropdown.Item onClick={() => handleMarkAsOrdered(purchase)}>
-                <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-                Mark as Ordered
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => handleMarkAsReceived(purchase)}>
-                <FontAwesomeIcon icon={faTruck} className="me-2" />
-                Mark as Received
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => handleConvertPurchase(purchase)}>
-                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                Convert to Invoice
-              </Dropdown.Item>
-            </>
-          )}
-
-          {/* ✅ Show invoice-specific actions for purchase invoices */}
-          {!isOrder && !isCancelled && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Header>Invoice Actions</Dropdown.Header>
-              <Dropdown.Item onClick={() => handleConvertPurchase(purchase)}>
-                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                Convert to Order
-              </Dropdown.Item>
-            </>
-          )}
-
-          {/* ✅ Delete option only for non-cancelled documents */}
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Item
-                onClick={handleDelete}
-                className="text-danger"
-                disabled={isDeleting || modalLoading}
-              >
-                <FontAwesomeIcon
-                  icon={isDeleting ? faSpinner : faTrash}
-                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
-                />
-                {isDeleting ? "Deleting..." : "Delete"}
-              </Dropdown.Item>
-            </>
-          )}
-        </Dropdown.Menu>
-      </Dropdown>
-    );
-  };
-
-  // ✅ ENHANCED: StatusBadge with cancelled status
-  const StatusBadge = ({status, paymentStatus, amount, balance}) => {
+  const StatusBadge = ({status, paymentStatus, amount, balance, purchase}) => {
     const getStatusInfo = () => {
-      // ✅ Check for cancelled status first
       if (status === "cancelled" || status === "deleted") {
-        return {variant: "dark", text: "Cancelled", icon: faTrash};
+        return {variant: "danger", text: "Cancelled", icon: faBan};
       }
 
       if (paymentStatus === "paid" || balance <= 0) {
-        return {variant: "success", text: "Paid", icon: faCheck};
+        return {variant: "success", text: "Paid", icon: faCheckCircle};
       } else if (
         paymentStatus === "partial" ||
         (balance > 0 && balance < amount)
       ) {
-        return {variant: "warning", text: "Partial", icon: faClipboardList};
+        return {
+          variant: "warning",
+          text: "Partial",
+          icon: faExclamationTriangle,
+        };
       } else if (paymentStatus === "overdue") {
-        return {variant: "danger", text: "Overdue", icon: faExchangeAlt};
+        return {variant: "danger", text: "Overdue", icon: faClock};
       } else {
         return {variant: "secondary", text: "Pending", icon: faInbox};
       }
@@ -1150,212 +1165,270 @@ function PurchaseBillsTable({
 
     const statusInfo = getStatusInfo();
 
+    // ✅ FIXED: Check if created by your company (self-generated)
+    const isSelfGenerated =
+      // Manual creation by your company (no external source)
+      (purchase?.companyId?.toString() === companyId?.toString() &&
+        !purchase?.sourceCompanyId &&
+        !purchase?.isAutoGenerated) ||
+      // Auto-generated from YOUR sales invoice (you sold to someone else)
+      (purchase?.isAutoGenerated === true &&
+        purchase?.generatedFrom === "sales_invoice" &&
+        purchase?.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
+
     return (
-      <Badge bg={statusInfo.variant} className="me-1 d-flex align-items-center">
-        <FontAwesomeIcon icon={statusInfo.icon} className="me-1" />
-        {statusInfo.text}
-      </Badge>
+      <div className="d-flex flex-column gap-1">
+        <Badge bg={statusInfo.variant} className="d-flex align-items-center">
+          <FontAwesomeIcon icon={statusInfo.icon} className="me-1" />
+          {statusInfo.text}
+        </Badge>
+        {isSelfGenerated && (
+          <Badge
+            bg="success"
+            className="d-flex align-items-center"
+            style={{fontSize: "10px"}}
+          >
+            <FontAwesomeIcon icon={faExchangeAlt} className="me-1" />
+            Self
+          </Badge>
+        )}
+        {purchase?.isAutoGenerated === true && !isSelfGenerated && (
+          <Badge
+            bg="info"
+            className="d-flex align-items-center"
+            style={{fontSize: "10px"}}
+          >
+            <FontAwesomeIcon icon={faTruck} className="me-1" />
+            Supplier
+          </Badge>
+        )}
+      </div>
     );
   };
 
-  // ✅ ENHANCED: PurchaseRow component to handle cancelled styling
-  const PurchaseRow = ({
-    purchase,
-    isSelected,
-    onRowClick,
-    enableBulkActions,
-    enableActions,
-  }) => {
-    const amount = parseFloat(
-      purchase.amount || purchase.total || purchase.totals?.finalTotal || 0
-    );
-    const paidAmount = parseFloat(
-      purchase.paidAmount || purchase.payment?.paidAmount || 0
-    );
-    const balance = parseFloat(
-      purchase.balance ||
-        purchase.balanceAmount ||
-        purchase.pendingAmount ||
-        purchase.payment?.pendingAmount ||
-        0
-    );
-    const paymentStatus =
-      purchase.paymentStatus ||
-      purchase.payment?.status ||
-      (balance <= 0 ? "paid" : paidAmount > 0 ? "partial" : "pending");
-    const itemsCount = (purchase.items || []).length;
+  // Action button component with Portal dropdown
+  const ActionButton = ({purchase}) => {
     const purchaseId = purchase._id || purchase.id;
+    const isDeleting = deletingPurchases.has(purchaseId);
     const isCancelled =
       purchase.status === "cancelled" || purchase.status === "deleted";
+    const isOpen = openDropdownId === purchaseId;
+
+    const docType = getDocumentType(purchase);
+    const isOrder = docType === "purchase-order";
+    const docLabels = getDocumentLabels(docType);
+
+    // Set up ref for this dropdown
+    useEffect(() => {
+      if (!dropdownRefs.current[purchaseId]) {
+        dropdownRefs.current[purchaseId] = React.createRef();
+      }
+    }, [purchaseId]);
+
+    const handleToggleDropdown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpenDropdownId(isOpen ? null : purchaseId);
+    };
+
+    const handleCloseDropdown = () => {
+      setOpenDropdownId(null);
+    };
+
+    const handleDelete = async () => {
+      if (isDeleting || isCancelled) {
+        console.warn(
+          "⚠️ Cannot delete - purchase is cancelled or being deleted"
+        );
+        return;
+      }
+      await handleDeletePurchase(purchase);
+    };
+
+    const handleEdit = () => {
+      if (isCancelled) {
+        addToast?.("Cannot edit cancelled purchase", "warning");
+        return;
+      }
+      handleEditPurchase(purchase);
+    };
 
     return (
-      <tr
-        key={purchaseId}
-        className={`
-        ${isSelected ? "table-active-purple" : ""} 
-        ${isCancelled ? "cancelled-purchase-row" : ""}
-      `}
-        style={{cursor: "pointer"}}
-        onClick={() => onRowClick(purchase)}
-      >
-        {enableBulkActions && (
-          <td onClick={(e) => e.stopPropagation()}>
-            <Form.Check
-              type="checkbox"
-              checked={isSelected}
-              disabled={isCancelled} // ✅ Disable selection for cancelled purchases
-              onChange={(e) => {
-                if (onSelectionChange && !isCancelled) {
-                  const newSelection = e.target.checked
-                    ? [...selectedPurchases, purchaseId]
-                    : selectedPurchases.filter((id) => id !== purchaseId);
-                  onSelectionChange(newSelection);
-                }
-              }}
-            />
-          </td>
-        )}
-        <td className={isCancelled ? "text-muted" : ""}>
-          <small className={isCancelled ? "text-muted" : "text-muted"}>
-            {new Date(
-              purchase.purchaseDate ||
-                purchase.billDate ||
-                purchase.date ||
-                purchase.invoiceDate
-            ).toLocaleDateString("en-GB")}
-          </small>
-        </td>
-        <td>
-          <strong
-            className={
-              isCancelled
-                ? "text-muted text-decoration-line-through"
-                : "text-primary"
-            }
-          >
-            {purchase.purchaseNumber ||
-              purchase.billNumber ||
-              purchase.billNo ||
-              purchase.purchaseOrderNumber ||
-              purchase.invoiceNumber ||
-              "N/A"}
-          </strong>
-          {isCancelled && (
-            <div>
-              <small className="text-muted fst-italic">
-                <FontAwesomeIcon icon={faTrash} className="me-1" />
-                Cancelled
-              </small>
-            </div>
-          )}
-        </td>
-        <td>
-          <div>
-            <div className={`fw-medium ${isCancelled ? "text-muted" : ""}`}>
-              {purchase.supplierName ||
-                purchase.supplier?.name ||
-                purchase.partyName ||
-                "Unknown Supplier"}
-            </div>
-            {(purchase.supplierMobile ||
-              purchase.supplier?.mobile ||
-              purchase.partyPhone ||
-              purchase.mobileNumber) && (
-              <small className="text-muted">
-                {purchase.supplierMobile ||
-                  purchase.supplier?.mobile ||
-                  purchase.partyPhone ||
-                  purchase.mobileNumber}
-              </small>
-            )}
-          </div>
-        </td>
-        <td>
-          <Badge
-            bg={isCancelled ? "secondary" : "info"}
-            className={`me-1 ${isCancelled ? "opacity-50" : ""}`}
-          >
-            {itemsCount} item{itemsCount !== 1 ? "s" : ""}
-          </Badge>
-        </td>
-        <td className="text-end">
-          <strong
-            className={
-              isCancelled ? "text-muted text-decoration-line-through" : ""
-            }
-          >
-            ₹{amount.toLocaleString("en-IN")}
-          </strong>
-        </td>
-        <td className="text-end">
-          {paidAmount > 0 ? (
-            <span
-              className={`fw-medium ${
-                isCancelled ? "text-muted" : "text-success"
-              }`}
-            >
-              ₹{paidAmount.toLocaleString("en-IN")}
-            </span>
-          ) : (
-            <span className="text-muted">₹0</span>
-          )}
-        </td>
-        <td className="text-end">
-          {balance > 0 ? (
-            <span
-              className={`fw-medium ${
-                isCancelled ? "text-muted" : "text-danger"
-              }`}
-            >
-              ₹{balance.toLocaleString("en-IN")}
-            </span>
-          ) : (
-            <span className="text-muted">₹0</span>
-          )}
-        </td>
-        <td>
-          <StatusBadge
-            status={purchase.status}
-            paymentStatus={paymentStatus}
-            amount={amount}
-            balance={balance}
+      <>
+        <button
+          ref={dropdownRefs.current[purchaseId]}
+          type="button"
+          className="btn btn-sm btn-outline-secondary border-0 p-2"
+          onClick={handleToggleDropdown}
+          disabled={isDeleting || modalLoading}
+          style={{
+            borderRadius: 0,
+            background: "transparent",
+            boxShadow: "none",
+          }}
+        >
+          <FontAwesomeIcon
+            icon={faEllipsisVertical}
+            className="text-muted"
+            size="sm"
           />
-        </td>
-        <td>
-          <Badge
-            bg={
-              isCancelled
-                ? "secondary"
-                : purchase.paymentMethod === "cash"
-                ? "success"
-                : purchase.paymentMethod === "bank" ||
-                  purchase.paymentMethod === "bank_transfer"
-                ? "primary"
-                : purchase.paymentMethod === "upi"
-                ? "info"
-                : "secondary"
-            }
-            className={`text-capitalize ${isCancelled ? "opacity-50" : ""}`}
-          >
-            {purchase.paymentMethod ||
-              purchase.payment?.method ||
-              purchase.paymentType ||
-              "Cash"}
-          </Badge>
-        </td>
-        {enableActions && (
-          <td
-            className="text-center dropdown-cell"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ActionButton purchase={purchase} />
-          </td>
-        )}
-      </tr>
+        </button>
+
+        <PortalDropdown
+          isOpen={isOpen}
+          onClose={handleCloseDropdown}
+          triggerRef={dropdownRefs.current[purchaseId]}
+        >
+          <DropdownItem onClick={() => handleViewPurchase(purchase)}>
+            <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
+            View Details
+          </DropdownItem>
+
+          {enableActions && !isCancelled && (
+            <>
+              <DropdownItem
+                onClick={handleEdit}
+                disabled={isDeleting || modalLoading}
+              >
+                <FontAwesomeIcon icon={faEdit} className="me-2 text-info" />
+                Edit {docLabels.documentName}
+              </DropdownItem>
+
+              <DropdownItem
+                onClick={() => handleDuplicatePurchase(purchase)}
+                disabled={isDeleting || modalLoading}
+              >
+                <FontAwesomeIcon icon={faCopy} className="me-2 text-success" />
+                Duplicate
+              </DropdownItem>
+
+              <DropdownDivider />
+            </>
+          )}
+
+          <DropdownItem onClick={() => onPrintPurchase?.(purchase)}>
+            <FontAwesomeIcon icon={faPrint} className="me-2 text-secondary" />
+            Print
+          </DropdownItem>
+
+          <DropdownItem onClick={() => onSharePurchase?.(purchase)}>
+            <FontAwesomeIcon icon={faShare} className="me-2 text-warning" />
+            Share
+          </DropdownItem>
+
+          <DropdownItem onClick={() => onDownloadPurchase?.(purchase)}>
+            <FontAwesomeIcon icon={faDownload} className="me-2 text-info" />
+            Download
+          </DropdownItem>
+
+          {isOrder && !isCancelled && (
+            <>
+              <DropdownDivider />
+              <DropdownHeader>Order Actions</DropdownHeader>
+              <DropdownItem onClick={() => onMarkAsOrdered?.(purchase)}>
+                <FontAwesomeIcon
+                  icon={faShoppingCart}
+                  className="me-2 text-primary"
+                />
+                Mark as Ordered
+              </DropdownItem>
+              <DropdownItem onClick={() => onMarkAsReceived?.(purchase)}>
+                <FontAwesomeIcon icon={faTruck} className="me-2 text-success" />
+                Mark as Received
+              </DropdownItem>
+              <DropdownItem onClick={() => onConvertPurchase?.(purchase)}>
+                <FontAwesomeIcon
+                  icon={faExchangeAlt}
+                  className="me-2 text-warning"
+                />
+                Convert to Invoice
+              </DropdownItem>
+            </>
+          )}
+
+          {!isOrder && !isCancelled && (
+            <>
+              <DropdownDivider />
+              <DropdownHeader>Invoice Actions</DropdownHeader>
+              <DropdownItem onClick={() => onConvertPurchase?.(purchase)}>
+                <FontAwesomeIcon
+                  icon={faExchangeAlt}
+                  className="me-2 text-info"
+                />
+                Convert to Order
+              </DropdownItem>
+            </>
+          )}
+
+          {enableActions && !isCancelled && (
+            <>
+              <DropdownDivider />
+              <DropdownItem
+                onClick={handleDelete}
+                disabled={isDeleting || modalLoading}
+                variant="danger"
+              >
+                <FontAwesomeIcon
+                  icon={isDeleting ? faSpinner : faTrash}
+                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
+                />
+                {isDeleting ? "Deleting..." : "Delete"}
+              </DropdownItem>
+            </>
+          )}
+        </PortalDropdown>
+      </>
     );
   };
 
-  // ✅ Enhanced loading component
+  // Format currency
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return "₹0";
+    const numAmount = parseFloat(amount);
+
+    if (numAmount >= 10000000) {
+      return `₹${(numAmount / 10000000).toFixed(1)}Cr`;
+    } else if (numAmount >= 100000) {
+      return `₹${(numAmount / 100000).toFixed(1)}L`;
+    } else if (numAmount >= 1000) {
+      return `₹${(numAmount / 1000).toFixed(1)}K`;
+    }
+    return `₹${Math.round(numAmount)}`;
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+    });
+  };
+
+  // Calculate due date
+  const calculateDueDate = (purchase) => {
+    const dueDate = purchase.dueDate || purchase.payment?.dueDate;
+    if (dueDate) {
+      return formatDate(dueDate);
+    }
+
+    const purchaseDate = new Date(
+      purchase.purchaseDate || purchase.billDate || purchase.date
+    );
+    const creditDays = purchase.creditDays || purchase.payment?.creditDays || 0;
+
+    if (creditDays > 0) {
+      const due = new Date(purchaseDate);
+      due.setDate(due.getDate() + creditDays);
+      return formatDate(due);
+    }
+
+    return "Immediate";
+  };
+
+  // Loading component
   const LoadingComponent = () => (
     <div className="text-center py-5">
       <Spinner
@@ -1371,7 +1444,7 @@ function PurchaseBillsTable({
     </div>
   );
 
-  // ✅ Enhanced empty state component
+  // Empty state component
   const EmptyStateComponent = () => (
     <div className="text-center py-5">
       <FontAwesomeIcon
@@ -1388,6 +1461,7 @@ function PurchaseBillsTable({
       <Button
         variant="primary"
         onClick={() => navigate(`/companies/${companyId}/${labels.createPath}`)}
+        style={{borderRadius: 0}}
       >
         <FontAwesomeIcon icon={faPlus} className="me-2" />
         Create {labels.documentName}
@@ -1395,7 +1469,6 @@ function PurchaseBillsTable({
     </div>
   );
 
-  // ✅ Main render logic
   if (isLoading) {
     return <LoadingComponent />;
   }
@@ -1403,88 +1476,349 @@ function PurchaseBillsTable({
   if (!purchases || purchases.length === 0) {
     return <EmptyStateComponent />;
   }
-
-  // ✅ Main render logic
-  if (isLoading) {
-    return <LoadingComponent />;
-  }
-
-  if (!purchases || purchases.length === 0) {
-    return <EmptyStateComponent />;
-  }
-
   return (
     <>
-      <div className="purchase-bills-table-wrapper">
-        {/* ✅ FIXED: Add responsive wrapper */}
-        <div className="table-responsive-wrapper">
-          <Table responsive hover className="mb-0">
-            {/* ✅ UPDATED: Purple-themed header */}
-            <thead className="table-header-purple">
+      <style>
+        {`
+        /* Purple gradient header styling */
+        .purchase-table-header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+          background-attachment: fixed;
+        }
+        
+        .purchase-table-header th {
+          background: transparent !important;
+          border: none !important;
+          color: #ffffff !important;
+          font-weight: 600 !important;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+          padding: 15px 8px !important;
+          font-size: 13px;
+          letter-spacing: 0.5px;
+        }
+        
+        .purchase-table-header th:first-child {
+          border-top-left-radius: 0 !important;
+        }
+        
+        .purchase-table-header th:last-child {
+          border-top-right-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Remove ALL border radius with more specific selectors */
+        .card,
+        .card *,
+        .table,
+        .table *,
+        .table th,
+        .table td,
+        .btn,
+        .btn *,
+        .badge,
+        .badge *,
+        .dropdown-menu,
+        .dropdown-menu *,
+        .dropdown-toggle,
+        .dropdown-toggle *,
+        .purchase-source-filter .btn,
+        .purchase-source-filter .btn *,
+        .purchase-source-filter .badge,
+        .purchase-source-filter .badge *,
+        button,
+        button *,
+        .form-check-input,
+        .form-control,
+        .input-group,
+        .input-group * {
+          border-radius: 0 !important;
+          -webkit-border-radius: 0 !important;
+          -moz-border-radius: 0 !important;
+          -ms-border-radius: 0 !important;
+        }
+        
+        /* ✅ SPECIFIC: Target Bootstrap button variants */
+        .btn-primary,
+        .btn-secondary,
+        .btn-success,
+        .btn-danger,
+        .btn-warning,
+        .btn-info,
+        .btn-light,
+        .btn-dark,
+        .btn-outline-primary,
+        .btn-outline-secondary,
+        .btn-outline-success,
+        .btn-outline-danger,
+        .btn-outline-warning,
+        .btn-outline-info,
+        .btn-outline-light,
+        .btn-outline-dark,
+        .btn-sm,
+        .btn-lg {
+          border-radius: 0 !important;
+          -webkit-border-radius: 0 !important;
+          -moz-border-radius: 0 !important;
+          -ms-border-radius: 0 !important;
+        }
+        
+        /* ✅ SPECIFIC: Target Bootstrap badges */
+        .badge,
+        .badge-primary,
+        .badge-secondary,
+        .badge-success,
+        .badge-danger,
+        .badge-warning,
+        .badge-info,
+        .badge-light,
+        .badge-dark {
+          border-radius: 0 !important;
+          -webkit-border-radius: 0 !important;
+          -moz-border-radius: 0 !important;
+          -ms-border-radius: 0 !important;
+        }
+        
+        /* Custom table styling */
+        .table tbody tr {
+          border-bottom: 1px solid #e9ecef;
+          transition: all 0.2s ease;
+        }
+        
+        .table tbody tr:hover {
+          background-color: #f8f9ff !important;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Action button styling */
+        .action-dropdown-toggle {
+          border: none !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          padding: 6px 8px !important;
+          border-radius: 0 !important;
+        }
+        
+        .action-dropdown-toggle:focus {
+          box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25) !important;
+          border-radius: 0 !important;
+        }
+        
+        /* Dropdown menu styling */
+        .dropdown-menu {
+          border: 1px solid #e9ecef !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+          border-radius: 0 !important;
+        }
+        
+        .dropdown-item {
+          transition: all 0.2s ease;
+          border-radius: 0 !important;
+        }
+        
+        .dropdown-item:hover {
+          background-color: #f8f9ff !important;
+          color: #495057 !important;
+          border-radius: 0 !important;
+        }
+        
+        /* Badge styling */
+        .badge {
+          font-size: 11px;
+          font-weight: 500;
+          padding: 4px 8px;
+          border-radius: 0 !important;
+        }
+        
+        /* Cancelled section styling */
+        .cancelled-section {
+          background: linear-gradient(90deg, #fff3cd 0%, #ffeaa7 100%);
+          border-left: 4px solid #ffc107;
+        }
+        
+        /* ✅ ENHANCED: Source filter styling with no border radius */
+        .purchase-source-filter {
+          background: #f8f9fa;
+          padding: 15px;
+          border: 1px solid #e9ecef;
+          margin-bottom: 0;
+          border-radius: 0 !important;
+        }
+        
+        .purchase-source-filter .btn {
+          transition: all 0.3s ease;
+          font-weight: 500;
+          font-size: 14px;
+          border-radius: 0 !important;
+        }
+        
+        .purchase-source-filter .btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          border-radius: 0 !important;
+        }
+        
+        .purchase-source-filter .badge {
+          font-size: 11px;
+          min-width: 20px;
+          border-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Ensure card components have no border radius */
+        .card {
+          border-radius: 0 !important;
+        }
+        
+        .card-header,
+        .card-body,
+        .card-footer {
+          border-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Table specific styling */
+        .table {
+          border-radius: 0 !important;
+        }
+        
+        .table thead th:first-child {
+          border-top-left-radius: 0 !important;
+        }
+        
+        .table thead th:last-child {
+          border-top-right-radius: 0 !important;
+        }
+        
+        .table tbody tr:last-child td:first-child {
+          border-bottom-left-radius: 0 !important;
+        }
+        
+        .table tbody tr:last-child td:last-child {
+          border-bottom-right-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Form controls */
+        .form-check-input[type="checkbox"] {
+          border-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Override any remaining Bootstrap defaults */
+        * {
+          --bs-border-radius: 0 !important;
+          --bs-border-radius-sm: 0 !important;
+          --bs-border-radius-lg: 0 !important;
+          --bs-border-radius-xl: 0 !important;
+          --bs-border-radius-2xl: 0 !important;
+          --bs-border-radius-pill: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Target any remaining curved elements */
+        [class*="btn"],
+        [class*="badge"],
+        [class*="card"],
+        [class*="dropdown"],
+        [class*="form"] {
+          border-radius: 0 !important;
+        }
+        
+        /* ✅ ENHANCED: Modal styling to remove border radius */
+        .modal-content,
+        .modal-header,
+        .modal-body,
+        .modal-footer {
+          border-radius: 0 !important;
+        }
+      `}
+      </style>
+
+      {/* ✅ NEW: Add source filter above the card */}
+      <PurchaseSourceFilter
+        activeFilter={sourceFilter}
+        onFilterChange={handleSourceFilterChange}
+        purchaseCounts={purchaseCounts}
+        isLoading={isLoading}
+      />
+
+      <div className="card shadow-sm border-0" style={{borderRadius: 0}}>
+        <div className="table-responsive" style={{borderRadius: 0}}>
+          <Table hover className="mb-0" style={{borderRadius: 0}}>
+            <thead className="purchase-table-header">
               <tr>
                 {enableBulkActions && (
-                  <th width="40">
+                  <th style={{width: "40px", borderRadius: 0}}>
                     <Form.Check
                       type="checkbox"
+                      style={{borderRadius: 0}}
                       checked={
-                        selectedPurchases.length === purchases.length &&
-                        purchases.length > 0
+                        selectedPurchases.length === filteredPurchases.length &&
+                        filteredPurchases.length > 0
                       }
                       onChange={(e) => {
                         if (onSelectionChange) {
                           onSelectionChange(
                             e.target.checked
-                              ? purchases.map((p) => p._id || p.id)
+                              ? filteredPurchases.map((p) => p._id || p.id)
                               : []
                           );
                         }
                       }}
-                      className="purple-checkbox"
                     />
                   </th>
                 )}
-                <th>
+                <th style={{width: "100px", borderRadius: 0}}>
                   <div className="d-flex align-items-center">
                     Date
                     <FontAwesomeIcon
                       icon={faSort}
-                      className="ms-1 text-white-50"
+                      className="ms-1 opacity-75"
                       style={{cursor: "pointer"}}
                       onClick={() => onSort?.("date")}
                     />
                   </div>
                 </th>
-                <th>{isPurchaseOrdersMode ? "Order No." : "Bill No."}</th>
-                <th>Supplier</th>
-                <th>Items</th>
-                <th className="text-end">
+                <th style={{width: "120px", borderRadius: 0}}>
+                  {isPurchaseOrdersMode ? "Order No." : "Bill No."}
+                </th>
+                <th style={{width: "180px", borderRadius: 0}}>Supplier</th>
+                <th style={{width: "80px", borderRadius: 0}}>Items</th>
+                <th
+                  style={{width: "120px", borderRadius: 0}}
+                  className="text-end"
+                >
                   <div className="d-flex align-items-center justify-content-end">
                     Amount
                     <FontAwesomeIcon
                       icon={faSort}
-                      className="ms-1 text-white-50"
+                      className="ms-1 opacity-75"
                       style={{cursor: "pointer"}}
                       onClick={() => onSort?.("amount")}
                     />
                   </div>
                 </th>
-                <th className="text-end">Paid</th>
-                <th className="text-end">Balance</th>
-                <th>Status</th>
-                <th>Payment</th>
-                {enableActions && <th className="text-center">Actions</th>}
+                <th
+                  style={{width: "100px", borderRadius: 0}}
+                  className="text-end"
+                >
+                  Due Date
+                </th>
+                <th style={{width: "100px", borderRadius: 0}}>Status</th>
+                <th style={{width: "100px", borderRadius: 0}}>Payment</th>
+                {enableActions && (
+                  <th
+                    style={{width: "80px", borderRadius: 0}}
+                    className="text-center"
+                  >
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {purchases.map((purchase) => {
+              {/* Active Purchases */}
+              {separatedPurchases.active.map((purchase) => {
                 const amount = parseFloat(
                   purchase.amount ||
                     purchase.total ||
                     purchase.totals?.finalTotal ||
                     0
-                );
-                const paidAmount = parseFloat(
-                  purchase.paidAmount || purchase.payment?.paidAmount || 0
                 );
                 const balance = parseFloat(
                   purchase.balance ||
@@ -1492,6 +1826,9 @@ function PurchaseBillsTable({
                     purchase.pendingAmount ||
                     purchase.payment?.pendingAmount ||
                     0
+                );
+                const paidAmount = parseFloat(
+                  purchase.paidAmount || purchase.payment?.paidAmount || 0
                 );
                 const paymentStatus =
                   purchase.paymentStatus ||
@@ -1508,8 +1845,8 @@ function PurchaseBillsTable({
                 return (
                   <tr
                     key={purchaseId}
-                    className={isSelected ? "table-active-purple" : ""}
-                    style={{cursor: "pointer"}}
+                    className={isSelected ? "table-active" : ""}
+                    style={{cursor: "pointer", height: "60px"}}
                     onClick={() => handleViewPurchase(purchase)}
                   >
                     {enableBulkActions && (
@@ -1532,23 +1869,64 @@ function PurchaseBillsTable({
                     )}
                     <td>
                       <small className="text-muted">
-                        {new Date(
+                        {formatDate(
                           purchase.purchaseDate ||
                             purchase.billDate ||
                             purchase.date ||
                             purchase.invoiceDate
-                        ).toLocaleDateString("en-GB")}
+                        )}
                       </small>
                     </td>
                     <td>
-                      <strong className="text-primary">
-                        {purchase.purchaseNumber ||
-                          purchase.billNumber ||
-                          purchase.billNo ||
-                          purchase.purchaseOrderNumber ||
-                          purchase.invoiceNumber ||
-                          "N/A"}
-                      </strong>
+                      <div className="d-flex flex-column">
+                        <strong className="text-primary">
+                          {purchase.purchaseNumber ||
+                            purchase.billNumber ||
+                            purchase.billNo ||
+                            purchase.purchaseOrderNumber ||
+                            purchase.invoiceNumber ||
+                            "N/A"}
+                        </strong>
+                        {/* ✅ ENHANCED: Show source indicator for auto-generated invoices */}
+                        {((purchase.companyId?.toString() !==
+                          companyId?.toString() &&
+                          !purchase.sourceCompanyId &&
+                          !purchase.isAutoGenerated) ||
+                          (purchase.isAutoGenerated === true &&
+                            purchase.generatedFrom === "sales_invoice" &&
+                            purchase.sourceCompanyId?.toString() !==
+                              companyId?.toString())) && (
+                          <small className="text-info">
+                            <FontAwesomeIcon
+                              icon={faExchangeAlt}
+                              className="me-1"
+                            />
+                            From:{" "}
+                            {purchase.correspondingSalesInvoiceNumber ||
+                              purchase.sourceInvoiceNumber ||
+                              "Sales Invoice"}
+                          </small>
+                        )}
+                        {/* ✅ ENHANCED: Show self-generated indicator */}
+                        {((purchase.companyId?.toString() ===
+                          companyId?.toString() &&
+                          !purchase.sourceCompanyId &&
+                          !purchase.isAutoGenerated) ||
+                          (purchase.isAutoGenerated === true &&
+                            purchase.generatedFrom === "sales_invoice" &&
+                            purchase.sourceCompanyId?.toString() ===
+                              companyId?.toString())) && (
+                          <small className="text-success">
+                            <FontAwesomeIcon
+                              icon={faExchangeAlt}
+                              className="me-1"
+                            />
+                            Self Generated
+                            {purchase.correspondingSalesInvoiceNumber &&
+                              ` from ${purchase.correspondingSalesInvoiceNumber}`}
+                          </small>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div>
@@ -1577,25 +1955,12 @@ function PurchaseBillsTable({
                       </Badge>
                     </td>
                     <td className="text-end">
-                      <strong>₹{amount.toLocaleString("en-IN")}</strong>
+                      <strong>{formatCurrency(amount)}</strong>
                     </td>
                     <td className="text-end">
-                      {paidAmount > 0 ? (
-                        <span className="text-success fw-medium">
-                          ₹{paidAmount.toLocaleString("en-IN")}
-                        </span>
-                      ) : (
-                        <span className="text-muted">₹0</span>
-                      )}
-                    </td>
-                    <td className="text-end">
-                      {balance > 0 ? (
-                        <span className="text-danger fw-medium">
-                          ₹{balance.toLocaleString("en-IN")}
-                        </span>
-                      ) : (
-                        <span className="text-muted">₹0</span>
-                      )}
+                      <small className="text-muted">
+                        {calculateDueDate(purchase)}
+                      </small>
                     </td>
                     <td>
                       <StatusBadge
@@ -1603,6 +1968,7 @@ function PurchaseBillsTable({
                         paymentStatus={paymentStatus}
                         amount={amount}
                         balance={balance}
+                        purchase={purchase}
                       />
                     </td>
                     <td>
@@ -1627,7 +1993,7 @@ function PurchaseBillsTable({
                     </td>
                     {enableActions && (
                       <td
-                        className="text-center dropdown-cell"
+                        className="text-center"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ActionButton purchase={purchase} />
@@ -1636,12 +2002,235 @@ function PurchaseBillsTable({
                   </tr>
                 );
               })}
+
+              {/* Cancelled Purchases Section */}
+              {separatedPurchases.cancelled.length > 0 && (
+                <>
+                  <tr className="cancelled-section">
+                    <td
+                      colSpan={enableBulkActions ? "10" : "9"}
+                      className="py-3 text-center border-0"
+                    >
+                      <Button
+                        variant="outline-warning"
+                        size="sm"
+                        onClick={() =>
+                          setShowCancelledPurchases(!showCancelledPurchases)
+                        }
+                        style={{borderRadius: 0}}
+                      >
+                        <FontAwesomeIcon
+                          icon={
+                            showCancelledPurchases ? faChevronUp : faChevronDown
+                          }
+                          className="me-2"
+                        />
+                        Cancelled {labels.documentNamePlural}
+                        <Badge bg="warning" className="ms-2">
+                          {separatedPurchases.cancelled.length}
+                        </Badge>
+                      </Button>
+                    </td>
+                  </tr>
+
+                  {showCancelledPurchases &&
+                    separatedPurchases.cancelled.map((purchase) => {
+                      const amount = parseFloat(
+                        purchase.amount ||
+                          purchase.total ||
+                          purchase.totals?.finalTotal ||
+                          0
+                      );
+                      const balance = parseFloat(
+                        purchase.balance ||
+                          purchase.balanceAmount ||
+                          purchase.pendingAmount ||
+                          purchase.payment?.pendingAmount ||
+                          0
+                      );
+                      const paidAmount = parseFloat(
+                        purchase.paidAmount || purchase.payment?.paidAmount || 0
+                      );
+                      const paymentStatus =
+                        purchase.paymentStatus ||
+                        purchase.payment?.status ||
+                        (balance <= 0
+                          ? "paid"
+                          : paidAmount > 0
+                          ? "partial"
+                          : "pending");
+                      const itemsCount = (purchase.items || []).length;
+                      const purchaseId = purchase._id || purchase.id;
+
+                      return (
+                        <tr
+                          key={`cancelled-${purchaseId}`}
+                          className="table-secondary opacity-75"
+                          style={{cursor: "pointer", height: "60px"}}
+                          onClick={() => handleViewPurchase(purchase)}
+                        >
+                          {enableBulkActions && <td></td>}
+                          <td>
+                            <small className="text-muted">
+                              {formatDate(
+                                purchase.purchaseDate ||
+                                  purchase.billDate ||
+                                  purchase.date ||
+                                  purchase.invoiceDate
+                              )}
+                            </small>
+                          </td>
+                          <td>
+                            <div className="d-flex flex-column">
+                              <strong className="text-muted text-decoration-line-through">
+                                {purchase.purchaseNumber ||
+                                  purchase.billNumber ||
+                                  purchase.billNo ||
+                                  purchase.purchaseOrderNumber ||
+                                  purchase.invoiceNumber ||
+                                  "N/A"}
+                              </strong>
+                              <div className="mt-1">
+                                <small className="text-danger">
+                                  <FontAwesomeIcon
+                                    icon={faBan}
+                                    className="me-1"
+                                  />
+                                  Cancelled
+                                </small>
+                              </div>
+                              {/* ✅ ENHANCED: Show source indicator for cancelled auto-generated invoices */}
+                              {((purchase.companyId?.toString() !==
+                                companyId?.toString() &&
+                                !purchase.sourceCompanyId &&
+                                !purchase.isAutoGenerated) ||
+                                (purchase.isAutoGenerated === true &&
+                                  purchase.generatedFrom === "sales_invoice" &&
+                                  purchase.sourceCompanyId?.toString() !==
+                                    companyId?.toString())) && (
+                                <small className="text-muted">
+                                  <FontAwesomeIcon
+                                    icon={faExchangeAlt}
+                                    className="me-1"
+                                  />
+                                  From:{" "}
+                                  {purchase.correspondingSalesInvoiceNumber ||
+                                    purchase.sourceInvoiceNumber ||
+                                    "Sales Invoice"}
+                                </small>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="fw-medium text-muted">
+                              {purchase.supplierName ||
+                                purchase.supplier?.name ||
+                                purchase.partyName ||
+                                "Unknown Supplier"}
+                            </div>
+                          </td>
+                          <td>
+                            <Badge bg="secondary" className="me-1">
+                              {itemsCount} item{itemsCount !== 1 ? "s" : ""}
+                            </Badge>
+                          </td>
+                          <td className="text-end">
+                            <strong className="text-muted text-decoration-line-through">
+                              {formatCurrency(amount)}
+                            </strong>
+                          </td>
+                          <td className="text-end">
+                            <small className="text-muted text-decoration-line-through">
+                              {calculateDueDate(purchase)}
+                            </small>
+                          </td>
+                          <td>
+                            <StatusBadge
+                              status={purchase.status}
+                              paymentStatus={paymentStatus}
+                              amount={amount}
+                              balance={balance}
+                              purchase={purchase}
+                            />
+                          </td>
+                          <td>
+                            <Badge bg="secondary" className="text-capitalize">
+                              {purchase.paymentMethod ||
+                                purchase.payment?.method ||
+                                purchase.paymentType ||
+                                "Cash"}
+                            </Badge>
+                          </td>
+                          {enableActions && (
+                            <td
+                              className="text-center"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ActionButton purchase={purchase} />
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                </>
+              )}
+
+              {/* Empty State */}
+              {separatedPurchases.active.length === 0 &&
+                separatedPurchases.cancelled.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={enableBulkActions ? "10" : "9"}
+                      className="text-center py-5 border-0"
+                    >
+                      {sourceFilter === "all" ? (
+                        <EmptyStateComponent />
+                      ) : (
+                        <div className="text-center py-5">
+                          <FontAwesomeIcon
+                            icon={
+                              sourceFilter === "self_generated"
+                                ? faExchangeAlt
+                                : faTruck
+                            }
+                            size="4x"
+                            className="text-muted mb-4"
+                          />
+                          <h4 className="text-muted mb-3">
+                            No{" "}
+                            {sourceFilter === "self_generated"
+                              ? "Self Generated"
+                              : "Supplier"}{" "}
+                            {labels.documentNamePlural} Found
+                          </h4>
+                          <p className="text-muted mb-4">
+                            {sourceFilter === "self_generated"
+                              ? "No purchase invoices have been generated from your sales invoices yet. These are created when you sell to other companies."
+                              : "No purchase invoices from suppliers found. These include both manual entries and supplier-generated invoices."}
+                          </p>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleSourceFilterChange("all")}
+                            style={{borderRadius: 0}}
+                          >
+                            <FontAwesomeIcon
+                              icon={faClipboardList}
+                              className="me-2"
+                            />
+                            View All Purchases
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
             </tbody>
           </Table>
         </div>
       </div>
 
-      {/* ✅ Enhanced Universal View Modal */}
+      {/* ✅ NEW: Universal View Modal */}
       {selectedPurchase && (
         <UniversalViewModal
           show={viewModalShow}
@@ -1650,471 +2239,50 @@ function PurchaseBillsTable({
             setSelectedPurchase(null);
             setModalError(null);
           }}
-          title={`${labels.documentName} Details`}
-          data={selectedPurchase}
           transaction={selectedPurchase}
-          companyId={companyId}
-          currentUser={currentUser}
-          currentCompany={currentCompany}
-          addToast={addToast}
-          loading={modalLoading}
-          error={modalError}
           documentType={
             isPurchaseOrdersMode ? "purchase-order" : "purchase-invoice"
           }
-          // ✅ Enhanced action handlers
-          onEdit={handleModalEdit}
-          onPrint={handleModalPrint}
-          onShare={handleModalShare}
-          onDownload={handleModalDownload}
-          onDuplicate={handleModalDuplicate}
-          onDelete={handleModalDelete}
-          // ✅ Additional props for enhanced functionality
-          enableEdit={enableActions}
-          enablePrint={true}
-          enableShare={true}
-          enableDownload={true}
-          enableDuplicate={enableActions}
-          enableDelete={enableActions}
-          // ✅ Purchase-specific props
-          enableConvert={isPurchaseOrdersMode}
-          onConvert={() => handleConvertPurchase(selectedPurchase)}
-          onMarkAsOrdered={
-            isPurchaseOrdersMode
-              ? () => handleMarkAsOrdered(selectedPurchase)
-              : undefined
-          }
-          onMarkAsReceived={
-            isPurchaseOrdersMode
-              ? () => handleMarkAsReceived(selectedPurchase)
-              : undefined
-          }
-          onComplete={
-            isPurchaseOrdersMode
-              ? () => handleCompletePurchase(selectedPurchase)
-              : undefined
-          }
+          onEdit={handleEditPurchase}
+          onPrint={onPrintPurchase}
+          onDownload={onDownloadPurchase}
+          onShare={onSharePurchase}
+          onConvert={onConvertPurchase}
+          onGenerateSalesOrder={onMarkAsOrdered} // For purchase orders
         />
       )}
 
-      <style>
-        {`
-      .purchase-bills-table-wrapper {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e9ecef;
-        position: relative;
-        max-width: 100%;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-      }
-
-      .purchase-bills-table-wrapper .table-responsive-wrapper {
-        overflow-x: auto;
-        overflow-y: visible;
-        max-width: 100%;
-        position: relative;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
-      }
-
-      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar {
-        height: 6px;
-      }
-
-      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-track {
-        background: #f1f3f4;
-        border-radius: 3px;
-      }
-
-      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb {
-        background: rgba(168, 85, 247, 0.3);
-        border-radius: 3px;
-      }
-
-      .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
-        background: rgba(168, 85, 247, 0.5);
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple {
-        background: linear-gradient(
-          135deg,
-          #6f42c1 0%,
-          #8b5cf6 50%,
-          #a855f7 100%
-        );
-        position: sticky;
-        top: 0;
-        z-index: 100;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th {
-        background: transparent !important;
-        border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-        font-weight: 600;
-        padding: 16px 12px;
-        font-size: 0.875rem;
-        color: #ffffff !important;
-        white-space: nowrap;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-        position: relative;
-        min-width: 120px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:first-child {
-        min-width: 40px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(2) {
-        min-width: 100px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(3) {
-        min-width: 150px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(4) {
-        min-width: 180px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(5) {
-        min-width: 80px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(6) {
-        min-width: 120px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(7) {
-        min-width: 100px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(8) {
-        min-width: 100px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(9) {
-        min-width: 100px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:nth-child(10) {
-        min-width: 100px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:last-child {
-        min-width: 80px;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(
-          45deg,
-          rgba(255, 255, 255, 0.1) 0%,
-          transparent 50%
-        );
-        pointer-events: none;
-      }
-
-      .purchase-bills-table-wrapper .table-header-purple th:hover {
-        background: rgba(255, 255, 255, 0.1) !important;
-        transition: all 0.3s ease;
-      }
-
-      .purple-checkbox input[type="checkbox"] {
-        accent-color: #ffffff;
-        transform: scale(1.1);
-      }
-
-      .purple-checkbox input[type="checkbox"]:checked {
-        background-color: #ffffff;
-        border-color: #ffffff;
-      }
-
-      .purchase-bills-table-wrapper .table tbody tr.table-active-purple {
-        background: linear-gradient(
-          90deg,
-          rgba(168, 85, 247, 0.1) 0%,
-          rgba(139, 92, 246, 0.05) 100%
-        );
-        border-left: 4px solid #a855f7;
-      }
-
-      .purchase-bills-table-wrapper .table {
-        margin-bottom: 0;
-        font-size: 0.9rem;
-        width: 100%;
-        table-layout: auto;
-        min-width: 1200px;
-      }
-
-      .purchase-bills-table-wrapper .table td {
-        padding: 16px 12px;
-        vertical-align: middle;
-        border-bottom: 1px solid #f1f3f4;
-        white-space: nowrap;
-        min-width: inherit;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-cell {
-        position: relative;
-        z-index: 10;
-        overflow: visible;
-      }
-
-      .purchase-bills-table-wrapper .table tbody tr:hover {
-        background: linear-gradient(
-          90deg,
-          rgba(168, 85, 247, 0.05) 0%,
-          rgba(139, 92, 246, 0.02) 100%
-        );
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(168, 85, 247, 0.15);
-        transition: all 0.2s ease;
-        border-left: 3px solid #a855f7;
-      }
-
-      .purchase-bills-table-wrapper .dropdown {
-        position: static;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-toggle {
-        border: none !important;
-        box-shadow: none !important;
-        background: transparent !important;
-        color: #6f42c1;
-        position: relative;
-        z-index: 11;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-toggle:focus,
-      .purchase-bills-table-wrapper .dropdown-toggle:hover {
-        box-shadow: 0 0 0 0.2rem rgba(168, 85, 247, 0.25) !important;
-        background-color: rgba(168, 85, 247, 0.1) !important;
-        color: #6f42c1 !important;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-menu {
-        border: none;
-        box-shadow: 0 8px 32px rgba(168, 85, 247, 0.3);
-        border-radius: 8px;
-        margin-top: 4px;
-        border-top: 3px solid #a855f7;
-        z-index: 9999 !important;
-        position: absolute !important;
-        will-change: transform;
-        min-width: 180px;
-        background: white;
-        transform: translateZ(0);
-      }
-
-      .purchase-bills-table-wrapper .dropdown-menu.show {
-        z-index: 9999 !important;
-        position: absolute !important;
-      }
-
-      .purchase-bills-table-wrapper .badge {
-        font-size: 0.75rem;
-        font-weight: 500;
-        padding: 0.4em 0.8em;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-item {
-        padding: 8px 16px;
-        font-size: 0.875rem;
-        transition: all 0.2s ease;
-        white-space: nowrap;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-item:hover {
-        background: linear-gradient(
-          90deg,
-          rgba(168, 85, 247, 0.1) 0%,
-          rgba(139, 92, 246, 0.05) 100%
-        );
-        color: #6f42c1;
-        padding-left: 20px;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-header {
-        font-size: 0.75rem;
-        color: #6f42c1;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        background: rgba(168, 85, 247, 0.1);
-        margin: 0 -16px;
-        padding: 8px 16px;
-      }
-
-      .purchase-bills-table-wrapper .dropdown-divider {
-        border-color: rgba(168, 85, 247, 0.2);
-      }
-
-      .purchase-bills-table-wrapper .text-white-50:hover {
-        color: rgba(255, 255, 255, 0.8) !important;
-        transform: scale(1.1);
-        transition: all 0.2s ease;
-      }
-
-      @media (max-width: 1400px) {
-        .purchase-bills-table-wrapper .table {
-          min-width: 1100px;
-        }
-        
-        .purchase-bills-table-wrapper .table th,
-        .purchase-bills-table-wrapper .table td {
-          padding: 14px 10px;
-          font-size: 0.85rem;
-        }
-      }
-
-      @media (max-width: 1200px) {
-        .purchase-bills-table-wrapper .table {
-          min-width: 1000px;
-        }
-
-        .purchase-bills-table-wrapper .table th,
-        .purchase-bills-table-wrapper .table td {
-          padding: 12px 8px;
-          font-size: 0.85rem;
-        }
-
-        .purchase-bills-table-wrapper .dropdown-menu {
-          min-width: 160px;
-        }
-      }
-
-      @media (max-width: 992px) {
-        .purchase-bills-table-wrapper .table {
-          min-width: 900px;
-        }
-
-        .purchase-bills-table-wrapper .table th,
-        .purchase-bills-table-wrapper .table td {
-          padding: 10px 6px;
-          font-size: 0.8rem;
-        }
-      }
-
-      @media (max-width: 768px) {
-        .purchase-bills-table-wrapper {
-          font-size: 0.8rem;
-          border-radius: 8px;
-          margin: 0 -15px;
-        }
-
-        .purchase-bills-table-wrapper .table {
-          min-width: 800px;
-        }
-
-        .purchase-bills-table-wrapper .table th,
-        .purchase-bills-table-wrapper .table td {
-          padding: 8px 4px;
-          font-size: 0.75rem;
-        }
-
-        .purchase-bills-table-wrapper .badge {
-          font-size: 0.7rem;
-          padding: 0.3em 0.6em;
-        }
-
-        .purchase-bills-table-wrapper .table-header-purple th {
-          padding: 10px 6px;
-          font-size: 0.75rem;
-        }
-
-        .purchase-bills-table-wrapper .dropdown-menu {
-          min-width: 140px;
-          font-size: 0.8rem;
-        }
-
-        .purchase-bills-table-wrapper .dropdown-item {
-          padding: 6px 12px;
-          font-size: 0.8rem;
-        }
-
-        .purchase-bills-table-wrapper .table-responsive-wrapper::-webkit-scrollbar {
-          height: 8px;
-        }
-      }
-
-      @media (max-width: 576px) {
-        .purchase-bills-table-wrapper {
-          border-radius: 0;
-          margin: 0 -15px;
-        }
-
-        .purchase-bills-table-wrapper .table {
-          min-width: 700px;
-        }
-
-        .purchase-bills-table-wrapper .table th,
-        .purchase-bills-table-wrapper .table td {
-          padding: 6px 3px;
-          font-size: 0.7rem;
-        }
-      }
-
-      .purchase-bills-table-wrapper .table tbody tr {
-        transition: all 0.2s ease;
-      }
-
-      .purchase-bills-table-wrapper .spinner-border {
-        width: 3rem;
-        height: 3rem;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-info {
-        background: linear-gradient(45deg, #a855f7, #8b5cf6) !important;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-success {
-        background: linear-gradient(45deg, #10b981, #059669) !important;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-warning {
-        background: linear-gradient(45deg, #f59e0b, #d97706) !important;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-danger {
-        background: linear-gradient(45deg, #ef4444, #dc2626) !important;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-secondary {
-        background: linear-gradient(45deg, #6b7280, #4b5563) !important;
-      }
-
-      .purchase-bills-table-wrapper .badge.bg-primary {
-        background: linear-gradient(45deg, #8b5cf6, #7c3aed) !important;
-      }
-
-      .dropdown-menu {
-        z-index: 9999 !important;
-      }
-
-      .table-responsive {
-        overflow: visible !important;
-      }
-
-      .purchase-bills-table-wrapper .dropdown.show .dropdown-menu {
-        z-index: 9999 !important;
-        position: absolute !important;
-        transform: translate3d(0, 0, 0);
-      }
-
-      .purchase-bills-table-wrapper * {
-        box-sizing: border-box;
-      }
-      `}
-      </style>
+      {/* ✅ Modal Loading State */}
+      {modalLoading && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{zIndex: 9999}}
+        >
+          <div className="text-center text-white">
+            <Spinner
+              animation="border"
+              variant="light"
+              size="lg"
+              className="mb-3"
+            />
+            <h5>Loading Purchase Details...</h5>
+            <p className="text-muted">Please wait while we fetch the data</p>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal Error State */}
+      {modalError && !modalLoading && (
+        <Alert
+          variant="danger"
+          className="mt-3"
+          dismissible
+          onClose={() => setModalError(null)}
+        >
+          <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+          <strong>Error:</strong> {modalError}
+        </Alert>
+      )}
     </>
   );
 }

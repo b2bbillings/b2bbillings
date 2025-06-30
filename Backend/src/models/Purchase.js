@@ -1,367 +1,584 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // Payment History Schema
 const paymentHistorySchema = new mongoose.Schema({
-    amount: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    method: {
-        type: String,
-        enum: ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'credit', 'online', 'bank'],
-        default: 'cash'
-    },
-    reference: {
-        type: String,
-        trim: true,
-        default: ''
-    },
-    paymentDate: {
-        type: Date,
-        required: true,
-        default: Date.now
-    },
-    dueDate: {
-        type: Date,
-        default: null
-    },
-    notes: {
-        type: String,
-        trim: true,
-        default: ''
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    createdBy: {
-        type: String,
-        default: 'system'
-    }
+  amount: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  method: {
+    type: String,
+    enum: [
+      "cash",
+      "card",
+      "upi",
+      "bank_transfer",
+      "cheque",
+      "credit",
+      "online",
+      "bank",
+    ],
+    default: "cash",
+  },
+  reference: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  paymentDate: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+  dueDate: {
+    type: Date,
+    default: null,
+  },
+  notes: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  createdBy: {
+    type: String,
+    default: "system",
+  },
 });
 
-// Main Purchase Schema - UPDATED TO MATCH SALE MODEL
-const purchaseSchema = new mongoose.Schema({
-    // Purchase Details
+// Main Purchase Schema - UPDATED WITH BIDIRECTIONAL FUNCTIONALITY
+const purchaseSchema = new mongoose.Schema(
+  {
+    // Purchase Details - UPDATED TO SUPPORT BOTH PURCHASE AND INVOICE MODES
     purchaseNumber: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        index: true
+      type: String,
+      // required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    invoiceNumber: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
     },
     purchaseDate: {
-        type: Date,
-        required: true,
-        default: Date.now
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    invoiceDate: {
+      type: Date,
+      default: Date.now,
     },
     purchaseType: {
-        type: String,
-        enum: ['gst', 'non-gst'],
-        default: 'gst',
-        required: true
+      type: String,
+      enum: ["gst", "non-gst"],
+      default: "gst",
+      required: true,
+    },
+    invoiceType: {
+      type: String,
+      enum: ["gst", "non-gst"],
+      default: "gst",
     },
 
     // Supplier Information
     supplier: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Party',
-        required: true,
-        index: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Party",
+      required: true,
+      index: true,
     },
     supplierMobile: {
-        type: String,
-        trim: true
+      type: String,
+      trim: true,
     },
 
     // GST and Tax Settings - FIXED WITH BOTH FIELDS (MATCHING SALE MODEL)
     gstEnabled: {
-        type: Boolean,
-        required: true,
-        default: true
+      type: Boolean,
+      required: true,
+      default: true,
     },
     taxMode: {
-        type: String,
-        enum: ['with-tax', 'without-tax'],
-        default: 'without-tax'
+      type: String,
+      enum: ["with-tax", "without-tax"],
+      default: "without-tax",
     },
     priceIncludesTax: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
 
     // Company reference
     companyId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Company',
-        required: true,
-        index: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
+    // ✅ NEW: Bidirectional Invoice Relationship Fields
+    // When this purchase invoice creates a corresponding sales invoice in supplier's system
+    correspondingSalesInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sale",
+      default: null,
+      index: true,
+    },
+    correspondingSalesInvoiceNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    correspondingSalesInvoiceCompany: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+      index: true,
+    },
+
+    // ✅ NEW: When this purchase invoice was created from a sales invoice (source tracking)
+    sourceInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    sourceInvoiceNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    sourceInvoiceType: {
+      type: String,
+      enum: [
+        "sales_invoice",
+        "sales-invoice",
+        "purchase_invoice",
+        "purchase-invoice",
+        "purchase_order",
+        "sales_order",
+        "manual",
+      ],
+      default: "manual",
+      required: function () {
+        return this.sourceInvoiceId != null;
+      },
+    },
+    sourceCompanyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+      sparse: true,
+      index: true,
+    },
+
+    // ✅ NEW: Auto-generation tracking for invoices
+    isAutoGenerated: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    generatedFrom: {
+      type: String,
+      enum: ["purchase_order", "sales_invoice", "manual", "import", "api"],
+      default: "manual",
+      index: true,
+    },
+    generatedBy: {
+      type: String,
+      default: null,
+    },
+    generatedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    // ✅ NEW: Sales invoice generation tracking (when this purchase invoice generates a sales invoice)
+    autoGeneratedSalesInvoice: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    salesInvoiceRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sale",
+      default: null,
+      index: true,
+    },
+    salesInvoiceNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    salesInvoiceGeneratedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    salesInvoiceGeneratedBy: {
+      type: String,
+      default: null,
+    },
+    targetCompanyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+      index: true,
+    },
+
+    // ✅ NEW: Purchase Order Conversion Tracking (enhanced)
+    convertedFromPurchaseOrder: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    purchaseOrderRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PurchaseOrder", // Assuming you have this model
+      default: null,
+      index: true,
+    },
+    purchaseOrderNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    convertedFromPurchaseOrderAt: {
+      type: Date,
+      default: null,
+    },
+    convertedFromPurchaseOrderBy: {
+      type: String,
+      default: null,
     },
 
     // Purchase Items Array - COMPLETE WITH ALL FIELDS (MATCHING SALE MODEL)
-    items: [{
+    items: [
+      {
         // Item Reference (optional - for inventory items)
         itemRef: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Item',
-            sparse: true
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Item",
+          sparse: true,
         },
 
         // Item Details
         itemName: {
-            type: String,
-            required: true,
-            trim: true
+          type: String,
+          required: true,
+          trim: true,
         },
         itemCode: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
         },
         hsnCode: {
-            type: String,
-            trim: true,
-            default: '0000'
+          type: String,
+          trim: true,
+          default: "0000",
         },
         category: {
-            type: String,
-            trim: true,
-            default: ''
+          type: String,
+          trim: true,
+          default: "",
+        },
+        description: {
+          type: String,
+          trim: true,
+          default: "",
         },
 
         // Quantity and Unit
         quantity: {
-            type: Number,
-            required: true,
-            min: 0.01
+          type: Number,
+          required: true,
+          min: 0.01,
         },
         unit: {
-            type: String,
-            enum: ['NONE', 'KG', 'GM', 'LTR', 'ML', 'PCS', 'BOX', 'M', 'CM', 'BAG', 'BTL', 'BUN', 'CAN', 'CTN', 'DOZ', 'DRM', 'FEW', 'GMS', 'GRS', 'KGS', 'KME', 'MLS', 'MTR', 'NOS', 'PAC', 'QTL', 'ROL', 'SET', 'SQF', 'SQM', 'TBS', 'TGM', 'THD', 'TON', 'TUB', 'UGS', 'UNT', 'YDS', 'OTH'],
-            default: 'PCS'
+          type: String,
+          enum: [
+            "NONE",
+            "KG",
+            "GM",
+            "LTR",
+            "ML",
+            "PCS",
+            "BOX",
+            "M",
+            "CM",
+            "BAG",
+            "BTL",
+            "BUN",
+            "CAN",
+            "CTN",
+            "DOZ",
+            "DRM",
+            "FEW",
+            "GMS",
+            "GRS",
+            "KGS",
+            "KME",
+            "MLS",
+            "MTR",
+            "NOS",
+            "PAC",
+            "QTL",
+            "ROL",
+            "SET",
+            "SQF",
+            "SQM",
+            "TBS",
+            "TGM",
+            "THD",
+            "TON",
+            "TUB",
+            "UGS",
+            "UNT",
+            "YDS",
+            "OTH",
+          ],
+          default: "PCS",
         },
 
         // Pricing Details - COMPLETE WITH TAX MODE FIELDS (MATCHING SALE MODEL)
         pricePerUnit: {
-            type: Number,
-            required: true,
-            min: 0
+          type: Number,
+          required: true,
+          min: 0,
         },
         taxRate: {
-            type: Number,
-            default: 18,
-            min: 0,
-            max: 100
+          type: Number,
+          default: 18,
+          min: 0,
+          max: 100,
         },
         // FIXED: Item-level tax mode compatibility
         taxMode: {
-            type: String,
-            enum: ['with-tax', 'without-tax'],
-            default: 'without-tax'
+          type: String,
+          enum: ["with-tax", "without-tax"],
+          default: "without-tax",
         },
         priceIncludesTax: {
-            type: Boolean,
-            default: false
+          type: Boolean,
+          default: false,
         },
 
         // Discount Fields
         discountPercent: {
-            type: Number,
-            default: 0,
-            min: 0,
-            max: 100
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 100,
         },
         discountAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
 
         // Tax Amounts - COMPLETE WITH ALL VARIANTS (MATCHING SALE MODEL)
         // Backend fields (original)
         cgst: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         sgst: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         igst: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
 
         // Frontend compatibility fields
         cgstAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         sgstAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         igstAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
 
         // Calculated amounts
         taxableAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         totalTaxAmount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
 
         // Final amounts - BOTH FIELDS FOR COMPATIBILITY (MATCHING SALE MODEL)
         amount: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         itemAmount: {
-            type: Number,
-            required: true,
-            min: 0
+          type: Number,
+          required: true,
+          min: 0,
         },
 
         // Receiving tracking (specific to purchases)
         receivedQuantity: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
         pendingQuantity: {
-            type: Number,
-            default: 0,
-            min: 0
+          type: Number,
+          default: 0,
+          min: 0,
         },
 
         // Line ordering
         lineNumber: {
-            type: Number,
-            required: true,
-            min: 1
-        }
-    }],
+          type: Number,
+          required: true,
+          min: 1,
+        },
+      },
+    ],
 
     // Totals Section - COMPLETE (MATCHING SALE MODEL)
     totals: {
-        subtotal: {
-            type: Number,
-            required: true,
-            default: 0
-        },
-        totalQuantity: {
-            type: Number,
-            default: 0
-        },
-        totalDiscount: {
-            type: Number,
-            default: 0
-        },
-        totalDiscountAmount: {
-            type: Number,
-            default: 0
-        },
-        totalTax: {
-            type: Number,
-            default: 0
-        },
-        totalCGST: {
-            type: Number,
-            default: 0
-        },
-        totalSGST: {
-            type: Number,
-            default: 0
-        },
-        totalIGST: {
-            type: Number,
-            default: 0
-        },
-        totalTaxableAmount: {
-            type: Number,
-            default: 0
-        },
-        finalTotal: {
-            type: Number,
-            required: true,
-            min: 0
-        },
-        roundOff: {
-            type: Number,
-            default: 0
-        },
-        // Additional total fields for compatibility
-        withTaxTotal: {
-            type: Number,
-            default: 0
-        },
-        withoutTaxTotal: {
-            type: Number,
-            default: 0
-        }
+      subtotal: {
+        type: Number,
+        required: true,
+        default: 0,
+      },
+      totalQuantity: {
+        type: Number,
+        default: 0,
+      },
+      totalDiscount: {
+        type: Number,
+        default: 0,
+      },
+      totalDiscountAmount: {
+        type: Number,
+        default: 0,
+      },
+      totalTax: {
+        type: Number,
+        default: 0,
+      },
+      totalCGST: {
+        type: Number,
+        default: 0,
+      },
+      totalSGST: {
+        type: Number,
+        default: 0,
+      },
+      totalIGST: {
+        type: Number,
+        default: 0,
+      },
+      totalTaxableAmount: {
+        type: Number,
+        default: 0,
+      },
+      finalTotal: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+      roundOff: {
+        type: Number,
+        default: 0,
+      },
+      // Additional total fields for compatibility
+      withTaxTotal: {
+        type: Number,
+        default: 0,
+      },
+      withoutTaxTotal: {
+        type: Number,
+        default: 0,
+      },
     },
 
     // Payment Information - COMPLETE WITH DUE DATE SUPPORT (MATCHING SALE MODEL)
     payment: {
-        method: {
-            type: String,
-            enum: ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'credit', 'online', 'bank'],
-            default: 'credit' // Default to credit for purchases
-        },
-        status: {
-            type: String,
-            enum: ['paid', 'pending', 'partial', 'cancelled', 'overdue'],
-            default: 'pending'
-        },
-        paidAmount: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        pendingAmount: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        paymentDate: {
-            type: Date,
-            default: Date.now
-        },
-        dueDate: {
-            type: Date,
-            default: null,
-            index: true
-        },
-        creditDays: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        reference: {
-            type: String,
-            trim: true,
-            default: ''
-        },
-        notes: {
-            type: String,
-            trim: true,
-            default: ''
-        }
+      method: {
+        type: String,
+        enum: [
+          "cash",
+          "card",
+          "upi",
+          "bank_transfer",
+          "cheque",
+          "credit",
+          "online",
+          "bank",
+        ],
+        default: "credit", // Default to credit for purchases
+      },
+      status: {
+        type: String,
+        enum: ["paid", "pending", "partial", "cancelled", "overdue"],
+        default: "pending",
+      },
+      paidAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      pendingAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      paymentDate: {
+        type: Date,
+        default: Date.now,
+      },
+      dueDate: {
+        type: Date,
+        default: null,
+        index: true,
+      },
+      creditDays: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      reference: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      notes: {
+        type: String,
+        trim: true,
+        default: "",
+      },
     },
 
     // Payment History (MATCHING SALE MODEL)
@@ -369,461 +586,1192 @@ const purchaseSchema = new mongoose.Schema({
 
     // Purchase Order Information (specific to purchases)
     purchaseOrderNumber: {
-        type: String,
-        trim: true
+      type: String,
+      trim: true,
     },
     deliveryDate: {
-        type: Date
+      type: Date,
     },
     receivedDate: {
-        type: Date
+      type: Date,
     },
 
     // Additional Information
     notes: {
-        type: String,
-        trim: true,
-        default: ''
+      type: String,
+      trim: true,
+      default: "",
     },
     termsAndConditions: {
-        type: String,
-        trim: true,
-        default: ''
+      type: String,
+      trim: true,
+      default: "",
     },
 
     // Status Management
     status: {
-        type: String,
-        enum: ['draft', 'ordered', 'received', 'completed', 'cancelled'],
-        default: 'draft'
+      type: String,
+      enum: ["draft", "ordered", "received", "completed", "cancelled"],
+      default: "draft",
     },
 
     // Receiving Status (for inventory management)
     receivingStatus: {
-        type: String,
-        enum: ['pending', 'partial', 'complete'],
-        default: 'pending'
+      type: String,
+      enum: ["pending", "partial", "complete"],
+      default: "pending",
     },
 
     // Metadata
     createdBy: {
-        type: String,
-        default: 'system'
+      type: String,
+      default: "system",
     },
     lastModifiedBy: {
-        type: String,
-        default: 'system'
-    }
-}, {
+      type: String,
+      default: "system",
+    },
+  },
+  {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
-});
+    toJSON: {virtuals: true},
+    toObject: {virtuals: true},
+  }
+);
 
-// INDEXES FOR PERFORMANCE (MATCHING SALE MODEL)
-purchaseSchema.index({ companyId: 1, purchaseNumber: 1 }, { unique: true });
-purchaseSchema.index({ companyId: 1, supplier: 1 });
-purchaseSchema.index({ companyId: 1, purchaseDate: 1 });
-purchaseSchema.index({ companyId: 1, status: 1 });
-purchaseSchema.index({ companyId: 1, receivingStatus: 1 });
-purchaseSchema.index({ 'payment.status': 1 });
-purchaseSchema.index({ 'payment.dueDate': 1 });
-purchaseSchema.index({ companyId: 1, 'payment.dueDate': 1 });
+// ✅ UPDATED: Enhanced indexes for bidirectional invoice relationships
+purchaseSchema.index({companyId: 1, purchaseNumber: 1}, {unique: true});
+purchaseSchema.index({companyId: 1, invoiceNumber: 1}, {sparse: true});
+purchaseSchema.index({companyId: 1, supplier: 1});
+purchaseSchema.index({companyId: 1, purchaseDate: 1});
+purchaseSchema.index({companyId: 1, status: 1});
+purchaseSchema.index({companyId: 1, receivingStatus: 1});
+purchaseSchema.index({"payment.status": 1});
+purchaseSchema.index({"payment.dueDate": 1});
+purchaseSchema.index({companyId: 1, "payment.dueDate": 1});
+
+// ✅ NEW: Bidirectional relationship indexes
+purchaseSchema.index({sourceInvoiceId: 1, sourceInvoiceType: 1});
+purchaseSchema.index({correspondingSalesInvoiceId: 1});
+purchaseSchema.index({sourceCompanyId: 1});
+purchaseSchema.index({isAutoGenerated: 1});
+purchaseSchema.index({generatedFrom: 1});
+purchaseSchema.index({autoGeneratedSalesInvoice: 1});
+purchaseSchema.index({salesInvoiceRef: 1});
+purchaseSchema.index({targetCompanyId: 1});
+purchaseSchema.index({convertedFromPurchaseOrder: 1});
+purchaseSchema.index({purchaseOrderRef: 1});
+
+// ✅ NEW: Compound indexes for complex queries
+purchaseSchema.index({companyId: 1, isAutoGenerated: 1, generatedFrom: 1});
+purchaseSchema.index({companyId: 1, autoGeneratedSalesInvoice: 1});
+purchaseSchema.index({companyId: 1, convertedFromPurchaseOrder: 1});
+purchaseSchema.index({sourceCompanyId: 1, sourceInvoiceType: 1});
 
 // VIRTUAL FIELDS (MATCHING SALE MODEL)
-purchaseSchema.virtual('balanceAmount').get(function () {
-    const total = this.totals?.finalTotal || 0;
-    const paid = this.payment?.paidAmount || 0;
-    return Math.max(0, total - paid);
+purchaseSchema.virtual("balanceAmount").get(function () {
+  const total = this.totals?.finalTotal || 0;
+  const paid = this.payment?.paidAmount || 0;
+  return Math.max(0, total - paid);
 });
 
-purchaseSchema.virtual('isOverdue').get(function () {
-    if (!this.payment?.dueDate || this.payment?.pendingAmount <= 0) {
-        return false;
-    }
-    return new Date() > this.payment.dueDate;
+purchaseSchema.virtual("isOverdue").get(function () {
+  if (!this.payment?.dueDate || this.payment?.pendingAmount <= 0) {
+    return false;
+  }
+  return new Date() > this.payment.dueDate;
 });
 
-purchaseSchema.virtual('daysOverdue').get(function () {
-    if (!this.isOverdue) {
-        return 0;
-    }
-    const today = new Date();
-    const dueDate = this.payment.dueDate;
-    const timeDiff = today.getTime() - dueDate.getTime();
-    return Math.ceil(timeDiff / (1000 * 3600 * 24));
+purchaseSchema.virtual("daysOverdue").get(function () {
+  if (!this.isOverdue) {
+    return 0;
+  }
+  const today = new Date();
+  const dueDate = this.payment.dueDate;
+  const timeDiff = today.getTime() - dueDate.getTime();
+  return Math.ceil(timeDiff / (1000 * 3600 * 24));
 });
 
 // Virtual for total received quantity
-purchaseSchema.virtual('totalReceivedQuantity').get(function () {
-    return this.items.reduce((sum, item) => sum + (item.receivedQuantity || 0), 0);
+purchaseSchema.virtual("totalReceivedQuantity").get(function () {
+  return this.items.reduce(
+    (sum, item) => sum + (item.receivedQuantity || 0),
+    0
+  );
 });
 
 // Virtual for total pending quantity
-purchaseSchema.virtual('totalPendingQuantity').get(function () {
-    return this.items.reduce((sum, item) => sum + Math.max(0, item.quantity - (item.receivedQuantity || 0)), 0);
+purchaseSchema.virtual("totalPendingQuantity").get(function () {
+  return this.items.reduce(
+    (sum, item) =>
+      sum + Math.max(0, item.quantity - (item.receivedQuantity || 0)),
+    0
+  );
 });
 
-// PRE-SAVE MIDDLEWARE - COMPLETE WITH TAX MODE SYNC (MATCHING SALE MODEL)
-purchaseSchema.pre('save', function (next) {
-    // 1. SYNC GLOBAL TAX MODE FIELDS
-    if (this.taxMode) {
-        this.priceIncludesTax = this.taxMode === 'with-tax';
-    } else if (this.priceIncludesTax !== undefined) {
-        this.taxMode = this.priceIncludesTax ? 'with-tax' : 'without-tax';
+// ✅ NEW: Virtual fields for bidirectional invoice relationships
+purchaseSchema.virtual("hasCorrespondingSalesInvoice").get(function () {
+  return !!(
+    this.correspondingSalesInvoiceId && this.correspondingSalesInvoiceNumber
+  );
+});
+
+purchaseSchema.virtual("isFromSalesInvoice").get(function () {
+  return !!(
+    this.sourceInvoiceId &&
+    this.sourceInvoiceType === "sales_invoice" &&
+    this.sourceCompanyId
+  );
+});
+
+purchaseSchema.virtual("isFromPurchaseOrder").get(function () {
+  return !!(this.convertedFromPurchaseOrder && this.purchaseOrderRef);
+});
+
+purchaseSchema.virtual("hasGeneratedSalesInvoice").get(function () {
+  return !!(this.autoGeneratedSalesInvoice && this.salesInvoiceRef);
+});
+
+// ✅ NEW: Virtual for comprehensive invoice tracking info
+purchaseSchema.virtual("invoiceTrackingInfo").get(function () {
+  return {
+    hasSource: this.isFromSalesInvoice || this.isFromPurchaseOrder,
+    hasCorresponding: this.hasCorrespondingSalesInvoice,
+    hasGeneratedSalesInvoice: this.hasGeneratedSalesInvoice,
+    isAutoGenerated: this.isAutoGenerated,
+    generatedFrom: this.generatedFrom,
+    sourceChain: this.sourceInvoiceId
+      ? {
+          sourceInvoiceId: this.sourceInvoiceId,
+          sourceInvoiceNumber: this.sourceInvoiceNumber,
+          sourceInvoiceType: this.sourceInvoiceType,
+          sourceCompanyId: this.sourceCompanyId,
+        }
+      : this.purchaseOrderRef
+      ? {
+          purchaseOrderRef: this.purchaseOrderRef,
+          purchaseOrderNumber: this.purchaseOrderNumber,
+          convertedFromPurchaseOrderAt: this.convertedFromPurchaseOrderAt,
+          convertedFromPurchaseOrderBy: this.convertedFromPurchaseOrderBy,
+        }
+      : null,
+    downstreamChain: this.correspondingSalesInvoiceId
+      ? {
+          correspondingSalesInvoiceId: this.correspondingSalesInvoiceId,
+          correspondingSalesInvoiceNumber: this.correspondingSalesInvoiceNumber,
+          correspondingSalesInvoiceCompany:
+            this.correspondingSalesInvoiceCompany,
+        }
+      : null,
+    generatedSalesInvoice: this.autoGeneratedSalesInvoice
+      ? {
+          salesInvoiceRef: this.salesInvoiceRef,
+          salesInvoiceNumber: this.salesInvoiceNumber,
+          targetCompanyId: this.targetCompanyId,
+          generatedAt: this.salesInvoiceGeneratedAt,
+          generatedBy: this.salesInvoiceGeneratedBy,
+        }
+      : null,
+  };
+});
+
+// ✅ CRITICAL FIX: Pre-validate middleware to generate purchase/invoice number BEFORE validation
+purchaseSchema.pre("validate", async function (next) {
+  // ============================================================================
+  // STEP 1: GENERATE COMPANY-SPECIFIC SEQUENTIAL PURCHASE/INVOICE NUMBER (IF NEW)
+  // ============================================================================
+  if (this.isNew && !this.purchaseNumber) {
+    try {
+      console.log("🔢 Generating purchase number before validation...");
+
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+
+      // ✅ Get company details for prefix
+      let companyPrefix = "PO";
+      if (this.companyId) {
+        try {
+          const Company = require("./Company");
+          const company = await Company.findById(this.companyId).select(
+            "code businessName"
+          );
+
+          if (company?.code) {
+            companyPrefix = company.code
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "")
+              .substring(0, 6);
+          } else if (company?.businessName) {
+            companyPrefix = company.businessName
+              .replace(/[^A-Za-z]/g, "")
+              .substring(0, 3)
+              .toUpperCase();
+          }
+        } catch (companyError) {
+          console.warn("Could not fetch company details, using default prefix");
+        }
+      }
+
+      // ✅ Determine prefix based on source and type
+      let typePrefix;
+      if (this.sourceInvoiceType === "sales_invoice") {
+        // For purchases created from sales invoices, use "PINV" prefix for invoice number
+        typePrefix =
+          this.gstEnabled || this.purchaseType === "gst" ? "PINV-GST" : "PINV";
+      } else {
+        // Regular purchase orders
+        typePrefix =
+          this.gstEnabled || this.purchaseType === "gst" ? "PO-GST" : "PO";
+      }
+
+      const finalPrefix = `${companyPrefix}-${typePrefix}`;
+
+      // ✅ Find company-specific sequential number
+      const todayStart = new Date(year, date.getMonth(), date.getDate());
+      const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+      const lastPurchase = await this.constructor
+        .findOne({
+          companyId: this.companyId, // ✅ Company-specific filter
+          purchaseDate: {$gte: todayStart, $lt: todayEnd},
+          purchaseNumber: {
+            $exists: true,
+            $ne: null,
+            $ne: "",
+            $regex: new RegExp(`^${finalPrefix}-${year}${month}${day}`),
+          },
+          _id: {$ne: this._id}, // ✅ Exclude current document
+        })
+        .sort({purchaseNumber: -1, createdAt: -1});
+
+      let sequenceNumber = 1;
+
+      if (lastPurchase && lastPurchase.purchaseNumber) {
+        const regex = new RegExp(
+          `^${finalPrefix}-${year}${month}${day}-(\\d+)$`
+        );
+        const match = lastPurchase.purchaseNumber.match(regex);
+
+        if (match) {
+          const lastSequence = parseInt(match[1]);
+          if (!isNaN(lastSequence)) {
+            sequenceNumber = lastSequence + 1;
+          }
+        }
+      }
+
+      // ✅ Generate company-specific purchase number
+      const sequenceStr = sequenceNumber.toString().padStart(4, "0");
+      this.purchaseNumber = `${finalPrefix}-${year}${month}${day}-${sequenceStr}`;
+
+      // ✅ Set invoice number for purchase invoices
+      if (this.sourceInvoiceType === "sales_invoice" || this.invoiceNumber) {
+        this.invoiceNumber = this.purchaseNumber;
+      }
+
+      console.log(
+        `✅ Generated purchase number before validation: ${this.purchaseNumber}`,
+        {
+          companyId: this.companyId.toString(),
+          companyPrefix,
+          typePrefix,
+          finalPrefix,
+          dateStr: `${year}${month}${day}`,
+          sequenceNumber,
+          gstEnabled: this.gstEnabled,
+          purchaseType: this.purchaseType,
+          sourceInvoiceType: this.sourceInvoiceType,
+          isInvoice: this.sourceInvoiceType === "sales_invoice",
+        }
+      );
+    } catch (error) {
+      console.error("❌ Error generating purchase number:", error);
+      // ✅ Fallback with timestamp
+      const timestamp = Date.now().toString().slice(-6);
+      const gstPrefix =
+        this.gstEnabled || this.purchaseType === "gst" ? "GST-" : "";
+
+      if (this.sourceInvoiceType === "sales_invoice") {
+        this.purchaseNumber = `PINV-${gstPrefix}${timestamp}`;
+        this.invoiceNumber = this.purchaseNumber;
+      } else {
+        this.purchaseNumber = `PO-${gstPrefix}${timestamp}`;
+      }
+      console.log(`⚠️ Using fallback purchase number: ${this.purchaseNumber}`);
+    }
+  }
+
+  next();
+});
+
+// ✅ UPDATED: Combined pre-save middleware (runs AFTER validation)
+purchaseSchema.pre("save", async function (next) {
+  // ============================================================================
+  // STEP 2: SYNC GLOBAL TAX MODE FIELDS
+  // ============================================================================
+  if (this.taxMode) {
+    this.priceIncludesTax = this.taxMode === "with-tax";
+  } else if (this.priceIncludesTax !== undefined) {
+    this.taxMode = this.priceIncludesTax ? "with-tax" : "without-tax";
+  }
+
+  // ============================================================================
+  // STEP 3: SYNC INVOICE FIELDS WITH PURCHASE FIELDS
+  // ============================================================================
+  if (!this.invoiceNumber && this.purchaseNumber) {
+    this.invoiceNumber = this.purchaseNumber;
+  }
+  if (!this.invoiceDate && this.purchaseDate) {
+    this.invoiceDate = this.purchaseDate;
+  }
+  if (!this.invoiceType && this.purchaseType) {
+    this.invoiceType = this.purchaseType;
+  }
+
+  // ============================================================================
+  // STEP 4: PROCESS ITEMS
+  // ============================================================================
+  this.items.forEach((item, index) => {
+    // Set line numbers
+    if (!item.lineNumber) {
+      item.lineNumber = index + 1;
     }
 
-    // 2. PROCESS ITEMS
-    this.items.forEach((item, index) => {
-        // Set line numbers
-        if (!item.lineNumber) {
-            item.lineNumber = index + 1;
-        }
+    // Sync item-level tax mode fields
+    if (item.taxMode) {
+      item.priceIncludesTax = item.taxMode === "with-tax";
+    } else if (item.priceIncludesTax !== undefined) {
+      item.taxMode = item.priceIncludesTax ? "with-tax" : "without-tax";
+    } else {
+      // Use global tax mode if item doesn't have its own
+      item.taxMode = this.taxMode || "without-tax";
+      item.priceIncludesTax = item.taxMode === "with-tax";
+    }
 
-        // Sync item-level tax mode fields
-        if (item.taxMode) {
-            item.priceIncludesTax = item.taxMode === 'with-tax';
-        } else if (item.priceIncludesTax !== undefined) {
-            item.taxMode = item.priceIncludesTax ? 'with-tax' : 'without-tax';
-        } else {
-            // Use global tax mode if item doesn't have its own
-            item.taxMode = this.taxMode || 'without-tax';
-            item.priceIncludesTax = item.taxMode === 'with-tax';
-        }
+    // Sync calculated amounts for compatibility
+    if (item.itemAmount && !item.amount) {
+      item.amount = item.itemAmount;
+    } else if (item.amount && !item.itemAmount) {
+      item.itemAmount = item.amount;
+    }
 
-        // Sync calculated amounts for compatibility
-        if (item.itemAmount && !item.amount) {
-            item.amount = item.itemAmount;
-        } else if (item.amount && !item.itemAmount) {
-            item.itemAmount = item.amount;
-        }
+    // Sync tax amounts
+    if (item.cgst !== undefined && item.cgstAmount === undefined) {
+      item.cgstAmount = item.cgst;
+    } else if (item.cgstAmount !== undefined && item.cgst === undefined) {
+      item.cgst = item.cgstAmount;
+    }
 
-        // Sync tax amounts
-        if (item.cgst !== undefined && item.cgstAmount === undefined) {
-            item.cgstAmount = item.cgst;
-        } else if (item.cgstAmount !== undefined && item.cgst === undefined) {
-            item.cgst = item.cgstAmount;
-        }
+    if (item.sgst !== undefined && item.sgstAmount === undefined) {
+      item.sgstAmount = item.sgst;
+    } else if (item.sgstAmount !== undefined && item.sgst === undefined) {
+      item.sgst = item.sgstAmount;
+    }
 
-        if (item.sgst !== undefined && item.sgstAmount === undefined) {
-            item.sgstAmount = item.sgst;
-        } else if (item.sgstAmount !== undefined && item.sgst === undefined) {
-            item.sgst = item.sgstAmount;
-        }
+    if (item.igst !== undefined && item.igstAmount === undefined) {
+      item.igstAmount = item.igst;
+    } else if (item.igstAmount !== undefined && item.igst === undefined) {
+      item.igst = item.igstAmount;
+    }
 
-        if (item.igst !== undefined && item.igstAmount === undefined) {
-            item.igstAmount = item.igst;
-        } else if (item.igstAmount !== undefined && item.igst === undefined) {
-            item.igst = item.igstAmount;
-        }
+    // Calculate total tax amount
+    item.totalTaxAmount =
+      (item.cgstAmount || item.cgst || 0) +
+      (item.sgstAmount || item.sgst || 0) +
+      (item.igstAmount || item.igst || 0);
 
-        // Calculate total tax amount
-        item.totalTaxAmount = (item.cgstAmount || item.cgst || 0) +
-            (item.sgstAmount || item.sgst || 0) +
-            (item.igstAmount || item.igst || 0);
+    // Update pending quantity
+    item.pendingQuantity = Math.max(
+      0,
+      item.quantity - (item.receivedQuantity || 0)
+    );
+  });
 
-        // Update pending quantity
-        item.pendingQuantity = Math.max(0, item.quantity - (item.receivedQuantity || 0));
+  // ============================================================================
+  // STEP 5: UPDATE PAYMENT STATUS
+  // ============================================================================
+  if (this.payment && this.totals) {
+    const paidAmount = this.payment.paidAmount || 0;
+    const finalTotal = this.totals.finalTotal || 0;
+
+    this.payment.pendingAmount = Math.max(0, finalTotal - paidAmount);
+
+    if (paidAmount >= finalTotal && finalTotal > 0) {
+      this.payment.status = "paid";
+      this.payment.pendingAmount = 0;
+      this.payment.dueDate = null;
+    } else if (paidAmount > 0) {
+      if (this.payment.dueDate && new Date() > this.payment.dueDate) {
+        this.payment.status = "overdue";
+      } else {
+        this.payment.status = "partial";
+      }
+    } else {
+      if (this.payment.dueDate && new Date() > this.payment.dueDate) {
+        this.payment.status = "overdue";
+      } else {
+        this.payment.status = "pending";
+      }
+    }
+  }
+
+  // ============================================================================
+  // STEP 6: SET GENERATION METADATA FOR AUTO-GENERATED INVOICES
+  // ============================================================================
+  if (this.isAutoGenerated && this.isNew) {
+    if (!this.generatedAt) {
+      this.generatedAt = new Date();
+    }
+    if (!this.generatedBy) {
+      this.generatedBy = "system";
+    }
+  }
+
+  // ============================================================================
+  // STEP 7: UPDATE NOTES WITH BIDIRECTIONAL TRACKING INFO
+  // ============================================================================
+  if (this.isNew) {
+    let trackingNotes = [];
+
+    if (this.sourceInvoiceId && this.sourceInvoiceNumber) {
+      trackingNotes.push(
+        `Converted from ${this.sourceInvoiceType.replace("_", " ")} ${
+          this.sourceInvoiceNumber
+        }`
+      );
+    }
+
+    if (this.purchaseOrderRef && this.purchaseOrderNumber) {
+      trackingNotes.push(
+        `Converted from Purchase Order ${this.purchaseOrderNumber}`
+      );
+    }
+
+    if (trackingNotes.length > 0) {
+      const existingNotes = this.notes ? this.notes.trim() : "";
+      const newTrackingInfo = trackingNotes.join(". ");
+
+      if (existingNotes && !existingNotes.includes(newTrackingInfo)) {
+        this.notes = `${existingNotes}. ${newTrackingInfo}`;
+      } else if (!existingNotes) {
+        this.notes = newTrackingInfo;
+      }
+    }
+  }
+
+  next();
+});
+
+// ✅ NEW: Post-save middleware for bidirectional invoice creation
+purchaseSchema.post("save", async function (doc) {
+  // Only create corresponding invoice for new purchase invoices that are not auto-generated
+  if (
+    doc.isNew &&
+    !doc.isAutoGenerated &&
+    doc.status !== "draft" &&
+    doc.sourceInvoiceType !== "sales_invoice"
+  ) {
+    try {
+      await doc.createCorrespondingSalesInvoice();
+    } catch (error) {
+      console.error("❌ Failed to create corresponding sales invoice:", error);
+      // Don't throw error to avoid breaking the purchase invoice save
+    }
+  }
+});
+
+// ✅ NEW: Create corresponding sales invoice in supplier's system
+purchaseSchema.methods.createCorrespondingSalesInvoice = async function () {
+  try {
+    console.log(
+      "🔄 Creating corresponding sales invoice for purchase invoice:",
+      this.purchaseNumber
+    );
+
+    // Import models
+    const Company = mongoose.model("Company");
+    const Sale = mongoose.model("Sale");
+    const Party = mongoose.model("Party");
+
+    // Check if supplier has their own company account in the system
+    const supplierCompany = await Company.findOne({
+      $or: [{owner: this.supplier}, {"users.user": this.supplier}],
     });
 
-    // 3. UPDATE PAYMENT STATUS
-    if (this.payment && this.totals) {
-        const paidAmount = this.payment.paidAmount || 0;
-        const finalTotal = this.totals.finalTotal || 0;
-
-        this.payment.pendingAmount = Math.max(0, finalTotal - paidAmount);
-
-        if (paidAmount >= finalTotal && finalTotal > 0) {
-            this.payment.status = 'paid';
-            this.payment.pendingAmount = 0;
-            this.payment.dueDate = null;
-        } else if (paidAmount > 0) {
-            if (this.payment.dueDate && new Date() > this.payment.dueDate) {
-                this.payment.status = 'overdue';
-            } else {
-                this.payment.status = 'partial';
-            }
-        } else {
-            if (this.payment.dueDate && new Date() > this.payment.dueDate) {
-                this.payment.status = 'overdue';
-            } else {
-                this.payment.status = 'pending';
-            }
-        }
+    if (!supplierCompany) {
+      console.log("ℹ️ Supplier does not have a company account in the system");
+      return null;
     }
 
-    next();
-});
+    // Generate sales invoice number for supplier
+    const salesInvoiceNumber = await this.generateSalesInvoiceNumber(
+      supplierCompany._id
+    );
 
-// PRE-SAVE MIDDLEWARE FOR PURCHASE NUMBER GENERATION
-purchaseSchema.pre('save', async function (next) {
-    if (this.isNew && !this.purchaseNumber) {
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+    // Transform purchase invoice items to sales invoice format
+    const salesInvoiceItems = this.items.map((item) => ({
+      itemRef: item.itemRef,
+      itemName: item.itemName,
+      itemCode: item.itemCode,
+      description: item.description || "",
+      quantity: item.quantity,
+      pricePerUnit: item.pricePerUnit,
+      unit: item.unit,
+      discountPercent: item.discountPercent || 0,
+      discountAmount: item.discountAmount || 0,
+      taxRate: item.taxRate || 0,
+      taxMode: item.taxMode || "without-tax",
+      priceIncludesTax: item.priceIncludesTax || false,
+      cgst: item.cgst || 0,
+      sgst: item.sgst || 0,
+      igst: item.igst || 0,
+      cgstAmount: item.cgstAmount || 0,
+      sgstAmount: item.sgstAmount || 0,
+      igstAmount: item.igstAmount || 0,
+      taxableAmount: item.taxableAmount || 0,
+      totalTaxAmount: item.totalTaxAmount || 0,
+      amount: item.amount || item.itemAmount,
+      itemAmount: item.itemAmount || item.amount,
+      lineNumber: item.lineNumber,
+    }));
 
-        // Find the last purchase for today
-        const todayStart = new Date(year, date.getMonth(), date.getDate());
-        const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+    // Get or create customer party (representing our company in supplier's system)
+    const customerParty = await this.getOrCreateCustomerInSupplierSystem(
+      supplierCompany._id
+    );
 
-        try {
-            const lastPurchase = await this.constructor.findOne({
-                companyId: this.companyId,
-                purchaseDate: { $gte: todayStart, $lt: todayEnd },
-                purchaseNumber: new RegExp(`^${this.purchaseType.toUpperCase()}-${year}${month}${day}`)
-            }).sort({ purchaseNumber: -1 });
+    // ✅ Create sales invoice data with bidirectional tracking
+    const salesInvoiceData = {
+      invoiceNumber: salesInvoiceNumber,
+      invoiceDate: this.invoiceDate || this.purchaseDate,
+      invoiceType: this.invoiceType || this.purchaseType,
 
-            let sequence = 1;
-            if (lastPurchase) {
-                const lastSequence = parseInt(lastPurchase.purchaseNumber.split('-')[2]);
-                sequence = lastSequence + 1;
-            }
+      // Customer is our company
+      customer: customerParty._id,
+      customerMobile: "",
 
-            const prefix = this.purchaseType === 'gst' ? 'PO-GST' : 'PO';
-            this.purchaseNumber = `${prefix}-${year}${month}${day}-${String(sequence).padStart(4, '0')}`;
-        } catch (error) {
-            console.error('Error generating purchase number:', error);
-            // Fallback to timestamp-based number
-            this.purchaseNumber = `${this.purchaseType.toUpperCase()}-${Date.now()}`;
-        }
-    }
-    next();
-});
+      // Company is the supplier's company
+      companyId: supplierCompany._id,
 
-// INSTANCE METHODS (MATCHING SALE MODEL + PURCHASE-SPECIFIC)
-purchaseSchema.methods.addPayment = function (amount, method = 'cash', reference = '', paymentDate = null, dueDate = null, notes = '') {
-    const currentPaid = this.payment?.paidAmount || 0;
-    const newPaidAmount = currentPaid + parseFloat(amount);
+      // Copy items and totals
+      items: salesInvoiceItems,
+      totals: {
+        subtotal: this.totals.subtotal,
+        totalQuantity: this.totals.totalQuantity,
+        totalDiscount: this.totals.totalDiscount,
+        totalDiscountAmount: this.totals.totalDiscountAmount,
+        totalTax: this.totals.totalTax,
+        totalCGST: this.totals.totalCGST,
+        totalSGST: this.totals.totalSGST,
+        totalIGST: this.totals.totalIGST,
+        totalTaxableAmount: this.totals.totalTaxableAmount,
+        finalTotal: this.totals.finalTotal,
+        roundOff: this.totals.roundOff || 0,
+        withTaxTotal: this.totals.withTaxTotal,
+        withoutTaxTotal: this.totals.withoutTaxTotal,
+      },
 
-    // Update main payment record
-    this.payment = {
-        ...this.payment,
-        paidAmount: newPaidAmount,
-        method,
-        reference,
-        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-        dueDate: dueDate ? new Date(dueDate) : this.payment.dueDate,
-        notes
+      // Payment information
+      payment: {
+        method: this.payment.method,
+        status: "pending",
+        paidAmount: 0,
+        pendingAmount: this.totals.finalTotal,
+        dueDate: this.payment.dueDate,
+        creditDays: this.payment.creditDays,
+      },
+
+      // GST and tax settings
+      gstEnabled: this.gstEnabled,
+      taxMode: this.taxMode,
+      priceIncludesTax: this.priceIncludesTax,
+
+      // ✅ Bidirectional reference to original purchase invoice
+      sourceInvoiceId: this._id,
+      sourceInvoiceNumber: this.purchaseNumber,
+      sourceInvoiceType: "purchase_invoice",
+      sourceCompanyId: this.companyId,
+
+      // Other details
+      notes: `Auto-generated from Purchase Invoice ${this.purchaseNumber}`,
+      termsAndConditions: this.termsAndConditions,
+      status: "completed", // Set as completed since it's delivered to customer
+
+      // System fields
+      createdBy: "system",
+      lastModifiedBy: "system",
+      isAutoGenerated: true,
+      generatedFrom: "purchase_invoice",
+      generatedBy: "system",
+      generatedAt: new Date(),
     };
 
-    // Add to payment history
-    if (!this.paymentHistory) {
-        this.paymentHistory = [];
+    const salesInvoice = new Sale(salesInvoiceData);
+    await salesInvoice.save();
+
+    // ✅ Update this purchase invoice with reference to sales invoice
+    this.correspondingSalesInvoiceId = salesInvoice._id;
+    this.correspondingSalesInvoiceNumber = salesInvoice.invoiceNumber;
+    this.correspondingSalesInvoiceCompany = supplierCompany._id;
+    await this.save();
+
+    console.log(
+      "✅ Corresponding sales invoice created:",
+      salesInvoice.invoiceNumber
+    );
+    return salesInvoice;
+  } catch (error) {
+    console.error("❌ Error creating corresponding sales invoice:", error);
+    throw error;
+  }
+};
+
+// ✅ NEW: Generate sales invoice number for supplier's company
+purchaseSchema.methods.generateSalesInvoiceNumber = async function (
+  supplierCompanyId
+) {
+  try {
+    const Sale = mongoose.model("Sale");
+
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    const prefix = this.gstEnabled ? "GST" : "INV";
+
+    const todayStart = new Date(year, date.getMonth(), date.getDate());
+    const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
+
+    const lastInvoice = await Sale.findOne({
+      companyId: supplierCompanyId,
+      invoiceDate: {$gte: todayStart, $lt: todayEnd},
+      invoiceNumber: new RegExp(`^${prefix}-${year}${month}${day}`),
+    }).sort({invoiceNumber: -1});
+
+    let sequence = 1;
+    if (lastInvoice && lastInvoice.invoiceNumber) {
+      const lastSequence = parseInt(lastInvoice.invoiceNumber.split("-").pop());
+      if (!isNaN(lastSequence)) {
+        sequence = lastSequence + 1;
+      }
     }
 
-    this.paymentHistory.push({
-        amount: parseFloat(amount),
-        method,
-        reference,
-        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-        dueDate: dueDate ? new Date(dueDate) : null,
-        notes,
-        createdAt: new Date(),
-        createdBy: 'system'
+    return `${prefix}-${year}${month}${day}-${String(sequence).padStart(
+      4,
+      "0"
+    )}`;
+  } catch (error) {
+    console.error("Error generating sales invoice number:", error);
+    return `INV-${Date.now()}`;
+  }
+};
+
+// ✅ NEW: Get or create customer party in supplier's system
+purchaseSchema.methods.getOrCreateCustomerInSupplierSystem = async function (
+  supplierCompanyId
+) {
+  try {
+    const Party = mongoose.model("Party");
+    const Company = mongoose.model("Company");
+
+    // Get our company information
+    const ourCompany = await Company.findById(this.companyId);
+    if (!ourCompany) {
+      throw new Error("Source company not found");
+    }
+
+    // Try to find existing customer party for our company in supplier's system
+    let customerParty = await Party.findOne({
+      companyId: supplierCompanyId,
+      name: ourCompany.businessName,
+      type: "customer",
     });
 
-    return this.save();
+    if (!customerParty) {
+      // Create new customer based on our company information
+      customerParty = new Party({
+        name: ourCompany.businessName,
+        mobile: ourCompany.phoneNumber || "",
+        email: ourCompany.email || "",
+        type: "customer",
+        partyType: "customer",
+        address: ourCompany.address || "",
+        gstNumber: ourCompany.gstin || "",
+        companyId: supplierCompanyId,
+        status: "active",
+        creditLimit: 0,
+        creditDays: 30,
+        currentBalance: 0,
+        openingBalance: 0,
+        sourceCompanyId: this.companyId,
+        linkedCompanyId: this.companyId,
+        isLinkedCustomer: true,
+        enableBidirectionalInvoices: true,
+        notes: `Auto-created from Purchase Invoice ${this.purchaseNumber}`,
+      });
+      await customerParty.save();
+    }
+
+    return customerParty;
+  } catch (error) {
+    console.error("Error creating customer in supplier system:", error);
+    throw error;
+  }
+};
+
+// ✅ NEW: Get complete bidirectional invoice tracking chain
+purchaseSchema.methods.getInvoiceTrackingChain = async function () {
+  try {
+    const chain = [];
+
+    // Add source information if exists
+    if (this.isFromSalesInvoice) {
+      const Sale = mongoose.model("Sale");
+      const sourceSalesInvoice = await Sale.findById(
+        this.sourceInvoiceId
+      ).populate("customer", "name mobile email");
+
+      if (sourceSalesInvoice) {
+        chain.push({
+          step: 1,
+          type: "sales_invoice",
+          document: sourceSalesInvoice,
+          description: `Source Sales Invoice: ${sourceSalesInvoice.invoiceNumber}`,
+          companyId: sourceSalesInvoice.companyId,
+        });
+      }
+    }
+
+    // Add purchase order source if exists
+    if (this.isFromPurchaseOrder) {
+      const PurchaseOrder = mongoose.model("PurchaseOrder");
+      const sourcePurchaseOrder = await PurchaseOrder.findById(
+        this.purchaseOrderRef
+      ).populate("supplier", "name mobile email");
+
+      if (sourcePurchaseOrder) {
+        chain.push({
+          step: 1,
+          type: "purchase_order",
+          document: sourcePurchaseOrder,
+          description: `Source Purchase Order: ${sourcePurchaseOrder.orderNumber}`,
+          companyId: sourcePurchaseOrder.companyId,
+        });
+      }
+    }
+
+    // Add current purchase invoice
+    chain.push({
+      step: chain.length + 1,
+      type: "purchase_invoice",
+      document: this,
+      description: `Purchase Invoice: ${this.purchaseNumber}`,
+      companyId: this.companyId,
+    });
+
+    // Add corresponding sales invoice if exists
+    if (this.hasCorrespondingSalesInvoice) {
+      const Sale = mongoose.model("Sale");
+      const correspondingSalesInvoice = await Sale.findById(
+        this.correspondingSalesInvoiceId
+      ).populate("customer", "name mobile email");
+
+      if (correspondingSalesInvoice) {
+        chain.push({
+          step: chain.length + 1,
+          type: "sales_invoice",
+          document: correspondingSalesInvoice,
+          description: `Generated Sales Invoice: ${correspondingSalesInvoice.invoiceNumber}`,
+          companyId: correspondingSalesInvoice.companyId,
+        });
+      }
+    }
+
+    return chain;
+  } catch (error) {
+    console.error("Error getting invoice tracking chain:", error);
+    return [];
+  }
+};
+
+// EXISTING INSTANCE METHODS (ENHANCED)
+purchaseSchema.methods.addPayment = function (
+  amount,
+  method = "cash",
+  reference = "",
+  paymentDate = null,
+  dueDate = null,
+  notes = ""
+) {
+  const currentPaid = this.payment?.paidAmount || 0;
+  const newPaidAmount = currentPaid + parseFloat(amount);
+
+  // Update main payment record
+  this.payment = {
+    ...this.payment,
+    paidAmount: newPaidAmount,
+    method,
+    reference,
+    paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+    dueDate: dueDate ? new Date(dueDate) : this.payment.dueDate,
+    notes,
+  };
+
+  // Add to payment history
+  if (!this.paymentHistory) {
+    this.paymentHistory = [];
+  }
+
+  this.paymentHistory.push({
+    amount: parseFloat(amount),
+    method,
+    reference,
+    paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+    dueDate: dueDate ? new Date(dueDate) : null,
+    notes,
+    createdAt: new Date(),
+    createdBy: "system",
+  });
+
+  return this.save();
 };
 
 purchaseSchema.methods.setDueDate = function (creditDays) {
-    if (!creditDays || creditDays <= 0) return this;
+  if (!creditDays || creditDays <= 0) return this;
 
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + parseInt(creditDays));
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + parseInt(creditDays));
 
-    this.payment.dueDate = dueDate;
-    this.payment.creditDays = parseInt(creditDays);
+  this.payment.dueDate = dueDate;
+  this.payment.creditDays = parseInt(creditDays);
 
-    return this;
+  return this;
 };
 
 purchaseSchema.methods.markAsOrdered = function () {
-    this.status = 'ordered';
-    return this.save();
+  this.status = "ordered";
+  return this.save();
 };
 
 purchaseSchema.methods.markAsReceived = function () {
-    this.status = 'received';
-    this.receivedDate = new Date();
-    this.receivingStatus = 'complete';
+  this.status = "received";
+  this.receivedDate = new Date();
+  this.receivingStatus = "complete";
 
-    // Mark all items as fully received
-    this.items.forEach(item => {
-        item.receivedQuantity = item.quantity;
-        item.pendingQuantity = 0;
-    });
+  // Mark all items as fully received
+  this.items.forEach((item) => {
+    item.receivedQuantity = item.quantity;
+    item.pendingQuantity = 0;
+  });
 
-    return this.save();
+  return this.save();
 };
 
 purchaseSchema.methods.markAsCompleted = function () {
-    this.status = 'completed';
-    return this.save();
+  this.status = "completed";
+  return this.save();
 };
 
 purchaseSchema.methods.markAsCancelled = function () {
-    this.status = 'cancelled';
-    return this.save();
+  this.status = "cancelled";
+  return this.save();
 };
 
 purchaseSchema.methods.partialReceive = function (receivedItems) {
-    this.receivingStatus = 'partial';
-    this.status = 'received';
+  this.receivingStatus = "partial";
+  this.status = "received";
 
-    // Update received quantities in items array
-    receivedItems.forEach(receivedItem => {
-        const item = this.items.id(receivedItem.itemId);
-        if (item) {
-            item.receivedQuantity = Math.min(receivedItem.quantity, item.quantity);
-            item.pendingQuantity = Math.max(0, item.quantity - item.receivedQuantity);
-        }
-    });
-
-    // Check if all items are fully received
-    const allReceived = this.items.every(item => item.receivedQuantity >= item.quantity);
-    if (allReceived) {
-        this.receivingStatus = 'complete';
+  // Update received quantities in items array
+  receivedItems.forEach((receivedItem) => {
+    const item = this.items.id(receivedItem.itemId);
+    if (item) {
+      item.receivedQuantity = Math.min(receivedItem.quantity, item.quantity);
+      item.pendingQuantity = Math.max(0, item.quantity - item.receivedQuantity);
     }
+  });
 
-    return this.save();
+  // Check if all items are fully received
+  const allReceived = this.items.every(
+    (item) => item.receivedQuantity >= item.quantity
+  );
+  if (allReceived) {
+    this.receivingStatus = "complete";
+  }
+
+  return this.save();
 };
 
-// STATIC METHODS (MATCHING SALE MODEL + PURCHASE-SPECIFIC)
+// EXISTING STATIC METHODS (ENHANCED)
 purchaseSchema.statics.getTodaysPurchases = function (companyId) {
-    const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const today = new Date();
+  const startOfDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const endOfDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 1
+  );
 
-    return this.find({
-        companyId,
-        purchaseDate: { $gte: startOfDay, $lt: endOfDay },
-        status: { $ne: 'cancelled' }
-    });
+  return this.find({
+    companyId,
+    purchaseDate: {$gte: startOfDay, $lt: endOfDay},
+    status: {$ne: "cancelled"},
+  });
 };
 
 purchaseSchema.statics.getOverduePurchases = function (companyId) {
-    const today = new Date();
-    return this.find({
-        companyId,
-        'payment.status': { $in: ['pending', 'partial', 'overdue'] },
-        'payment.dueDate': { $lt: today },
-        'payment.pendingAmount': { $gt: 0 },
-        status: { $ne: 'cancelled' }
-    }).populate('supplier', 'name mobile email');
+  const today = new Date();
+  return this.find({
+    companyId,
+    "payment.status": {$in: ["pending", "partial", "overdue"]},
+    "payment.dueDate": {$lt: today},
+    "payment.pendingAmount": {$gt: 0},
+    status: {$ne: "cancelled"},
+  }).populate("supplier", "name mobile email");
 };
 
 purchaseSchema.statics.getPurchasesDueToday = function (companyId) {
-    const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const today = new Date();
+  const startOfDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const endOfDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 1
+  );
 
-    return this.find({
-        companyId,
-        'payment.status': { $in: ['pending', 'partial'] },
-        'payment.dueDate': { $gte: startOfDay, $lt: endOfDay },
-        'payment.pendingAmount': { $gt: 0 },
-        status: { $ne: 'cancelled' }
-    }).populate('supplier', 'name mobile email');
+  return this.find({
+    companyId,
+    "payment.status": {$in: ["pending", "partial"]},
+    "payment.dueDate": {$gte: startOfDay, $lt: endOfDay},
+    "payment.pendingAmount": {$gt: 0},
+    status: {$ne: "cancelled"},
+  }).populate("supplier", "name mobile email");
 };
 
-purchaseSchema.statics.getPendingPurchases = function (companyId) {
-    return this.find({
-        companyId,
-        'payment.status': { $in: ['pending', 'partial'] },
-        status: { $ne: 'cancelled' }
-    });
+// ✅ NEW: Static methods for bidirectional invoice analytics
+purchaseSchema.statics.getPurchasesWithCorrespondingSalesInvoices = function (
+  companyId
+) {
+  return this.find({
+    companyId,
+    correspondingSalesInvoiceId: {$exists: true, $ne: null},
+  })
+    .populate("supplier", "name mobile email")
+    .sort({purchaseDate: -1});
 };
 
-purchaseSchema.statics.getPurchasesBySupplier = function (companyId, supplierId) {
-    return this.find({
-        companyId,
-        supplier: supplierId,
-        status: { $ne: 'cancelled' }
-    }).sort({ purchaseDate: -1 });
+purchaseSchema.statics.getPurchasesFromSalesInvoices = function (companyId) {
+  return this.find({
+    companyId,
+    sourceInvoiceType: "sales_invoice",
+  }).populate("supplier", "name mobile email");
 };
 
-purchaseSchema.statics.getPurchasesByDateRange = function (companyId, startDate, endDate) {
-    return this.find({
-        companyId,
-        purchaseDate: { $gte: startDate, $lte: endDate },
-        status: { $ne: 'cancelled' }
-    }).sort({ purchaseDate: -1 });
+purchaseSchema.statics.getPurchasesFromPurchaseOrders = function (companyId) {
+  return this.find({
+    companyId,
+    convertedFromPurchaseOrder: true,
+  }).populate("supplier", "name mobile email");
 };
 
-purchaseSchema.statics.getPaymentSummaryWithOverdue = function (companyId, dateFrom, dateTo) {
-    const matchFilter = { companyId, status: { $ne: 'cancelled' } };
+purchaseSchema.statics.getPurchasesWithGeneratedSalesInvoices = function (
+  companyId
+) {
+  return this.find({
+    companyId,
+    autoGeneratedSalesInvoice: true,
+    salesInvoiceRef: {$exists: true, $ne: null},
+  })
+    .populate("supplier", "name mobile email")
+    .sort({salesInvoiceGeneratedAt: -1});
+};
 
-    if (dateFrom || dateTo) {
-        matchFilter.purchaseDate = {};
-        if (dateFrom) matchFilter.purchaseDate.$gte = new Date(dateFrom);
-        if (dateTo) matchFilter.purchaseDate.$lte = new Date(dateTo);
-    }
-
-    return this.aggregate([
-        { $match: matchFilter },
-        {
-            $addFields: {
-                isOverdue: {
-                    $and: [
-                        { $gt: ['$payment.pendingAmount', 0] },
-                        { $ne: ['$payment.dueDate', null] },
-                        { $lt: ['$payment.dueDate', new Date()] }
-                    ]
-                }
-            }
-        },
-        {
-            $group: {
-                _id: null,
-                totalPurchases: { $sum: '$totals.finalTotal' },
-                totalPaid: { $sum: '$payment.paidAmount' },
-                totalPending: { $sum: '$payment.pendingAmount' },
-                totalOverdue: {
-                    $sum: {
-                        $cond: ['$isOverdue', '$payment.pendingAmount', 0]
-                    }
-                },
-                overdueCount: {
-                    $sum: {
-                        $cond: ['$isOverdue', 1, 0]
-                    }
-                },
-                paymentBreakdown: {
-                    $push: {
-                        status: '$payment.status',
-                        amount: '$payment.pendingAmount',
-                        isOverdue: '$isOverdue'
-                    }
-                }
-            }
-        }
+// ✅ NEW: Get bidirectional invoice analytics for company
+purchaseSchema.statics.getBidirectionalInvoiceAnalytics = async function (
+  companyId
+) {
+  try {
+    const [
+      totalPurchaseInvoices,
+      autoGeneratedPurchaseInvoices,
+      purchasesWithCorrespondingSales,
+      purchasesWithGeneratedSales,
+      purchasesFromSalesInvoices,
+      purchasesFromPurchaseOrders,
+    ] = await Promise.all([
+      this.countDocuments({companyId}),
+      this.countDocuments({companyId, isAutoGenerated: true}),
+      this.countDocuments({
+        companyId,
+        correspondingSalesInvoiceId: {$exists: true, $ne: null},
+      }),
+      this.countDocuments({companyId, autoGeneratedSalesInvoice: true}),
+      this.countDocuments({companyId, sourceInvoiceType: "sales_invoice"}),
+      this.countDocuments({companyId, convertedFromPurchaseOrder: true}),
     ]);
+
+    return {
+      totalPurchaseInvoices,
+      autoGeneratedPurchaseInvoices,
+      purchasesWithCorrespondingSales,
+      purchasesWithGeneratedSales,
+      purchasesFromSalesInvoices,
+      purchasesFromPurchaseOrders,
+      bidirectionalCoverage:
+        totalPurchaseInvoices > 0
+          ? (
+              ((autoGeneratedPurchaseInvoices +
+                purchasesWithCorrespondingSales +
+                purchasesWithGeneratedSales +
+                purchasesFromPurchaseOrders) /
+                totalPurchaseInvoices) *
+              100
+            ).toFixed(2)
+          : 0,
+      salesInvoiceGenerationRate:
+        totalPurchaseInvoices > 0
+          ? (
+              (purchasesWithGeneratedSales / totalPurchaseInvoices) *
+              100
+            ).toFixed(2)
+          : 0,
+      purchaseOrderConversionRate:
+        totalPurchaseInvoices > 0
+          ? (
+              (purchasesFromPurchaseOrders / totalPurchaseInvoices) *
+              100
+            ).toFixed(2)
+          : 0,
+    };
+  } catch (error) {
+    console.error("Error getting bidirectional invoice analytics:", error);
+    throw error;
+  }
+};
+
+// EXISTING STATIC METHODS (CONTINUED)
+purchaseSchema.statics.getPendingPurchases = function (companyId) {
+  return this.find({
+    companyId,
+    "payment.status": {$in: ["pending", "partial"]},
+    status: {$ne: "cancelled"},
+  });
+};
+
+purchaseSchema.statics.getPurchasesBySupplier = function (
+  companyId,
+  supplierId
+) {
+  return this.find({
+    companyId,
+    supplier: supplierId,
+    status: {$ne: "cancelled"},
+  }).sort({purchaseDate: -1});
+};
+
+purchaseSchema.statics.getPurchasesByDateRange = function (
+  companyId,
+  startDate,
+  endDate
+) {
+  return this.find({
+    companyId,
+    purchaseDate: {$gte: startDate, $lte: endDate},
+    status: {$ne: "cancelled"},
+  }).sort({purchaseDate: -1});
+};
+
+purchaseSchema.statics.getPaymentSummaryWithOverdue = function (
+  companyId,
+  dateFrom,
+  dateTo
+) {
+  const matchFilter = {companyId, status: {$ne: "cancelled"}};
+
+  if (dateFrom || dateTo) {
+    matchFilter.purchaseDate = {};
+    if (dateFrom) matchFilter.purchaseDate.$gte = new Date(dateFrom);
+    if (dateTo) matchFilter.purchaseDate.$lte = new Date(dateTo);
+  }
+
+  return this.aggregate([
+    {$match: matchFilter},
+    {
+      $addFields: {
+        isOverdue: {
+          $and: [
+            {$gt: ["$payment.pendingAmount", 0]},
+            {$ne: ["$payment.dueDate", null]},
+            {$lt: ["$payment.dueDate", new Date()]},
+          ],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalPurchases: {$sum: "$totals.finalTotal"},
+        totalPaid: {$sum: "$payment.paidAmount"},
+        totalPending: {$sum: "$payment.pendingAmount"},
+        totalOverdue: {
+          $sum: {
+            $cond: ["$isOverdue", "$payment.pendingAmount", 0],
+          },
+        },
+        overdueCount: {
+          $sum: {
+            $cond: ["$isOverdue", 1, 0],
+          },
+        },
+        paymentBreakdown: {
+          $push: {
+            status: "$payment.status",
+            amount: "$payment.pendingAmount",
+            isOverdue: "$isOverdue",
+          },
+        },
+      },
+    },
+  ]);
 };
 
 // Aggregation methods
-purchaseSchema.statics.getPurchaseSummary = function (companyId, startDate, endDate) {
-    return this.aggregate([
-        {
-            $match: {
-                companyId: mongoose.Types.ObjectId(companyId),
-                purchaseDate: { $gte: startDate, $lte: endDate },
-                status: { $ne: 'cancelled' }
-            }
-        },
-        {
-            $group: {
-                _id: null,
-                totalPurchases: { $sum: 1 },
-                totalAmount: { $sum: '$totals.finalTotal' },
-                totalPaid: { $sum: '$payment.paidAmount' },
-                totalPending: { $sum: '$payment.pendingAmount' },
-                avgPurchaseValue: { $avg: '$totals.finalTotal' },
-                totalTax: { $sum: '$totals.totalTax' },
-                totalDiscount: { $sum: '$totals.totalDiscount' }
-            }
-        }
-    ]);
+purchaseSchema.statics.getPurchaseSummary = function (
+  companyId,
+  startDate,
+  endDate
+) {
+  return this.aggregate([
+    {
+      $match: {
+        companyId: mongoose.Types.ObjectId(companyId),
+        purchaseDate: {$gte: startDate, $lte: endDate},
+        status: {$ne: "cancelled"},
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalPurchases: {$sum: 1},
+        totalAmount: {$sum: "$totals.finalTotal"},
+        totalPaid: {$sum: "$payment.paidAmount"},
+        totalPending: {$sum: "$payment.pendingAmount"},
+        avgPurchaseValue: {$avg: "$totals.finalTotal"},
+        totalTax: {$sum: "$totals.totalTax"},
+        totalDiscount: {$sum: "$totals.totalDiscount"},
+      },
+    },
+  ]);
 };
 
-module.exports = mongoose.model('Purchase', purchaseSchema);
+module.exports = mongoose.model("Purchase", purchaseSchema);

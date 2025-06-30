@@ -18,9 +18,9 @@ function EditPurchaseBill({
   currentUser,
   currentCompany,
   isOnline = true,
-  mode = "purchases", // "purchases" or "purchase-orders"
-  documentType = "purchase", // "purchase" or "purchase-order"
-  purchaseOrderService, // For purchase orders
+  mode = "purchases",
+  documentType = "purchase",
+  purchaseOrderService,
   companyId: propCompanyId,
 }) {
   const {companyId: paramCompanyId, id: purchaseId} = useParams();
@@ -29,14 +29,12 @@ function EditPurchaseBill({
 
   const companyId = propCompanyId || paramCompanyId;
 
-  // ✅ State management
   const [loading, setLoading] = useState(true);
   const [purchase, setPurchase] = useState(null);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // ✅ Determine document type from URL or location state
   const isPurchaseOrdersMode = useMemo(() => {
     const pathParts = location.pathname.split("/");
     return (
@@ -48,24 +46,18 @@ function EditPurchaseBill({
     );
   }, [location, mode, documentType]);
 
-  // Get existing transaction from navigation state
   const existingTransaction =
     location.state?.purchase || location.state?.transaction;
   const returnPath = location.state?.returnPath;
 
-  // Default toast function
   const defaultAddToast = useCallback((message, type = "info") => {
     if (type === "error") {
-      console.error("Error:", message);
       alert(`Error: ${message}`);
-    } else {
-      console.log(`${type.toUpperCase()}:`, message);
     }
   }, []);
 
   const effectiveAddToast = addToast || defaultAddToast;
 
-  // Get document labels
   const getDocumentLabels = () => {
     return isPurchaseOrdersMode
       ? {
@@ -82,7 +74,6 @@ function EditPurchaseBill({
 
   const labels = getDocumentLabels();
 
-  // ✅ Load transaction data on mount
   useEffect(() => {
     if (purchaseId && companyId) {
       loadPurchaseData();
@@ -90,33 +81,17 @@ function EditPurchaseBill({
     }
   }, [purchaseId, companyId, isPurchaseOrdersMode]);
 
-  // ✅ ENHANCED: Load purchase data with improved transaction service integration
   const loadPurchaseData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log("🔄 EditPurchaseBill loading data:", {
-        purchaseId,
-        companyId,
-        isPurchaseOrdersMode,
-      });
-
-      // Try to use transaction from navigation state first
       if (existingTransaction) {
-        console.log(
-          "📥 EditPurchaseBill using transaction from navigation state:",
-          existingTransaction
-        );
-
-        // ✅ Check if data is already transformed by the service
         const isAlreadyTransformed = existingTransaction.isEditing === true;
 
         if (isAlreadyTransformed) {
-          console.log("✅ Data already transformed for editing by service");
           setPurchase(existingTransaction);
         } else {
-          // Apply manual transformation if needed
           const transformedData = await transformPurchaseForEditing(
             existingTransaction
           );
@@ -127,38 +102,21 @@ function EditPurchaseBill({
         return;
       }
 
-      // ✅ STEP 1: Fetch purchase data
       const purchaseData = await fetchPurchaseData();
       if (!purchaseData) {
         throw new Error("Purchase transaction not found");
       }
 
-      console.log("📥 EditPurchaseBill purchase data loaded:", purchaseData);
-
-      // ✅ STEP 2: Enhanced transaction search using new service methods
       const enhancedPurchaseData = await enhancePurchaseWithTransactionData(
         purchaseData
       );
 
-      // ✅ STEP 3: Transform data for editing
       const transformedData = await transformPurchaseForEditing(
         enhancedPurchaseData
       );
 
-      console.log("✅ EditPurchaseBill final transformed data:", {
-        purchaseNumber: transformedData.purchaseNumber,
-        supplierName: transformedData.supplierName,
-        itemsCount: transformedData.items?.length || 0,
-        paymentMethod: transformedData.paymentMethod,
-        bankAccountId: transformedData.bankAccountId,
-        bankAccountName: transformedData.bankAccountName,
-        paymentReceived: transformedData.paymentReceived,
-        hasTransactionData: !!transformedData.paymentTransactionId,
-      });
-
       setPurchase(transformedData);
     } catch (err) {
-      console.error("❌ EditPurchaseBill error loading transaction:", err);
       setError(err.message || "Failed to load purchase data");
       effectiveAddToast(
         `Error loading ${labels.documentName.toLowerCase()}: ${err.message}`,
@@ -169,7 +127,6 @@ function EditPurchaseBill({
     }
   };
 
-  // ✅ Helper: Fetch purchase data with multiple fallbacks
   const fetchPurchaseData = async () => {
     try {
       let purchaseResponse;
@@ -179,22 +136,15 @@ function EditPurchaseBill({
           purchaseId
         );
       } else {
-        // ✅ Try enhanced method first, fallback to regular methods
         try {
           purchaseResponse =
             await purchaseService.getPurchaseWithTransactionData(purchaseId);
         } catch (enhancedError) {
-          console.warn(
-            "⚠️ Enhanced method failed, trying getPurchaseForEdit..."
-          );
           try {
             purchaseResponse = await purchaseService.getPurchaseForEdit(
               purchaseId
             );
           } catch (editError) {
-            console.warn(
-              "⚠️ getPurchaseForEdit failed, using getPurchaseById..."
-            );
             purchaseResponse = await purchaseService.getPurchaseById(
               purchaseId
             );
@@ -202,7 +152,6 @@ function EditPurchaseBill({
         }
       }
 
-      // Handle purchase response
       if (purchaseResponse?.success && purchaseResponse.data) {
         return purchaseResponse.data;
       } else if (
@@ -214,29 +163,13 @@ function EditPurchaseBill({
 
       return null;
     } catch (error) {
-      console.error("❌ Error fetching purchase data:", error);
       throw error;
     }
   };
 
-  // ✅ Enhanced: Use direct API calls with multiple search strategies for better results
   const enhancePurchaseWithTransactionData = async (purchaseData) => {
     try {
-      console.log(
-        "🔍 Searching for related transactions using enhanced direct API search..."
-      );
-      console.log("📥 Purchase data for transaction search:", {
-        purchaseNumber: purchaseData.purchaseNumber,
-        supplierId: purchaseData.supplierId || purchaseData.supplier?._id,
-        supplierName: purchaseData.supplierName || purchaseData.supplier?.name,
-        amount: purchaseData.amount || purchaseData.finalTotal,
-        paymentMethod: purchaseData.paymentMethod,
-        bankAccountId: purchaseData.bankAccountId,
-      });
-
-      // ✅ STRATEGY 1: Direct API search with multiple approaches
       const searchStrategies = [
-        // Strategy 1: By purchase number in description
         {
           name: "Purchase number search",
           params: {
@@ -248,7 +181,6 @@ function EditPurchaseBill({
             sortOrder: "desc",
           },
         },
-        // Strategy 2: By supplier ID and amount
         {
           name: "Supplier and amount search",
           params: {
@@ -259,7 +191,6 @@ function EditPurchaseBill({
             limit: 10,
           },
         },
-        // Strategy 3: By amount and date range
         {
           name: "Amount and date search",
           params: {
@@ -285,7 +216,6 @@ function EditPurchaseBill({
             limit: 20,
           },
         },
-        // Strategy 4: Broad supplier search
         {
           name: "Broad supplier search",
           params: {
@@ -298,12 +228,8 @@ function EditPurchaseBill({
 
       let bestTransaction = null;
 
-      // ✅ Try each search strategy with direct API calls
       for (const strategy of searchStrategies) {
         try {
-          console.log(`🔍 Trying ${strategy.name}...`, strategy.params);
-
-          // Build query parameters
           const queryParams = new URLSearchParams();
           Object.entries(strategy.params).forEach(([key, value]) => {
             if (value !== undefined && value !== null && value !== "") {
@@ -311,7 +237,6 @@ function EditPurchaseBill({
             }
           });
 
-          // Direct API call
           const apiUrl = `${
             import.meta.env.VITE_API_URL || "http://localhost:5000/api"
           }/companies/${companyId}/transactions?${queryParams}`;
@@ -329,16 +254,11 @@ function EditPurchaseBill({
 
             if (data.success && data.data?.transactions?.length > 0) {
               const transactions = data.data.transactions;
-              console.log(
-                `✅ Found ${transactions.length} transactions using ${strategy.name}`
-              );
 
-              // ✅ Enhanced matching logic
               const targetAmount =
                 purchaseData.amount || purchaseData.finalTotal || 0;
               const purchaseNumber = purchaseData.purchaseNumber || "";
 
-              // Priority 1: Exact amount match with bank account
               let match = transactions.find(
                 (t) =>
                   Math.abs((t.amount || 0) - targetAmount) < 1 &&
@@ -348,7 +268,6 @@ function EditPurchaseBill({
               );
 
               if (!match) {
-                // Priority 2: Description match with bank account
                 match = transactions.find((t) => {
                   const description = (t.description || "").toLowerCase();
                   const reference = (t.referenceNumber || "").toLowerCase();
@@ -367,7 +286,6 @@ function EditPurchaseBill({
               }
 
               if (!match) {
-                // Priority 3: Any bank transaction with same supplier
                 match = transactions.find(
                   (t) =>
                     t.bankAccountId &&
@@ -380,36 +298,17 @@ function EditPurchaseBill({
 
               if (match) {
                 bestTransaction = match;
-                console.log(
-                  `✅ Found matching transaction using ${strategy.name}:`,
-                  {
-                    transactionId: match._id || match.id,
-                    bankAccountId: match.bankAccountId,
-                    bankAccountName: match.bankAccountName,
-                    amount: match.amount,
-                    paymentMethod: match.paymentMethod,
-                  }
-                );
-                break; // Exit search loop
+                break;
               }
             }
-          } else {
-            console.warn(
-              `⚠️ ${strategy.name} API call failed:`,
-              response.status
-            );
           }
         } catch (strategyError) {
-          console.warn(`⚠️ ${strategy.name} failed:`, strategyError.message);
           continue;
         }
       }
 
-      // ✅ STRATEGY 2: Fallback - Search all payment transactions manually
       if (!bestTransaction) {
         try {
-          console.log("🔍 Fallback: Getting all payment transactions...");
-
           const allTransactionsUrl = `${
             import.meta.env.VITE_API_URL || "http://localhost:5000/api"
           }/companies/${companyId}/transactions?transactionType=payment_out&limit=100&sortBy=transactionDate&sortOrder=desc`;
@@ -428,11 +327,6 @@ function EditPurchaseBill({
               ? data.data?.transactions || []
               : [];
 
-            console.log(
-              `📥 Retrieved ${allTransactions.length} payment transactions for manual search`
-            );
-
-            // Manual matching logic
             const targetAmount =
               purchaseData.amount || purchaseData.finalTotal || 0;
 
@@ -445,41 +339,28 @@ function EditPurchaseBill({
             );
 
             if (potentialMatches.length > 0) {
-              bestTransaction = potentialMatches[0]; // Take the first match
-              console.log("✅ Found transaction via manual search:", {
-                transactionId: bestTransaction._id,
-                bankAccountId: bestTransaction.bankAccountId,
-                amount: bestTransaction.amount,
-              });
+              bestTransaction = potentialMatches[0];
             }
           }
         } catch (fallbackError) {
-          console.warn("⚠️ Fallback search failed:", fallbackError.message);
+          // Silent fail
         }
       }
 
-      // ✅ If transaction found, merge with purchase data
       if (bestTransaction) {
-        console.log("✅ Merging transaction data with purchase data...");
         return mergeTransactionWithPurchase(purchaseData, bestTransaction);
       } else {
-        console.log(
-          "❌ No related transactions found, checking for bank payment method..."
-        );
         return await handleBankPaymentWithoutTransaction(purchaseData);
       }
     } catch (transactionError) {
-      console.error("❌ Transaction search failed:", transactionError);
-      return purchaseData; // Continue without transaction data
+      return purchaseData;
     }
   };
 
-  // ✅ Helper: Merge transaction data with purchase data
   const mergeTransactionWithPurchase = (purchaseData, transactionData) => {
     return {
       ...purchaseData,
 
-      // ✅ Bank account information from transaction
       bankAccountId:
         transactionData.bankAccountId || purchaseData.bankAccountId,
       bankAccountName:
@@ -492,7 +373,6 @@ function EditPurchaseBill({
         transactionData.accountNo ||
         purchaseData.accountNumber,
 
-      // ✅ Payment method from transaction (normalized for frontend)
       paymentMethod: transactionService.normalizePaymentMethodForFrontend(
         transactionData.paymentMethod ||
           transactionData.method ||
@@ -501,12 +381,10 @@ function EditPurchaseBill({
           "cash"
       ),
 
-      // ✅ Payment amount from transaction
       paymentReceived:
         transactionData.amount || purchaseData.paymentReceived || 0,
       paidAmount: transactionData.amount || purchaseData.paidAmount || 0,
 
-      // ✅ Payment transaction details
       upiTransactionId:
         transactionData.upiTransactionId ||
         transactionData.upiId ||
@@ -523,7 +401,6 @@ function EditPurchaseBill({
         purchaseData.chequeNumber,
       chequeDate: transactionData.chequeDate || purchaseData.chequeDate,
 
-      // ✅ Transaction metadata
       paymentTransactionId: transactionData._id || transactionData.id,
       transactionDate:
         transactionData.transactionDate || transactionData.createdAt,
@@ -531,7 +408,6 @@ function EditPurchaseBill({
       transactionType: transactionData.transactionType,
       transactionDescription: transactionData.description,
 
-      // ✅ Enhanced payment object with transaction data
       payment: {
         ...(purchaseData.payment || {}),
         method: transactionService.normalizePaymentMethodForFrontend(
@@ -573,7 +449,6 @@ function EditPurchaseBill({
     };
   };
 
-  // ✅ Helper: Handle bank payment method without transaction data
   const handleBankPaymentWithoutTransaction = async (purchaseData) => {
     const frontendPaymentMethod =
       transactionService.normalizePaymentMethodForFrontend(
@@ -581,10 +456,6 @@ function EditPurchaseBill({
       );
 
     if (frontendPaymentMethod === "bank" && !purchaseData.bankAccountId) {
-      console.log(
-        "🔍 Payment method is bank but no transaction found, fetching bank accounts..."
-      );
-
       try {
         const bankAccountsResponse = await fetch(
           `${
@@ -624,31 +495,24 @@ function EditPurchaseBill({
           }
         }
       } catch (bankAccountError) {
-        console.warn("⚠️ Could not fetch bank accounts:", bankAccountError);
+        // Silent fail
       }
     }
 
     return purchaseData;
   };
 
-  // ✅ Enhanced: Transform purchase data for editing with better structure
   const transformPurchaseForEditing = async (purchaseData) => {
-    // ✅ Check if data is already transformed
     if (purchaseData.isEditing === true) {
-      console.log("✅ Data already transformed for editing");
       return purchaseData;
     }
-
-    console.log("🔄 Transforming purchase data for editing...");
 
     const transformedData = {
       ...purchaseData,
 
-      // ✅ Basic purchase info
       id: purchaseData._id || purchaseData.id,
       _id: purchaseData._id || purchaseData.id,
 
-      // ✅ Supplier information - handle various formats for form compatibility
       customer: purchaseData.supplier || {
         id:
           purchaseData.supplierId ||
@@ -679,7 +543,6 @@ function EditPurchaseBill({
           purchaseData.supplierGstNumber || purchaseData.supplier?.gstNumber,
       },
 
-      // ✅ Also keep individual supplier fields for backward compatibility
       supplier: purchaseData.supplier,
       supplierId:
         purchaseData.supplierId ||
@@ -694,7 +557,6 @@ function EditPurchaseBill({
         purchaseData.supplier?.mobile ||
         purchaseData.supplier?.phone,
 
-      // ✅ Items - ensure proper format
       items: (purchaseData.items || []).map((item) => ({
         ...item,
         itemRef: item.itemRef || item.selectedProduct || item.id,
@@ -706,39 +568,32 @@ function EditPurchaseBill({
         hsnCode: item.hsnCode || item.hsnNumber || "0000",
       })),
 
-      // ✅ Payment information enhanced with transaction data
       paymentReceived:
         purchaseData.paymentReceived || purchaseData.paidAmount || 0,
       paidAmount: purchaseData.paidAmount || purchaseData.paymentReceived || 0,
 
-      // ✅ Payment method normalized for frontend
       paymentMethod: transactionService.normalizePaymentMethodForFrontend(
         purchaseData.paymentMethod || purchaseData.payment?.method || "cash"
       ),
 
-      // ✅ Bank account info from transaction (already set above if available)
       bankAccountId: purchaseData.bankAccountId,
       bankAccountName: purchaseData.bankAccountName,
       bankName: purchaseData.bankName,
       accountNumber: purchaseData.accountNumber,
 
-      // ✅ Payment dates and terms
       dueDate: purchaseData.dueDate || purchaseData.payment?.dueDate || null,
       creditDays:
         purchaseData.creditDays || purchaseData.payment?.creditDays || 0,
 
-      // ✅ Payment transaction details from transaction
       chequeNumber: purchaseData.chequeNumber,
       chequeDate: purchaseData.chequeDate,
       upiTransactionId: purchaseData.upiTransactionId,
       bankTransactionId: purchaseData.bankTransactionId,
 
-      // ✅ Transaction metadata
       paymentTransactionId: purchaseData.paymentTransactionId,
       transactionDate: purchaseData.transactionDate,
       transactionStatus: purchaseData.transactionStatus,
 
-      // ✅ Totals
       totals: purchaseData.totals || {
         subtotal: purchaseData.subtotal || 0,
         totalDiscount: purchaseData.totalDiscount || 0,
@@ -751,13 +606,11 @@ function EditPurchaseBill({
           0,
       },
 
-      // ✅ Additional fields
       notes: purchaseData.notes || purchaseData.description || "",
       termsAndConditions:
         purchaseData.termsAndConditions || purchaseData.terms || "",
       status: purchaseData.status || purchaseData.purchaseStatus || "completed",
 
-      // ✅ GST and tax configuration
       gstEnabled: Boolean(purchaseData.gstEnabled),
       purchaseType:
         purchaseData.purchaseType ||
@@ -766,16 +619,13 @@ function EditPurchaseBill({
         purchaseData.globalTaxMode || purchaseData.taxMode || "without-tax",
       priceIncludesTax: Boolean(purchaseData.priceIncludesTax),
 
-      // ✅ Round off
       roundOff: purchaseData.roundOff || 0,
       roundOffEnabled: Boolean(purchaseData.roundOffEnabled),
 
-      // ✅ Employee info
       employeeName:
         purchaseData.employeeName || purchaseData.createdByName || "",
       employeeId: purchaseData.employeeId || purchaseData.createdBy || "",
 
-      // ✅ Metadata for form state
       isEditing: true,
       originalId: purchaseData._id || purchaseData.id,
       createdAt: purchaseData.createdAt,
@@ -785,7 +635,6 @@ function EditPurchaseBill({
     return transformedData;
   };
 
-  // ✅ Load inventory items
   const loadInventoryItems = async () => {
     try {
       if (itemService?.getItems) {
@@ -795,23 +644,14 @@ function EditPurchaseBill({
         }
       }
     } catch (err) {
-      console.warn("⚠️ EditPurchaseBill could not load inventory items:", err);
       setInventoryItems([]);
     }
   };
 
-  // ✅ Enhanced save operation using the updated service methods
   const handleSave = async (updatedData) => {
     try {
       setSaving(true);
 
-      console.log("💾 EditPurchaseBill saving updated transaction:", {
-        purchaseId,
-        isPurchaseOrdersMode,
-        updatedData: updatedData,
-      });
-
-      // ✅ Enhanced save data preparation with backend normalized payment method
       const frontendMethod =
         updatedData.paymentMethod || updatedData.paymentType || "cash";
       const backendMethod =
@@ -824,7 +664,6 @@ function EditPurchaseBill({
         companyId: companyId,
         documentType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
 
-        // ✅ Ensure payment data is properly structured with backend method
         payment: {
           ...(updatedData.paymentData || updatedData.payment || {}),
           method: backendMethod,
@@ -845,31 +684,20 @@ function EditPurchaseBill({
           accountNumber: updatedData.accountNumber || "",
         },
 
-        // ✅ Set backend normalized payment method at top level for compatibility
         paymentMethod: backendMethod,
         paymentType: backendMethod,
         method: backendMethod,
 
-        // ✅ Bank account information at top level
         bankAccountId: updatedData.bankAccountId || null,
         bankAccountName: updatedData.bankAccountName || "",
         bankName: updatedData.bankName || "",
         accountNumber: updatedData.accountNumber || "",
 
-        // ✅ Preserve original creation data
         createdAt: purchase.createdAt,
         createdBy: purchase.createdBy,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser?.name || currentUser?.email || "System",
       };
-
-      console.log("💾 EditPurchaseBill payment method mapping for save:", {
-        frontendMethod: frontendMethod,
-        backendMethod: backendMethod,
-        paymentObject: saveData.payment,
-        topLevelMethod: saveData.paymentMethod,
-        bankAccountId: saveData.bankAccountId,
-      });
 
       let response;
       if (isPurchaseOrdersMode && purchaseOrderService) {
@@ -878,7 +706,6 @@ function EditPurchaseBill({
           saveData
         );
       } else {
-        // ✅ Use the enhanced updatePurchase method with employee context
         const employeeContext = {
           id: currentUser?.id || currentUser?._id,
           name: currentUser?.name || currentUser?.email,
@@ -891,15 +718,9 @@ function EditPurchaseBill({
             employeeContext
           );
         } catch (error) {
-          // ✅ Fallback to regular updatePurchase if enhanced method doesn't exist
-          console.warn(
-            "⚠️ Enhanced updatePurchase not available, using regular method"
-          );
           response = await purchaseService.updatePurchase(purchaseId, saveData);
         }
       }
-
-      console.log("✅ EditPurchaseBill save response:", response);
 
       if (response?.success || response?.data || response?._id) {
         const docType = isPurchaseOrdersMode
@@ -907,7 +728,6 @@ function EditPurchaseBill({
           : "Purchase Bill";
         const responseData = response.data || response;
 
-        // ✅ Enhanced success message with payment info
         const paymentInfo =
           updatedData.paidAmount > 0
             ? ` | Paid: ₹${updatedData.paidAmount.toLocaleString("en-IN")}`
@@ -928,7 +748,6 @@ function EditPurchaseBill({
           "success"
         );
 
-        // Navigate back to list with a slight delay
         setTimeout(() => {
           const listPath =
             returnPath || `/companies/${companyId}/${labels.listPath}`;
@@ -953,7 +772,6 @@ function EditPurchaseBill({
         );
       }
     } catch (error) {
-      console.error("❌ EditPurchaseBill error updating purchase:", error);
       effectiveAddToast(
         `Error updating ${labels.documentName.toLowerCase()}: ${error.message}`,
         "error"
@@ -964,18 +782,15 @@ function EditPurchaseBill({
     }
   };
 
-  // ✅ Handle cancel operation
   const handleCancel = useCallback(() => {
     const listPath = returnPath || `/companies/${companyId}/${labels.listPath}`;
     navigate(listPath);
   }, [returnPath, companyId, labels.listPath, navigate]);
 
-  // ✅ Handle exit (same as cancel)
   const handleExit = useCallback(() => {
     handleCancel();
   }, [handleCancel]);
 
-  // ✅ Handle add new inventory item
   const handleAddItem = async (itemData) => {
     try {
       if (itemService?.createItem) {
@@ -990,13 +805,11 @@ function EditPurchaseBill({
         }
       }
     } catch (error) {
-      console.error("❌ EditPurchaseBill error adding item:", error);
       effectiveAddToast("Failed to add item", "error");
       throw error;
     }
   };
 
-  // ✅ Back button component
   const BackButton = () => (
     <div className="mb-4">
       <Button
@@ -1010,7 +823,6 @@ function EditPurchaseBill({
     </div>
   );
 
-  // ✅ Enhanced loading state with context
   if (loading) {
     return (
       <Container className="py-5 text-center">
@@ -1026,7 +838,6 @@ function EditPurchaseBill({
     );
   }
 
-  // ✅ Enhanced error state with retry options
   if (error) {
     return (
       <Container className="py-5">
@@ -1055,7 +866,6 @@ function EditPurchaseBill({
     );
   }
 
-  // ✅ Enhanced transaction not found state
   if (!purchase) {
     return (
       <Container className="py-5">
@@ -1084,70 +894,33 @@ function EditPurchaseBill({
     );
   }
 
-  // ✅ Main edit form with enhanced props and debugging
-  // Show debug info for transaction and payment mapping
-  console.log("🚀 EditPurchaseBill rendering PurchaseForm with transaction:", {
-    purchaseId,
-    isPurchaseOrdersMode,
-    paidAmount: purchase.paidAmount,
-    totalAmount: purchase.amount,
-    paymentStatus: purchase.paymentStatus,
-    paymentMethod: purchase.paymentMethod,
-    paymentType: purchase.paymentType,
-    // Always use string id for bankAccountId if present (handle both _id and id)
-    bankAccountId: purchase.bankAccountId
-      ? typeof purchase.bankAccountId === "object"
-        ? purchase.bankAccountId._id ||
-          purchase.bankAccountId.id ||
-          String(purchase.bankAccountId)
-        : String(purchase.bankAccountId)
-      : undefined,
-    bankAccountName: purchase.bankAccountName,
-    // Always use string id for paymentTransactionId if present (handle both _id and id)
-    paymentTransactionId:
-      (purchase.paymentTransactionId &&
-        (purchase.paymentTransactionId._id ||
-          purchase.paymentTransactionId.id ||
-          purchase.paymentTransactionId)) ||
-      undefined,
-    hasTransactionData: !!purchase.paymentTransactionId,
-  });
-
   return (
     <PurchaseForm
-      // ✅ Edit mode configuration
       editMode={true}
       existingTransaction={purchase}
       transactionId={purchaseId}
-      // ✅ Callbacks
       onSave={handleSave}
       onCancel={handleCancel}
       onExit={handleExit}
-      // ✅ Data
       inventoryItems={inventoryItems}
       onAddItem={handleAddItem}
-      // ✅ Configuration
       mode={isPurchaseOrdersMode ? "purchase-orders" : "purchases"}
       documentType={isPurchaseOrdersMode ? "purchase-order" : "purchase"}
       formType={isPurchaseOrdersMode ? "purchase-order" : "purchase"}
       orderType={isPurchaseOrdersMode ? "purchase-order" : undefined}
       purchaseOrderService={purchaseOrderService}
-      // ✅ Context
       companyId={companyId}
       currentUser={currentUser}
       currentCompany={currentCompany}
       addToast={effectiveAddToast}
       isOnline={isOnline}
-      // ✅ Enhanced props
       pageTitle={`Edit ${labels.documentName}`}
       saving={saving}
       show={true}
       onHide={handleCancel}
-      // ✅ Enhanced data props for better handling
       initialData={purchase}
       defaultValues={purchase}
       editingData={purchase}
-      // ✅ Additional configuration
       isPageMode={true}
       showHeader={true}
       enableAutoSave={false}

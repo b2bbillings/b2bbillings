@@ -1,53 +1,183 @@
+const mongoose = require("mongoose");
 const Sale = require("../models/Sale");
 const Item = require("../models/Item");
 const Party = require("../models/Party");
-const mongoose = require("mongoose");
-
 const saleController = {
+  // ✅ UPDATED: Generate actual preview invoice number (not just pattern)
+  getNextInvoiceNumber: async (req, res) => {
+    try {
+      const {companyId, invoiceType = "gst"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      console.log(
+        "🔢 Generating preview invoice number for company:",
+        companyId
+      );
+
+      // ✅ Get company details
+      const Company = require("../models/Company");
+      const company = await Company.findById(companyId).select(
+        "businessName code gstin"
+      );
+
+      if (!company) {
+        return res.status(400).json({
+          success: false,
+          message: "Company not found",
+        });
+      }
+
+      // ✅ Generate preview invoice number using same logic as model
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const day = String(today.getDate()).padStart(2, "0");
+      const dateStr = `${year}${month}${day}`;
+
+      // Get company prefix (same as model logic)
+      let companyPrefix = "INV";
+      if (company?.code) {
+        companyPrefix = company.code
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .substring(0, 6);
+      } else if (company?.businessName) {
+        companyPrefix = company.businessName
+          .replace(/[^A-Za-z]/g, "")
+          .substring(0, 3)
+          .toUpperCase();
+      }
+
+      // ✅ Find the next sequence number for today
+      const todayStart = new Date(year, today.getMonth(), today.getDate());
+      const todayEnd = new Date(year, today.getMonth(), today.getDate() + 1);
+
+      const latestInvoice = await Sale.findOne({
+        companyId: companyId,
+        invoiceDate: {$gte: todayStart, $lt: todayEnd},
+        invoiceNumber: {$exists: true, $ne: null},
+      })
+        .sort({invoiceNumber: -1})
+        .select("invoiceNumber");
+
+      let nextSequence = 1;
+      if (latestInvoice && latestInvoice.invoiceNumber) {
+        // Extract sequence from invoice number pattern: PREFIX-GST-YYYYMMDD-XXXX
+        const match = latestInvoice.invoiceNumber.match(/-(\d{4})$/);
+        if (match) {
+          nextSequence = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      const sequenceStr = String(nextSequence).padStart(4, "0");
+
+      // ✅ Generate actual preview number (same format as model)
+      const gstPrefix = invoiceType === "gst" ? "GST-" : "";
+      const previewInvoiceNumber = `${companyPrefix}-${gstPrefix}${dateStr}-${sequenceStr}`;
+
+      console.log("✅ Preview invoice number generated:", {
+        companyId,
+        companyPrefix,
+        dateStr,
+        nextSequence,
+        previewInvoiceNumber,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          previewInvoiceNumber,
+          nextInvoiceNumber: previewInvoiceNumber, // ✅ Actual preview number
+          invoiceType,
+          company: {
+            id: company._id,
+            name: company.businessName,
+            code: company.code,
+            prefix: companyPrefix,
+          },
+          numbering: {
+            prefix: companyPrefix,
+            gstPrefix: invoiceType === "gst" ? "GST-" : "",
+            dateString: dateStr,
+            sequence: nextSequence,
+            formattedSequence: sequenceStr,
+          },
+          pattern: `${companyPrefix}-[GST-]YYYYMMDD-XXXX`,
+          date: today.toISOString().split("T")[0],
+          isSequential: true,
+          companySpecific: true,
+          isPreview: true, // ✅ This is a preview number
+          actualNumberGeneratedBy: "model_pre_save_middleware",
+          note: "This is a preview. Actual number will be confirmed when saving.",
+        },
+        message: "Preview invoice number generated successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error generating preview invoice number:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate preview invoice number",
+        error: error.message,
+      });
+    }
+  },
+
   createSale: async (req, res) => {
     try {
       const {
-        customerName, // Customer name (for display)
-        customerMobile, // Customer mobile (for display)
-        customer, // Customer ID (MAIN - we'll use this)
-        customerId, // Alternative customer ID field
-        invoiceNumber, // Invoice number
-        invoiceDate, // Invoice date
-        gstEnabled = true, // GST enabled flag
-        companyId, // Company ID
-        items, // Items array
-        payment, // Payment details
-        notes, // Notes
-        termsAndConditions, // Terms and conditions
-        roundOff = 0, // Round off amount
-        roundOffEnabled = false, // Round off enabled flag
-        status = "draft", // Sale status
-        taxMode = "without-tax", // Tax mode (with-tax/without-tax)
-        priceIncludesTax = false, // Whether the price includes tax
-        // ✅ NEW: Bidirectional order tracking fields
-        sourceOrderId, // Source sales order ID (if converted from sales order)
-        sourceOrderNumber, // Source sales order number
-        sourceOrderType = "sales_order", // Source order type
-        sourceCompanyId, // Source company ID (for cross-company orders)
-        isAutoGenerated = false, // Whether this invoice was auto-generated
-        generatedFrom = "manual", // Source of generation ('sales_order', 'manual', 'import')
-        convertedBy, // Who converted the order (user ID)
-      } = req.body;
-
-      console.log("📥 Creating sale:", {
         customerName,
+        customerMobile,
         customer,
         customerId,
-        taxMode,
-        priceIncludesTax,
-        gstEnabled,
-        itemCount: items?.length || 0,
-        // ✅ NEW: Log bidirectional tracking info
+        // ❌ REMOVED: invoiceNumber, // Don't accept manual invoice numbers
+        invoiceDate,
+        gstEnabled = true,
+        companyId,
+        items,
+        payment,
+        notes,
+        termsAndConditions,
+        roundOff = 0,
+        roundOffEnabled = false,
+        status = "draft",
+        taxMode = "without-tax",
+        priceIncludesTax = false,
         sourceOrderId,
-        sourceOrderType,
-        isAutoGenerated,
-        generatedFrom,
-      });
+        sourceOrderNumber,
+        sourceOrderType = "sales_order",
+        sourceCompanyId,
+        isAutoGenerated = false,
+        generatedFrom = "manual",
+        convertedBy,
+        autoDetectSourceCompany = true,
+      } = req.body;
+
+      console.log(
+        "📥 Creating sale with model-based automatic invoice numbering:",
+        {
+          customerName,
+          customer,
+          customerId,
+          taxMode,
+          priceIncludesTax,
+          gstEnabled,
+          itemCount: items?.length || 0,
+          companyId,
+          sourceOrderId,
+          sourceOrderType,
+          sourceCompanyId,
+          isAutoGenerated,
+          generatedFrom,
+          autoDetectSourceCompany,
+          modelHandlesNumbering: true, // ✅ Clear indication
+        }
+      );
 
       // Validate required fields
       if (!companyId || !items || items.length === 0) {
@@ -57,12 +187,34 @@ const saleController = {
         });
       }
 
-      // FIXED: Handle customer - prioritize ID over name
+      // ✅ Get company details for response only (not for numbering)
+      const Company = require("../models/Company");
+      const currentCompany = await Company.findById(companyId).select(
+        "businessName code gstin"
+      );
+
+      if (!currentCompany) {
+        return res.status(400).json({
+          success: false,
+          message: "Company not found",
+        });
+      }
+
+      console.log(
+        "🏢 Company details (model will handle numbering automatically):",
+        {
+          companyId,
+          businessName: currentCompany.businessName,
+          code: currentCompany.code,
+          modelHandlesInvoiceNumberGeneration: true, // ✅ Emphasize model responsibility
+        }
+      );
+
+      // ✅ Handle customer validation (existing code)
       let customerRecord = null;
       const finalCustomerId = customer || customerId;
 
       if (finalCustomerId && mongoose.Types.ObjectId.isValid(finalCustomerId)) {
-        // ✅ PREFERRED: Find existing customer by ID
         console.log("🔍 Finding customer by ID:", finalCustomerId);
         customerRecord = await Party.findById(finalCustomerId);
 
@@ -77,9 +229,10 @@ const saleController = {
           id: customerRecord._id,
           name: customerRecord.name,
           mobile: customerRecord.mobile,
+          customerCompanyId: customerRecord.companyId,
+          linkedCompanyId: customerRecord.linkedCompanyId,
         });
       } else if (customerName && customerMobile) {
-        // ✅ FALLBACK: Find by name and mobile (but don't create)
         console.log(
           "🔍 Finding customer by name and mobile:",
           customerName,
@@ -97,7 +250,6 @@ const saleController = {
         });
 
         if (!customerRecord) {
-          // Try by name only
           customerRecord = await Party.findOne({
             companyId: companyId,
             type: "customer",
@@ -117,6 +269,8 @@ const saleController = {
           id: customerRecord._id,
           name: customerRecord.name,
           mobile: customerRecord.mobile,
+          customerCompanyId: customerRecord?.companyId,
+          linkedCompanyId: customerRecord?.linkedCompanyId,
         });
       } else {
         return res.status(400).json({
@@ -137,7 +291,7 @@ const saleController = {
         finalPriceIncludesTax,
       });
 
-      // FIXED: Process items with proper tax mode handling
+      // Process items (existing code continues...)
       const processedItems = [];
       let subtotal = 0;
       let totalDiscount = 0;
@@ -205,26 +359,22 @@ const saleController = {
         let itemTaxableAmount = 0;
 
         if (gstEnabled && taxRate > 0) {
-          // Split tax rate for CGST and SGST
           const cgstRate = taxRate / 2;
           const sgstRate = taxRate / 2;
 
           if (itemPriceIncludesTax) {
-            // WITH TAX MODE - Extract tax from amount
             const taxMultiplier = 1 + taxRate / 100;
             itemTaxableAmount = amountAfterDiscount / taxMultiplier;
             cgst = (itemTaxableAmount * cgstRate) / 100;
             sgst = (itemTaxableAmount * sgstRate) / 100;
-            itemAmount = amountAfterDiscount; // Amount stays same (tax included)
+            itemAmount = amountAfterDiscount;
           } else {
-            // WITHOUT TAX MODE - Add tax to amount
             itemTaxableAmount = amountAfterDiscount;
             cgst = (itemTaxableAmount * cgstRate) / 100;
             sgst = (itemTaxableAmount * sgstRate) / 100;
-            itemAmount = itemTaxableAmount + cgst + sgst; // Add tax
+            itemAmount = itemTaxableAmount + cgst + sgst;
           }
         } else {
-          // No GST
           itemTaxableAmount = amountAfterDiscount;
           itemAmount = amountAfterDiscount;
         }
@@ -272,21 +422,6 @@ const saleController = {
           totalTax: processedItem.totalTaxAmount,
           finalAmount: processedItem.amount,
         });
-
-        // OPTIONAL: Stock validation (if you want to check stock)
-        if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
-          try {
-            const itemDetails = await Item.findById(item.itemRef);
-            if (itemDetails && itemDetails.currentStock < quantity) {
-              console.warn(
-                `⚠️ Low stock for item ${item.itemName}: Available ${itemDetails.currentStock}, Required ${quantity}`
-              );
-              // Note: Not throwing error, just warning
-            }
-          } catch (stockError) {
-            console.warn("Stock check failed:", stockError.message);
-          }
-        }
       }
 
       // Calculate final totals
@@ -328,7 +463,7 @@ const saleController = {
 
       console.log("💰 Final totals calculated:", totals);
 
-      // FIXED: Payment details with bank account info
+      // Enhanced payment details
       const paymentDetails = {
         method: payment?.method || "cash",
         status: payment?.status || "pending",
@@ -341,7 +476,6 @@ const saleController = {
         creditDays: parseInt(payment?.creditDays || 0),
         reference: payment?.reference || "",
         notes: payment?.notes || "",
-        // FIXED: Include bank account details if provided
         bankAccountId: payment?.bankAccountId || null,
         bankAccountName: payment?.bankAccountName || null,
       };
@@ -393,7 +527,7 @@ const saleController = {
         });
       }
 
-      // ✅ NEW: Prepare bidirectional tracking notes
+      // Enhanced source company detection
       let finalNotes = notes || "";
       if (sourceOrderId && sourceOrderType) {
         const conversionNote = `Converted from ${sourceOrderType} ${
@@ -402,26 +536,22 @@ const saleController = {
         finalNotes = finalNotes
           ? `${finalNotes} | ${conversionNote}`
           : conversionNote;
-
-        console.log("🔗 Adding source tracking:", {
-          sourceOrderId,
-          sourceOrderType,
-          sourceOrderNumber,
-          conversionNote,
-        });
       }
 
-      // Create sale object
+      let finalSourceCompanyId = sourceCompanyId;
+      let sourceCompanyDetectionMethod = sourceCompanyId ? "manual" : "none";
+
+      // ✅ Create sale object WITHOUT manual invoiceNumber - model will auto-generate
       const saleData = {
         invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
         invoiceType: gstEnabled ? "gst" : "non-gst",
-        customer: customerRecord._id, // Use the found customer ID
-        invoiceNumber,
-        customerMobile: customerRecord.mobile || customerMobile, // Use customer's actual mobile
+        customer: customerRecord._id,
+        // ❌ NO invoiceNumber field - let model's pre-save middleware generate it
+        customerMobile: customerRecord.mobile || customerMobile,
         gstEnabled,
         taxMode: finalTaxMode,
         priceIncludesTax: finalPriceIncludesTax,
-        companyId,
+        companyId, // ✅ Required for model's automatic numbering
         items: processedItems,
         totals,
         payment: paymentDetails,
@@ -430,42 +560,76 @@ const saleController = {
         termsAndConditions: termsAndConditions || "",
         status,
 
-        // ✅ NEW: Bidirectional tracking fields
+        // Enhanced source tracking
         sourceOrderId: sourceOrderId || null,
         sourceOrderNumber: sourceOrderNumber || null,
         sourceOrderType: sourceOrderId ? sourceOrderType : null,
-        sourceCompanyId: sourceCompanyId || null,
+
+        ...(finalSourceCompanyId && {
+          sourceCompanyId: finalSourceCompanyId,
+          isCrossCompanyTransaction: true,
+          customerCompanyId: customerRecord?.companyId || null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
+        ...(!finalSourceCompanyId && {
+          isCrossCompanyTransaction: false,
+          customerCompanyId: null,
+          sourceCompanyDetectionMethod: sourceCompanyDetectionMethod,
+        }),
+
         isAutoGenerated: isAutoGenerated || false,
         generatedFrom: sourceOrderId ? "sales_order" : generatedFrom,
         convertedBy: convertedBy || null,
 
-        // System fields
+        autoGeneratedPurchaseInvoice: false,
+        purchaseInvoiceRef: null,
+        purchaseInvoiceNumber: null,
+        targetCompanyId: null,
+
+        convertedFromSalesOrder:
+          !!sourceOrderId && sourceOrderType === "sales_order",
+        salesOrderRef:
+          sourceOrderId && sourceOrderType === "sales_order"
+            ? sourceOrderId
+            : null,
+        salesOrderNumber:
+          sourceOrderId && sourceOrderType === "sales_order"
+            ? sourceOrderNumber
+            : null,
+
+        correspondingPurchaseInvoiceId: null,
+        correspondingPurchaseInvoiceNumber: null,
+        correspondingPurchaseInvoiceCompany: null,
+
         createdBy: req.user?.id || "system",
         lastModifiedBy: req.user?.id || "system",
       };
 
-      console.log("💾 Creating sale with data:", {
-        customer: customerRecord.name,
-        customerId: customerRecord._id,
-        itemCount: saleData.items.length,
-        finalTotal: saleData.totals.finalTotal,
-        paymentAmount: saleData.payment.paidAmount,
-        paymentMethod: saleData.payment.method,
-        // ✅ NEW: Log bidirectional info
-        sourceOrderId: saleData.sourceOrderId,
-        sourceOrderType: saleData.sourceOrderType,
-        isAutoGenerated: saleData.isAutoGenerated,
-        generatedFrom: saleData.generatedFrom,
-      });
+      console.log(
+        "💾 Creating sale - model will auto-generate invoice number:",
+        {
+          companyId: companyId.toString(),
+          companyName: currentCompany.businessName,
+          companyCode: currentCompany.code,
+          customer: customerRecord.name,
+          itemCount: saleData.items.length,
+          finalTotal: saleData.totals.finalTotal,
+          modelHandlesNumbering: true, // ✅ Emphasize model responsibility
+        }
+      );
 
-      // Create the sale
+      // ✅ Create the sale - invoice number will be auto-generated by model's pre-save middleware
       const sale = new Sale(saleData);
-      await sale.save();
+      await sale.save(); // ✅ Model's pre-save middleware generates invoiceNumber automatically
 
       // Populate customer details for response
-      await sale.populate("customer", "name mobile email address type");
+      await sale.populate(
+        "customer",
+        "name mobile email address type companyId linkedCompanyId"
+      );
 
-      // OPTIONAL: Update item stock (if you're tracking inventory)
+      // Update item stock
       for (const item of processedItems) {
         if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
           try {
@@ -483,7 +647,7 @@ const saleController = {
         }
       }
 
-      // ✅ NEW: Update source sales order if this was a conversion
+      // Update source sales order if conversion
       if (sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)) {
         try {
           const SalesOrder = require("../models/SalesOrder");
@@ -506,31 +670,44 @@ const saleController = {
             "Failed to update source sales order:",
             updateError.message
           );
-          // Don't fail the invoice creation if sales order update fails
         }
       }
 
-      console.log("✅ Sale created successfully:", {
-        id: sale._id,
-        invoiceNumber: sale.invoiceNumber,
-        customer: customerRecord.name,
-        finalTotal: sale.totals.finalTotal,
-        sourceTracking: sale.sourceOrderId ? "Yes" : "No",
-      });
+      console.log(
+        "✅ Sale created successfully with model-generated sequential numbering:",
+        {
+          id: sale._id,
+          invoiceNumber: sale.invoiceNumber, // ✅ Generated by model's pre-save middleware
+          companyId: sale.companyId.toString(),
+          companyName: currentCompany.businessName,
+          customer: customerRecord.name,
+          finalTotal: sale.totals.finalTotal,
+          numberingSource: "model_pre_save_middleware", // ✅ Clear source
+        }
+      );
 
-      // ✅ ENHANCED: Response with bidirectional tracking info
+      // ✅ Enhanced response
       res.status(201).json({
         success: true,
-        message: "Sale created successfully",
+        message:
+          "Sale created successfully with automatic model-based sequential invoice numbering",
         data: {
           sale,
           invoice: {
-            invoiceNumber: sale.invoiceNumber,
+            invoiceNumber: sale.invoiceNumber, // ✅ Generated by model
             invoiceDate: sale.invoiceDate,
+            companyInfo: {
+              id: currentCompany._id,
+              name: currentCompany.businessName,
+              code: currentCompany.code,
+              prefix: sale.invoiceNumber.split("-")[0], // Extract prefix from generated number
+            },
             customer: {
               id: customerRecord._id,
               name: customerRecord.name,
               mobile: customerRecord.mobile,
+              companyId: customerRecord.companyId,
+              linkedCompanyId: customerRecord.linkedCompanyId,
             },
             totals: sale.totals,
             payment: {
@@ -541,22 +718,24 @@ const saleController = {
             taxMode: sale.taxMode,
             priceIncludesTax: sale.priceIncludesTax,
             gstEnabled: sale.gstEnabled,
-
-            // ✅ NEW: Include source tracking info in response
-            sourceTracking: {
-              hasSource: !!sale.sourceOrderId,
-              sourceOrderId: sale.sourceOrderId,
-              sourceOrderNumber: sale.sourceOrderNumber,
-              sourceOrderType: sale.sourceOrderType,
-              isAutoGenerated: sale.isAutoGenerated,
-              generatedFrom: sale.generatedFrom,
-              convertedBy: sale.convertedBy,
+            numberingInfo: {
+              isSequential: true,
+              companySpecific: true,
+              autoGenerated: true,
+              generatedBy: "model_pre_save_middleware", // ✅ Clear source
+              pattern: `${
+                sale.invoiceNumber.split("-")[0]
+              }-[GST-]YYYYMMDD-XXXX`,
+              modelBased: true, // ✅ Indicate model-based generation
             },
           },
         },
       });
     } catch (error) {
-      console.error("❌ Error creating sale:", error);
+      console.error(
+        "❌ Error creating sale with model-based numbering:",
+        error
+      );
       res.status(500).json({
         success: false,
         message: "Failed to create sale",
@@ -1748,51 +1927,6 @@ const saleController = {
     }
   },
 
-  getTopItems: async (req, res) => {
-    try {
-      const {companyId, limit = 10, dateFrom, dateTo} = req.query;
-
-      const matchConditions = {
-        companyId: new mongoose.Types.ObjectId(companyId),
-        status: {$ne: "cancelled"},
-      };
-
-      if (dateFrom || dateTo) {
-        matchConditions.invoiceDate = {};
-        if (dateFrom) matchConditions.invoiceDate.$gte = new Date(dateFrom);
-        if (dateTo) matchConditions.invoiceDate.$lte = new Date(dateTo);
-      }
-
-      const topItems = await Sale.aggregate([
-        {$match: matchConditions},
-        {$unwind: "$items"},
-        {
-          $group: {
-            _id: "$items.itemName",
-            totalQuantity: {$sum: "$items.quantity"},
-            totalRevenue: {$sum: "$items.itemAmount"},
-            timesOrdered: {$sum: 1},
-            avgPrice: {$avg: "$items.pricePerUnit"},
-          },
-        },
-        {$sort: {totalRevenue: -1}},
-        {$limit: parseInt(limit)},
-      ]);
-
-      res.status(200).json({
-        success: true,
-        data: topItems,
-      });
-    } catch (error) {
-      console.error("Error getting top items:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get top items",
-        error: error.message,
-      });
-    }
-  },
-
   getCustomerStats: async (req, res) => {
     try {
       const {companyId, customerId} = req.query;
@@ -1853,55 +1987,6 @@ const saleController = {
       res.status(500).json({
         success: false,
         message: "Failed to get customer statistics",
-        error: error.message,
-      });
-    }
-  },
-
-  getNextInvoiceNumber: async (req, res) => {
-    try {
-      const {companyId, invoiceType = "gst"} = req.query;
-
-      const date = new Date();
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-
-      const todayStart = new Date(year, date.getMonth(), date.getDate());
-      const todayEnd = new Date(year, date.getMonth(), date.getDate() + 1);
-
-      const lastInvoice = await Sale.findOne({
-        companyId,
-        invoiceDate: {$gte: todayStart, $lt: todayEnd},
-        invoiceNumber: new RegExp(
-          `^${invoiceType.toUpperCase()}-${year}${month}${day}`
-        ),
-      }).sort({invoiceNumber: -1});
-
-      let sequence = 1;
-      if (lastInvoice) {
-        const lastSequence = parseInt(lastInvoice.invoiceNumber.split("-")[2]);
-        sequence = lastSequence + 1;
-      }
-
-      const prefix = invoiceType === "gst" ? "GST" : "INV";
-      const nextInvoiceNumber = `${prefix}-${year}${month}${day}-${String(
-        sequence
-      ).padStart(4, "0")}`;
-
-      res.status(200).json({
-        success: true,
-        data: {
-          nextInvoiceNumber,
-          invoiceType,
-          date: new Date().toISOString().split("T")[0],
-        },
-      });
-    } catch (error) {
-      console.error("Error generating invoice number:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to generate invoice number",
         error: error.message,
       });
     }
@@ -2157,7 +2242,6 @@ const saleController = {
     }
   },
 
-  // NEW: Update payment due date
   updatePaymentDueDate: async (req, res) => {
     try {
       const {id} = req.params;
@@ -2202,7 +2286,1054 @@ const saleController = {
     }
   },
 
-  // NEW: Get payment summary with overdue analysis
+  convertSalesInvoiceToPurchaseInvoice: async (req, res) => {
+    try {
+      const {salesInvoiceId} = req.params;
+      const {convertedBy, customerCompanyId, notes, createdBy, userId} =
+        req.body; // ✅ Added userId
+
+      console.log(
+        "🔄 Converting sales invoice to purchase invoice for customer's company:",
+        salesInvoiceId
+      );
+
+      // Validate sales invoice ID
+      if (!mongoose.Types.ObjectId.isValid(salesInvoiceId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID",
+        });
+      }
+
+      // Find the sales invoice
+      const salesInvoice = await Sale.findById(salesInvoiceId)
+        .populate(
+          "customer",
+          "name mobile email address gstNumber companyId linkedCompanyId"
+        )
+        .populate("companyId", "businessName email phoneNumber address gstin");
+
+      if (!salesInvoice) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      console.log("📊 Sales invoice found:", {
+        invoiceNumber: salesInvoice.invoiceNumber,
+        sellerCompany: salesInvoice.companyId?.businessName,
+        customerName: salesInvoice.customer?.name,
+        itemsCount: salesInvoice.items.length,
+      });
+
+      // Check if already converted
+      if (salesInvoice.autoGeneratedPurchaseInvoice) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Sales invoice has already been converted to purchase invoice",
+          data: {
+            existingPurchaseInvoiceId: salesInvoice.purchaseInvoiceRef,
+            existingPurchaseInvoiceNumber: salesInvoice.purchaseInvoiceNumber,
+          },
+        });
+      }
+
+      // ✅ CRITICAL FIX: Determine the customer's company ID
+      let purchaseCompanyId = customerCompanyId;
+
+      if (!purchaseCompanyId && salesInvoice.customer?.linkedCompanyId) {
+        purchaseCompanyId = salesInvoice.customer.linkedCompanyId;
+        console.log("🔧 Using customer's linkedCompanyId:", purchaseCompanyId);
+      }
+
+      if (!purchaseCompanyId && salesInvoice.customer?.companyId) {
+        purchaseCompanyId = salesInvoice.customer.companyId;
+        console.log("🔧 Using customer's companyId:", purchaseCompanyId);
+      }
+
+      if (!purchaseCompanyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Customer company ID is required. This invoice will be created as a purchase invoice for the customer's company.",
+          hint: "Provide customerCompanyId in the request body or ensure the customer has a linked company",
+        });
+      }
+
+      // ✅ VALIDATION: Ensure we're not creating for the same company
+      if (purchaseCompanyId.toString() === salesInvoice.companyId.toString()) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot create purchase invoice for the same company. Purchase invoice should be created for the customer's company.",
+          data: {
+            salesCompanyId: salesInvoice.companyId,
+            providedCustomerCompanyId: purchaseCompanyId,
+          },
+        });
+      }
+
+      console.log("🏢 Company mapping for cross-company invoice:", {
+        salesCompany: salesInvoice.companyId,
+        purchaseCompany: purchaseCompanyId,
+        customer: salesInvoice.customer.name,
+        crossCompany: true,
+      });
+
+      // Import models
+      const Purchase = require("../models/Purchase");
+
+      // ✅ CRITICAL FIX: Get valid User ID for createdBy field
+      const getValidUserId = async () => {
+        // Priority 1: Explicitly provided userId
+        if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+          return userId;
+        }
+
+        // Priority 2: Provided createdBy (if it's a valid User ID)
+        if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
+          return createdBy;
+        }
+
+        // Priority 3: Provided convertedBy (if it's a valid User ID)
+        if (convertedBy && mongoose.Types.ObjectId.isValid(convertedBy)) {
+          return convertedBy;
+        }
+
+        // Priority 4: User ID from request
+        if (req.user?.id && mongoose.Types.ObjectId.isValid(req.user.id)) {
+          return req.user.id;
+        }
+
+        // Priority 5: User ID from request._id
+        if (req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+          return req.user._id;
+        }
+
+        // ✅ Priority 6: Try to find a system user or create one
+        try {
+          const User = require("../models/User"); // Adjust path as needed
+
+          // Look for existing system user
+          let systemUser = await User.findOne({
+            email: "system@crosscompany.internal",
+            role: "system",
+          });
+
+          if (!systemUser) {
+            // Create system user for cross-company operations
+            systemUser = new User({
+              name: "System User - Cross Company",
+              email: "system@crosscompany.internal",
+              password: "system123", // You should hash this properly
+              role: "system",
+              isActive: true,
+              isSystemUser: true,
+            });
+            await systemUser.save();
+            console.log("✅ Created system user for cross-company operations");
+          }
+
+          return systemUser._id;
+        } catch (userError) {
+          console.error("❌ Error getting/creating system user:", userError);
+          return null;
+        }
+      };
+
+      const validUserId = await getValidUserId();
+
+      if (!validUserId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "User authentication required for cross-company invoice conversion",
+          error: "No valid user ID found for creating supplier party",
+          hint: "Please provide userId in the request body or ensure proper user authentication",
+        });
+      }
+
+      console.log("✅ Using valid user ID for party creation:", validUserId);
+
+      // ✅ ENHANCED: Create supplier party representing the SELLING company
+      let supplierParty = await Party.findOne({
+        companyId: purchaseCompanyId, // Customer's company
+        $or: [
+          {name: salesInvoice.companyId.businessName, type: "supplier"},
+          {linkedCompanyId: salesInvoice.companyId._id, type: "supplier"},
+          // ✅ Also search by phone number to find existing party
+          {
+            phoneNumber: salesInvoice.companyId.phoneNumber,
+            type: "supplier",
+            companyId: purchaseCompanyId,
+          },
+        ],
+      });
+
+      if (!supplierParty) {
+        console.log(
+          "🏗️ Creating supplier party representing selling company:",
+          salesInvoice.companyId.businessName
+        );
+
+        // ✅ ENHANCED: Generate unique phone number if duplicate exists
+        const generateUniquePhoneNumber = async (
+          basePhoneNumber,
+          companyId
+        ) => {
+          let phoneNumber = basePhoneNumber || "9000000000";
+          let counter = 1;
+
+          while (true) {
+            const existingParty = await Party.findOne({
+              companyId: companyId,
+              phoneNumber: phoneNumber,
+            });
+
+            if (!existingParty) {
+              return phoneNumber;
+            }
+
+            // ✅ If duplicate, append counter to make it unique
+            const baseNumber = basePhoneNumber || "9000000000";
+            const paddedCounter = counter.toString().padStart(2, "0");
+            phoneNumber = baseNumber.slice(0, -2) + paddedCounter;
+            counter++;
+
+            // ✅ Safety check to prevent infinite loop
+            if (counter > 99) {
+              phoneNumber = `${Date.now()}`.slice(-10); // Use timestamp as fallback
+              break;
+            }
+          }
+
+          return phoneNumber;
+        };
+
+        // ✅ Generate unique phone number
+        const uniquePhoneNumber = await generateUniquePhoneNumber(
+          salesInvoice.companyId.phoneNumber,
+          purchaseCompanyId
+        );
+
+        // ✅ FIXED: Create supplier party with proper User ID and unique phone
+        const supplierPartyData = {
+          name: salesInvoice.companyId.businessName || "Supplier Company",
+          mobile: uniquePhoneNumber, // ✅ Use unique phone number
+          phoneNumber: uniquePhoneNumber, // ✅ Use unique phone number
+          email:
+            salesInvoice.companyId.email ||
+            `supplier-${Date.now()}@company.com`, // ✅ Make email unique too
+          address: salesInvoice.companyId.address || "",
+          gstNumber: salesInvoice.companyId.gstin || "",
+          type: "supplier",
+          partyType: "supplier",
+          companyId: purchaseCompanyId, // ✅ Customer's company ID
+          status: "active",
+          creditLimit: 0,
+          creditDays: 30,
+          currentBalance: 0,
+          openingBalance: 0,
+
+          // ✅ CRITICAL FIX: Use valid User ID (not Customer ID)
+          userId: validUserId, // ✅ This should be a User ID
+          createdBy: validUserId, // ✅ This should be a User ID
+          lastModifiedBy: validUserId, // ✅ This should be a User ID
+
+          // ✅ ENHANCED: Cross-company linking
+          linkedCompanyId: salesInvoice.companyId._id, // Link to the selling company
+          isLinkedSupplier: true,
+          enableBidirectionalInvoices: true,
+          sourceInvoiceId: salesInvoice._id,
+          sourceInvoiceNumber: salesInvoice.invoiceNumber,
+          notes: `Auto-created from Sales Invoice ${salesInvoice.invoiceNumber} - Represents ${salesInvoice.companyId.businessName}`,
+
+          // ✅ NEW: Add metadata about phone number modification
+          ...(uniquePhoneNumber !== salesInvoice.companyId.phoneNumber && {
+            originalPhoneNumber: salesInvoice.companyId.phoneNumber,
+            phoneNumberModified: true,
+            phoneNumberModificationReason:
+              "Avoided duplicate in target company",
+          }),
+        };
+
+        try {
+          supplierParty = new Party(supplierPartyData);
+          await supplierParty.save();
+
+          console.log("✅ Successfully created supplier party:", {
+            id: supplierParty._id,
+            name: supplierParty.name,
+            phoneNumber: supplierParty.phoneNumber,
+            originalPhone: salesInvoice.companyId.phoneNumber,
+            phoneModified:
+              uniquePhoneNumber !== salesInvoice.companyId.phoneNumber,
+            companyId: supplierParty.companyId,
+            userId: supplierParty.userId,
+            linkedCompanyId: supplierParty.linkedCompanyId,
+          });
+        } catch (partyError) {
+          console.error("❌ Error creating supplier party:", partyError);
+
+          // ✅ ENHANCED: Check if it's still a duplicate error and try to find existing party
+          if (partyError.code === 11000) {
+            console.log(
+              "🔍 Duplicate error occurred, searching for existing party..."
+            );
+
+            // Try to find the existing party that's causing the duplicate
+            const existingParty = await Party.findOne({
+              companyId: purchaseCompanyId,
+              $or: [
+                {phoneNumber: salesInvoice.companyId.phoneNumber},
+                {mobile: salesInvoice.companyId.phoneNumber},
+                {name: salesInvoice.companyId.businessName},
+              ],
+            });
+
+            if (existingParty) {
+              console.log("✅ Found existing party, will use it:", {
+                id: existingParty._id,
+                name: existingParty.name,
+                phoneNumber: existingParty.phoneNumber,
+              });
+
+              // ✅ Update existing party with cross-company linking if needed
+              if (!existingParty.linkedCompanyId) {
+                existingParty.linkedCompanyId = salesInvoice.companyId._id;
+                existingParty.isLinkedSupplier = true;
+                existingParty.enableBidirectionalInvoices = true;
+                existingParty.notes = `${
+                  existingParty.notes || ""
+                } | Linked to ${
+                  salesInvoice.companyId.businessName
+                } via invoice ${salesInvoice.invoiceNumber}`;
+                await existingParty.save();
+                console.log(
+                  "✅ Updated existing party with cross-company linking"
+                );
+              }
+
+              supplierParty = existingParty;
+            } else {
+              // If we still can't find the party, return error
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to create or find supplier party for cross-company conversion",
+                error: "Duplicate phone number constraint violation",
+                details: {
+                  duplicateField: "phoneNumber",
+                  duplicateValue: salesInvoice.companyId.phoneNumber,
+                  companyId: purchaseCompanyId,
+                  suggestion:
+                    "A party with this phone number already exists in the target company",
+                },
+              });
+            }
+          } else {
+            // For other errors, return the original error response
+            return res.status(500).json({
+              success: false,
+              message:
+                "Failed to create supplier party for cross-company conversion",
+              error: partyError.message,
+              details: {
+                requiredField: "userId",
+                providedUserId: validUserId,
+                partyData: {
+                  name: supplierPartyData.name,
+                  companyId: supplierPartyData.companyId,
+                  type: supplierPartyData.type,
+                },
+              },
+            });
+          }
+        }
+      } else {
+        console.log(
+          "✅ Found existing supplier party for selling company:",
+          supplierParty.name
+        );
+      }
+
+      // Transform sales invoice items
+      const purchaseInvoiceItems = salesInvoice.items.map((item, index) => {
+        const itemAmount =
+          item.itemAmount || item.amount || item.quantity * item.pricePerUnit;
+
+        return {
+          itemRef: item.itemRef || null,
+          itemName: item.itemName,
+          itemCode: item.itemCode || "",
+          hsnCode: item.hsnCode || "0000",
+          category: item.category || "",
+          description: item.description || "",
+          quantity: item.quantity,
+          pricePerUnit: item.pricePerUnit,
+          unit: item.unit || "PCS",
+          discountPercent: item.discountPercent || 0,
+          discountAmount: item.discountAmount || 0,
+          taxRate: item.taxRate || 0,
+          taxMode: item.taxMode || salesInvoice.taxMode || "without-tax",
+          priceIncludesTax:
+            item.priceIncludesTax !== undefined
+              ? item.priceIncludesTax
+              : salesInvoice.priceIncludesTax || false,
+
+          // Tax fields
+          cgst: item.cgst || item.cgstAmount || 0,
+          sgst: item.sgst || item.sgstAmount || 0,
+          igst: item.igst || item.igstAmount || 0,
+          cgstAmount: item.cgstAmount || item.cgst || 0,
+          sgstAmount: item.sgstAmount || item.sgst || 0,
+          igstAmount: item.igstAmount || item.igst || 0,
+
+          taxableAmount: item.taxableAmount || itemAmount,
+          totalTaxAmount:
+            item.totalTaxAmount ||
+            (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0),
+
+          amount: itemAmount,
+          itemAmount: itemAmount,
+          lineNumber: item.lineNumber || index + 1,
+          receivedQuantity: item.quantity,
+          pendingQuantity: 0,
+        };
+      });
+
+      // Generate purchase number for customer's company
+      const generatePurchaseNumber = () => {
+        const date = new Date();
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const timestamp = Date.now().toString().slice(-4);
+
+        const prefix = salesInvoice.gstEnabled ? "PINV-GST" : "PINV";
+        return `${prefix}-${year}${month}${day}-${timestamp}`;
+      };
+
+      const purchaseNumber = generatePurchaseNumber();
+      console.log(
+        "📝 Generated purchase number for customer's company:",
+        purchaseNumber
+      );
+
+      // ✅ ENHANCED: Create purchase invoice data for CUSTOMER'S company
+      const purchaseInvoiceData = {
+        purchaseNumber: purchaseNumber,
+        invoiceNumber: purchaseNumber,
+        purchaseType: salesInvoice.invoiceType || "gst",
+        invoiceType: salesInvoice.invoiceType || "gst",
+        purchaseDate: salesInvoice.invoiceDate || new Date(),
+        invoiceDate: salesInvoice.invoiceDate || new Date(),
+        supplier: supplierParty._id, // Supplier = your company
+        supplierMobile: supplierParty.mobile || "",
+        companyId: purchaseCompanyId, // ✅ CRITICAL: Customer's company ID
+        items: purchaseInvoiceItems,
+        totals: {
+          subtotal: salesInvoice.totals.subtotal || 0,
+          totalQuantity: salesInvoice.totals.totalQuantity || 0,
+          totalDiscount: salesInvoice.totals.totalDiscount || 0,
+          totalDiscountAmount: salesInvoice.totals.totalDiscountAmount || 0,
+          totalTax: salesInvoice.totals.totalTax || 0,
+          totalCGST: salesInvoice.totals.totalCGST || 0,
+          totalSGST: salesInvoice.totals.totalSGST || 0,
+          totalIGST: salesInvoice.totals.totalIGST || 0,
+          totalTaxableAmount:
+            salesInvoice.totals.totalTaxableAmount ||
+            salesInvoice.totals.subtotal ||
+            0,
+          finalTotal: salesInvoice.totals.finalTotal || 0,
+          roundOff: salesInvoice.totals.roundOff || 0,
+          withTaxTotal: salesInvoice.totals.withTaxTotal || 0,
+          withoutTaxTotal: salesInvoice.totals.withoutTaxTotal || 0,
+        },
+        payment: {
+          method: salesInvoice.payment?.method || "credit",
+          status: "paid", // Assume paid since it's based on a completed sale
+          paidAmount: salesInvoice.totals.finalTotal || 0,
+          pendingAmount: 0,
+          paymentDate: new Date(),
+          dueDate: null,
+          creditDays: 0,
+          reference: `Payment for Sales Invoice ${salesInvoice.invoiceNumber}`,
+          notes: "Auto-payment for cross-company purchase invoice",
+        },
+        gstEnabled:
+          salesInvoice.gstEnabled !== undefined
+            ? salesInvoice.gstEnabled
+            : true,
+        taxMode: salesInvoice.taxMode || "without-tax",
+        priceIncludesTax: salesInvoice.priceIncludesTax || false,
+
+        // ✅ ENHANCED: Bidirectional cross-company tracking
+        sourceInvoiceId: salesInvoice._id,
+        sourceInvoiceNumber: salesInvoice.invoiceNumber,
+        sourceInvoiceType: "sales_invoice",
+        sourceCompanyId: salesInvoice.companyId._id, // ✅ Original selling company
+        targetCompanyId: purchaseCompanyId, // ✅ Customer's company
+        isAutoGenerated: true,
+        isCrossCompanyInvoice: true, // ✅ Flag for cross-company
+        generatedFrom: "sales_invoice",
+        generatedBy: validUserId,
+        generatedAt: new Date(),
+
+        // ✅ ENHANCED: Cross-company correspondence
+        correspondingSalesInvoiceId: salesInvoice._id,
+        correspondingSalesInvoiceNumber: salesInvoice.invoiceNumber,
+        correspondingSalesInvoiceCompany: salesInvoice.companyId._id,
+
+        notes:
+          notes ||
+          `Cross-company purchase invoice generated from Sales Invoice ${salesInvoice.invoiceNumber} of ${salesInvoice.companyId.businessName}`,
+        termsAndConditions: salesInvoice.termsAndConditions || "",
+        status: "received",
+        receivingStatus: "complete",
+        createdBy: validUserId,
+        lastModifiedBy: validUserId,
+      };
+
+      console.log(
+        "📋 Creating cross-company purchase invoice for customer's company..."
+      );
+
+      // Create the purchase invoice
+      const purchaseInvoice = new Purchase(purchaseInvoiceData);
+      await purchaseInvoice.save();
+
+      console.log(
+        "✅ Cross-company purchase invoice created:",
+        purchaseInvoice.purchaseNumber,
+        "for company:",
+        purchaseCompanyId
+      );
+
+      // ✅ ENHANCED: Update the sales invoice with cross-company references
+      salesInvoice.autoGeneratedPurchaseInvoice = true;
+      salesInvoice.purchaseInvoiceRef = purchaseInvoice._id;
+      salesInvoice.purchaseInvoiceNumber = purchaseInvoice.purchaseNumber;
+      salesInvoice.purchaseInvoiceGeneratedAt = new Date();
+      salesInvoice.purchaseInvoiceGeneratedBy = validUserId;
+
+      // ✅ ENHANCED: Cross-company tracking
+      salesInvoice.targetCompanyId = purchaseCompanyId;
+      salesInvoice.correspondingPurchaseInvoiceId = purchaseInvoice._id;
+      salesInvoice.correspondingPurchaseInvoiceNumber =
+        purchaseInvoice.purchaseNumber;
+      salesInvoice.correspondingPurchaseInvoiceCompany = purchaseCompanyId;
+      salesInvoice.isCrossCompanyLinked = true;
+
+      await salesInvoice.save();
+
+      console.log(
+        "✅ Sales invoice updated with cross-company purchase reference"
+      );
+
+      res.status(201).json({
+        success: true,
+        message:
+          "Sales invoice converted to cross-company purchase invoice successfully",
+        data: {
+          purchaseInvoice: {
+            _id: purchaseInvoice._id,
+            purchaseNumber: purchaseInvoice.purchaseNumber,
+            invoiceNumber: purchaseInvoice.invoiceNumber,
+            invoiceDate: purchaseInvoice.invoiceDate,
+            supplier: {
+              _id: supplierParty._id,
+              name: supplierParty.name,
+              mobile: supplierParty.mobile,
+              linkedCompanyId: supplierParty.linkedCompanyId,
+            },
+            companyId: purchaseCompanyId, // ✅ Customer's company
+            totals: purchaseInvoice.totals,
+            status: purchaseInvoice.status,
+            isCrossCompanyInvoice: true,
+            sourceInvoiceId: purchaseInvoice.sourceInvoiceId,
+            sourceInvoiceNumber: purchaseInvoice.sourceInvoiceNumber,
+            sourceCompanyId: salesInvoice.companyId._id, // ✅ Your company
+          },
+          salesInvoice: {
+            id: salesInvoice._id,
+            invoiceNumber: salesInvoice.invoiceNumber,
+            autoGeneratedPurchaseInvoice:
+              salesInvoice.autoGeneratedPurchaseInvoice,
+            purchaseInvoiceRef: salesInvoice.purchaseInvoiceRef,
+            purchaseInvoiceNumber: salesInvoice.purchaseInvoiceNumber,
+            targetCompanyId: salesInvoice.targetCompanyId,
+            isCrossCompanyLinked: true,
+          },
+          crossCompanyMapping: {
+            sellingCompany: salesInvoice.companyId._id,
+            buyingCompany: purchaseCompanyId,
+            customerName: salesInvoice.customer.name,
+            invoiceAmount: salesInvoice.totals.finalTotal,
+            conversionDate: new Date(),
+          },
+        },
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error converting sales invoice to cross-company purchase invoice:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message:
+          "Failed to convert sales invoice to cross-company purchase invoice",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Get purchase invoices created from sales invoices
+  getPurchaseInvoicesFromSalesInvoices: async (req, res) => {
+    try {
+      const {companyId, page = 1, limit = 10} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Import Purchase model
+      const Purchase = require("../models/Purchase");
+
+      // Find purchase invoices that were generated from sales invoices
+      const purchaseInvoices = await Purchase.find({
+        companyId,
+        sourceInvoiceType: "sales_invoice",
+        isAutoGenerated: true,
+      })
+        .populate("supplier", "name mobile email")
+        .sort({createdAt: -1})
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      const total = await Purchase.countDocuments({
+        companyId,
+        sourceInvoiceType: "sales_invoice",
+        isAutoGenerated: true,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchaseInvoices,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalItems: total,
+            hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrev: parseInt(page) > 1,
+          },
+        },
+        message: "Purchase invoices from sales invoices retrieved successfully",
+      });
+    } catch (error) {
+      console.error(
+        "Error getting purchase invoices from sales invoices:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase invoices from sales invoices",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Get bidirectional invoice analytics
+  getBidirectionalInvoiceAnalytics: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const Purchase = require("../models/Purchase");
+
+      const [
+        totalSalesInvoices,
+        purchaseInvoicesFromSalesInvoices,
+        totalPurchaseInvoices,
+        autoGeneratedSalesInvoices,
+        salesInvoicesWithGeneratedPurchase,
+      ] = await Promise.all([
+        // Total sales invoices count
+        Sale.countDocuments({companyId}),
+
+        // Purchase invoices created from sales invoices
+        Purchase.countDocuments({
+          companyId,
+          sourceInvoiceType: "sales_invoice",
+          isAutoGenerated: true,
+        }),
+
+        // Total purchase invoices
+        Purchase.countDocuments({companyId}),
+
+        // Auto-generated sales invoices (from purchase invoices)
+        Sale.countDocuments({
+          companyId,
+          isAutoGenerated: true,
+          generatedFrom: "purchase_invoice",
+        }),
+
+        // Sales invoices that generated purchase invoices
+        Sale.countDocuments({
+          companyId,
+          autoGeneratedPurchaseInvoice: true,
+        }),
+      ]);
+
+      const analytics = {
+        salesInvoices: {
+          total: totalSalesInvoices,
+          autoGenerated: autoGeneratedSalesInvoices,
+          withGeneratedPurchase: salesInvoicesWithGeneratedPurchase,
+          direct: totalSalesInvoices - autoGeneratedSalesInvoices,
+        },
+        purchaseInvoices: {
+          total: totalPurchaseInvoices,
+          fromSalesInvoices: purchaseInvoicesFromSalesInvoices,
+          direct: totalPurchaseInvoices - purchaseInvoicesFromSalesInvoices,
+        },
+        bidirectionalCoverage: {
+          percentage:
+            totalSalesInvoices > 0
+              ? (
+                  ((autoGeneratedSalesInvoices +
+                    salesInvoicesWithGeneratedPurchase) /
+                    totalSalesInvoices) *
+                  100
+                ).toFixed(2)
+              : 0,
+          description:
+            "Percentage of invoices using bidirectional invoice system",
+        },
+        conversionRates: {
+          salesToPurchase:
+            totalSalesInvoices > 0
+              ? (
+                  (salesInvoicesWithGeneratedPurchase / totalSalesInvoices) *
+                  100
+                ).toFixed(2)
+              : 0,
+          purchaseFromSales:
+            totalPurchaseInvoices > 0
+              ? (
+                  (purchaseInvoicesFromSalesInvoices / totalPurchaseInvoices) *
+                  100
+                ).toFixed(2)
+              : 0,
+        },
+      };
+
+      res.status(200).json({
+        success: true,
+        data: analytics,
+        message: "Bidirectional invoice analytics retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting bidirectional invoice analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bidirectional invoice analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Get invoice conversion status
+  getSalesInvoiceConversionStatus: async (req, res) => {
+    try {
+      const {companyId, salesInvoiceId} = req.query;
+
+      if (!companyId || !salesInvoiceId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Sales Invoice ID are required",
+        });
+      }
+
+      const salesInvoice = await Sale.findOne({
+        _id: salesInvoiceId,
+        companyId,
+      }).populate("customer", "name mobile email");
+
+      if (!salesInvoice) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      let purchaseInvoice = null;
+      if (
+        salesInvoice.autoGeneratedPurchaseInvoice &&
+        salesInvoice.purchaseInvoiceRef
+      ) {
+        const Purchase = require("../models/Purchase");
+        purchaseInvoice = await Purchase.findById(
+          salesInvoice.purchaseInvoiceRef
+        ).select("invoiceNumber invoiceDate totals payment status");
+      }
+
+      const conversionStatus = {
+        salesInvoice: {
+          id: salesInvoice._id,
+          invoiceNumber: salesInvoice.invoiceNumber,
+          invoiceDate: salesInvoice.invoiceDate,
+          customer: salesInvoice.customer,
+          totalAmount: salesInvoice.totals.finalTotal,
+          status: salesInvoice.status,
+        },
+        conversion: {
+          isConverted: salesInvoice.autoGeneratedPurchaseInvoice,
+          convertedAt: salesInvoice.purchaseInvoiceGeneratedAt,
+          convertedBy: salesInvoice.purchaseInvoiceGeneratedBy,
+          canConvert:
+            !salesInvoice.autoGeneratedPurchaseInvoice &&
+            ["draft", "completed"].includes(salesInvoice.status),
+        },
+        purchaseInvoice: purchaseInvoice
+          ? {
+              id: purchaseInvoice._id,
+              invoiceNumber: purchaseInvoice.invoiceNumber,
+              invoiceDate: purchaseInvoice.invoiceDate,
+              totalAmount: purchaseInvoice.totals.finalTotal,
+              paymentStatus: purchaseInvoice.payment.status,
+              status: purchaseInvoice.status,
+            }
+          : null,
+      };
+
+      res.status(200).json({
+        success: true,
+        data: conversionStatus,
+        message: "Sales invoice conversion status retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting sales invoice conversion status:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice conversion status",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Bulk convert sales invoices to purchase invoices
+  bulkConvertSalesInvoicesToPurchaseInvoices: async (req, res) => {
+    try {
+      const {salesInvoiceIds, convertedBy, targetCompanyId} = req.body;
+
+      if (
+        !salesInvoiceIds ||
+        !Array.isArray(salesInvoiceIds) ||
+        salesInvoiceIds.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Sales invoice IDs array is required",
+        });
+      }
+
+      const Purchase = require("../models/Purchase");
+      const results = {
+        successful: [],
+        failed: [],
+        skipped: [],
+      };
+
+      for (const salesInvoiceId of salesInvoiceIds) {
+        try {
+          if (!mongoose.Types.ObjectId.isValid(salesInvoiceId)) {
+            results.failed.push({
+              salesInvoiceId,
+              error: "Invalid sales invoice ID",
+            });
+            continue;
+          }
+
+          const salesInvoice = await Sale.findById(salesInvoiceId);
+
+          if (!salesInvoice) {
+            results.failed.push({
+              salesInvoiceId,
+              error: "Sales invoice not found",
+            });
+            continue;
+          }
+
+          if (salesInvoice.autoGeneratedPurchaseInvoice) {
+            results.skipped.push({
+              salesInvoiceId,
+              invoiceNumber: salesInvoice.invoiceNumber,
+              reason: "Already converted",
+              existingPurchaseInvoiceNumber: salesInvoice.purchaseInvoiceNumber,
+            });
+            continue;
+          }
+
+          // Create purchase invoice using the method we created above
+          const response = await this.convertSalesInvoiceToPurchaseInvoice(
+            {params: {salesInvoiceId}, body: {convertedBy, targetCompanyId}},
+            {
+              status: (code) => ({
+                json: (data) => {
+                  if (code === 201) {
+                    results.successful.push({
+                      salesInvoiceId,
+                      invoiceNumber: salesInvoice.invoiceNumber,
+                      purchaseInvoiceId: data.data.purchaseInvoice._id,
+                      purchaseInvoiceNumber:
+                        data.data.purchaseInvoice.invoiceNumber,
+                      finalTotal: data.data.purchaseInvoice.totals.finalTotal,
+                    });
+                  } else {
+                    results.failed.push({
+                      salesInvoiceId,
+                      error: data.message || "Conversion failed",
+                    });
+                  }
+                  return data;
+                },
+              }),
+            }
+          );
+        } catch (conversionError) {
+          results.failed.push({
+            salesInvoiceId,
+            error: conversionError.message,
+          });
+        }
+      }
+
+      const summary = {
+        total: salesInvoiceIds.length,
+        successful: results.successful.length,
+        failed: results.failed.length,
+        skipped: results.skipped.length,
+      };
+
+      console.log("📊 Bulk invoice conversion summary:", summary);
+
+      res.status(200).json({
+        success: true,
+        message: `Bulk conversion completed: ${summary.successful} successful, ${summary.failed} failed, ${summary.skipped} skipped`,
+        data: {
+          summary,
+          results,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error in bulk invoice conversion:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to perform bulk invoice conversion",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Get invoice source tracking (enhanced)
+  getSalesInvoiceSourceTracking: async (req, res) => {
+    try {
+      const {invoiceId} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(invoiceId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid invoice ID",
+        });
+      }
+
+      const salesInvoice = await Sale.findById(invoiceId).populate(
+        "customer",
+        "name mobile email"
+      );
+
+      if (!salesInvoice) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Get the complete tracking chain
+      const trackingChain = await salesInvoice.getInvoiceTrackingChain();
+
+      let sourceInfo = {
+        salesInvoice: {
+          id: salesInvoice._id,
+          invoiceNumber: salesInvoice.invoiceNumber,
+          invoiceDate: salesInvoice.invoiceDate,
+          customer: salesInvoice.customer,
+          totalAmount: salesInvoice.totals.finalTotal,
+        },
+        source: {
+          type: "direct_sale",
+          description: "Created directly as a sales invoice",
+        },
+        trackingChain,
+        bidirectionalInfo: salesInvoice.invoiceTrackingInfo,
+      };
+
+      // Check if this invoice was created from a purchase invoice
+      if (
+        salesInvoice.sourceInvoiceId &&
+        salesInvoice.sourceInvoiceType === "purchase_invoice"
+      ) {
+        const Purchase = require("../models/Purchase");
+        const sourcePurchaseInvoice = await Purchase.findById(
+          salesInvoice.sourceInvoiceId
+        ).populate("supplier", "name mobile email");
+
+        if (sourcePurchaseInvoice) {
+          sourceInfo.source = {
+            type: "purchase_invoice",
+            description: "Auto-generated from purchase invoice",
+            purchaseInvoice: {
+              id: sourcePurchaseInvoice._id,
+              invoiceNumber: sourcePurchaseInvoice.invoiceNumber,
+              invoiceDate: sourcePurchaseInvoice.invoiceDate,
+              supplier: sourcePurchaseInvoice.supplier,
+              isAutoGenerated: sourcePurchaseInvoice.isAutoGenerated,
+              sourceCompanyId: sourcePurchaseInvoice.sourceCompanyId,
+            },
+          };
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        data: sourceInfo,
+        message: "Sales invoice source tracking retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting sales invoice source tracking:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice source tracking",
+        error: error.message,
+      });
+    }
+  },
+
   getPaymentSummaryWithOverdue: async (req, res) => {
     try {
       const {companyId, dateFrom, dateTo} = req.query;

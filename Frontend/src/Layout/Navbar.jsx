@@ -28,6 +28,7 @@ import {
   faHome,
   faChevronDown,
   faEllipsisV,
+  faUserShield, // ✅ Added for admin panel
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 import CreateCompany from "../components/Company/CreateCompany";
@@ -287,6 +288,13 @@ function Navbar({
     }
   };
 
+  // ✅ NEW: Handle admin panel navigation
+  const handleAdminPanel = () => {
+    console.log("🚀 Navigating to admin panel");
+    setShowUserDropdown(false);
+    navigate("/admin");
+  };
+
   // Get user display name
   const getUserDisplayName = () => {
     if (currentUser?.name) {
@@ -335,7 +343,7 @@ function Navbar({
     }
   };
 
-  // ✅ FIXED: Handle profile menu interactions
+  // ✅ UPDATED: Handle profile menu interactions with admin panel
   const handleProfileAction = (action) => {
     setShowUserDropdown(false);
 
@@ -353,6 +361,9 @@ function Navbar({
       case "activity":
         console.log("Navigate to activity log");
         // TODO: Navigate to activity log
+        break;
+      case "admin":
+        handleAdminPanel();
         break;
       case "logout":
         handleLogout();
@@ -666,8 +677,22 @@ function Navbar({
               {renderCompanyValidationWarning()}
             </div>
 
-            {/* Right section - Notifications and profile */}
+            {/* Right section - Admin panel button, Notifications and profile */}
             <div className="ms-auto d-flex align-items-center navbar-right">
+              {/* ✅ NEW: Admin Panel Button for Development */}
+              <Nav.Item className="me-2">
+                <Button
+                  variant="outline-danger"
+                  size="sm"
+                  onClick={handleAdminPanel}
+                  className="admin-panel-btn d-flex align-items-center"
+                  title="Admin Panel (Development)"
+                >
+                  <FontAwesomeIcon icon={faUserShield} className="me-2" />
+                  <span className="d-none d-md-inline">Admin</span>
+                </Button>
+              </Nav.Item>
+
               {/* Network status icon (visible on smaller screens) */}
               <Nav.Item className="d-lg-none me-2">
                 <FontAwesomeIcon
@@ -774,7 +799,7 @@ function Navbar({
                 )}
               </Nav.Item>
 
-              {/* ✅ FIXED: User profile dropdown with better Bootstrap implementation */}
+              {/* ✅ UPDATED: User profile dropdown with admin panel option */}
               <Nav.Item className="user-dropdown">
                 <Dropdown
                   show={showUserDropdown}
@@ -846,6 +871,25 @@ function Navbar({
                         </div>
                       </div>
                     </div>
+
+                    <Dropdown.Divider />
+
+                    {/* ✅ NEW: Admin Panel Option - First in the list */}
+                    <Dropdown.Item
+                      onClick={() => handleProfileAction("admin")}
+                      className="d-flex align-items-center py-2 admin-menu-item"
+                    >
+                      <FontAwesomeIcon
+                        icon={faUserShield}
+                        className="fa-sm fa-fw me-3 text-danger"
+                      />
+                      <div>
+                        <div className="fw-medium text-danger">Admin Panel</div>
+                        <small className="text-muted">
+                          System administration (Dev)
+                        </small>
+                      </div>
+                    </Dropdown.Item>
 
                     <Dropdown.Divider />
 
@@ -931,8 +975,50 @@ function Navbar({
         currentUser={currentUser}
       />
 
-      {/* ✅ ADD: Additional CSS for better dropdown styling */}
+      {/* ✅ UPDATED: Additional CSS for admin panel button and styling */}
       <style jsx>{`
+        .admin-panel-btn {
+          border: 2px solid #dc3545 !important;
+          color: #dc3545 !important;
+          background: transparent !important;
+          transition: all 0.2s ease;
+          font-weight: 600;
+          border-radius: 8px;
+          padding: 6px 12px;
+        }
+
+        .admin-panel-btn:hover {
+          background: #dc3545 !important;
+          color: white !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+
+        .admin-panel-btn:focus {
+          box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25) !important;
+        }
+
+        .admin-menu-item {
+          background: linear-gradient(
+            135deg,
+            rgba(220, 53, 69, 0.05),
+            rgba(220, 53, 69, 0.1)
+          );
+          border-radius: 6px;
+          margin: 2px 8px;
+          border: 1px solid rgba(220, 53, 69, 0.1);
+        }
+
+        .admin-menu-item:hover {
+          background: linear-gradient(
+            135deg,
+            rgba(220, 53, 69, 0.1),
+            rgba(220, 53, 69, 0.15)
+          );
+          border-color: rgba(220, 53, 69, 0.2);
+          transform: translateX(2px);
+        }
+
         .user-dropdown-toggle {
           border: none !important;
           background: none !important;
@@ -1124,6 +1210,14 @@ function Navbar({
 
           .dropdown-menu {
             min-width: 280px !important;
+          }
+
+          .admin-panel-btn span {
+            display: none !important;
+          }
+
+          .admin-panel-btn {
+            padding: 6px 8px !important;
           }
         }
       `}</style>

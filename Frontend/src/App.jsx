@@ -14,6 +14,9 @@ import HomePage from "./Pages/HomePage";
 import AuthPage from "./Pages/AuthPage";
 import CommunityPage from "./Pages/CommunityPage";
 
+// Import Admin Dashboard
+import AdminDashboard from "./components/Admin/AdminDashboard";
+
 // Import services
 import companyService from "./services/companyService";
 import authService from "./services/authService";
@@ -712,6 +715,33 @@ function App() {
     );
   };
 
+  // ✅ ADMIN DASHBOARD WRAPPER - UPDATED (no admin check for development)
+  const AdminDashboardWrapper = () => {
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    // ✅ REMOVED: Admin check for development
+    // Check if user is admin
+    // if (!currentUser?.isAdmin) {
+    //   return <Navigate to="/" replace />;
+    // }
+
+    return (
+      <div
+        className="admin-app"
+        style={{minHeight: "100vh", backgroundColor: "#f8f9fa"}}
+      >
+        <AdminDashboard
+          currentUser={currentUser}
+          isOnline={true}
+          addToast={showToast}
+          onLogout={handleLogout}
+        />
+      </div>
+    );
+  };
+
   // ✅ FORM WRAPPERS
 
   const SalesFormWrapper = ({isEdit = false}) => {
@@ -1082,6 +1112,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* ✅ ADMIN DASHBOARD ROUTE - NO ADMIN CHECK (Development) */}
+          <Route path="/admin/*" element={<AdminDashboardWrapper />} />
 
           {/* Community Route - Standalone without Layout */}
           <Route

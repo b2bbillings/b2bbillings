@@ -1,4 +1,7 @@
-import React, {useState, useCallback, useMemo} from "react";
+import React, {useState, useCallback, useMemo, useEffect, useRef} from "react";
+
+import {OverlayTrigger, Popover} from "react-bootstrap";
+import {createPortal} from "react-dom";
 import {
   Container,
   Row,
@@ -55,15 +58,28 @@ import {
   faChevronDown,
 } from "@fortawesome/free-solid-svg-icons";
 import UniversalViewModal from "../../../Common/UniversalViewModal";
-import saleOrderService from "../../../../services/saleOrderService"; // ✅ ADD: Import with alias
+import saleOrderService from "../../../../services/saleOrderService";
 import partyService from "../../../../services/partyService";
-// ✅ CONSTANTS
+
 const DOCUMENT_LABELS = {
-  documentName: "Sales Order",
-  documentNamePlural: "Sales Orders",
-  listPath: "sales-orders",
-  editPath: "sales-orders",
-  createPath: "sales-orders/new",
+  "sales-order": {
+    documentName: "Sales Order",
+    documentNamePlural: "Sales Orders",
+    listPath: "sales-orders",
+    editPath: "sales-orders", // ✅ FIXED: Should be sales-orders not quotations
+    createPath: "sales-orders/add",
+    viewPath: "sales-orders",
+    apiEndpoint: "sales-orders", // ✅ ADDED: API endpoint path
+  },
+  quotation: {
+    documentName: "Quotation",
+    documentNamePlural: "Quotations",
+    listPath: "quotations",
+    editPath: "sales-orders", // ✅ FIXED: Quotations also use sales-orders API
+    createPath: "sales-orders/add", // ✅ FIXED: Both use same endpoint
+    viewPath: "quotations",
+    apiEndpoint: "sales-orders", // ✅ ADDED: Both use sales-orders API
+  },
 };
 
 const STATUS_CONFIG = {
@@ -81,7 +97,7 @@ const STATUS_CONFIG = {
 };
 
 function SalesOrderTable({
-  salesOrders = [],
+  salesOrders: propSalesOrders = [],
   onViewOrder,
   onEditOrder,
   onDeleteOrder,
@@ -96,7 +112,7 @@ function SalesOrderTable({
   onCompleteOrder,
   onCancelOrder,
   onDuplicateOrder,
-  isLoading = false,
+  isLoading: propIsLoading = false,
   title,
   searchPlaceholder,
   companyId,
@@ -122,58 +138,53 @@ function SalesOrderTable({
   onViewGeneratedOrders,
   documentType = "sales-order",
   isQuotationsMode = false,
-  saleOrderService: propSaleOrderService, // ✅ ALREADY CORRECT: Accept service as prop
+  saleOrderService: propSaleOrderService,
+  quotations = [],
+  onError,
+  enableEnhancedTracking = false,
+  showSourceCompanyColumn = false,
+  showGeneratedOrdersColumn = false,
+  enableQuickNavigation = false,
+  onNavigate,
+  refreshTrigger, // ✅ ADD: For external refresh triggers
 }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ ADD THIS: Service resolution with fallback
+  // ✅ ENHANCED: Service resolution with fallback
   const resolvedSaleOrderService = propSaleOrderService || saleOrderService;
 
-  // ✅ ADD: Enhanced quotations mode detection
-  const isInQuotationsMode =
-    isQuotationsMode ||
-    documentType === "quotation" ||
-    location.pathname.includes("/quotations") ||
-    salesOrders.some(
-      (order) =>
-        order.orderType === "quotation" ||
-        order.documentType === "quotation" ||
-        order.quotationNumber
-    );
+  // ✅ ENHANCED STATE MANAGEMENT (Same as PurchaseOrderTable)
+  const [salesOrders, setSalesOrders] = useState(propSalesOrders);
+  const [isLoading, setIsLoading] = useState(propIsLoading);
+  const [fetchError, setFetchError] = useState(null);
+  const [lastFetchTime, setLastFetchTime] = useState(null);
 
-  console.log("🔍 SalesOrderTable Mode Detection:", {
+  // ✅ ENHANCED: Quotations mode detection with multiple fallbacks
+  const isInQuotationsMode = useMemo(() => {
+    return (
+      isQuotationsMode ||
+      documentType === "quotation" ||
+      location.pathname.includes("/quotations") ||
+      title?.toLowerCase().includes("quotation") ||
+      salesOrders.some(
+        (order) =>
+          order.orderType === "quotation" ||
+          order.documentType === "quotation" ||
+          order.quotationNumber
+      ) ||
+      quotations.length > 0
+    );
+  }, [
     isQuotationsMode,
     documentType,
-    isInQuotationsMode,
-    pathname: location.pathname,
-    hasQuotations: salesOrders.some(
-      (order) =>
-        order.orderType === "quotation" || order.documentType === "quotation"
-    ),
-  });
+    location.pathname,
+    title,
+    salesOrders,
+    quotations,
+  ]);
 
-  // ✅ VALIDATION: Ensure services are available - UPDATE THIS
-  if (!resolvedSaleOrderService) {
-    return (
-      <Alert variant="danger">
-        <h6>Service Error</h6>
-        <p>
-          Sales order service is not available. Please check your configuration.
-        </p>
-      </Alert>
-    );
-  }
-  if (!companyId) {
-    return (
-      <Alert variant="warning">
-        <h6>Configuration Error</h6>
-        <p>Company ID is required for sales order operations.</p>
-      </Alert>
-    );
-  }
-
-  // ✅ STATE MANAGEMENT
+  // ✅ ENHANCED: State management
   const [viewModalShow, setViewModalShow] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -183,19 +194,598 @@ function SalesOrderTable({
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [localSortBy, setLocalSortBy] = useState(sortBy);
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
-
-  // ✅ Purchase Order Generation Modal States
+  const [localFilterStatus, setLocalFilterStatus] = useState(
+    filterStatus === "all" ? "" : filterStatus || ""
+  );
+  const [showCancelledOrders, setShowCancelledOrders] = useState(false);
   const [showGeneratePOModal, setShowGeneratePOModal] = useState(false);
   const [selectedOrderForPOGeneration, setSelectedOrderForPOGeneration] =
     useState(null);
   const [poGenerationLoading, setPOGenerationLoading] = useState(false);
   const [poGenerationError, setPOGenerationError] = useState(null);
+  const [internalRefreshTrigger, setInternalRefreshTrigger] = useState(0);
+  const [lastGenerationTime, setLastGenerationTime] = useState(null);
 
-  const [localFilterStatus, setLocalFilterStatus] = useState(
-    filterStatus === "all" ? "" : filterStatus || ""
+  // ✅ ENHANCED: Document type and navigation paths
+  const getDocumentType = useCallback(() => {
+    return isInQuotationsMode ? "quotation" : "sales-order";
+  }, [isInQuotationsMode]);
+
+  const getNavigationPaths = useCallback(() => {
+    const docType = getDocumentType();
+    const config = DOCUMENT_LABELS[docType] || DOCUMENT_LABELS["sales-order"];
+
+    console.log("📍 Navigation paths:", {
+      documentType: docType,
+      isInQuotationsMode,
+      config,
+    });
+
+    return config;
+  }, [getDocumentType, isInQuotationsMode]);
+  const fetchSalesOrders = useCallback(
+    async (force = false) => {
+      if (!companyId) {
+        console.warn("⚠️ No companyId provided, cannot fetch sales orders");
+        return;
+      }
+
+      // Skip if data is fresh and not forced
+      if (!force && lastFetchTime && Date.now() - lastFetchTime < 30000) {
+        console.log("⏭️ Skipping fetch - data is fresh");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setFetchError(null);
+
+        console.log("🔄 Fetching sales orders:", {
+          companyId,
+          isInQuotationsMode,
+          documentType,
+          force,
+        });
+
+        let response;
+
+        try {
+          response = await resolvedSaleOrderService.getSalesOrders(companyId, {
+            includeCustomer: true,
+            includeItems: true,
+            sortBy: sortBy || "date",
+            sortOrder: sortOrder || "desc",
+            status: filterStatus !== "all" ? filterStatus : undefined,
+            search: searchTerm || undefined,
+          });
+
+          console.log("✅ Sales orders API response:", {
+            success: response?.success,
+            dataType: typeof response?.data,
+            isArray: Array.isArray(response?.data),
+            count: Array.isArray(response?.data) ? response.data.length : 0,
+            responseKeys: response ? Object.keys(response) : [],
+            fullResponse: response,
+            // ✅ ADD: Deep inspection of response.data
+            dataKeys:
+              response?.data && typeof response.data === "object"
+                ? Object.keys(response.data)
+                : [],
+            dataValues:
+              response?.data && typeof response.data === "object"
+                ? Object.values(response.data)
+                : [],
+          });
+        } catch (fetchError) {
+          console.error("❌ Sales orders fetch failed:", fetchError);
+          throw fetchError;
+        }
+
+        if (response?.success && response?.data) {
+          // ✅ ENHANCED: Better data extraction with comprehensive fallbacks
+          let orders = [];
+
+          console.log("🔍 DETAILED: Analyzing response.data structure:", {
+            dataType: typeof response.data,
+            isArray: Array.isArray(response.data),
+            dataKeys:
+              typeof response.data === "object"
+                ? Object.keys(response.data)
+                : [],
+            dataContent: response.data,
+            // ✅ ADD: Check each property value
+            propertyInspection:
+              typeof response.data === "object"
+                ? Object.entries(response.data).map(([key, value]) => ({
+                    key,
+                    type: typeof value,
+                    isArray: Array.isArray(value),
+                    length: Array.isArray(value) ? value.length : null,
+                    hasOrderProps:
+                      Array.isArray(value) && value.length > 0
+                        ? Boolean(
+                            value[0]?.orderNumber || value[0]._id || value[0].id
+                          )
+                        : false,
+                  }))
+                : [],
+          });
+
+          // ✅ CRITICAL FIX: Enhanced response structure handling
+          if (Array.isArray(response.data)) {
+            // Direct array
+            orders = response.data;
+            console.log("✅ Response data is direct array:", orders.length);
+          } else if (response.data && typeof response.data === "object") {
+            // ✅ COMPREHENSIVE: Check ALL possible property names and values
+            const possibleArrayKeys = [
+              "salesOrders",
+              "orders",
+              "data",
+              "sales_orders",
+              "saleOrders",
+              "transactions",
+              "documents",
+              "items",
+              "results",
+              "records",
+              "quotations",
+              "quotation",
+              "salesOrder",
+              "order",
+              "list",
+              "content",
+              "rows",
+              "values",
+            ];
+
+            let foundOrders = false;
+
+            // Method 1: Try known property names
+            for (const key of possibleArrayKeys) {
+              if (response.data[key] && Array.isArray(response.data[key])) {
+                orders = response.data[key];
+                console.log(
+                  `✅ Found orders in response.data.${key}:`,
+                  orders.length
+                );
+                foundOrders = true;
+                break;
+              }
+            }
+
+            // Method 2: If no known properties, inspect all properties
+            if (!foundOrders) {
+              console.log(
+                "🔍 No known properties found, inspecting ALL properties..."
+              );
+
+              for (const [key, value] of Object.entries(response.data)) {
+                console.log(`🔍 Inspecting property "${key}":`, {
+                  type: typeof value,
+                  isArray: Array.isArray(value),
+                  length: Array.isArray(value) ? value.length : null,
+                  value: Array.isArray(value) ? value.slice(0, 1) : value,
+                });
+
+                if (Array.isArray(value)) {
+                  // Check if this array contains order-like objects
+                  if (value.length > 0) {
+                    const firstItem = value[0];
+                    const hasOrderProperties = Boolean(
+                      firstItem &&
+                        typeof firstItem === "object" &&
+                        (firstItem.orderNumber ||
+                          firstItem._id ||
+                          firstItem.id ||
+                          firstItem.quotationNumber ||
+                          firstItem.customer ||
+                          firstItem.customerName ||
+                          firstItem.amount ||
+                          firstItem.total ||
+                          firstItem.items)
+                    );
+
+                    console.log(`🔍 Array "${key}" analysis:`, {
+                      length: value.length,
+                      firstItem: firstItem,
+                      hasOrderProperties: hasOrderProperties,
+                      orderProperties: firstItem
+                        ? {
+                            hasOrderNumber: Boolean(firstItem.orderNumber),
+                            hasId: Boolean(firstItem._id || firstItem.id),
+                            hasCustomer: Boolean(
+                              firstItem.customer || firstItem.customerName
+                            ),
+                            hasAmount: Boolean(
+                              firstItem.amount || firstItem.total
+                            ),
+                            hasItems: Boolean(firstItem.items),
+                          }
+                        : null,
+                    });
+
+                    if (hasOrderProperties) {
+                      orders = value;
+                      console.log(
+                        `✅ Found order-like objects in response.data.${key}:`,
+                        orders.length
+                      );
+                      foundOrders = true;
+                      break;
+                    }
+                  } else {
+                    console.log(`⚠️ Array "${key}" is empty`);
+                  }
+                }
+              }
+            }
+
+            // Method 3: If still no arrays found, check if response.data itself is an order
+            if (!foundOrders) {
+              console.log(
+                "🔍 No arrays found, checking if response.data is a single order..."
+              );
+
+              const hasOrderProperties = Boolean(
+                response.data.orderNumber ||
+                  response.data._id ||
+                  response.data.id ||
+                  response.data.quotationNumber ||
+                  response.data.customer ||
+                  response.data.customerName
+              );
+
+              if (hasOrderProperties) {
+                orders = [response.data];
+                console.log(
+                  "✅ Response data appears to be a single order, wrapping in array"
+                );
+                foundOrders = true;
+              } else {
+                console.log("❌ Response data structure not recognized:", {
+                  dataKeys: Object.keys(response.data),
+                  sampleValues: Object.values(response.data).slice(0, 3),
+                  fullData: response.data,
+                });
+              }
+            }
+          }
+
+          console.log("✅ Final extracted orders:", {
+            total: orders.length,
+            firstOrderKeys: orders[0] ? Object.keys(orders[0]) : [],
+            sample: orders[0]
+              ? {
+                  orderNumber: orders[0].orderNumber,
+                  customerName: orders[0].customerName,
+                  amount: orders[0].amount,
+                  status: orders[0].status,
+                  isAutoGenerated: orders[0].isAutoGenerated,
+                  sourceOrderType: orders[0].sourceOrderType,
+                }
+              : null,
+            allOrders: orders, // ✅ Log all orders for debugging
+          });
+
+          if (orders.length === 0) {
+            console.warn(
+              "⚠️ No orders found in response. Full response analysis:",
+              {
+                responseStructure: response,
+                dataType: typeof response.data,
+                dataKeys: response.data ? Object.keys(response.data) : [],
+                dataValues: response.data ? Object.values(response.data) : [],
+              }
+            );
+
+            // Don't throw error, just set empty array and continue
+            setSalesOrders([]);
+            setLastFetchTime(Date.now());
+            setFetchError(null);
+            return;
+          }
+
+          // ✅ SIMPLIFIED: Process orders with minimal transformation
+          const processedOrders = orders
+            .filter((order) => order != null) // Remove null/undefined
+            .map((order) => ({
+              ...order,
+              // ✅ Ensure required display fields
+              displayCustomerName:
+                order.customerName ||
+                order.customer?.name ||
+                "Unknown Customer",
+              displayAmount: parseFloat(
+                order.amount || order.total || order.totals?.finalTotal || 0
+              ),
+              displayStatus: order.status || "draft",
+              displayDate: order.orderDate || order.createdAt,
+            }));
+
+          console.log("✅ Processed sales orders:", {
+            total: processedOrders.length,
+            withCustomer: processedOrders.filter(
+              (o) => o.displayCustomerName !== "Unknown Customer"
+            ).length,
+            withAmount: processedOrders.filter((o) => o.displayAmount > 0)
+              .length,
+            statuses: [...new Set(processedOrders.map((o) => o.status))],
+            processedSample: processedOrders[0],
+          });
+
+          setSalesOrders(processedOrders);
+          setLastFetchTime(Date.now());
+          setFetchError(null);
+        } else {
+          console.error("❌ Invalid response structure:", response);
+          throw new Error(
+            response?.message ||
+              "Failed to fetch sales orders - Invalid response"
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error fetching sales orders:", {
+          error: error.message,
+          stack: error.stack,
+          companyId,
+          serviceAvailable: !!resolvedSaleOrderService,
+        });
+
+        setFetchError(error.message);
+        addToast?.(`Failed to fetch sales orders: ${error.message}`, "error");
+
+        // ✅ Fallback to provided data
+        if (propSalesOrders && propSalesOrders.length > 0) {
+          console.log("📋 Using fallback data:", propSalesOrders.length);
+          setSalesOrders(propSalesOrders);
+        } else {
+          setSalesOrders([]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      companyId,
+      sortBy,
+      sortOrder,
+      filterStatus,
+      searchTerm,
+      propSalesOrders,
+      addToast,
+      lastFetchTime,
+      resolvedSaleOrderService,
+    ]
   );
-  const [showCancelledOrders, setShowCancelledOrders] = useState(false);
 
+  // ✅ ENHANCED: Auto-fetch on mount and dependency changes (Same as PurchaseOrderTable)
+  useEffect(() => {
+    if (companyId) {
+      fetchSalesOrders(true);
+    }
+  }, [companyId, refreshTrigger]);
+
+  // ✅ ENHANCED: Refresh when filters change
+  useEffect(() => {
+    if (companyId && lastFetchTime) {
+      const delayedFetch = setTimeout(() => {
+        fetchSalesOrders(false);
+      }, 500); // Debounce filter changes
+
+      return () => clearTimeout(delayedFetch);
+    }
+  }, [searchTerm, filterStatus, sortBy, sortOrder, fetchSalesOrders]);
+
+  // ✅ Auto-refresh after conversions
+  useEffect(() => {
+    const state = location.state;
+    if (state?.conversionSuccess || state?.generatedFrom) {
+      console.log("🔄 Detected conversion success, forcing refresh...", state);
+      setLastGenerationTime(Date.now());
+      setTimeout(() => {
+        fetchSalesOrders(true);
+      }, 1000);
+    }
+  }, [location.state, fetchSalesOrders]);
+
+  // ✅ Add periodic refresh for recently generated orders
+  useEffect(() => {
+    if (lastGenerationTime && Date.now() - lastGenerationTime < 30000) {
+      const interval = setInterval(() => {
+        console.log("🔄 Periodic refresh for recent generation...");
+        fetchSalesOrders(true);
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [lastGenerationTime, fetchSalesOrders]);
+
+  // ✅ ENHANCED: Final data resolution with multiple fallbacks (Same as PurchaseOrderTable)
+  const finalSalesOrders = useMemo(() => {
+    const orders =
+      Array.isArray(salesOrders) && salesOrders.length > 0
+        ? salesOrders
+        : Array.isArray(propSalesOrders)
+        ? propSalesOrders
+        : [];
+
+    return orders.filter((order) => order != null); // Remove null/undefined orders
+  }, [salesOrders, propSalesOrders]);
+
+  const finalIsLoading = isLoading || propIsLoading;
+
+  // ✅ SIMPLIFIED: Order source detection (around line 506)
+  const getOrderSource = useCallback((order) => {
+    // ✅ SIMPLIFIED: Check if order came from a purchase order
+    const isFromPurchaseOrder = Boolean(
+      order.isAutoGenerated === true &&
+        order.sourceOrderId &&
+        order.sourceOrderType === "purchase_order"
+    );
+
+    console.log("🔍 Simplified order source analysis:", {
+      orderNumber: order.orderNumber,
+      isAutoGenerated: order.isAutoGenerated,
+      sourceOrderType: order.sourceOrderType,
+      sourceOrderId: order.sourceOrderId,
+      isFromPurchaseOrder,
+    });
+
+    if (isFromPurchaseOrder) {
+      return {
+        type: "fromPO",
+        label: "From Purchase Order",
+        icon: faArrowRight,
+        color: "info",
+        description: `Generated from: ${
+          order.sourceOrderNumber || order.sourceOrderId
+        }`,
+        sourceOrderNumber: order.sourceOrderNumber,
+        sourceCompanyId: order.sourceCompanyId,
+      };
+    } else {
+      return {
+        type: "self",
+        label: "Self Generated",
+        icon: faUser,
+        color: "success",
+        description: "Created directly",
+      };
+    }
+  }, []);
+
+  // ✅ ORDER CATEGORIZATION (Same as PurchaseOrderTable)
+  const categorizeOrders = useMemo(() => {
+    const all = Array.isArray(finalSalesOrders) ? finalSalesOrders : [];
+    const selfCreated = [];
+    const fromPurchaseOrders = [];
+    const autoGenerated = [];
+
+    all.forEach((order) => {
+      if (!order) return; // Skip null/undefined orders
+
+      const source = getOrderSource(order);
+      if (source.type === "fromPO") {
+        fromPurchaseOrders.push(order);
+        if (order.isAutoGenerated === true) {
+          autoGenerated.push(order);
+        }
+      } else {
+        selfCreated.push(order);
+      }
+    });
+
+    return {all, selfCreated, fromPurchaseOrders, autoGenerated};
+  }, [finalSalesOrders, getOrderSource]);
+
+  // ✅ FIXED: Better filtering logic with proper default handling (Same as PurchaseOrderTable)
+  const getFilteredOrders = () => {
+    // ✅ FIXED: Start with finalSalesOrders instead of empty array
+    let orders = [...finalSalesOrders]; // Always start with all orders
+
+    // ✅ Apply order type filter
+    switch (activeOrderType) {
+      case "self":
+        orders = categorizeOrders.selfCreated;
+        break;
+      case "fromPO":
+        orders = categorizeOrders.fromPurchaseOrders;
+        break;
+      case "auto":
+        orders = categorizeOrders.autoGenerated;
+        break;
+      default:
+        orders = categorizeOrders.all;
+    }
+
+    // ✅ KEEP: Search filter
+    if (localSearchTerm && localSearchTerm.trim()) {
+      const searchLower = localSearchTerm.toLowerCase();
+      orders = orders.filter(
+        (order) =>
+          (order.orderNumber || "").toLowerCase().includes(searchLower) ||
+          (order.customerName || order.customer?.name || "")
+            .toLowerCase()
+            .includes(searchLower) ||
+          (order.customerMobile || order.customer?.mobile || "")
+            .toLowerCase()
+            .includes(searchLower) ||
+          (order.notes || "").toLowerCase().includes(searchLower)
+      );
+    }
+
+    // ✅ KEEP: Status filter
+    if (
+      localFilterStatus &&
+      localFilterStatus !== "all" &&
+      localFilterStatus !== ""
+    ) {
+      orders = orders.filter((order) => order.status === localFilterStatus);
+    }
+
+    // ✅ KEEP: Sorting logic
+    if (orders.length > 0) {
+      orders.sort((a, b) => {
+        let aVal, bVal;
+
+        switch (localSortBy) {
+          case "date":
+            aVal = new Date(a.orderDate || a.date || a.createdAt || 0);
+            bVal = new Date(b.orderDate || b.date || b.createdAt || 0);
+            if (isNaN(aVal.getTime())) aVal = new Date(0);
+            if (isNaN(bVal.getTime())) bVal = new Date(0);
+            break;
+          case "amount":
+            aVal = parseFloat(a.amount || a.total || a.totals?.finalTotal || 0);
+            bVal = parseFloat(b.amount || b.total || b.totals?.finalTotal || 0);
+            if (isNaN(aVal)) aVal = 0;
+            if (isNaN(bVal)) bVal = 0;
+            break;
+          case "customer":
+            aVal = (a.customerName || a.customer?.name || "").toLowerCase();
+            bVal = (b.customerName || b.customer?.name || "").toLowerCase();
+            break;
+          default:
+            aVal = a.orderNumber || "";
+            bVal = b.orderNumber || "";
+        }
+
+        try {
+          if (localSortOrder === "desc") {
+            return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+          } else {
+            return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+          }
+        } catch (error) {
+          console.warn("Sorting error:", error);
+          return 0;
+        }
+      });
+    }
+
+    return orders;
+  };
+
+  // ✅ FIX: Add safe fallback for filteredOrders (Same as PurchaseOrderTable)
+  const filteredOrders = useMemo(() => {
+    try {
+      return getFilteredOrders();
+    } catch (error) {
+      console.error("Error filtering orders:", error);
+      return []; // Safe fallback
+    }
+  }, [
+    localSearchTerm,
+    localFilterStatus,
+    localSortBy,
+    localSortOrder,
+    finalSalesOrders,
+    activeOrderType,
+    categorizeOrders,
+  ]);
+
+  // ✅ ENHANCED: Customer data fetching
   const fetchCustomerData = useCallback(async (customerId) => {
     try {
       console.log("🔍 Fetching customer data for ID:", customerId);
@@ -296,72 +886,6 @@ function SalesOrderTable({
     }
   }, []);
 
-  // ✅ ORDER SOURCE DETECTION
-  const getOrderSource = useCallback((order) => {
-    const hasActualSourceOrderData = Boolean(
-      (order.sourceOrderId || order.sourceOrderNumber) &&
-        (order.sourceOrderType === "purchase_order" ||
-          order.sourceOrderType === "purchase-order" ||
-          order.sourceOrderType === "purchaseOrder" ||
-          order.sourceOrderType === "PO")
-    );
-
-    const isExplicitlyFromPurchaseOrder = Boolean(
-      order.isAutoGenerated === true &&
-        (order.generatedFrom === "purchase_order" ||
-          order.generatedFrom === "purchase-order" ||
-          order.generatedFrom === "purchaseOrder")
-    );
-
-    const isFromPurchaseOrder =
-      hasActualSourceOrderData || isExplicitlyFromPurchaseOrder;
-
-    if (isFromPurchaseOrder) {
-      const sourceInfo =
-        order.sourceOrderNumber || order.sourceOrderId || "Purchase Order";
-      return {
-        type: "fromPO",
-        label: "From Purchase Order",
-        icon: faArrowRight,
-        color: "info",
-        description: `Generated from: ${sourceInfo}`,
-      };
-    } else {
-      return {
-        type: "self",
-        label: "Self Generated",
-        icon: faUser,
-        color: "success",
-        description: "Created directly",
-      };
-    }
-  }, []);
-
-  // ✅ ORDER CATEGORIZATION
-  const categorizeOrders = useMemo(() => {
-    const all = salesOrders;
-    const selfCreated = [];
-    const fromPurchaseOrders = [];
-    const autoGenerated = [];
-
-    salesOrders.forEach((order) => {
-      const source = getOrderSource(order);
-      if (source.type === "fromPO") {
-        fromPurchaseOrders.push(order);
-        if (order.isAutoGenerated === true) {
-          autoGenerated.push(order);
-        }
-      } else {
-        selfCreated.push(order);
-      }
-    });
-
-    return {all, selfCreated, fromPurchaseOrders, autoGenerated};
-  }, [salesOrders, getOrderSource]);
-
-  // ✅ UTILITY FUNCTIONS
-  const getDocumentType = () => "sales-order";
-
   // ✅ MODAL HANDLER FOR PURCHASE ORDER GENERATION
   const handleModalGeneratePurchaseOrder = useCallback((order) => {
     setViewModalShow(false);
@@ -370,6 +894,7 @@ function SalesOrderTable({
     setPOGenerationError(null);
   }, []);
 
+  // ✅ ENHANCED GENERATE PURCHASE ORDER MODAL
   const GeneratePurchaseOrderModal = ({show, onHide, order}) => {
     const [confirmationData, setConfirmationData] = useState({
       notes: "",
@@ -378,6 +903,7 @@ function SalesOrderTable({
       termsAndConditions: "",
       autoLinkCustomer: true,
     });
+
     const handleGenerate = async () => {
       try {
         setPOGenerationLoading(true);
@@ -1035,24 +1561,26 @@ function SalesOrderTable({
               );
 
               if (navigateConfirmed) {
-                navigate(
-                  `/companies/${targetCompanyIdFromResponse}/purchase-orders/${poId}`,
-                  {
-                    state: {
-                      returnPath: location.pathname,
-                      highlightOrder: poId,
-                      generatedFrom: isInQuotationsMode
-                        ? "quotation"
-                        : "sales-order",
-                      sourceOrderId: orderId,
-                      sourceOrderNumber: order.orderNumber,
-                      showSuccessMessage: true,
-                      conversionSuccess: true,
-                      configurationOverride:
-                        conversionData.skipBidirectionalValidation,
-                    },
-                  }
-                );
+                const navigationPath = `/companies/${targetCompanyIdFromResponse}/purchase-orders/${poId}`;
+                const navigationState = {
+                  returnPath: location.pathname,
+                  highlightOrder: poId,
+                  generatedFrom: isInQuotationsMode
+                    ? "quotation"
+                    : "sales-order",
+                  sourceOrderId: orderId,
+                  sourceOrderNumber: order.orderNumber,
+                  showSuccessMessage: true,
+                  conversionSuccess: true,
+                  configurationOverride:
+                    conversionData.skipBidirectionalValidation,
+                };
+
+                if (onNavigate) {
+                  onNavigate(navigationPath, {state: navigationState});
+                } else {
+                  navigate(navigationPath, {state: navigationState});
+                }
                 return;
               }
             }, 1000);
@@ -1190,7 +1718,7 @@ function SalesOrderTable({
           <div className="mb-4">
             <h6 className="text-info mb-3">
               <FontAwesomeIcon icon={faClipboardList} className="me-2" />
-              {isQuotationsMode ? "Quotation" : "Sales Order"} Details
+              {isInQuotationsMode ? "Quotation" : "Sales Order"} Details
             </h6>
             <Row>
               <Col md={6}>
@@ -1281,7 +1809,7 @@ function SalesOrderTable({
                 as="textarea"
                 rows={3}
                 placeholder={`Generated from ${
-                  isQuotationsMode ? "Quotation" : "Sales Order"
+                  isInQuotationsMode ? "Quotation" : "Sales Order"
                 }: ${order.orderNumber}`}
                 value={confirmationData.notes}
                 onChange={(e) =>
@@ -1344,7 +1872,7 @@ function SalesOrderTable({
               </li>
               <li>
                 All items and pricing will be copied from this{" "}
-                {isQuotationsMode ? "quotation" : "sales order"}
+                {isInQuotationsMode ? "quotation" : "sales order"}
               </li>
               <li>You can track the status of both orders bidirectionally</li>
               {confirmationData.autoLinkCustomer && (
@@ -1384,9 +1912,17 @@ function SalesOrderTable({
       </Modal>
     );
   };
-  // ✅ ORDER TRANSFORMATION FOR EDIT
+
   const transformOrderForEdit = useCallback(
     (order) => {
+      console.log("🔄 Transforming order for edit:", {
+        orderNumber: order.orderNumber,
+        isInQuotationsMode,
+        documentType: getDocumentType(),
+        originalOrder: order,
+      });
+
+      // ✅ ENHANCED: Item transformation with better fallbacks
       const transformedItems = (order.items || []).map((item, index) => {
         const quantity = parseFloat(item.quantity || item.qty || 1);
         const pricePerUnit = parseFloat(
@@ -1446,30 +1982,34 @@ function SalesOrderTable({
         };
       });
 
-      const customerData =
-        order.customer && typeof order.customer === "object"
-          ? {
-              id: order.customer._id || order.customer.id,
-              _id: order.customer._id || order.customer.id,
-              name: order.customer.name || order.customer.customerName || "",
-              mobile: order.customer.mobile || order.customer.phone || "",
-              email: order.customer.email || "",
-              address: order.customer.address || "",
-              gstNumber: order.customer.gstNumber || "",
-            }
-          : {
-              id: order.customerId || order.customer,
-              _id: order.customerId || order.customer,
-              name: order.customerName || order.partyName || "",
-              mobile:
-                order.customerMobile ||
-                order.partyPhone ||
-                order.mobileNumber ||
-                "",
-              email: order.customerEmail || order.partyEmail || "",
-              address: order.customerAddress || order.partyAddress || "",
-              gstNumber: order.customerGstNumber || "",
-            };
+      // ✅ ENHANCED: Customer data transformation with better handling
+      const customerData = (() => {
+        if (order.customer && typeof order.customer === "object") {
+          return {
+            id: order.customer._id || order.customer.id,
+            _id: order.customer._id || order.customer.id,
+            name: order.customer.name || order.customer.customerName || "",
+            mobile: order.customer.mobile || order.customer.phone || "",
+            email: order.customer.email || "",
+            address: order.customer.address || "",
+            gstNumber: order.customer.gstNumber || "",
+          };
+        } else {
+          return {
+            id: order.customerId || order.customer,
+            _id: order.customerId || order.customer,
+            name: order.customerName || order.partyName || "",
+            mobile:
+              order.customerMobile ||
+              order.partyPhone ||
+              order.mobileNumber ||
+              "",
+            email: order.customerEmail || order.partyEmail || "",
+            address: order.customerAddress || order.partyAddress || "",
+            gstNumber: order.customerGstNumber || "",
+          };
+        }
+      })();
 
       const totalAmount = parseFloat(
         order.amount ||
@@ -1480,48 +2020,86 @@ function SalesOrderTable({
           0
       );
 
-      return {
+      // ✅ ENHANCED: Base transformation with quotation-specific fields
+      const baseTransformation = {
         id: order._id || order.id,
         _id: order._id || order.id,
-        documentType: "sales-order",
-        orderNumber:
-          order.orderNumber ||
-          order.salesOrderNumber ||
-          order.orderNo ||
-          order.billNumber,
+        documentType: getDocumentType(),
+
+        // ✅ ENHANCED: Order number handling for both types
+        orderNumber: isInQuotationsMode
+          ? order.quotationNumber ||
+            order.orderNumber ||
+            order.salesOrderNumber ||
+            order.orderNo
+          : order.orderNumber ||
+            order.salesOrderNumber ||
+            order.orderNo ||
+            order.billNumber,
+
+        // ✅ ENHANCED: For quotations, also include quotationNumber
+        ...(isInQuotationsMode && {
+          quotationNumber: order.quotationNumber || order.orderNumber,
+        }),
+
         orderDate:
           order.orderDate || order.saleDate || order.billDate || order.date,
         expectedDeliveryDate:
           order.expectedDeliveryDate || order.deliveryDate || null,
+
         customer: customerData,
         customerName: customerData?.name || "",
         customerMobile: customerData?.mobile || "",
+
         items: transformedItems,
         amount: totalAmount,
         status: order.status || "draft",
         priority: order.priority || "normal",
         notes: order.notes || order.description || "",
         terms: order.terms || order.termsAndConditions || "",
+
         gstEnabled: order.gstEnabled !== undefined ? order.gstEnabled : true,
         taxMode: order.taxMode || "without-tax",
         priceIncludesTax: Boolean(order.priceIncludesTax),
+
         companyId: order.companyId || companyId,
+
+        // ✅ ENHANCED: Source tracking fields
         isAutoGenerated: Boolean(order.isAutoGenerated),
         sourceOrderType: order.sourceOrderType || null,
         sourceOrderId: order.sourceOrderId || null,
         sourceOrderNumber: order.sourceOrderNumber || null,
         sourceCompanyId: order.sourceCompanyId || null,
+
+        // ✅ ENHANCED: Bidirectional tracking
         hasCorrespondingPurchaseOrder: Boolean(
           order.hasCorrespondingPurchaseOrder
         ),
         correspondingPurchaseOrderId:
           order.correspondingPurchaseOrderId || null,
         hasGeneratedPurchaseOrder: Boolean(order.hasGeneratedPurchaseOrder),
+
         trackingInfo: order.trackingInfo || null,
+
+        // ✅ ENHANCED: Metadata
         isTransformed: true,
+        transformedAt: new Date().toISOString(),
+        transformedFor: "edit",
+        originalData: order, // Keep reference to original data
       };
+
+      console.log("✅ Order transformed for edit:", {
+        orderNumber: baseTransformation.orderNumber,
+        quotationNumber: baseTransformation.quotationNumber,
+        documentType: baseTransformation.documentType,
+        customerName: baseTransformation.customerName,
+        itemsCount: baseTransformation.items.length,
+        amount: baseTransformation.amount,
+      });
+
+      return baseTransformation;
     },
-    [companyId]
+    [companyId, isInQuotationsMode, getDocumentType]
   );
 
   // ✅ ACTION HANDLERS
@@ -1563,34 +2141,83 @@ function SalesOrderTable({
             onViewOrder?.(targetOrder);
             break;
 
+          // ✅ ENHANCED: Update the edit case in handleAction function (around line 1650)
           case "edit":
             if (
               targetOrder.status === "cancelled" ||
               targetOrder.status === "deleted"
             ) {
-              addToast?.("Cannot edit cancelled sales order", "warning");
+              addToast?.("Cannot edit cancelled order", "warning");
               return;
             }
+
+            // ✅ ENHANCED: Transform order data for editing
             const editTransformed = transformOrderForEdit(targetOrder);
-            const editPath = `/companies/${companyId}/${DOCUMENT_LABELS.editPath}/${orderId}/edit`;
+
+            // ✅ FIXED: Both quotations and sales orders use the same API endpoint
+            const documentPaths = getNavigationPaths();
+            const editPath = `/companies/${companyId}/sales-orders/${orderId}/edit`;
+
+            console.log("🔄 Navigating to edit page:", {
+              editPath,
+              orderId,
+              isInQuotationsMode,
+              documentType: getDocumentType(),
+              apiEndpoint: documentPaths.apiEndpoint,
+              orderData: editTransformed,
+            });
+
             navigate(editPath, {
               state: {
+                // ✅ ENHANCED: Provide multiple data formats for compatibility
                 salesOrder: editTransformed,
                 order: editTransformed,
                 transaction: editTransformed,
-                documentType: "sales-order",
-                mode: "sales-orders",
+                quotation: isInQuotationsMode ? editTransformed : undefined,
+
+                // ✅ ENHANCED: Document type and mode information
+                documentType: getDocumentType(),
+                orderType: isInQuotationsMode ? "quotation" : "sales_order",
+                mode: isInQuotationsMode ? "quotations" : "sales-orders",
+
+                // ✅ ENHANCED: Navigation context
                 returnPath: location.pathname,
                 editMode: true,
+                isEdit: true,
+
+                // ✅ ENHANCED: Original order reference
+                originalOrder: targetOrder,
+
+                // ✅ ENHANCED: Default settings
+                defaultOrderType: isInQuotationsMode
+                  ? "quotation"
+                  : "sales_order",
+
+                // ✅ ADDED: API configuration
+                apiEndpoint: documentPaths.apiEndpoint,
+                updateRoute: `/api/sales-orders/${orderId}`, // ✅ CRITICAL: Actual API route
+
+                // ✅ ENHANCED: Metadata
+                editContext: {
+                  source: "SalesOrderTable",
+                  timestamp: new Date().toISOString(),
+                  companyId: companyId,
+                  userId: currentUser?.id || currentUser?._id,
+                  isQuotationsMode: isInQuotationsMode,
+                  apiRoute: `/api/sales-orders/${orderId}`,
+                },
               },
             });
+
+            // ✅ Close modal if open
             if (viewModalShow) {
               setViewModalShow(false);
               setSelectedOrder(null);
             }
+
+            // ✅ Call external handler if provided
             onEditOrder?.(targetOrder);
             break;
-
           case "delete":
             if (
               deletingOrders.has(orderId) ||
@@ -1895,94 +2522,6 @@ function SalesOrderTable({
     [handleAction]
   );
 
-  // ✅ FIXED: Better filtering logic with proper default handling
-  const getFilteredOrders = () => {
-    let orders = [];
-
-    switch (activeOrderType) {
-      case "self":
-        orders = categorizeOrders.selfCreated;
-        break;
-      case "fromPO":
-        orders = categorizeOrders.fromPurchaseOrders;
-        break;
-      case "auto":
-        orders = categorizeOrders.autoGenerated;
-        break;
-      default:
-        orders = categorizeOrders.all;
-    }
-
-    // ✅ FIXED: Apply search filter only if search term exists
-    if (localSearchTerm && localSearchTerm.trim()) {
-      const searchLower = localSearchTerm.toLowerCase();
-      orders = orders.filter(
-        (order) =>
-          (order.orderNumber || "").toLowerCase().includes(searchLower) ||
-          (order.customerName || order.customer?.name || "")
-            .toLowerCase()
-            .includes(searchLower) ||
-          (order.customerMobile || order.customer?.mobile || "")
-            .toLowerCase()
-            .includes(searchLower) ||
-          (order.notes || "").toLowerCase().includes(searchLower)
-      );
-    }
-
-    // ✅ FIXED: Apply status filter only if not "all" or empty
-    if (
-      localFilterStatus &&
-      localFilterStatus !== "all" &&
-      localFilterStatus !== ""
-    ) {
-      orders = orders.filter((order) => order.status === localFilterStatus);
-    }
-
-    // ✅ Apply sorting
-    if (orders.length > 0) {
-      orders.sort((a, b) => {
-        let aVal, bVal;
-
-        switch (localSortBy) {
-          case "date":
-            aVal = new Date(a.orderDate || a.date || a.createdAt || 0);
-            bVal = new Date(b.orderDate || b.date || b.createdAt || 0);
-            if (isNaN(aVal.getTime())) aVal = new Date(0);
-            if (isNaN(bVal.getTime())) bVal = new Date(0);
-            break;
-          case "amount":
-            aVal = parseFloat(a.amount || a.total || a.totals?.finalTotal || 0);
-            bVal = parseFloat(b.amount || b.total || b.totals?.finalTotal || 0);
-            if (isNaN(aVal)) aVal = 0;
-            if (isNaN(bVal)) bVal = 0;
-            break;
-          case "customer":
-            aVal = (a.customerName || a.customer?.name || "").toLowerCase();
-            bVal = (b.customerName || b.customer?.name || "").toLowerCase();
-            break;
-          default:
-            aVal = a.orderNumber || "";
-            bVal = b.orderNumber || "";
-        }
-
-        try {
-          if (localSortOrder === "desc") {
-            return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
-          } else {
-            return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-          }
-        } catch (error) {
-          console.warn("Sorting error:", error);
-          return 0;
-        }
-      });
-    }
-
-    return orders;
-  };
-
-  const filteredOrders = getFilteredOrders();
-
   // ✅ SEPARATED ORDERS
   const separatedOrders = useMemo(() => {
     const active = [];
@@ -2062,30 +2601,49 @@ function SalesOrderTable({
     );
   };
 
-  const StatusBadge = ({status, priority}) => {
-    const statusInfo = STATUS_CONFIG[status] || STATUS_CONFIG.default;
+  const GeneratedOrdersBadge = ({order}) => {
+    const hasGeneratedPO = Boolean(
+      order.hasCorrespondingPurchaseOrder || order.hasGeneratedPurchaseOrder
+    );
+    const hasSourceOrder = Boolean(
+      order.isAutoGenerated && order.sourceOrderId
+    );
+
+    if (!hasGeneratedPO && !hasSourceOrder) {
+      return (
+        <Badge bg="light" text="dark" className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faUser} className="me-1" />
+          Manual
+        </Badge>
+      );
+    }
 
     return (
-      <div className="d-flex flex-column align-items-start gap-1">
-        <Badge bg={statusInfo.variant} className="d-flex align-items-center">
-          <FontAwesomeIcon icon={statusInfo.icon} className="me-1" />
-          {statusInfo.text}
-        </Badge>
-        {priority && priority !== "normal" && (
-          <Badge
-            bg={
-              priority === "high"
-                ? "danger"
-                : priority === "urgent"
-                ? "warning"
-                : "info"
-            }
-            className="small"
-          >
-            {priority.toUpperCase()}
+      <div className="d-flex flex-column gap-1">
+        {hasSourceOrder && (
+          <Badge bg="info" className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faArrowRight} className="me-1" />
+            From PO: {order.sourceOrderNumber}
+          </Badge>
+        )}
+        {hasGeneratedPO && (
+          <Badge bg="success" className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faExchangeAlt} className="me-1" />
+            Generated PO
           </Badge>
         )}
       </div>
+    );
+  };
+
+  const StatusBadge = ({status}) => {
+    const statusInfo = STATUS_CONFIG[status] || STATUS_CONFIG.default;
+
+    return (
+      <Badge bg={statusInfo.variant} className="status-badge-compact">
+        <FontAwesomeIcon icon={statusInfo.icon} className="me-1" />
+        {statusInfo.text}
+      </Badge>
     );
   };
 
@@ -2109,190 +2667,224 @@ function SalesOrderTable({
     );
   };
 
-  const GeneratedOrdersBadge = ({order}) => {
-    const hasGeneratedPO =
-      order.autoGeneratedPurchaseOrder === true ||
-      order.purchaseOrderRef ||
-      order.hasGeneratedPurchaseOrder;
-
-    const hasCorrespondingPO =
-      order.correspondingPurchaseOrderId || order.hasCorrespondingPurchaseOrder;
-
-    if (!hasGeneratedPO && !hasCorrespondingPO) {
-      return <small className="text-muted">None</small>;
-    }
-
-    return (
-      <div className="generated-orders-info">
-        {hasCorrespondingPO && (
-          <Badge bg="success" className="me-1 mb-1">
-            <FontAwesomeIcon icon={faExchangeAlt} className="me-1" />
-            Linked PO
-          </Badge>
-        )}
-        {hasGeneratedPO && (
-          <Badge bg="primary" className="me-1 mb-1">
-            <FontAwesomeIcon icon={faArrowRight} className="me-1" />
-            Generated PO
-          </Badge>
-        )}
-        {order.purchaseOrderNumber && (
-          <small className="text-muted d-block">
-            {order.purchaseOrderNumber}
-          </small>
-        )}
-      </div>
-    );
-  };
   const ActionButton = ({order}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [position, setPosition] = useState({top: 0, left: 0});
+    const buttonRef = useRef(null);
+    const dropdownRef = useRef(null);
+
     const orderId = order._id || order.id;
     const isDeleting = deletingOrders.has(orderId);
     const isCancelled =
       order.status === "cancelled" || order.status === "deleted";
     const status = order.status || "draft";
 
+    // ✅ Check if order is from purchase order to prevent circular generation
+    const isFromPurchaseOrder = Boolean(
+      order.isAutoGenerated === true &&
+        order.sourceOrderId &&
+        order.sourceOrderType === "purchase_order"
+    );
+
+    const hasValidPOSetup = Boolean(
+      !order.hasCorrespondingPurchaseOrder &&
+        !order.hasGeneratedPurchaseOrder &&
+        !isFromPurchaseOrder
+    );
+
+    // Calculate position when opening
+    const handleToggle = (e) => {
+      e.stopPropagation();
+
+      if (!isOpen && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setPosition({
+          top: rect.bottom + window.scrollY + 5,
+          left: rect.left + window.scrollX - 180, // Position to the left of button
+        });
+      }
+      setIsOpen(!isOpen);
+    };
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (
+          dropdownRef.current &&
+          !dropdownRef.current.contains(event.target) &&
+          !buttonRef.current.contains(event.target)
+        ) {
+          setIsOpen(false);
+        }
+      };
+
+      if (isOpen) {
+        document.addEventListener("mousedown", handleClickOutside);
+        return () =>
+          document.removeEventListener("mousedown", handleClickOutside);
+      }
+    }, [isOpen]);
+
+    const handleAction = (actionFn, ...args) => {
+      actionFn(...args);
+      setIsOpen(false);
+    };
+
+    const dropdownMenu =
+      isOpen &&
+      createPortal(
+        <div
+          ref={dropdownRef}
+          className="custom-action-dropdown"
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            className="bg-white border rounded shadow-lg p-2"
+            style={{minWidth: "200px"}}
+          >
+            {/* View Details */}
+            <button
+              className="btn btn-light btn-sm w-100 text-start mb-1 d-flex align-items-center"
+              onClick={() => handleAction(handleViewOrder, order)}
+            >
+              <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
+              View Details
+            </button>
+
+            {enableActions && !isCancelled && (
+              <>
+                {/* Edit Order */}
+                <button
+                  className="btn btn-light btn-sm w-100 text-start mb-1 d-flex align-items-center"
+                  onClick={() => handleAction(handleEditOrder, order)}
+                >
+                  <FontAwesomeIcon
+                    icon={faEdit}
+                    className="me-2 text-secondary"
+                  />
+                  Edit Order
+                </button>
+
+                {/* Convert to Invoice */}
+                <button
+                  className="btn btn-light btn-sm w-100 text-start mb-1 d-flex align-items-center"
+                  onClick={() => handleAction(handleConvertOrder, order)}
+                >
+                  <FontAwesomeIcon
+                    icon={faFileInvoice}
+                    className="me-2 text-info"
+                  />
+                  Convert to Invoice
+                </button>
+
+                {/* Generate Purchase Order - Only if applicable */}
+                {hasValidPOSetup && (
+                  <>
+                    <hr className="my-2" />
+                    <button
+                      className="btn btn-outline-success btn-sm w-100 text-start mb-1 d-flex align-items-center"
+                      onClick={() =>
+                        handleAction(handleGeneratePurchaseOrder, order)
+                      }
+                    >
+                      <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                      Generate Purchase Order
+                    </button>
+                  </>
+                )}
+
+                {/* Source/Generated Orders - Only if applicable */}
+                {(order.isAutoGenerated ||
+                  order.hasCorrespondingPurchaseOrder ||
+                  order.hasGeneratedPurchaseOrder) && (
+                  <>
+                    <hr className="my-2" />
+
+                    {order.isAutoGenerated && order.sourceOrderNumber && (
+                      <button
+                        className="btn btn-light btn-sm w-100 text-start mb-1 d-flex align-items-center"
+                        onClick={() =>
+                          handleAction(handleViewSourceOrder, order)
+                        }
+                      >
+                        <FontAwesomeIcon
+                          icon={faEye}
+                          className="me-2 text-info"
+                        />
+                        <span className="text-truncate">
+                          Source: {order.sourceOrderNumber}
+                        </span>
+                      </button>
+                    )}
+
+                    {(order.hasCorrespondingPurchaseOrder ||
+                      order.hasGeneratedPurchaseOrder) && (
+                      <button
+                        className="btn btn-light btn-sm w-100 text-start mb-1 d-flex align-items-center"
+                        onClick={() =>
+                          handleAction(handleViewGeneratedOrders, order)
+                        }
+                      >
+                        <FontAwesomeIcon
+                          icon={faProjectDiagram}
+                          className="me-2 text-primary"
+                        />
+                        View Generated Orders
+                      </button>
+                    )}
+                  </>
+                )}
+
+                <hr className="my-2" />
+
+                {/* Delete/Cancel Order */}
+                <button
+                  className={`btn ${
+                    status === "draft"
+                      ? "btn-outline-danger"
+                      : "btn-outline-warning"
+                  } btn-sm w-100 text-start d-flex align-items-center`}
+                  onClick={() => handleAction(handleDeleteOrder, order)}
+                  disabled={isDeleting}
+                >
+                  <FontAwesomeIcon
+                    icon={isDeleting ? faSpinner : faTrash}
+                    className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
+                  />
+                  {isDeleting
+                    ? "Deleting..."
+                    : status === "draft"
+                    ? "Delete Order"
+                    : "Cancel & Delete"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      );
+
     return (
-      <Dropdown>
-        <Dropdown.Toggle
-          variant="outline-secondary"
+      <>
+        <Button
+          ref={buttonRef}
+          variant="outline-primary"
           size="sm"
-          className={`border-0 ${isCancelled ? "opacity-50" : ""}`}
+          className="action-trigger-btn"
+          onClick={handleToggle}
           disabled={isDeleting || modalLoading}
         >
           <FontAwesomeIcon icon={faEllipsisV} />
-        </Dropdown.Toggle>
-
-        <Dropdown.Menu align="end">
-          <Dropdown.Item onClick={() => handleViewOrder(order)}>
-            <FontAwesomeIcon icon={faEye} className="me-2" />
-            View Details
-          </Dropdown.Item>
-
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Item onClick={() => handleEditOrder(order)}>
-                <FontAwesomeIcon icon={faEdit} className="me-2" />
-                Edit Order
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => handleDuplicateOrder(order)}>
-                <FontAwesomeIcon icon={faCopy} className="me-2" />
-                Duplicate
-              </Dropdown.Item>
-              <Dropdown.Divider />
-            </>
-          )}
-
-          <Dropdown.Item onClick={() => handlePrintOrder(order)}>
-            <FontAwesomeIcon icon={faPrint} className="me-2" />
-            Print
-          </Dropdown.Item>
-          <Dropdown.Item onClick={() => handleShareOrder(order)}>
-            <FontAwesomeIcon icon={faShare} className="me-2" />
-            Share
-          </Dropdown.Item>
-          <Dropdown.Item onClick={() => handleDownloadOrder(order)}>
-            <FontAwesomeIcon icon={faDownload} className="me-2" />
-            Download
-          </Dropdown.Item>
-
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Header>Order Actions</Dropdown.Header>
-
-              {status === "draft" && (
-                <Dropdown.Item onClick={() => handleConfirmOrder(order)}>
-                  <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
-                  Confirm Order
-                </Dropdown.Item>
-              )}
-              {(status === "pending" || status === "confirmed") && (
-                <Dropdown.Item onClick={() => handleApproveOrder(order)}>
-                  <FontAwesomeIcon icon={faCheck} className="me-2" />
-                  Approve Order
-                </Dropdown.Item>
-              )}
-              {(status === "approved" || status === "confirmed") && (
-                <Dropdown.Item onClick={() => handleShipOrder(order)}>
-                  <FontAwesomeIcon icon={faTruck} className="me-2" />
-                  Mark as Shipped
-                </Dropdown.Item>
-              )}
-              {status === "shipped" && (
-                <Dropdown.Item onClick={() => handleDeliverOrder(order)}>
-                  <FontAwesomeIcon icon={faBoxes} className="me-2" />
-                  Mark as Delivered
-                </Dropdown.Item>
-              )}
-              {status === "delivered" && (
-                <Dropdown.Item onClick={() => handleCompleteOrder(order)}>
-                  <FontAwesomeIcon icon={faCheck} className="me-2" />
-                  Complete Order
-                </Dropdown.Item>
-              )}
-              <Dropdown.Item onClick={() => handleConvertOrder(order)}>
-                <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
-                Convert to Invoice
-              </Dropdown.Item>
-              {status !== "completed" && (
-                <Dropdown.Item
-                  onClick={() => handleCancelOrder(order)}
-                  className="text-warning"
-                >
-                  <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
-                  Cancel Order
-                </Dropdown.Item>
-              )}
-
-              <Dropdown.Divider />
-              <Dropdown.Header>Bidirectional Actions</Dropdown.Header>
-
-              {!order.hasCorrespondingPurchaseOrder &&
-                !order.hasGeneratedPurchaseOrder && (
-                  <Dropdown.Item
-                    onClick={() => handleGeneratePurchaseOrder(order)}
-                  >
-                    <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                    Generate Purchase Order
-                  </Dropdown.Item>
-                )}
-              {order.isAutoGenerated && order.sourceOrderNumber && (
-                <Dropdown.Item onClick={() => handleViewSourceOrder(order)}>
-                  <FontAwesomeIcon icon={faEye} className="me-2" />
-                  View Source: {order.sourceOrderNumber}
-                </Dropdown.Item>
-              )}
-              {(order.hasCorrespondingPurchaseOrder ||
-                order.hasGeneratedPurchaseOrder) && (
-                <Dropdown.Item onClick={() => handleViewGeneratedOrders(order)}>
-                  <FontAwesomeIcon icon={faProjectDiagram} className="me-2" />
-                  View Generated Orders
-                </Dropdown.Item>
-              )}
-              <Dropdown.Item onClick={() => handleViewTrackingChain(order)}>
-                <FontAwesomeIcon icon={faProjectDiagram} className="me-2" />
-                View Tracking Chain
-              </Dropdown.Item>
-
-              <Dropdown.Divider />
-              <Dropdown.Item
-                onClick={() => handleDeleteOrder(order)}
-                className="text-danger"
-                disabled={isDeleting}
-              >
-                <FontAwesomeIcon
-                  icon={isDeleting ? faSpinner : faTrash}
-                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
-                />
-                {isDeleting ? "Deleting..." : "Delete"}
-              </Dropdown.Item>
-            </>
-          )}
-        </Dropdown.Menu>
-      </Dropdown>
+        </Button>
+        {dropdownMenu}
+      </>
     );
   };
-
   const SimpleViewModal = ({show, onHide, order}) => {
     if (!order) return null;
 
@@ -2660,38 +3252,15 @@ function SalesOrderTable({
           </Container>
         </div>
       )}
-
       {/* ✅ Enhanced table with bidirectional support */}
       <div className="sales-orders-table-wrapper">
-        <div className="table-responsive-wrapper">
+        <div className="table-responsive-wrapper-fixed">
           <Table responsive hover className="mb-0 sales-orders-table">
-            {/* ✅ Enhanced header with bidirectional columns */}
             <thead className="table-header-purple">
               <tr>
-                {enableBulkActions && (
-                  <th width="40" className="selection-column">
-                    <Form.Check
-                      type="checkbox"
-                      checked={
-                        selectedOrders.length === filteredOrders.length &&
-                        filteredOrders.length > 0
-                      }
-                      onChange={(e) => {
-                        if (onSelectionChange) {
-                          onSelectionChange(
-                            e.target.checked
-                              ? filteredOrders.map((o) => o._id || o.id)
-                              : []
-                          );
-                        }
-                      }}
-                      className="purple-checkbox"
-                    />
-                  </th>
-                )}
                 <th className="date-column">
                   <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faClock} className="me-2" />
+                    <FontAwesomeIcon icon={faClock} className="me-1" />
                     Date
                     <FontAwesomeIcon
                       icon={faSort}
@@ -2703,50 +3272,34 @@ function SalesOrderTable({
                 </th>
                 <th className="order-number-column">
                   <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faList} className="me-2" />
+                    <FontAwesomeIcon icon={faList} className="me-1" />
                     Order No.
                   </div>
                 </th>
                 <th className="customer-column">
                   <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faUser} className="me-2" />
+                    <FontAwesomeIcon icon={faUser} className="me-1" />
                     Customer
                   </div>
                 </th>
                 <th className="items-column">
                   <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faBoxes} className="me-2" />
+                    <FontAwesomeIcon icon={faBoxes} className="me-1" />
                     Items
                   </div>
                 </th>
-                {/* ✅ Source column for bidirectional orders */}
                 {showBidirectionalColumns && (
                   <th className="source-column">
                     <div className="d-flex align-items-center">
-                      <FontAwesomeIcon icon={faRobot} className="me-2" />
+                      <FontAwesomeIcon icon={faRobot} className="me-1" />
                       Source
                     </div>
                   </th>
                 )}
-                {/* ✅ Generated Orders column */}
-                {showBidirectionalColumns && (
-                  <th className="generated-orders-column">
-                    <div className="d-flex align-items-center">
-                      <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                      Generated Orders
-                    </div>
-                  </th>
-                )}
-                <th className="delivery-column">
-                  <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faTruck} className="me-2" />
-                    Expected Delivery
-                  </div>
-                </th>
                 <th className="amount-column text-end">
                   <div className="d-flex align-items-center justify-content-end">
-                    <FontAwesomeIcon icon={faTags} className="me-2" />
-                    Order Value
+                    <FontAwesomeIcon icon={faTags} className="me-1" />
+                    Value
                     <FontAwesomeIcon
                       icon={faSort}
                       className="ms-1 text-white-50 sort-icon"
@@ -2757,17 +3310,8 @@ function SalesOrderTable({
                 </th>
                 <th className="status-column">
                   <div className="d-flex align-items-center">
-                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
                     Status
-                  </div>
-                </th>
-                <th className="priority-column">
-                  <div className="d-flex align-items-center">
-                    <FontAwesomeIcon
-                      icon={faExclamationTriangle}
-                      className="me-2"
-                    />
-                    Priority
                   </div>
                 </th>
                 {enableActions && (
@@ -2789,7 +3333,6 @@ function SalesOrderTable({
                 );
                 const itemsCount = (order.items || []).length;
                 const orderId = order._id || order.id;
-                const isSelected = selectedOrders.includes(orderId);
                 const isCancelled =
                   order.status === "cancelled" || order.status === "deleted";
 
@@ -2797,36 +3340,12 @@ function SalesOrderTable({
                   <tr
                     key={orderId}
                     className={`
-                        sales-order-row
-                        ${isSelected ? "table-active-purple" : ""} 
-                        ${isCancelled ? "cancelled-order-row" : ""}
-                        ${index % 2 === 0 ? "even-row" : "odd-row"}
-                      `}
+            sales-order-row
+            ${isCancelled ? "cancelled-order-row" : ""}
+          `}
                     onClick={() => handleViewOrder(order)}
                     style={{cursor: "pointer"}}
                   >
-                    {enableBulkActions && (
-                      <td
-                        className="selection-cell"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Form.Check
-                          type="checkbox"
-                          checked={isSelected}
-                          disabled={isCancelled}
-                          onChange={(e) => {
-                            if (onSelectionChange && !isCancelled) {
-                              const newSelection = e.target.checked
-                                ? [...selectedOrders, orderId]
-                                : selectedOrders.filter((id) => id !== orderId);
-                              onSelectionChange(newSelection);
-                            }
-                          }}
-                          className="row-checkbox"
-                        />
-                      </td>
-                    )}
-
                     <td
                       className={`date-cell ${isCancelled ? "text-muted" : ""}`}
                     >
@@ -2861,17 +3380,6 @@ function SalesOrderTable({
                             order.orderNo ||
                             "N/A"}
                         </strong>
-                        {isCancelled && (
-                          <div className="cancellation-indicator">
-                            <small className="text-muted fst-italic">
-                              <FontAwesomeIcon
-                                icon={faTrash}
-                                className="me-1"
-                              />
-                              Cancelled
-                            </small>
-                          </div>
-                        )}
                         {order.isAutoGenerated && (
                           <div className="auto-generated-indicator">
                             <Badge bg="info" size="sm">
@@ -2896,7 +3404,7 @@ function SalesOrderTable({
                           {order.customerName ||
                             order.customer?.name ||
                             order.partyName ||
-                            "Unknown Customer"}
+                            "Unknown"}
                         </div>
                         {(order.customerMobile ||
                           order.customer?.mobile ||
@@ -2908,11 +3416,6 @@ function SalesOrderTable({
                               order.customer?.mobile ||
                               order.partyPhone ||
                               order.mobileNumber}
-                          </small>
-                        )}
-                        {order.customerEmail && (
-                          <small className="customer-email text-muted d-block">
-                            {order.customerEmail}
                           </small>
                         )}
                       </div>
@@ -2927,84 +3430,25 @@ function SalesOrderTable({
                           }`}
                         >
                           <FontAwesomeIcon icon={faBoxes} className="me-1" />
-                          {itemsCount} item{itemsCount !== 1 ? "s" : ""}
+                          {itemsCount}
                         </Badge>
                         {itemsCount > 0 && (
                           <small className="text-muted d-block mt-1">
                             {order.items
-                              ?.slice(0, 2)
+                              ?.slice(0, 1)
                               .map((item) => item.itemName || item.name)
                               .join(", ")}
-                            {itemsCount > 2 && ` +${itemsCount - 2} more`}
+                            {itemsCount > 1 && ` +${itemsCount - 1}`}
                           </small>
                         )}
                       </div>
                     </td>
 
-                    {/* ✅ Source Information */}
                     {showBidirectionalColumns && (
                       <td className="source-cell">
                         <SourceBadge order={order} />
                       </td>
                     )}
-
-                    {/* ✅ Generated Orders */}
-                    {showBidirectionalColumns && (
-                      <td className="generated-orders-cell">
-                        <GeneratedOrdersBadge order={order} />
-                      </td>
-                    )}
-
-                    <td className="delivery-cell">
-                      <div className="delivery-info">
-                        {order.expectedDeliveryDate || order.deliveryDate ? (
-                          <>
-                            <small
-                              className={`delivery-date ${
-                                isCancelled ? "text-muted" : ""
-                              }`}
-                            >
-                              {new Date(
-                                order.expectedDeliveryDate || order.deliveryDate
-                              ).toLocaleDateString("en-GB")}
-                            </small>
-                            {/* Calculate days until delivery */}
-                            {(() => {
-                              const deliveryDate = new Date(
-                                order.expectedDeliveryDate || order.deliveryDate
-                              );
-                              const today = new Date();
-                              const diffTime = deliveryDate - today;
-                              const diffDays = Math.ceil(
-                                diffTime / (1000 * 60 * 60 * 24)
-                              );
-
-                              if (diffDays < 0) {
-                                return (
-                                  <small className="text-danger d-block">
-                                    {Math.abs(diffDays)} days overdue
-                                  </small>
-                                );
-                              } else if (diffDays <= 3) {
-                                return (
-                                  <small className="text-warning d-block">
-                                    {diffDays} days remaining
-                                  </small>
-                                );
-                              } else {
-                                return (
-                                  <small className="text-muted d-block">
-                                    {diffDays} days remaining
-                                  </small>
-                                );
-                              }
-                            })()}
-                          </>
-                        ) : (
-                          <small className="text-muted">Not set</small>
-                        )}
-                      </div>
-                    </td>
 
                     <td className="amount-cell text-end">
                       <div className="amount-info">
@@ -3017,59 +3461,16 @@ function SalesOrderTable({
                         >
                           ₹{amount.toLocaleString("en-IN")}
                         </strong>
-                        {amount > 100000 && (
-                          <small className="text-muted d-block">
-                            ₹{(amount / 100000).toFixed(1)}L
-                          </small>
-                        )}
                       </div>
                     </td>
 
                     <td className="status-cell">
-                      <StatusBadge
-                        status={order.status}
-                        priority={order.priority}
-                      />
-                    </td>
-
-                    <td className="priority-cell">
-                      <div className="priority-info">
-                        <Badge
-                          bg={
-                            isCancelled
-                              ? "secondary"
-                              : order.priority === "high"
-                              ? "danger"
-                              : order.priority === "urgent"
-                              ? "warning"
-                              : order.priority === "low"
-                              ? "info"
-                              : "success"
-                          }
-                          className={`priority-badge text-capitalize ${
-                            isCancelled ? "opacity-50" : ""
-                          }`}
-                        >
-                          <FontAwesomeIcon
-                            icon={
-                              order.priority === "high"
-                                ? faExclamationTriangle
-                                : order.priority === "urgent"
-                                ? faClock
-                                : order.priority === "low"
-                                ? faCheckCircle
-                                : faUser
-                            }
-                            className="me-1"
-                          />
-                          {order.priority || "Normal"}
-                        </Badge>
-                      </div>
+                      <StatusBadge status={order.status} />
                     </td>
 
                     {enableActions && (
                       <td
-                        className="actions-cell text-center"
+                        className="actions-cell-modern"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ActionButton order={order} />
@@ -3081,7 +3482,6 @@ function SalesOrderTable({
             </tbody>
           </Table>
 
-          {/* ✅ Empty state for filtered results */}
           {filteredOrders.length === 0 && salesOrders.length > 0 && (
             <div className="text-center py-5">
               <FontAwesomeIcon
@@ -3109,7 +3509,6 @@ function SalesOrderTable({
               </Button>
             </div>
           )}
-
           {/* ✅ Table footer with summary */}
           {filteredOrders.length > 0 && (
             <div className="table-footer-summary">
@@ -3165,20 +3564,34 @@ function SalesOrderTable({
           )}
         </div>
       </div>
-
-      {/* ✅ View Modal */}
       {selectedOrder && (
-        <SimpleViewModal
+        <UniversalViewModal
           show={viewModalShow}
           onHide={() => {
             setViewModalShow(false);
             setSelectedOrder(null);
             setModalError(null);
           }}
-          order={selectedOrder}
+          transaction={selectedOrder}
+          documentType={isInQuotationsMode ? "quotation" : "sales-order"} // ✅ Dynamic document type
+          onEdit={(order) => {
+            setViewModalShow(false);
+            handleAction("edit", order);
+          }}
+          onPrint={(order) => handleAction("print", order)}
+          onDownload={(order) => handleAction("download", order)}
+          onShare={(order) => handleAction("share", order)}
+          onConvert={(order) => {
+            setViewModalShow(false);
+            handleAction("convert", order);
+          }}
+          // ✅ For sales orders/quotations, this should generate Purchase Orders
+          onGenerateSalesOrder={(order) => {
+            setViewModalShow(false);
+            handleAction("generatePurchaseOrder", order);
+          }}
         />
       )}
-
       {/* ✅ Generate Purchase Order Modal */}
       {selectedOrderForPOGeneration && (
         <GeneratePurchaseOrderModal
@@ -3192,136 +3605,555 @@ function SalesOrderTable({
         />
       )}
 
-      {/* ✅ DEBUG: Temporary debug panel (remove in production) */}
-      {process.env.NODE_ENV === "development" && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "20px",
-            right: "20px",
-            background: "rgba(0,0,0,0.8)",
-            color: "white",
-            padding: "10px",
-            borderRadius: "8px",
-            fontSize: "12px",
-            zIndex: 9999,
-            maxWidth: "300px",
-          }}
-        >
-          <div>
-            <strong>Debug Info:</strong>
-          </div>
-          <div>Total: {salesOrders.length}</div>
-          <div>Filtered: {filteredOrders.length}</div>
-          <div>Active Filter: {activeOrderType}</div>
-          <div>Search: "{localSearchTerm}"</div>
-          <div>
-            Categories: All={categorizeOrders.all.length}, Self=
-            {categorizeOrders.selfCreated.length}, Auto=
-            {categorizeOrders.autoGenerated.length}
-          </div>
-        </div>
-      )}
-
-      {/* ✅ Enhanced CSS Styling */}
       <style jsx>{`
-        /* ==================== MAIN CONTAINER ==================== */
+        /* ✅ FIXED: Tighter column sizing - reduced spacing */
+        .date-column {
+          width: 110px;
+          min-width: 110px;
+        }
+        .order-number-column {
+          width: 160px;
+          min-width: 160px;
+        }
+        .customer-column {
+          width: 220px;
+          min-width: 220px;
+        }
+        .items-column {
+          width: 120px;
+          min-width: 120px;
+        }
+        .source-column {
+          width: 140px;
+          min-width: 140px;
+        }
+        .amount-column {
+          width: 130px;
+          min-width: 130px;
+        }
+        .status-column {
+          width: 120px;
+          min-width: 120px;
+        }
+        .actions-column {
+          width: 50px;
+          min-width: 50px;
+        }
+
+        /* ✅ FIXED: Reduce table cell padding */
+        .sales-orders-table td {
+          padding: 8px 6px !important; /* Reduced from 12px 10px */
+          vertical-align: middle;
+          border-bottom: 1px solid #f8f9fa;
+          margin: 0;
+          position: relative;
+        }
+
+        .sales-orders-table th {
+          padding: 12px 8px !important; /* Reduced from 15px 12px */
+        }
+
+        /* ✅ FIXED: Reduce table minimum width */
+        .sales-orders-table {
+          margin: 0;
+          font-size: 0.85rem;
+          width: 100%;
+          table-layout: fixed;
+          min-width: 950px; /* Reduced from 800px */
+          position: relative;
+          z-index: 1;
+          overflow: visible !important;
+          border-radius: 0 !important;
+        }
+
+        /* ✅ FIXED: Status badges - remove curves */
+        .status-badge-compact {
+          font-size: 0.75rem !important;
+          font-weight: 600 !important;
+          padding: 0.3em 0.6em !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          line-height: 1.2 !important;
+          margin: 0 !important;
+          border: none !important;
+        }
+
+        /* ✅ Remove curves from all badges */
+        .badge {
+          border: none !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ SPECIFIC: Status badge colors without curves */
+        .status-badge-compact.bg-primary {
+          background: #0d6efd !important;
+          color: white !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-secondary {
+          background: #6c757d !important;
+          color: white !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-success {
+          background: #198754 !important;
+          color: white !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-warning {
+          background: #ffc107 !important;
+          color: #000 !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-danger {
+          background: #dc3545 !important;
+          color: white !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-info {
+          background: #0dcaf0 !important;
+          color: #000 !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-light {
+          background: #f8f9fa !important;
+          color: #000 !important;
+          border-radius: 0 !important;
+        }
+
+        .status-badge-compact.bg-dark {
+          background: #212529 !important;
+          color: white !important;
+          border-radius: 0 !important;
+        }
+
+        /* ✅ REDESIGNED: Container with NO curves */
+        .sales-orders-container-redesigned {
+          position: relative;
+          background: white;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05),
+            0 10px 15px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
+          overflow: visible !important;
+          margin-top: 0;
+        }
+
+        .table-container-modern {
+          position: relative;
+          overflow-x: auto;
+          overflow-y: visible !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          scrollbar-width: thin;
+          scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
+        }
+
+        .modern-sales-table {
+          margin: 0;
+          position: relative;
+          z-index: 1;
+          overflow: visible !important;
+          font-size: 0.85rem;
+          width: 100%;
+          table-layout: fixed;
+          min-width: 800px;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ Action button - remove curves */
+        .action-trigger-btn {
+          border: 1px solid rgba(111, 66, 193, 0.3) !important;
+          background: linear-gradient(
+            135deg,
+            rgba(111, 66, 193, 0.08) 0%,
+            rgba(139, 92, 246, 0.08) 100%
+          ) !important;
+          color: #6f42c1 !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          padding: 6px 10px !important;
+          transition: all 0.3s ease !important;
+          font-size: 0.85rem !important;
+          font-weight: 500 !important;
+          box-shadow: 0 2px 6px rgba(111, 66, 193, 0.15) !important;
+          min-width: 38px;
+          height: 34px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .action-trigger-btn:hover,
+        .action-trigger-btn:focus {
+          background: linear-gradient(
+            135deg,
+            rgba(111, 66, 193, 0.18) 0%,
+            rgba(139, 92, 246, 0.18) 100%
+          ) !important;
+          border-color: rgba(111, 66, 193, 0.5) !important;
+          transform: translateY(-1px) scale(1.05);
+          box-shadow: 0 4px 15px rgba(111, 66, 193, 0.3) !important;
+          color: #5a2d91 !important;
+        }
+
+        /* ✅ Dropdown menu - remove curves */
+        .custom-action-dropdown {
+          position: absolute !important;
+          z-index: 99999 !important;
+        }
+
+        .custom-action-dropdown .bg-white {
+          background: #ffffff !important;
+          backdrop-filter: blur(10px) !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15),
+            0 0 0 1px rgba(111, 66, 193, 0.1),
+            0 4px 15px rgba(111, 66, 193, 0.1) !important;
+          animation: dropdownSlideIn 0.2s ease-out;
+        }
+
+        /* ✅ Dropdown buttons - remove curves */
+        .custom-action-dropdown .btn {
+          border: none !important;
+          text-align: left !important;
+          transition: all 0.2s ease !important;
+          padding: 8px 12px !important;
+          font-size: 0.875rem !important;
+          font-weight: 500 !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          margin: 1px 0 !important;
+          display: flex !important;
+          align-items: center !important;
+          color: #374151 !important;
+          background: transparent !important;
+        }
+
+        .custom-action-dropdown .btn:hover {
+          background: rgba(111, 66, 193, 0.1) !important;
+          color: #6f42c1 !important;
+          transform: translateX(2px);
+          box-shadow: 0 2px 8px rgba(111, 66, 193, 0.15) !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-success {
+          background: rgba(34, 197, 94, 0.1) !important;
+          color: #16a34a !important;
+          border: 1px solid rgba(34, 197, 94, 0.2) !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-success:hover {
+          background: rgba(34, 197, 94, 0.2) !important;
+          border-color: rgba(34, 197, 94, 0.4) !important;
+          color: #15803d !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-danger {
+          background: rgba(239, 68, 68, 0.1) !important;
+          color: #dc2626 !important;
+          border: 1px solid rgba(239, 68, 68, 0.2) !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-danger:hover {
+          background: rgba(239, 68, 68, 0.2) !important;
+          border-color: rgba(239, 68, 68, 0.4) !important;
+          color: #b91c1c !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-warning {
+          background: rgba(245, 158, 11, 0.1) !important;
+          color: #d97706 !important;
+          border: 1px solid rgba(245, 158, 11, 0.2) !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn-outline-warning:hover {
+          background: rgba(245, 158, 11, 0.2) !important;
+          border-color: rgba(245, 158, 11, 0.4) !important;
+          color: #b45309 !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ Primary action (View Details) - remove curves */
+        .custom-action-dropdown .btn:first-child {
+          background: rgba(59, 130, 246, 0.1) !important;
+          color: #2563eb !important;
+          border: 1px solid rgba(59, 130, 246, 0.2) !important;
+          margin-bottom: 3px !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .custom-action-dropdown .btn:first-child:hover {
+          background: rgba(59, 130, 246, 0.2) !important;
+          border-color: rgba(59, 130, 246, 0.4) !important;
+          color: #1d4ed8 !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ TABLE CONTAINER - remove curves */
+        .sales-orders-table-wrapper {
+          background: white;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05),
+            0 10px 15px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
+          overflow: visible !important;
+          position: relative;
+          margin-top: 0;
+        }
+
+        .table-responsive-wrapper-fixed {
+          overflow-x: auto;
+          overflow-y: visible !important;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
+          margin: 0;
+          padding: 0;
+          position: relative;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .sales-orders-table {
+          margin: 0;
+          font-size: 0.85rem;
+          width: 100%;
+          table-layout: fixed;
+          min-width: 800px;
+          position: relative;
+          z-index: 1;
+          overflow: visible !important;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ HEADER STYLES - remove curves */
         .sales-orders-filter-section {
           background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-          border-radius: 12px;
-          padding: 20px;
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          padding: 15px;
           border: 1px solid #e5e7eb;
-          margin-bottom: 20px;
+          margin-bottom: 15px;
+          margin-top: 0;
+        }
+
+        .table-footer-summary {
+          background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+          border-top: 1px solid rgba(111, 66, 193, 0.1);
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          margin: 0;
+          padding: 12px 0;
+        }
+
+        /* ✅ ORDER TYPE FILTER - remove curves */
+        .order-type-filter .btn {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+          font-size: 0.85rem !important;
+          padding: 6px 12px !important;
+          transition: all 0.2s ease !important;
+        }
+
+        /* ✅ REMOVE curves from all form elements */
+        .form-control,
+        .form-select,
+        .btn,
+        .input-group-text {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from modal elements */
+        .modal-content {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .modal-header {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .modal-footer {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from alerts */
+        .alert {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from cards */
+        .card {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .card-header {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .card-body {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .card-footer {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from tables */
+        .table {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from input groups */
+        .input-group {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .input-group .form-control:first-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .input-group .form-control:last-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from button groups */
+        .btn-group .btn:first-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .btn-group .btn:last-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .btn-group .btn {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from dropdowns */
+        .dropdown-menu {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .dropdown-item {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from tabs */
+        .nav-tabs {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .nav-tabs .nav-link {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .tab-content {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .tab-pane {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from progress bars */
+        .progress {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .progress-bar {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from list groups */
+        .list-group {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .list-group-item {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .list-group-item:first-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .list-group-item:last-child {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ REMOVE curves from pagination */
+        .pagination {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        .page-link {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves */
+        }
+
+        /* ✅ GLOBAL: Remove curves from ALL elements */
+        * {
+          border-radius: 0 !important; /* ✅ REMOVED: All curves globally */
+        }
+
+        /* Keep all other existing styles intact... */
+        .sales-orders-table tbody tr {
+          position: relative;
+          transition: all 0.2s ease;
+          border-left: 3px solid transparent;
+        }
+
+        .sales-orders-table tbody tr:hover {
+          background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+          box-shadow: 0 2px 8px rgba(111, 66, 193, 0.1);
+          transform: translateY(-1px);
+          border-left: 3px solid #6f42c1;
+          z-index: 5;
+        }
+
+        .sales-order-row {
+          transition: all 0.2s ease;
+          border-left: 3px solid transparent;
+          position: relative;
+        }
+
+        .sales-order-row:hover {
+          background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+          box-shadow: 0 2px 8px rgba(111, 66, 193, 0.1);
+          transform: translateY(-1px);
+          border-left: 3px solid #6f42c1;
+          z-index: 5;
+        }
+
+        .cancelled-order-row {
+          opacity: 0.6;
+          background-color: #f8f9fa;
+        }
+
+        .cancelled-order-row:hover {
+          background-color: #e9ecef !important;
+          border-left: 3px solid #6c757d;
         }
 
         .text-purple {
           color: #6f42c1 !important;
         }
 
-        .order-type-filter .btn {
-          border-radius: 8px;
-          font-weight: 500;
-          transition: all 0.3s ease;
-          border: 2px solid transparent;
-        }
-
-        .order-type-filter .btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(111, 66, 193, 0.2);
-        }
-
-        .order-type-filter .btn.btn-outline-primary:hover {
-          background: linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%);
-          border-color: #6f42c1;
-        }
-
-        .order-type-filter .btn.btn-outline-success:hover {
-          background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-          border-color: #059669;
-        }
-
-        .order-type-filter .btn.btn-outline-warning:hover {
-          background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
-          border-color: #d97706;
-        }
-
-        .order-type-filter .btn.btn-outline-info:hover {
-          background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
-          border-color: #0891b2;
-        }
-
-        /* ==================== TABLE WRAPPER ==================== */
-        .sales-orders-table-wrapper {
-          background: white;
-          border-radius: 16px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05),
-            0 10px 15px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(111, 66, 193, 0.1);
-          border: 1px solid #e5e7eb;
-          position: relative;
-          overflow: hidden;
-          backdrop-filter: blur(10px);
-        }
-
-        .table-responsive-wrapper {
-          overflow-x: auto;
-          overflow-y: visible;
-          position: relative;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
-        }
-
-        .table-responsive-wrapper::-webkit-scrollbar {
-          height: 8px;
-        }
-
-        .table-responsive-wrapper::-webkit-scrollbar-track {
-          background: linear-gradient(90deg, #f8f9fa 0%, #e9ecef 100%);
-          border-radius: 4px;
-        }
-
-        .table-responsive-wrapper::-webkit-scrollbar-thumb {
-          background: linear-gradient(90deg, #6f42c1 0%, #8b5cf6 100%);
-          border-radius: 4px;
-          transition: all 0.3s ease;
-        }
-
-        .table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(90deg, #5a2d91 0%, #7c3aed 100%);
-        }
-
-        /* ==================== TABLE HEADER ==================== */
         .table-header-purple {
           background: linear-gradient(
             135deg,
             #6f42c1 0%,
-            #8b5cf6 25%,
-            #a855f7 50%,
-            #c084fc 75%,
-            #ddd6fe 100%
+            #8b5cf6 50%,
+            #a855f7 100%
           );
           position: sticky;
           top: 0;
           z-index: 100;
+          margin: 0;
         }
 
         .table-header-purple th {
@@ -3329,582 +4161,216 @@ function SalesOrderTable({
           border: none;
           border-bottom: 3px solid rgba(255, 255, 255, 0.2);
           font-weight: 700;
-          padding: 18px 16px;
-          font-size: 0.9rem;
+          padding: 15px 12px;
+          font-size: 0.85rem;
           color: #ffffff !important;
           white-space: nowrap;
           text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-          position: relative;
           letter-spacing: 0.5px;
           text-transform: uppercase;
+          margin: 0;
         }
 
-        .table-header-purple th::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(
-            45deg,
-            rgba(255, 255, 255, 0.1) 0%,
-            transparent 50%,
-            rgba(255, 255, 255, 0.05) 100%
-          );
-          pointer-events: none;
-        }
-
-        .table-header-purple th:hover {
-          background: rgba(255, 255, 255, 0.15) !important;
-          transform: translateY(-1px);
-          transition: all 0.3s ease;
-        }
-
-        .sort-icon {
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .sort-icon:hover {
-          color: rgba(255, 255, 255, 1) !important;
-          transform: scale(1.2);
-        }
-
-        /* ==================== COLUMN SIZING ==================== */
-        .selection-column {
-          width: 50px;
-          min-width: 50px;
-        }
-        .date-column {
-          width: 120px;
-          min-width: 120px;
-        }
-        .order-number-column {
-          width: 180px;
-          min-width: 180px;
-        }
-        .customer-column {
-          width: 200px;
-          min-width: 200px;
-        }
-        .items-column {
-          width: 150px;
-          min-width: 150px;
-        }
-        .source-column {
-          width: 140px;
-          min-width: 140px;
-        }
-        .generated-orders-column {
-          width: 160px;
-          min-width: 160px;
-        }
-        .delivery-column {
-          width: 140px;
-          min-width: 140px;
-        }
-        .amount-column {
-          width: 120px;
-          min-width: 120px;
-        }
-        .status-column {
-          width: 120px;
-          min-width: 120px;
-        }
-        .priority-column {
-          width: 100px;
-          min-width: 100px;
-        }
-        .actions-column {
-          width: 80px;
-          min-width: 80px;
-        }
-
-        /* ==================== TABLE BODY ==================== */
-        .sales-orders-table {
-          margin-bottom: 0;
-          font-size: 0.9rem;
-          width: 100%;
-          table-layout: fixed;
-          min-width: 1400px;
-        }
-
-        .sales-orders-table tbody tr {
-          transition: all 0.3s ease;
-          border-bottom: 1px solid #f1f3f4;
-          position: relative;
-        }
-
-        .sales-orders-table tbody tr:hover {
-          background: linear-gradient(
-            90deg,
-            rgba(111, 66, 193, 0.08) 0%,
-            rgba(139, 92, 246, 0.05) 50%,
-            rgba(168, 85, 247, 0.03) 100%
-          );
-          transform: translateY(-2px) scale(1.001);
-          box-shadow: 0 8px 25px rgba(111, 66, 193, 0.15),
-            0 0 0 1px rgba(111, 66, 193, 0.1);
-          border-left: 4px solid #6f42c1;
-          cursor: pointer;
-          z-index: 10;
-        }
-
-        .sales-order-row.even-row {
-          background: rgba(248, 249, 255, 0.3);
-        }
-
-        .sales-order-row.odd-row {
-          background: rgba(255, 255, 255, 0.5);
-        }
-
-        .table-active-purple {
-          background: linear-gradient(
-            90deg,
-            rgba(111, 66, 193, 0.15) 0%,
-            rgba(139, 92, 246, 0.1) 50%,
-            rgba(168, 85, 247, 0.05) 100%
-          ) !important;
-          border-left: 4px solid #6f42c1 !important;
-          box-shadow: inset 0 0 0 1px rgba(111, 66, 193, 0.2);
-        }
-
-        .cancelled-order-row {
-          background: linear-gradient(
-            90deg,
-            rgba(108, 117, 125, 0.1) 0%,
-            rgba(173, 181, 189, 0.05) 100%
-          ) !important;
-          border-left: 4px solid #6c757d !important;
-          opacity: 0.7;
-        }
-
-        .cancelled-order-row:hover {
-          opacity: 0.8;
-          border-left: 4px solid #6c757d !important;
-          background: linear-gradient(
-            90deg,
-            rgba(108, 117, 125, 0.15) 0%,
-            rgba(173, 181, 189, 0.1) 100%
-          ) !important;
-        }
-
-        /* ==================== TABLE CELLS ==================== */
         .sales-orders-table td {
-          padding: 16px 12px;
+          padding: 12px 10px;
           vertical-align: middle;
           border-bottom: 1px solid #f8f9fa;
+          margin: 0;
           position: relative;
         }
 
-        /* Date Cell */
+        .actions-cell-modern {
+          padding: 8px 6px !important;
+          vertical-align: middle !important;
+          text-align: center !important;
+          position: relative !important;
+          z-index: 10 !important;
+          width: 55px !important;
+          min-width: 55px !important;
+          overflow: visible !important;
+        }
+
+        .actions-column {
+          width: 55px !important;
+          min-width: 55px !important;
+          text-align: center !important;
+          overflow: visible !important;
+        }
+
+        @keyframes dropdownSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-5px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .action-trigger-btn:active {
+          transform: translateY(0) scale(0.95);
+        }
+
+        .action-trigger-btn:disabled {
+          opacity: 0.6 !important;
+          cursor: not-allowed !important;
+        }
+
+        .custom-action-dropdown hr {
+          border-color: rgba(107, 114, 128, 0.2) !important;
+          margin: 6px 0 !important;
+          opacity: 1 !important;
+        }
+
         .date-cell .date-wrapper {
           display: flex;
           flex-direction: column;
           gap: 2px;
         }
 
-        .order-date {
+        .order-number-cell .order-number-link {
+          text-decoration: none;
           font-weight: 600;
-          color: #374151;
+          color: #6f42c1;
         }
 
-        .order-time {
-          font-size: 0.75rem;
-          color: #6b7280;
+        .order-number-cell .order-number-link:hover {
+          color: #5a2d91;
+          text-decoration: underline;
         }
 
-        /* Order Number Cell */
-        .order-number-cell .order-number-wrapper {
+        .customer-cell .customer-info {
           display: flex;
           flex-direction: column;
           gap: 4px;
         }
 
-        .order-number-link {
-          text-decoration: none;
-          font-weight: 700;
-          transition: all 0.3s ease;
-        }
-
-        .order-number-link:hover {
-          color: #5a2d91 !important;
-          text-decoration: underline;
-        }
-
-        .auto-generated-indicator {
-          margin-top: 4px;
-        }
-
-        .cancellation-indicator {
-          margin-top: 2px;
-        }
-
-        /* Customer Cell */
-        .customer-info {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .customer-name {
+        .customer-cell .customer-name {
           font-size: 0.9rem;
           line-height: 1.2;
         }
 
-        .customer-contact,
-        .customer-email {
+        .customer-cell .customer-contact {
           font-size: 0.75rem;
-          line-height: 1.2;
-        }
-
-        /* Items Cell */
-        .items-info {
           display: flex;
-          flex-direction: column;
+          align-items: center;
           gap: 4px;
         }
 
-        .items-count {
-          font-weight: 600;
+        .items-cell .items-info {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
         }
 
-        /* Amount Cell */
-        .amount-info {
+        .amount-cell .amount-info {
           display: flex;
           flex-direction: column;
           align-items: flex-end;
           gap: 2px;
         }
 
-        .order-amount {
-          font-size: 1rem;
-          font-weight: 700;
-          line-height: 1.2;
-        }
-
-        /* Delivery Cell */
-        .delivery-info {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .delivery-date {
-          font-weight: 500;
-          font-size: 0.85rem;
-        }
-
-        /* Priority Cell */
-        .priority-info {
+        .status-cell {
           display: flex;
           flex-direction: column;
           align-items: flex-start;
-          gap: 2px;
+          gap: 4px;
         }
 
-        .priority-badge {
-          font-weight: 600;
-          font-size: 0.75rem;
-          padding: 0.4em 0.8em;
-          border-radius: 6px;
-        }
-
-        /* ==================== BADGES ==================== */
-        .badge {
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 0.4em 0.8em;
-          border-radius: 6px;
-          letter-spacing: 0.3px;
-          transition: all 0.3s ease;
-        }
-
-        .badge:hover {
-          transform: scale(1.05);
-        }
-
-        .badge.bg-secondary {
-          background: linear-gradient(45deg, #6b7280, #4b5563) !important;
-        }
-
-        .badge.bg-warning {
-          background: linear-gradient(45deg, #f59e0b, #d97706) !important;
-        }
-
-        .badge.bg-primary {
-          background: linear-gradient(45deg, #6f42c1, #8b5cf6) !important;
-        }
-
-        .badge.bg-info {
-          background: linear-gradient(45deg, #06b6d4, #0891b2) !important;
-        }
-
-        .badge.bg-success {
-          background: linear-gradient(45deg, #10b981, #059669) !important;
-        }
-
-        .badge.bg-danger {
-          background: linear-gradient(45deg, #ef4444, #dc2626) !important;
-        }
-
-        .badge.bg-dark {
-          background: linear-gradient(45deg, #374151, #1f2937) !important;
-        }
-
-        /* ==================== ACTION DROPDOWN ==================== */
-        .actions-cell {
-          position: relative;
-          z-index: 50;
-        }
-
-        .dropdown {
-          position: static;
-        }
-
-        .dropdown-toggle {
-          border: none !important;
-          box-shadow: none !important;
-          background: rgba(111, 66, 193, 0.1) !important;
-          color: #6f42c1 !important;
-          border-radius: 8px !important;
-          padding: 8px 12px !important;
-          transition: all 0.3s ease !important;
-        }
-
-        .dropdown-toggle:hover,
-        .dropdown-toggle:focus {
-          background: rgba(111, 66, 193, 0.2) !important;
-          transform: scale(1.05);
-          box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3) !important;
-        }
-
-        .dropdown-menu {
-          border: none !important;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15),
-            0 0 0 1px rgba(111, 66, 193, 0.1) !important;
-          border-radius: 12px !important;
-          padding: 8px !important;
-          margin-top: 8px !important;
-          min-width: 220px !important;
-          z-index: 9999 !important;
-          backdrop-filter: blur(10px);
-          background: rgba(255, 255, 255, 0.95) !important;
-        }
-
-        .dropdown-item {
-          padding: 10px 16px !important;
-          font-size: 0.875rem !important;
-          border-radius: 8px !important;
-          margin: 2px 0 !important;
-          transition: all 0.3s ease !important;
-          display: flex !important;
-          align-items: center !important;
-        }
-
-        .dropdown-item:hover {
-          background: linear-gradient(
-            90deg,
-            rgba(111, 66, 193, 0.1) 0%,
-            rgba(139, 92, 246, 0.08) 100%
-          ) !important;
-          color: #6f42c1 !important;
-          transform: translateX(4px);
-          padding-left: 20px !important;
-        }
-
-        .dropdown-header {
-          font-size: 0.75rem !important;
-          color: #6f42c1 !important;
-          font-weight: 700 !important;
-          text-transform: uppercase !important;
-          letter-spacing: 1px !important;
-          background: linear-gradient(
-            90deg,
-            rgba(111, 66, 193, 0.1) 0%,
-            rgba(139, 92, 246, 0.05) 100%
-          ) !important;
-          margin: 8px -8px 4px -8px !important;
-          padding: 8px 16px !important;
-          border-radius: 6px !important;
-        }
-
-        .dropdown-divider {
-          border-color: rgba(111, 66, 193, 0.2) !important;
-          margin: 8px 0 !important;
-        }
-
-        /* ==================== TABLE FOOTER ==================== */
-        .table-footer-summary {
-          background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-          border-top: 1px solid rgba(111, 66, 193, 0.1);
-          border-radius: 0 0 16px 16px;
+        .order-type-filter .btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
         }
 
         .summary-stats {
-          font-size: 0.85rem;
+          display: flex;
+          align-items: center;
+          gap: 20px;
         }
 
-        .summary-stats strong {
-          color: #6f42c1;
+        .summary-stats small {
+          font-size: 0.8rem !important;
         }
 
-        /* ==================== CHECKBOXES ==================== */
-        .purple-checkbox input[type="checkbox"],
-        .row-checkbox input[type="checkbox"] {
-          accent-color: #6f42c1;
-          transform: scale(1.2);
-          border-radius: 4px;
+        .sales-order-row.loading {
+          pointer-events: none;
+          opacity: 0.7;
+          background: linear-gradient(
+            90deg,
+            #f0f0f0 25%,
+            #e0e0e0 50%,
+            #f0f0f0 75%
+          );
+          background-size: 200% 100%;
+          animation: loading 1.5s infinite;
         }
 
-        .purple-checkbox input[type="checkbox"]:checked,
-        .row-checkbox input[type="checkbox"]:checked {
-          background-color: #6f42c1;
-          border-color: #6f42c1;
-        }
-
-        /* ==================== RESPONSIVE DESIGN ==================== */
-        @media (max-width: 1400px) {
-          .sales-orders-table {
-            min-width: 1200px;
+        @keyframes loading {
+          0% {
+            background-position: 200% 0;
           }
-
-          .sales-orders-table th,
-          .sales-orders-table td {
-            padding: 14px 10px;
-            font-size: 0.85rem;
-          }
-        }
-
-        @media (max-width: 1200px) {
-          .sales-orders-table {
-            min-width: 1000px;
-          }
-
-          .sales-orders-table th,
-          .sales-orders-table td {
-            padding: 12px 8px;
-            font-size: 0.8rem;
-          }
-        }
-
-        @media (max-width: 992px) {
-          .sales-orders-table {
-            min-width: 900px;
-          }
-
-          .order-type-filter {
-            flex-direction: column;
-            gap: 8px;
-          }
-
-          .order-type-filter .btn {
-            width: 100%;
+          100% {
+            background-position: -200% 0;
           }
         }
 
         @media (max-width: 768px) {
-          .sales-orders-filter-section {
-            padding: 15px;
-            margin: 0 -15px 15px -15px;
-            border-radius: 0;
+          .custom-action-dropdown {
+            min-width: 180px !important;
+            max-width: 220px !important;
           }
 
-          .sales-orders-table-wrapper {
-            border-radius: 8px;
-            margin: 0 -15px;
+          .custom-action-dropdown .btn {
+            padding: 6px 10px !important;
+            font-size: 0.8rem !important;
           }
 
-          .sales-orders-table {
-            min-width: 800px;
+          .action-trigger-btn {
+            padding: 4px 8px !important;
+            font-size: 0.75rem !important;
+            min-width: 32px !important;
+            height: 28px !important;
           }
 
-          .sales-orders-table th,
-          .sales-orders-table td {
-            padding: 8px 6px;
-            font-size: 0.75rem;
-          }
-
-          .table-header-purple th {
-            padding: 12px 8px;
-            font-size: 0.7rem;
-          }
-        }
-
-        @media (max-width: 576px) {
-          .sales-orders-table-wrapper {
-            border-radius: 0;
-            margin: 0 -15px;
+          .actions-cell-modern {
+            width: 45px !important;
+            min-width: 45px !important;
+            padding: 6px 4px !important;
           }
 
           .sales-orders-table {
-            min-width: 700px;
-          }
-
-          .sales-orders-table th,
-          .sales-orders-table td {
-            padding: 6px 4px;
-            font-size: 0.7rem;
+            min-width: 600px;
           }
         }
 
-        /* ==================== ANIMATIONS ==================== */
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes slideInRight {
-          from {
-            opacity: 0;
-            transform: translateX(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-
-        .sales-order-row {
-          animation: fadeInUp 0.3s ease-out;
-        }
-
-        .dropdown-menu.show {
-          animation: slideInRight 0.3s ease-out;
-        }
-
-        /* ==================== ACCESSIBILITY ==================== */
-        .sales-orders-table tr:focus {
+        .sales-order-row:focus {
           outline: 2px solid #6f42c1;
-          outline-offset: -2px;
+          outline-offset: 2px;
         }
 
-        .dropdown-toggle:focus {
-          box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.25) !important;
+        .sort-icon:hover {
+          color: rgba(255, 255, 255, 0.8) !important;
+          transform: scale(1.1);
+          transition: all 0.2s ease;
         }
 
-        /* ==================== PRINT STYLES ==================== */
         @media print {
+          .sales-orders-filter-section,
+          .actions-column,
+          .actions-cell-modern {
+            display: none !important;
+          }
+
           .sales-orders-table-wrapper {
             box-shadow: none;
             border: 1px solid #000;
           }
 
           .table-header-purple {
-            background: #6f42c1 !important;
-            -webkit-print-color-adjust: exact;
-          }
-
-          .actions-column,
-          .actions-cell {
-            display: none;
+            background: #000 !important;
+            color: #fff !important;
           }
         }
       `}</style>

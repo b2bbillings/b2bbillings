@@ -330,19 +330,6 @@
   transition: background-color 0.2s ease;
 }
 
-.transaction-row:hover {
-  background-color: #f8f9fa;
-}
-
-.transaction-badge,
-.payment-badge {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.6rem;
-  border: 1px solid #e9ecef;
-  background-color: #f8f9fa;
-  color: #495057;
-  border-radius: 12px;
-}
 
 .amount-cell,
 .balance-cell {
@@ -354,17 +341,6 @@
   width: 140px;
 }
 
-.action-btn {
-  padding: 0.25rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  border: 1px solid #dee2e6;
-}
-
-.action-btn:hover {
-  background-color: #f8f9fa;
-  border-color: #adb5bd;
-}
 
 .dropdown-toggle-no-caret::after {
   display: none;

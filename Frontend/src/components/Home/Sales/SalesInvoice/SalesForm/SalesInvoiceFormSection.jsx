@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   InputGroup,
+  Container,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -39,6 +40,8 @@ import {
   faDownload,
   faShare,
   faTimes as faCancel,
+  faFileContract,
+  faClipboardList,
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
@@ -76,6 +79,43 @@ function SalesInvoiceFormSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionRef = useRef(false);
 
+  // Purple theme matching PurchaseInvoiceHeader
+  const purpleTheme = {
+    primary: "#6366f1",
+    primaryLight: "#8b5cf6",
+    primaryDark: "#4f46e5",
+    primaryRgb: "99, 102, 241",
+    secondary: "#8b5cf6",
+    accent: "#a855f7",
+    background: "#f8fafc",
+    surface: "#ffffff",
+    success: "#10b981",
+    warning: "#f59e0b",
+    error: "#ef4444",
+    text: "#1e293b",
+    textMuted: "#64748b",
+    border: "#e2e8f0",
+    borderDark: "#cbd5e1",
+  };
+
+  // Enhanced input styles with purple theme
+  const getInputStyle = (fieldName) => ({
+    borderColor: errors[fieldName] ? purpleTheme.error : purpleTheme.border,
+    fontSize: "14px",
+    padding: "12px 16px",
+    height: "48px",
+    borderWidth: "2px",
+    borderRadius: "8px",
+    transition: "all 0.2s ease",
+    backgroundColor: purpleTheme.surface,
+    boxShadow: errors[fieldName]
+      ? `0 0 0 3px rgba(239, 68, 68, 0.1)`
+      : `0 0 0 0px rgba(${purpleTheme.primaryRgb}, 0.1)`,
+  });
+
+  const inputStyle = getInputStyle();
+
+  // Hooks initialization
   const {
     localItems,
     setLocalItems,
@@ -135,14 +175,46 @@ function SalesInvoiceFormSection({
     addToast
   );
 
-  const currentConfig =
-    itemsTableLogic.getFormConfig()[
-      isQuotationsMode
-        ? "quotation"
-        : mode === "purchases"
-        ? "purchase"
-        : "sales"
-    ];
+  // Dynamic configuration based on mode
+  const getDocumentConfig = () => {
+    if (isQuotationsMode) {
+      return {
+        formIcon: faFileContract,
+        title: "Quotation Builder",
+        subtitle: "Create professional quotations",
+        actionButtonColor: "info",
+        paymentIcon: faClipboardList,
+        paymentAction: "Set Terms",
+        saveButtonVariant: "info",
+        saveButtonText: "Save Quotation",
+        totalLabel: "Quote Total",
+        totalBorderColor: "border-info",
+        totalTextColor: "text-info",
+        cardBorderColor: purpleTheme.primary,
+        primaryColor: "#0ea5e9",
+        primaryRgb: "14, 165, 233",
+      };
+    } else {
+      return {
+        formIcon: faFileInvoice,
+        title: "Invoice Builder",
+        subtitle: "Create professional invoices",
+        actionButtonColor: "primary",
+        paymentIcon: faWallet,
+        paymentAction: "Add Payment",
+        saveButtonVariant: "success",
+        saveButtonText: "Save Invoice",
+        totalLabel: "Invoice Total",
+        totalBorderColor: "border-primary",
+        totalTextColor: "text-primary",
+        cardBorderColor: purpleTheme.primary,
+        primaryColor: purpleTheme.primary,
+        primaryRgb: purpleTheme.primaryRgb,
+      };
+    }
+  };
+
+  const currentConfig = getDocumentConfig();
 
   // State variables
   const [showProductFormModal, setShowProductFormModal] = useState(false);
@@ -226,15 +298,6 @@ function SalesInvoiceFormSection({
     currentConfig,
     bankAccounts
   );
-
-  // Constants
-  const inputStyle = {
-    borderColor: "#000",
-    fontSize: "13px",
-    padding: "10px 14px",
-    height: "42px",
-    borderWidth: "2px",
-  };
 
   const hasValidItems = useMemo(() => {
     return (
@@ -410,7 +473,7 @@ function SalesInvoiceFormSection({
     return true;
   };
 
-  // Calculate temp item total function - Clean, no logs
+  // Calculate temp item total function
   const calculateTempItemTotal = useCallback(
     (itemData) => {
       const quantity = parseFloat(itemData.quantity || 0);
@@ -485,7 +548,7 @@ function SalesInvoiceFormSection({
     [formData.gstEnabled]
   );
 
-  // Handle temp form change function - Clean, no logs
+  // Handle temp form change function
   const handleTempFormChange = (field, value) => {
     setTempFormData((prev) => {
       let updated = {...prev};
@@ -533,7 +596,7 @@ function SalesInvoiceFormSection({
           createdAt: new Date().toISOString(),
         };
 
-        // ✅ Enhanced bank account handling
+        // Enhanced bank account handling
         if (
           data.bankAccountId &&
           ["bank", "bank_transfer", "Bank Account"].includes(data.paymentMethod)
@@ -550,7 +613,6 @@ function SalesInvoiceFormSection({
             formatted.bankName = selectedBankAccount.bankName;
             formatted.accountNumber = selectedBankAccount.accountNumber;
 
-            // ✅ Add bank info to notes if not already present
             if (
               !formatted.notes ||
               !formatted.notes.includes(selectedBankAccount.bankName)
@@ -631,7 +693,7 @@ function SalesInvoiceFormSection({
     displayTotal,
     addToast,
     onFormDataChange,
-    bankAccounts, // ✅ Added bankAccounts dependency
+    bankAccounts,
     formData.invoiceNumber,
     companyId,
     mode,
@@ -639,7 +701,7 @@ function SalesInvoiceFormSection({
     setShowPaymentModal,
   ]);
 
-  // ✅ UPDATED: Enhanced save invoice with better payment method normalization
+  // Enhanced save invoice with better payment method normalization
   const handleSaveInvoice = useCallback(async () => {
     if (saving || isSubmitting || submissionRef.current) {
       return;
@@ -746,14 +808,13 @@ function SalesInvoiceFormSection({
         }
       );
 
-      // ✅ ENHANCED: Payment method normalization function
+      // Payment method normalization function
       const normalizePaymentMethod = (method) => {
         if (!method) return "cash";
 
         const methodStr = method.toString().toLowerCase();
 
         const methodMappings = {
-          // Bank transfer variations - ✅ All map to "bank_transfer" for backend
           "bank account": "bank_transfer",
           bank_transfer: "bank_transfer",
           banktransfer: "bank_transfer",
@@ -762,8 +823,6 @@ function SalesInvoiceFormSection({
           neft: "bank_transfer",
           rtgs: "bank_transfer",
           imps: "bank_transfer",
-
-          // Other payment methods
           card: "card",
           upi: "upi",
           cash: "cash",
@@ -774,7 +833,7 @@ function SalesInvoiceFormSection({
         return methodMappings[methodStr] || "cash";
       };
 
-      // ✅ ENHANCED: Payment data with proper normalization and bank account info
+      // Payment data with proper normalization and bank account info
       const enhancedPaymentData =
         paymentData?.amount > 0
           ? (() => {
@@ -785,9 +844,9 @@ function SalesInvoiceFormSection({
               const payment = {
                 ...paymentData,
                 amount: parseFloat(paymentData.amount || 0),
-                paymentMethod: normalizedMethod, // ✅ Use normalized method
-                paymentType: paymentData.paymentType || "Cash", // Keep original display type
-                method: normalizedMethod, // ✅ Backend compatibility
+                paymentMethod: normalizedMethod,
+                paymentType: paymentData.paymentType || "Cash",
+                method: normalizedMethod,
                 partyId: formData.customer?.id || formData.customer?._id,
                 partyName:
                   formData.customer?.name || formData.customer?.businessName,
@@ -801,7 +860,7 @@ function SalesInvoiceFormSection({
                 relatedInvoiceTotal: displayTotal,
               };
 
-              // ✅ Enhanced bank account handling
+              // Enhanced bank account handling
               if (
                 paymentData.bankAccountId &&
                 ["bank_transfer"].includes(normalizedMethod)
@@ -820,7 +879,6 @@ function SalesInvoiceFormSection({
                   payment.accountNumber = selectedBankAccount.accountNumber;
                   payment.ifscCode = selectedBankAccount.ifscCode;
 
-                  // ✅ Enhanced bank account metadata
                   payment.bankAccountDetails = {
                     id: selectedBankAccount._id || selectedBankAccount.id,
                     name:
@@ -871,13 +929,13 @@ function SalesInvoiceFormSection({
             })()
           : null;
 
-      // ✅ ENHANCED: Transaction data with normalized payment method
+      // Transaction data with normalized payment method
       const transactionData = enhancedPaymentData
         ? {
             amount: enhancedPaymentData.amount,
-            paymentMethod: enhancedPaymentData.paymentMethod, // ✅ Normalized method
-            paymentType: enhancedPaymentData.paymentType, // ✅ Display type
-            method: enhancedPaymentData.method, // ✅ Backend compatibility
+            paymentMethod: enhancedPaymentData.paymentMethod,
+            paymentType: enhancedPaymentData.paymentType,
+            method: enhancedPaymentData.method,
             bankAccountId: enhancedPaymentData.bankAccountId,
             bankAccountDetails: enhancedPaymentData.bankAccountDetails,
             notes:
@@ -999,14 +1057,6 @@ function SalesInvoiceFormSection({
         return;
       }
 
-      console.log("💾 Saving invoice with normalized payment method:", {
-        originalPaymentMethod: paymentData?.paymentMethod,
-        normalizedPaymentMethod: enhancedPaymentData?.paymentMethod,
-        paymentType: enhancedPaymentData?.paymentType,
-        bankAccountId: enhancedPaymentData?.bankAccountId,
-        bankAccountDetails: enhancedPaymentData?.bankAccountDetails,
-      });
-
       const result = await onSave(invoiceDataFromTable);
 
       if (result?.success) {
@@ -1108,7 +1158,7 @@ function SalesInvoiceFormSection({
     currentUser,
     currentCompany,
     createTransactionWithInvoice,
-    bankAccounts, // ✅ Added bankAccounts dependency
+    bankAccounts,
   ]);
 
   // Item management functions
@@ -1239,130 +1289,309 @@ function SalesInvoiceFormSection({
     setProductSearchNotFound(false);
     setProductSearchLoading(false);
   };
+
   return (
-    <div
-      className="sales-invoice-form-section"
-      style={{maxWidth: "1400px", margin: "0 auto"}}
-    >
-      <div className="mb-4">
-        <Row className="align-items-center">
-          <Col md={8}>
-            {hasValidItems ? (
-              <div className="d-flex align-items-center">
-                <FontAwesomeIcon
-                  icon={currentConfig.formIcon}
-                  className="me-2 text-primary"
-                  size="lg"
-                />
-                <div>
-                  <h5 className="mb-0 text-dark">
-                    <strong>
-                      {localItems.filter((item) => item.itemName).length}
-                    </strong>{" "}
-                    {localItems.filter((item) => item.itemName).length === 1
-                      ? "Item"
-                      : "Items"}{" "}
-                    Added
-                  </h5>
-                  <small className="text-muted">
-                    Ready to{" "}
-                    {isQuotationsMode ? "create quotation" : "save invoice"}
-                  </small>
-                </div>
+    <Container fluid className="px-0">
+      {/* Header Section - Styled like PurchaseInvoiceHeader */}
+      <Card
+        className="mb-4"
+        style={{
+          border: "none",
+          borderRadius: "16px",
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+            color: "white",
+            padding: "20px 24px",
+          }}
+        >
+          <div className="d-flex align-items-center justify-content-between">
+            <div className="d-flex align-items-center">
+              <FontAwesomeIcon
+                icon={currentConfig.formIcon}
+                size="lg"
+                className="me-3"
+              />
+              <div>
+                <h5 className="mb-0 fw-bold">{currentConfig.title}</h5>
+                <small className="opacity-90">{currentConfig.subtitle}</small>
               </div>
-            ) : (
-              <div className="d-flex align-items-center text-muted">
-                <FontAwesomeIcon icon={faBoxOpen} className="me-2" size="lg" />
-                <div>
-                  <h5 className="mb-0 text-muted">No Items Added</h5>
-                  <small className="text-muted">
-                    Click "Add Item" to start building your{" "}
-                    {isQuotationsMode ? "quotation" : "invoice"}
-                  </small>
-                </div>
-              </div>
-            )}
-          </Col>
-          <Col md={4} className="text-end">
+            </div>
+
+            {/* Action Button */}
             <Button
-              variant="primary"
+              variant="light"
+              size="sm"
               onClick={handleAddProductClick}
               disabled={disabled || isSubmitting || submissionRef.current}
               style={{
-                backgroundColor: "#007bff",
-                borderColor: "#000",
-                fontSize: "14px",
-                fontWeight: "bold",
+                fontWeight: "600",
                 padding: "8px 16px",
-                borderWidth: "2px",
-                opacity:
-                  disabled || isSubmitting || submissionRef.current ? 0.6 : 1,
+                borderRadius: "8px",
+                border: "none",
+                color: currentConfig.primaryColor,
+                backgroundColor: "rgba(255, 255, 255, 0.9)",
+                backdropFilter: "blur(10px)",
+                transition: "all 0.2s ease",
               }}
             >
               <FontAwesomeIcon icon={faPlus} className="me-2" />
               Add Item
             </Button>
-          </Col>
-        </Row>
-      </div>
+          </div>
+        </div>
 
+        {/* Stats Section */}
+        <div
+          className="px-4 py-3 border-bottom"
+          style={{
+            backgroundColor: purpleTheme.background,
+          }}
+        >
+          <Row className="g-3">
+            <Col md={6}>
+              <div className="d-flex align-items-center">
+                <div
+                  className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    backgroundColor: hasValidItems
+                      ? purpleTheme.success
+                      : purpleTheme.textMuted,
+                    color: "white",
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBoxOpen} />
+                </div>
+                <div>
+                  <div className="fw-bold text-dark">
+                    {localItems.filter((item) => item.itemName).length}
+                  </div>
+                  <small className="text-muted">
+                    {localItems.filter((item) => item.itemName).length === 1
+                      ? "Item"
+                      : "Items"}{" "}
+                    Added
+                  </small>
+                </div>
+              </div>
+            </Col>
+            <Col md={6}>
+              <div className="d-flex align-items-center">
+                <div
+                  className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    backgroundColor:
+                      displayTotal > 0
+                        ? currentConfig.primaryColor
+                        : purpleTheme.textMuted,
+                    color: "white",
+                  }}
+                >
+                  <FontAwesomeIcon icon={faRupeeSign} />
+                </div>
+                <div>
+                  <div className="fw-bold text-dark">
+                    ₹{itemsTableLogic.formatCurrency(displayTotal)}
+                  </div>
+                  <small className="text-muted">
+                    {currentConfig.totalLabel}
+                  </small>
+                </div>
+              </div>
+            </Col>
+          </Row>
+        </div>
+      </Card>
+
+      {/* Items Table Section */}
       {hasValidItems && (
-        <Card className="mb-4 border-2" style={{borderColor: "#000"}}>
+        <Card
+          className="mb-4"
+          style={{
+            border: "none",
+            borderRadius: "16px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+            overflow: "hidden",
+          }}
+        >
           <Card.Header
-            className="bg-light border-bottom-2 d-flex justify-content-between align-items-center"
-            style={{borderBottomColor: "#000"}}
+            style={{
+              backgroundColor: purpleTheme.background,
+              borderBottom: `2px solid ${purpleTheme.border}`,
+              padding: "16px 24px",
+            }}
           >
-            <h5 className="mb-0">
-              <FontAwesomeIcon icon={currentConfig.formIcon} className="me-2" />
-              Added Items ({localItems.filter((item) => item.itemName).length})
-            </h5>
+            <div className="d-flex justify-content-between align-items-center">
+              <h6 className="mb-0 fw-bold text-dark">
+                <FontAwesomeIcon
+                  icon={currentConfig.formIcon}
+                  className="me-2"
+                />
+                Added Items ({localItems.filter((item) => item.itemName).length}
+                )
+              </h6>
+            </div>
           </Card.Header>
           <Card.Body className="p-0">
             <div className="table-responsive">
               <Table hover className="mb-0">
-                <thead className="bg-light">
+                <thead style={{backgroundColor: purpleTheme.background}}>
                   <tr>
-                    <th style={{fontSize: "12px", padding: "10px"}}>#</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>ITEM</th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      #
+                    </th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      ITEM
+                    </th>
                     {formData.gstEnabled && (
-                      <th style={{fontSize: "12px", padding: "10px"}}>HSN</th>
+                      <th
+                        style={{
+                          fontSize: "13px",
+                          padding: "12px",
+                          fontWeight: "600",
+                          color: purpleTheme.text,
+                        }}
+                      >
+                        HSN
+                      </th>
                     )}
-                    <th style={{fontSize: "12px", padding: "10px"}}>QTY</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>UNIT</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>PRICE</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      QTY
+                    </th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      UNIT
+                    </th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      PRICE
+                    </th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
                       DISCOUNT
                     </th>
                     {formData.gstEnabled && (
-                      <th style={{fontSize: "12px", padding: "10px"}}>TAX</th>
+                      <th
+                        style={{
+                          fontSize: "13px",
+                          padding: "12px",
+                          fontWeight: "600",
+                          color: purpleTheme.text,
+                        }}
+                      >
+                        TAX
+                      </th>
                     )}
-                    <th style={{fontSize: "12px", padding: "10px"}}>AMOUNT</th>
-                    <th style={{fontSize: "12px", padding: "10px"}}>ACTION</th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      AMOUNT
+                    </th>
+                    <th
+                      style={{
+                        fontSize: "13px",
+                        padding: "12px",
+                        fontWeight: "600",
+                        color: purpleTheme.text,
+                      }}
+                    >
+                      ACTION
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {localItems
                     .filter((item) => item.itemName)
                     .map((item, index) => (
-                      <tr key={item.id || index}>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
+                      <tr
+                        key={item.id || index}
+                        style={{
+                          borderBottom: `1px solid ${purpleTheme.border}`,
+                        }}
+                      >
+                        <td
+                          style={{
+                            fontSize: "13px",
+                            padding: "12px",
+                            color: purpleTheme.text,
+                          }}
+                        >
                           {index + 1}
                         </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
+                        <td style={{fontSize: "13px", padding: "12px"}}>
                           <div>
-                            <strong>{item.itemName}</strong>
+                            <div className="fw-semibold text-dark">
+                              {item.itemName}
+                            </div>
                             {item.itemCode && (
                               <Badge
-                                bg="secondary"
-                                className="ms-1"
-                                style={{fontSize: "9px"}}
+                                style={{
+                                  backgroundColor: `rgba(${currentConfig.primaryRgb}, 0.1)`,
+                                  color: currentConfig.primaryColor,
+                                  fontSize: "10px",
+                                  fontWeight: "500",
+                                }}
+                                className="mt-1"
                               >
                                 {item.itemCode}
                               </Badge>
                             )}
                           </div>
                           {item.description && (
-                            <small className="text-muted d-block">
+                            <small className="text-muted d-block mt-1">
                               {item.description.length > 40
                                 ? `${item.description.substring(0, 40)}...`
                                 : item.description}
@@ -1370,54 +1599,91 @@ function SalesInvoiceFormSection({
                           )}
                         </td>
                         {formData.gstEnabled && (
-                          <td style={{fontSize: "11px", padding: "8px"}}>
+                          <td
+                            style={{
+                              fontSize: "12px",
+                              padding: "12px",
+                              color: purpleTheme.textMuted,
+                            }}
+                          >
                             {item.hsnCode || "N/A"}
                           </td>
                         )}
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          {item.quantity}
+                        <td
+                          style={{
+                            fontSize: "13px",
+                            padding: "12px",
+                            color: purpleTheme.text,
+                          }}
+                        >
+                          <span className="fw-semibold">{item.quantity}</span>
                         </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
+                        <td
+                          style={{
+                            fontSize: "13px",
+                            padding: "12px",
+                            color: purpleTheme.textMuted,
+                          }}
+                        >
                           {item.unit}
                         </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <div>
+                        <td style={{fontSize: "13px", padding: "12px"}}>
+                          <div className="fw-semibold text-dark">
                             ₹{parseFloat(item.pricePerUnit || 0).toFixed(2)}
                           </div>
                         </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
+                        <td style={{fontSize: "13px", padding: "12px"}}>
                           {item.discountPercent > 0 && (
-                            <span className="text-warning">
+                            <span
+                              className="fw-semibold"
+                              style={{color: purpleTheme.warning}}
+                            >
                               {item.discountPercent}%
                             </span>
                           )}
                           {item.discountAmount > 0 && (
-                            <div className="text-warning">
+                            <div
+                              className="fw-semibold"
+                              style={{color: purpleTheme.warning}}
+                            >
                               ₹{item.discountAmount.toFixed(2)}
                             </div>
                           )}
                         </td>
                         {formData.gstEnabled && (
-                          <td style={{fontSize: "12px", padding: "8px"}}>
+                          <td style={{fontSize: "12px", padding: "12px"}}>
                             {item.cgstAmount + item.sgstAmount > 0 ? (
                               <div>
-                                <small>C: ₹{item.cgstAmount.toFixed(2)}</small>
+                                <small style={{color: purpleTheme.success}}>
+                                  C: ₹{item.cgstAmount.toFixed(2)}
+                                </small>
                                 <br />
-                                <small>S: ₹{item.sgstAmount.toFixed(2)}</small>
+                                <small style={{color: purpleTheme.success}}>
+                                  S: ₹{item.sgstAmount.toFixed(2)}
+                                </small>
                               </div>
                             ) : (
-                              <Badge bg="secondary" style={{fontSize: "9px"}}>
+                              <Badge
+                                style={{
+                                  backgroundColor: purpleTheme.textMuted,
+                                  color: "white",
+                                  fontSize: "10px",
+                                }}
+                              >
                                 No Tax
                               </Badge>
                             )}
                           </td>
                         )}
-                        <td style={{fontSize: "12px", padding: "8px"}}>
-                          <strong className="text-success">
+                        <td style={{fontSize: "14px", padding: "12px"}}>
+                          <div
+                            className="fw-bold"
+                            style={{color: purpleTheme.success}}
+                          >
                             ₹{(item.amount || 0).toFixed(2)}
-                          </strong>
+                          </div>
                         </td>
-                        <td style={{fontSize: "12px", padding: "8px"}}>
+                        <td style={{fontSize: "13px", padding: "12px"}}>
                           <div className="d-flex gap-1">
                             <Button
                               variant="outline-primary"
@@ -1428,7 +1694,14 @@ function SalesInvoiceFormSection({
                                 isSubmitting ||
                                 submissionRef.current
                               }
-                              style={{padding: "2px 6px"}}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: "6px",
+                                borderColor: currentConfig.primaryColor,
+                                color: currentConfig.primaryColor,
+                                fontSize: "12px",
+                                transition: "all 0.2s ease",
+                              }}
                             >
                               <FontAwesomeIcon icon={faEdit} size="xs" />
                             </Button>
@@ -1442,7 +1715,14 @@ function SalesInvoiceFormSection({
                                 isSubmitting ||
                                 submissionRef.current
                               }
-                              style={{padding: "2px 6px"}}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: "6px",
+                                borderColor: purpleTheme.error,
+                                color: purpleTheme.error,
+                                fontSize: "12px",
+                                transition: "all 0.2s ease",
+                              }}
                             >
                               <FontAwesomeIcon icon={faTrash} size="xs" />
                             </Button>
@@ -1457,10 +1737,18 @@ function SalesInvoiceFormSection({
         </Card>
       )}
 
+      {/* Action Buttons Section */}
       {hasValidItems && (
-        <Card className="border-0 shadow-sm">
-          <Card.Body className="p-4">
-            <Row className="g-3">
+        <Card
+          style={{
+            border: "none",
+            borderRadius: "16px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+          }}
+        >
+          <Card.Body style={{padding: "24px"}}>
+            <Row className="g-4">
+              {/* Payment Button */}
               <Col lg={gridLayout.payment || 5} md={6}>
                 <Button
                   variant={
@@ -1468,11 +1756,17 @@ function SalesInvoiceFormSection({
                       ? "success"
                       : currentConfig.actionButtonColor
                   }
-                  className="w-100 d-flex align-items-center justify-content-center flex-column border-2 border-dashed fw-semibold"
+                  className="w-100 d-flex align-items-center justify-content-center flex-column border-0 fw-semibold"
                   style={{
-                    minHeight: "100px",
+                    minHeight: "120px",
                     borderRadius: "12px",
                     fontSize: "14px",
+                    background:
+                      paymentData.amount > 0
+                        ? `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`
+                        : `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+                    boxShadow: `0 4px 20px rgba(${currentConfig.primaryRgb}, 0.3)`,
+                    transition: "all 0.2s ease",
                     opacity: isSubmitting || submissionRef.current ? 0.6 : 1,
                   }}
                   onClick={handlePaymentClick}
@@ -1500,7 +1794,7 @@ function SalesInvoiceFormSection({
                       : currentConfig.paymentAction}
                   </span>
 
-                  <small className="text-muted mt-1">
+                  <small className="mt-1" style={{opacity: 0.8}}>
                     {paymentData.amount > 0
                       ? `₹${itemsTableLogic.formatCurrency(paymentData.amount)}`
                       : `₹${itemsTableLogic.formatCurrency(displayTotal)}`}
@@ -1508,42 +1802,82 @@ function SalesInvoiceFormSection({
                 </Button>
               </Col>
 
+              {/* GST Breakdown Card */}
               {formData.gstEnabled && totals.totalTax > 0 && (
                 <Col lg={gridLayout.tax || 3} md={6}>
-                  <Card className="bg-light border-0 h-100">
-                    <Card.Body className="p-3">
-                      <div className="text-center mb-2">
+                  <Card
+                    className="h-100"
+                    style={{
+                      backgroundColor: purpleTheme.background,
+                      border: `2px solid ${purpleTheme.border}`,
+                      borderRadius: "12px",
+                    }}
+                  >
+                    <Card.Body style={{padding: "16px"}}>
+                      <div className="text-center mb-3">
                         <FontAwesomeIcon
                           icon={faPercent}
-                          className="me-2 text-info"
+                          style={{color: purpleTheme.primary}}
+                          className="me-2"
                         />
-                        <span className="fw-bold text-secondary small">
+                        <span
+                          className="fw-bold small"
+                          style={{color: purpleTheme.text}}
+                        >
                           GST Breakdown
                         </span>
                       </div>
                       <div className="small">
-                        <div className="d-flex justify-content-between mb-1">
-                          <span>Subtotal:</span>
-                          <span className="fw-semibold">
+                        <div className="d-flex justify-content-between mb-2">
+                          <span style={{color: purpleTheme.textMuted}}>
+                            Subtotal:
+                          </span>
+                          <span
+                            className="fw-semibold"
+                            style={{color: purpleTheme.text}}
+                          >
                             ₹{itemsTableLogic.formatCurrency(totals.subtotal)}
                           </span>
                         </div>
-                        <div className="d-flex justify-content-between mb-1">
-                          <span>CGST:</span>
-                          <span className="fw-semibold text-info">
+                        <div className="d-flex justify-content-between mb-2">
+                          <span style={{color: purpleTheme.textMuted}}>
+                            CGST:
+                          </span>
+                          <span
+                            className="fw-semibold"
+                            style={{color: purpleTheme.primary}}
+                          >
                             ₹{itemsTableLogic.formatCurrency(totals.totalCGST)}
                           </span>
                         </div>
-                        <div className="d-flex justify-content-between mb-1">
-                          <span>SGST:</span>
-                          <span className="fw-semibold text-info">
+                        <div className="d-flex justify-content-between mb-2">
+                          <span style={{color: purpleTheme.textMuted}}>
+                            SGST:
+                          </span>
+                          <span
+                            className="fw-semibold"
+                            style={{color: purpleTheme.primary}}
+                          >
                             ₹{itemsTableLogic.formatCurrency(totals.totalSGST)}
                           </span>
                         </div>
-                        <hr className="my-2" />
+                        <hr
+                          style={{
+                            borderColor: purpleTheme.border,
+                            margin: "8px 0",
+                          }}
+                        />
                         <div className="d-flex justify-content-between">
-                          <span className="fw-bold">Total:</span>
-                          <span className="fw-bold text-primary">
+                          <span
+                            className="fw-bold"
+                            style={{color: purpleTheme.text}}
+                          >
+                            Total:
+                          </span>
+                          <span
+                            className="fw-bold"
+                            style={{color: currentConfig.primaryColor}}
+                          >
                             ₹{itemsTableLogic.formatCurrency(totals.finalTotal)}
                           </span>
                         </div>
@@ -1553,29 +1887,46 @@ function SalesInvoiceFormSection({
                 </Col>
               )}
 
+              {/* Total Card */}
               <Col lg={gridLayout.total || 2} md={6}>
                 <Card
-                  className={`${currentConfig.totalBorderColor} border-3 h-100`}
+                  className="h-100"
+                  style={{
+                    border: `3px solid ${currentConfig.primaryColor}`,
+                    borderRadius: "12px",
+                  }}
                 >
-                  <Card.Body className="p-3">
+                  <Card.Body style={{padding: "16px"}}>
                     <div className="text-center mb-3">
                       <FontAwesomeIcon
                         icon={currentConfig.formIcon}
-                        className="me-2 text-muted"
+                        style={{color: purpleTheme.textMuted}}
+                        className="me-2"
                       />
-                      <span className="fw-bold text-secondary small">
+                      <span
+                        className="fw-bold small"
+                        style={{color: purpleTheme.textMuted}}
+                      >
                         {currentConfig.totalLabel}
                       </span>
                     </div>
 
                     <div
-                      className={`fw-bold ${currentConfig.totalTextColor} h5 mb-3 text-center`}
+                      className="fw-bold h5 mb-3 text-center"
+                      style={{color: currentConfig.primaryColor}}
                     >
                       ₹{itemsTableLogic.formatCurrency(displayTotal)}
                     </div>
-                    <div className="border-top pt-2">
+
+                    <div
+                      className="border-top pt-2"
+                      style={{borderColor: purpleTheme.border}}
+                    >
                       <div className="d-flex align-items-center justify-content-between mb-2">
-                        <span className="fw-semibold text-secondary small">
+                        <span
+                          className="fw-semibold small"
+                          style={{color: purpleTheme.textMuted}}
+                        >
                           Round Off
                         </span>
                         <Form.Check
@@ -1588,14 +1939,19 @@ function SalesInvoiceFormSection({
                       </div>
 
                       {roundOffDisplayInfo?.showRoundOffBreakdown && (
-                        <div className="p-2 bg-warning bg-opacity-10 rounded">
+                        <div
+                          className="p-2 rounded"
+                          style={{
+                            backgroundColor: `rgba(${purpleTheme.primaryRgb}, 0.1)`,
+                          }}
+                        >
                           <div className="d-flex justify-content-between small">
-                            <span>
+                            <span style={{color: purpleTheme.textMuted}}>
                               {roundOffDisplayInfo.baseTotalLabel ||
                                 "Base Total"}
                               :
                             </span>
-                            <span>
+                            <span style={{color: purpleTheme.text}}>
                               ₹
                               {itemsTableLogic.formatCurrency(
                                 roundOffDisplayInfo.baseTotalAmount
@@ -1603,7 +1959,9 @@ function SalesInvoiceFormSection({
                             </span>
                           </div>
                           <div className="d-flex justify-content-between small">
-                            <span>Round Off:</span>
+                            <span style={{color: purpleTheme.textMuted}}>
+                              Round Off:
+                            </span>
                             <span
                               className={roundOffDisplayInfo.roundOffColorClass}
                             >
@@ -1620,8 +1978,9 @@ function SalesInvoiceFormSection({
                 </Card>
               </Col>
 
+              {/* Action Buttons */}
               <Col lg={gridLayout.actions || 2} md={6}>
-                <div className="d-grid gap-2">
+                <div className="d-grid gap-2 h-100">
                   <Button
                     variant="outline-info"
                     onClick={onShare}
@@ -1629,9 +1988,13 @@ function SalesInvoiceFormSection({
                       !hasValidItems || isSubmitting || submissionRef.current
                     }
                     style={{
-                      padding: "8px 12px",
+                      padding: "10px 12px",
                       fontSize: "13px",
+                      fontWeight: "600",
+                      borderRadius: "8px",
+                      borderWidth: "2px",
                       opacity: isSubmitting || submissionRef.current ? 0.6 : 1,
+                      transition: "all 0.2s ease",
                     }}
                   >
                     <FontAwesomeIcon icon={faShare} className="me-2" />
@@ -1649,12 +2012,21 @@ function SalesInvoiceFormSection({
                       (!isQuotationsMode && !formData.customer)
                     }
                     style={{
-                      padding: "10px 12px",
-                      fontSize: "13px",
+                      padding: "12px 12px",
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      borderRadius: "8px",
+                      background:
+                        currentConfig.saveButtonVariant === "success"
+                          ? `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`
+                          : `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+                      border: "none",
+                      boxShadow: `0 4px 15px rgba(${currentConfig.primaryRgb}, 0.3)`,
                       opacity:
                         saving || isSubmitting || submissionRef.current
                           ? 0.6
                           : 1,
+                      transition: "all 0.2s ease",
                     }}
                   >
                     {saving || isSubmitting ? (
@@ -1678,9 +2050,13 @@ function SalesInvoiceFormSection({
                     onClick={onCancel}
                     disabled={isSubmitting || submissionRef.current}
                     style={{
-                      padding: "8px 12px",
+                      padding: "10px 12px",
                       fontSize: "13px",
+                      fontWeight: "600",
+                      borderRadius: "8px",
+                      borderWidth: "2px",
                       opacity: isSubmitting || submissionRef.current ? 0.6 : 1,
+                      transition: "all 0.2s ease",
                     }}
                   >
                     <FontAwesomeIcon icon={faCancel} className="me-2" />
@@ -1693,21 +2069,49 @@ function SalesInvoiceFormSection({
         </Card>
       )}
 
+      {/* Empty State */}
       {!hasValidItems && (
-        <div className="text-center text-muted py-5">
-          <FontAwesomeIcon
-            icon={faBoxOpen}
-            size="3x"
-            className="mb-3 opacity-50"
-          />
-          <h5 className="text-muted">No Items Added Yet</h5>
-          <p className="text-muted">
-            Click the "Add Item" button above to start adding items to your{" "}
-            {isQuotationsMode ? "quotation" : "invoice"}.
-          </p>
-        </div>
+        <Card
+          style={{
+            border: "none",
+            borderRadius: "16px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+          }}
+        >
+          <Card.Body className="text-center py-5">
+            <FontAwesomeIcon
+              icon={faBoxOpen}
+              size="3x"
+              className="mb-3"
+              style={{color: purpleTheme.textMuted, opacity: 0.5}}
+            />
+            <h5 style={{color: purpleTheme.textMuted}}>No Items Added Yet</h5>
+            <p style={{color: purpleTheme.textMuted}}>
+              Click the "Add Item" button above to start adding items to your{" "}
+              {isQuotationsMode ? "quotation" : "invoice"}.
+            </p>
+            <Button
+              variant="primary"
+              onClick={handleAddProductClick}
+              disabled={disabled || isSubmitting || submissionRef.current}
+              style={{
+                background: `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+                border: "none",
+                borderRadius: "8px",
+                padding: "12px 24px",
+                fontWeight: "600",
+                boxShadow: `0 4px 15px rgba(${currentConfig.primaryRgb}, 0.3)`,
+                transition: "all 0.2s ease",
+              }}
+            >
+              <FontAwesomeIcon icon={faPlus} className="me-2" />
+              Add Your First Item
+            </Button>
+          </Card.Body>
+        </Card>
       )}
 
+      {/* Product Form Modal */}
       <Modal
         show={showProductFormModal}
         onHide={() => {
@@ -1717,20 +2121,46 @@ function SalesInvoiceFormSection({
         size="xl"
         centered
         backdrop="static"
+        style={{
+          "--bs-modal-border-radius": "16px",
+        }}
       >
-        <Modal.Header closeButton>
-          <Modal.Title>
+        <Modal.Header
+          closeButton
+          style={{
+            backgroundColor: purpleTheme.background,
+            borderBottom: `2px solid ${purpleTheme.border}`,
+            borderRadius: "16px 16px 0 0",
+          }}
+        >
+          <Modal.Title style={{color: purpleTheme.text, fontWeight: "600"}}>
+            <FontAwesomeIcon
+              icon={currentEditingIndex !== null ? faEdit : faPlus}
+              className="me-2"
+              style={{color: currentConfig.primaryColor}}
+            />
             {currentEditingIndex !== null ? "Edit Item" : "Add Item"}
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body
+          style={{padding: "24px", backgroundColor: purpleTheme.surface}}
+        >
           <Row>
             <Col md={6}>
               <Form.Group className="mb-3 position-relative">
-                <Form.Label className="fw-bold text-danger">
+                <Form.Label
+                  className="fw-bold"
+                  style={{color: purpleTheme.error}}
+                >
                   Select Product *
                   {tempFormData.selectedProduct && (
-                    <Badge bg="success" className="ms-2">
+                    <Badge
+                      className="ms-2"
+                      style={{
+                        backgroundColor: purpleTheme.success,
+                        color: "white",
+                      }}
+                    >
                       <FontAwesomeIcon icon={faCheck} className="me-1" />
                       Selected
                     </Badge>
@@ -1745,10 +2175,13 @@ function SalesInvoiceFormSection({
                     debouncedProductSearch(query);
                   }}
                   style={{
-                    ...inputStyle,
+                    ...getInputStyle(),
                     backgroundColor: tempFormData.selectedProduct
-                      ? "#e8f5e8"
-                      : "white",
+                      ? `rgba(${purpleTheme.primaryRgb}, 0.05)`
+                      : purpleTheme.surface,
+                    borderColor: tempFormData.selectedProduct
+                      ? purpleTheme.success
+                      : purpleTheme.border,
                   }}
                   placeholder="Search or enter item name..."
                   autoComplete="off"
@@ -1758,7 +2191,8 @@ function SalesInvoiceFormSection({
                 {productSearchLoading && (
                   <div className="position-absolute end-0 top-50 translate-middle-y me-3">
                     <div
-                      className="spinner-border spinner-border-sm text-primary"
+                      className="spinner-border spinner-border-sm"
+                      style={{color: currentConfig.primaryColor}}
                       role="status"
                     >
                       <span className="visually-hidden">Searching...</span>
@@ -1775,15 +2209,18 @@ function SalesInvoiceFormSection({
                         top: "100%",
                         maxHeight: "300px",
                         overflowY: "auto",
+                        borderColor: purpleTheme.border,
+                        borderRadius: "8px",
                       }}
                     >
                       {productSearchLoading ? (
                         <div className="p-3 text-center">
                           <div
                             className="spinner-border spinner-border-sm me-2"
+                            style={{color: currentConfig.primaryColor}}
                             role="status"
                           ></div>
-                          <span className="text-muted">
+                          <span style={{color: purpleTheme.textMuted}}>
                             Searching products...
                           </span>
                         </div>
@@ -1792,21 +2229,28 @@ function SalesInvoiceFormSection({
                           {products.slice(0, 8).map((product) => (
                             <div
                               key={product.id || product._id}
-                              className="p-2 border-bottom"
+                              className="p-3 border-bottom"
                               style={{
                                 cursor: "pointer",
                                 transition: "background-color 0.2s",
+                                borderColor: purpleTheme.border,
                               }}
                               onClick={() => handleProductSelect(product)}
                               onMouseEnter={(e) =>
-                                (e.target.style.backgroundColor = "#f8f9fa")
+                                (e.target.style.backgroundColor =
+                                  purpleTheme.background)
                               }
                               onMouseLeave={(e) =>
                                 (e.target.style.backgroundColor = "transparent")
                               }
                             >
-                              <div className="fw-bold">{product.name}</div>
-                              <small className="text-muted">
+                              <div
+                                className="fw-bold"
+                                style={{color: purpleTheme.text}}
+                              >
+                                {product.name}
+                              </div>
+                              <small style={{color: purpleTheme.textMuted}}>
                                 Sale: ₹
                                 {itemsTableLogic.formatCurrency(
                                   product.salePrice || 0
@@ -1821,27 +2265,34 @@ function SalesInvoiceFormSection({
 
                           {productSearchTerms.trim() && (
                             <div
-                              className="p-2 border-top bg-light"
+                              className="p-3 border-top"
                               style={{
                                 cursor: "pointer",
                                 transition: "background-color 0.2s",
+                                backgroundColor: purpleTheme.background,
+                                borderColor: purpleTheme.border,
                               }}
                               onClick={handleCreateNewItem}
                               onMouseEnter={(e) =>
-                                (e.target.style.backgroundColor = "#e9ecef")
+                                (e.target.style.backgroundColor =
+                                  purpleTheme.borderDark)
                               }
                               onMouseLeave={(e) =>
-                                (e.target.style.backgroundColor = "#f8f9fa")
+                                (e.target.style.backgroundColor =
+                                  purpleTheme.background)
                               }
                             >
-                              <div className="fw-bold text-primary">
+                              <div
+                                className="fw-bold"
+                                style={{color: currentConfig.primaryColor}}
+                              >
                                 <FontAwesomeIcon
                                   icon={faPlus}
                                   className="me-2"
                                 />
                                 Create "{productSearchTerms}"
                               </div>
-                              <small className="text-muted">
+                              <small style={{color: purpleTheme.textMuted}}>
                                 Add this as a new item
                               </small>
                             </div>
@@ -1849,7 +2300,10 @@ function SalesInvoiceFormSection({
                         </>
                       ) : productSearchNotFound ? (
                         <div className="p-3">
-                          <div className="text-center text-muted mb-2">
+                          <div
+                            className="text-center mb-2"
+                            style={{color: purpleTheme.textMuted}}
+                          >
                             <FontAwesomeIcon
                               icon={faBoxOpen}
                               className="me-2"
@@ -1858,14 +2312,20 @@ function SalesInvoiceFormSection({
                           </div>
 
                           {productSearchTerms.trim() && (
-                            <div
-                              className="btn btn-outline-primary btn-sm w-100"
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              className="w-100"
                               onClick={handleCreateNewItem}
-                              style={{cursor: "pointer"}}
+                              style={{
+                                borderColor: currentConfig.primaryColor,
+                                color: currentConfig.primaryColor,
+                                borderRadius: "8px",
+                              }}
                             >
                               <FontAwesomeIcon icon={faPlus} className="me-2" />
                               Create "{productSearchTerms}" as new item
-                            </div>
+                            </Button>
                           )}
                         </div>
                       ) : null}
@@ -1876,7 +2336,10 @@ function SalesInvoiceFormSection({
 
             <Col md={3}>
               <Form.Group className="mb-3">
-                <Form.Label className="fw-bold text-danger">
+                <Form.Label
+                  className="fw-bold"
+                  style={{color: purpleTheme.error}}
+                >
                   Quantity *
                 </Form.Label>
                 <Form.Control
@@ -1885,7 +2348,7 @@ function SalesInvoiceFormSection({
                   onChange={(e) =>
                     handleTempFormChange("quantity", e.target.value)
                   }
-                  style={inputStyle}
+                  style={getInputStyle()}
                   placeholder="0"
                   min="0"
                   step="0.01"
@@ -1896,16 +2359,21 @@ function SalesInvoiceFormSection({
 
             <Col md={3}>
               <Form.Group className="mb-3">
-                <Form.Label className="fw-bold text-danger">Price *</Form.Label>
+                <Form.Label
+                  className="fw-bold"
+                  style={{color: purpleTheme.error}}
+                >
+                  Price *
+                </Form.Label>
                 <InputGroup>
-                  <InputGroup.Text style={inputStyle}>₹</InputGroup.Text>
+                  <InputGroup.Text style={getInputStyle()}>₹</InputGroup.Text>
                   <Form.Control
                     type="number"
                     value={tempFormData.pricePerUnit || ""}
                     onChange={(e) =>
                       handleTempFormChange("pricePerUnit", e.target.value)
                     }
-                    style={inputStyle}
+                    style={getInputStyle()}
                     placeholder="0.00"
                     min="0"
                     step="0.01"
@@ -1919,11 +2387,16 @@ function SalesInvoiceFormSection({
           <Row>
             <Col md={3}>
               <Form.Group className="mb-3">
-                <Form.Label className="fw-bold">Unit</Form.Label>
+                <Form.Label
+                  className="fw-bold"
+                  style={{color: purpleTheme.text}}
+                >
+                  Unit
+                </Form.Label>
                 <Form.Select
                   value={tempFormData.unit || "PCS"}
                   onChange={(e) => handleTempFormChange("unit", e.target.value)}
-                  style={inputStyle}
+                  style={getInputStyle()}
                   disabled={isSubmitting || submissionRef.current}
                 >
                   {itemsTableLogic.unitOptions.map((unit) => (
@@ -1939,16 +2412,21 @@ function SalesInvoiceFormSection({
               <>
                 <Col md={3}>
                   <Form.Group className="mb-3">
-                    <Form.Label className="fw-bold">
+                    <Form.Label
+                      className="fw-bold"
+                      style={{color: purpleTheme.text}}
+                    >
                       Tax Mode
                       <Badge
-                        bg={
-                          tempFormData.taxMode === "with-tax"
-                            ? "success"
-                            : "primary"
-                        }
                         className="ms-2"
-                        style={{fontSize: "9px"}}
+                        style={{
+                          backgroundColor:
+                            tempFormData.taxMode === "with-tax"
+                              ? purpleTheme.success
+                              : currentConfig.primaryColor,
+                          color: "white",
+                          fontSize: "9px",
+                        }}
                       >
                         {tempFormData.taxMode === "with-tax"
                           ? "Inc. Tax"
@@ -1960,7 +2438,7 @@ function SalesInvoiceFormSection({
                       onChange={(e) => {
                         handleTempFormChange("taxMode", e.target.value);
                       }}
-                      style={inputStyle}
+                      style={getInputStyle()}
                       disabled={isSubmitting || submissionRef.current}
                     >
                       <option value="with-tax">Price Includes Tax</option>
@@ -1970,8 +2448,17 @@ function SalesInvoiceFormSection({
                     {tempFormData.quantity > 0 &&
                       tempFormData.pricePerUnit > 0 &&
                       formData.gstEnabled && (
-                        <div className="mt-2 p-2 bg-light rounded">
-                          <small className="text-muted d-block">
+                        <div
+                          className="mt-2 p-2 rounded"
+                          style={{
+                            backgroundColor: purpleTheme.background,
+                            border: `1px solid ${purpleTheme.border}`,
+                          }}
+                        >
+                          <small
+                            className="d-block"
+                            style={{color: purpleTheme.textMuted}}
+                          >
                             {tempFormData.taxMode === "with-tax"
                               ? `₹${tempFormData.pricePerUnit} includes ${
                                   tempFormData.taxRate || 18
@@ -1982,7 +2469,10 @@ function SalesInvoiceFormSection({
                           </small>
 
                           {tempFormData.taxMode === "with-tax" ? (
-                            <small className="text-info d-block">
+                            <small
+                              className="d-block"
+                              style={{color: purpleTheme.primary}}
+                            >
                               Taxable Amount: ₹
                               {tempFormData.taxableAmount?.toFixed(2) || "0.00"}
                               <br />
@@ -1994,7 +2484,10 @@ function SalesInvoiceFormSection({
                               (included)
                             </small>
                           ) : (
-                            <small className="text-info d-block">
+                            <small
+                              className="d-block"
+                              style={{color: purpleTheme.primary}}
+                            >
                               Taxable Amount: ₹
                               {tempFormData.taxableAmount?.toFixed(2) || "0.00"}
                               <br />
@@ -2012,7 +2505,10 @@ function SalesInvoiceFormSection({
 
                           {tempFormData.cgstAmount + tempFormData.sgstAmount >
                             0 && (
-                            <small className="text-success d-block">
+                            <small
+                              className="d-block"
+                              style={{color: purpleTheme.success}}
+                            >
                               CGST: ₹{tempFormData.cgstAmount.toFixed(2)}, SGST:
                               ₹{tempFormData.sgstAmount.toFixed(2)}
                             </small>
@@ -2023,13 +2519,18 @@ function SalesInvoiceFormSection({
                 </Col>
                 <Col md={3}>
                   <Form.Group className="mb-3">
-                    <Form.Label className="fw-bold">Tax Rate (%)</Form.Label>
+                    <Form.Label
+                      className="fw-bold"
+                      style={{color: purpleTheme.text}}
+                    >
+                      Tax Rate (%)
+                    </Form.Label>
                     <Form.Select
                       value={tempFormData.taxRate || 18}
                       onChange={(e) =>
                         handleTempFormChange("taxRate", e.target.value)
                       }
-                      style={inputStyle}
+                      style={getInputStyle()}
                       disabled={isSubmitting || submissionRef.current}
                     >
                       <option value={0}>0% (Exempt)</option>
@@ -2042,14 +2543,19 @@ function SalesInvoiceFormSection({
                 </Col>
                 <Col md={3}>
                   <Form.Group className="mb-3">
-                    <Form.Label className="fw-bold">HSN Code</Form.Label>
+                    <Form.Label
+                      className="fw-bold"
+                      style={{color: purpleTheme.text}}
+                    >
+                      HSN Code
+                    </Form.Label>
                     <Form.Control
                       type="text"
                       value={tempFormData.hsnCode || ""}
                       onChange={(e) =>
                         handleTempFormChange("hsnCode", e.target.value)
                       }
-                      style={inputStyle}
+                      style={getInputStyle()}
                       placeholder="HSN Code"
                       disabled={isSubmitting || submissionRef.current}
                     />
@@ -2060,14 +2566,19 @@ function SalesInvoiceFormSection({
 
             <Col md={3}>
               <Form.Group className="mb-3">
-                <Form.Label className="fw-bold">Discount %</Form.Label>
+                <Form.Label
+                  className="fw-bold"
+                  style={{color: purpleTheme.text}}
+                >
+                  Discount %
+                </Form.Label>
                 <Form.Control
                   type="number"
                   value={tempFormData.discountPercent || ""}
                   onChange={(e) =>
                     handleTempFormChange("discountPercent", e.target.value)
                   }
-                  style={inputStyle}
+                  style={getInputStyle()}
                   placeholder="0"
                   min="0"
                   max="100"
@@ -2079,7 +2590,9 @@ function SalesInvoiceFormSection({
           </Row>
 
           <Form.Group className="mb-3">
-            <Form.Label className="fw-bold">Description</Form.Label>
+            <Form.Label className="fw-bold" style={{color: purpleTheme.text}}>
+              Description
+            </Form.Label>
             <Form.Control
               as="textarea"
               rows={2}
@@ -2087,19 +2600,25 @@ function SalesInvoiceFormSection({
               onChange={(e) =>
                 handleTempFormChange("description", e.target.value)
               }
-              style={inputStyle}
+              style={getInputStyle()}
               placeholder="Enter item description..."
               disabled={isSubmitting || submissionRef.current}
             />
           </Form.Group>
 
-          <div className="text-center p-3 bg-light rounded">
-            <h4 className="text-success mb-2">
+          <div
+            className="text-center p-3 rounded"
+            style={{
+              backgroundColor: purpleTheme.background,
+              border: `2px solid ${purpleTheme.success}`,
+            }}
+          >
+            <h4 className="mb-2" style={{color: purpleTheme.success}}>
               Total: ₹{itemsTableLogic.formatCurrency(tempFormData.amount || 0)}
             </h4>
 
             {tempFormData.quantity > 0 && tempFormData.pricePerUnit > 0 && (
-              <div className="small text-muted">
+              <div className="small" style={{color: purpleTheme.textMuted}}>
                 <div className="row">
                   <div className="col-6">
                     <div>Qty: {tempFormData.quantity}</div>
@@ -2135,8 +2654,14 @@ function SalesInvoiceFormSection({
 
             {formData.gstEnabled && tempFormData.taxMode && (
               <Badge
-                bg={tempFormData.taxMode === "with-tax" ? "success" : "primary"}
                 className="mt-2"
+                style={{
+                  backgroundColor:
+                    tempFormData.taxMode === "with-tax"
+                      ? purpleTheme.success
+                      : currentConfig.primaryColor,
+                  color: "white",
+                }}
               >
                 {tempFormData.taxMode === "with-tax"
                   ? "Price Includes Tax"
@@ -2145,7 +2670,14 @@ function SalesInvoiceFormSection({
             )}
           </div>
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer
+          style={{
+            backgroundColor: purpleTheme.background,
+            borderTop: `2px solid ${purpleTheme.border}`,
+            borderRadius: "0 0 16px 16px",
+            padding: "16px 24px",
+          }}
+        >
           <Button
             variant="outline-secondary"
             onClick={() => {
@@ -2153,6 +2685,12 @@ function SalesInvoiceFormSection({
               resetProductSearchState();
             }}
             disabled={isSubmitting || submissionRef.current}
+            style={{
+              borderColor: purpleTheme.textMuted,
+              color: purpleTheme.textMuted,
+              borderRadius: "8px",
+              fontWeight: "600",
+            }}
           >
             Cancel
           </Button>
@@ -2166,6 +2704,13 @@ function SalesInvoiceFormSection({
               isSubmitting ||
               submissionRef.current
             }
+            style={{
+              backgroundColor: purpleTheme.success,
+              borderColor: purpleTheme.success,
+              borderRadius: "8px",
+              fontWeight: "600",
+              boxShadow: `0 4px 15px rgba(16, 185, 129, 0.3)`,
+            }}
           >
             <FontAwesomeIcon icon={faPlus} className="me-2" />
             Save & Add Another
@@ -2180,12 +2725,21 @@ function SalesInvoiceFormSection({
               isSubmitting ||
               submissionRef.current
             }
+            style={{
+              background: `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+              borderColor: currentConfig.primaryColor,
+              borderRadius: "8px",
+              fontWeight: "600",
+              boxShadow: `0 4px 15px rgba(${currentConfig.primaryRgb}, 0.3)`,
+            }}
           >
             <FontAwesomeIcon icon={faSave} className="me-2" />
             Save & Exit
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Payment Modal */}
       <PaymentModal
         show={showPaymentModal}
         onHide={() => setShowPaymentModal(false)}
@@ -2207,14 +2761,170 @@ function SalesInvoiceFormSection({
         roundOffValue={roundOffValue}
         invoiceNumber={formData.invoiceNumber}
         invoiceDate={formData.invoiceDate}
-        companyId={companyId} // ✅ Added companyId prop
+        companyId={companyId}
         formType={mode === "purchases" ? "purchase" : "sales"}
         handleDueDateToggle={handleDueDateToggle}
         handleCreditDaysChange={handleCreditDaysChange}
         handleDueDateChange={handleDueDateChange}
         handleBankAccountChange={handleBankAccountChange}
       />
-    </div>
+
+      {/* Custom Styles */}
+      <style jsx>{`
+        /* Button hover effects */
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 25px rgba(${currentConfig.primaryRgb}, 0.4) !important;
+        }
+
+        .btn-success:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4) !important;
+        }
+
+        .btn-outline-info:hover {
+          background-color: rgba(23, 162, 184, 0.1) !important;
+          transform: translateY(-1px);
+        }
+
+        .btn-outline-secondary:hover {
+          background-color: rgba(108, 117, 125, 0.1) !important;
+          transform: translateY(-1px);
+        }
+
+        .btn-outline-primary:hover {
+          background-color: rgba(${currentConfig.primaryRgb}, 0.1) !important;
+          border-color: ${currentConfig.primaryColor} !important;
+          color: ${currentConfig.primaryColor} !important;
+        }
+
+        .btn-outline-danger:hover {
+          background-color: rgba(239, 68, 68, 0.1) !important;
+          border-color: ${purpleTheme.error} !important;
+          color: ${purpleTheme.error} !important;
+        }
+
+        /* Table hover effects */
+        .table-hover tbody tr:hover {
+          background-color: rgba(${currentConfig.primaryRgb}, 0.05) !important;
+        }
+
+        /* Card hover effects */
+        .card {
+          transition: all 0.2s ease;
+        }
+
+        .card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12) !important;
+        }
+
+        /* Loading states */
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none !important;
+        }
+
+        .btn:disabled:hover {
+          transform: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Focus states */
+        .btn:focus {
+          box-shadow: 0 0 0 0.2rem rgba(${currentConfig.primaryRgb}, 0.25) !important;
+        }
+
+        /* Switch styling */
+        .form-check-input:checked {
+          background-color: ${currentConfig.primaryColor} !important;
+          border-color: ${currentConfig.primaryColor} !important;
+        }
+
+        .form-check-input:focus {
+          border-color: ${currentConfig.primaryColor} !important;
+          box-shadow: 0 0 0 0.25rem rgba(${currentConfig.primaryRgb}, 0.25) !important;
+        }
+
+        /* Modal styling */
+        .modal-content {
+          border-radius: 16px !important;
+          border: none !important;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        /* Form control focus */
+        .form-control:focus,
+        .form-select:focus {
+          border-color: ${currentConfig.primaryColor} !important;
+          box-shadow: 0 0 0 0.25rem rgba(${currentConfig.primaryRgb}, 0.25) !important;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 767.98px) {
+          .d-grid.gap-2 {
+            gap: 1rem !important;
+          }
+
+          .table-responsive {
+            font-size: 12px !important;
+          }
+
+          .card-body {
+            padding: 16px !important;
+          }
+        }
+
+        /* Animation for cards */
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .card {
+          animation: fadeInUp 0.4s ease-out;
+        }
+
+        /* Spinner animation */
+        @keyframes spin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+
+        .fa-spin {
+          animation: spin 1s linear infinite;
+        }
+
+        /* Custom scrollbar for dropdown */
+        .position-absolute::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .position-absolute::-webkit-scrollbar-track {
+          background: ${purpleTheme.background};
+        }
+
+        .position-absolute::-webkit-scrollbar-thumb {
+          background: ${purpleTheme.border};
+          border-radius: 3px;
+        }
+
+        .position-absolute::-webkit-scrollbar-thumb:hover {
+          background: ${purpleTheme.borderDark};
+        }
+      `}</style>
+    </Container>
   );
 }
 

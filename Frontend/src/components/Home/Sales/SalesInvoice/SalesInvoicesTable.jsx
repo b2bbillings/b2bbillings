@@ -1,12 +1,10 @@
 import React, {useState, useCallback, useMemo} from "react";
-import {Button, Table, Badge, Dropdown, Form} from "react-bootstrap";
+import {Button, Table, Badge, Form} from "react-bootstrap";
 import {useNavigate, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faChevronUp,
   faChevronDown,
-  faTimes,
-  faSearch,
   faFileExcel,
   faPrint,
   faSort,
@@ -15,8 +13,6 @@ import {
   faEdit,
   faTrash,
   faShare,
-  faArrowUp,
-  faArrowDown,
   faExchangeAlt,
   faFileInvoice,
   faDownload,
@@ -26,9 +22,12 @@ import {
   faBan,
   faClock,
   faUndo,
-  faCopy,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
+import {Menu, MenuItem, MenuButton} from "@szhsin/react-menu";
+import "@szhsin/react-menu/dist/index.css";
+import "@szhsin/react-menu/dist/transitions/slide.css";
+import salesService from "../../../../services/salesService";
 
 function SalesInvoicesTable({
   transactions = [],
@@ -68,11 +67,10 @@ function SalesInvoicesTable({
   const [sortDirection, setSortDirection] = useState(sortOrder);
   const [showReturnedTransactions, setShowReturnedTransactions] =
     useState(false);
-
-  // ✅ FIXED: Add state for deleting transactions
   const [deletingTransactions, setDeletingTransactions] = useState(new Set());
-
-  // Local search and filter state if not provided
+  const [convertingTransactions, setConvertingTransactions] = useState(
+    new Set()
+  );
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [localSortBy, setLocalSortBy] = useState(sortBy);
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
@@ -84,7 +82,6 @@ function SalesInvoicesTable({
     );
   }, [isQuotationsMode, mode, documentType]);
 
-  // ✅ FIXED: Update search handling to work with parent component
   const handleSearchChange = useCallback(
     (e) => {
       const value = e.target.value;
@@ -97,7 +94,6 @@ function SalesInvoicesTable({
     [onSearchChange]
   );
 
-  // ✅ FIXED: Update sort handling
   const handleSort = useCallback(
     (field) => {
       let newSortOrder = "asc";
@@ -118,7 +114,6 @@ function SalesInvoicesTable({
     [sortField, sortDirection, localSortBy, localSortOrder, onSort]
   );
 
-  // Filter and separate returned/cancelled transactions
   const separatedTransactions = useMemo(() => {
     const active = [];
     const returned = [];
@@ -145,10 +140,8 @@ function SalesInvoicesTable({
     return {active, returned};
   }, [transactions]);
 
-  // ✅ FIXED: Use effective search term
   const effectiveSearchTerm = searchTerm || localSearchTerm || searchQuery;
 
-  // Filter transactions for search
   const filteredActiveTransactions = separatedTransactions.active.filter(
     (transaction) =>
       transaction.partyName
@@ -295,7 +288,11 @@ function SalesInvoicesTable({
       }
 
       return (
-        <Badge bg={variant} className="d-flex align-items-center gap-1">
+        <Badge
+          bg={variant}
+          className="d-flex align-items-center gap-1"
+          style={{borderRadius: 0}}
+        >
           {icon && <FontAwesomeIcon icon={icon} size="sm" />}
           <span>{text.charAt(0).toUpperCase() + text.slice(1)}</span>
         </Badge>
@@ -460,7 +457,6 @@ function SalesInvoicesTable({
     }
   };
 
-  // ✅ FIXED: Updated delete handler with better state management
   const handleDeleteTransaction = useCallback(
     async (transaction) => {
       const transactionId = transaction.id || transaction._id;
@@ -471,7 +467,6 @@ function SalesInvoicesTable({
       }
 
       if (deletingTransactions.has(transactionId)) {
-        console.warn("⚠️ Delete already in progress for:", transactionId);
         return;
       }
 
@@ -513,7 +508,6 @@ function SalesInvoicesTable({
             const result = await onDeleteTransaction(transaction);
 
             if (result && result.success !== false) {
-              // Success handled by parent
             } else {
               throw new Error(
                 result?.error || result?.message || "Delete operation failed"
@@ -563,15 +557,133 @@ function SalesInvoicesTable({
     }
   };
 
-  // ✅ UPDATED: ActionButton component matching PurchaseOrderTable style
+  // ✅ NEW: Handle conversion to purchase invoice
+  const handleConvertToPurchaseInvoice = useCallback(
+    async (transaction) => {
+      const transactionId = transaction._id || transaction.id;
+
+      if (!transactionId) {
+        addToast?.("Invalid transaction ID", "error");
+        return;
+      }
+
+      if (convertingTransactions.has(transactionId)) {
+        return; // Already converting
+      }
+
+      // Check if it's a sales invoice (not quotation)
+      if (isQuotationMode) {
+        addToast?.(
+          "Can only convert sales invoices to purchase invoices",
+          "warning"
+        );
+        return;
+      }
+
+      // Check if already converted
+      if (transaction.autoGeneratedPurchaseInvoice) {
+        addToast?.(
+          "This invoice has already been converted to a purchase invoice",
+          "info"
+        );
+        return;
+      }
+
+      const statusInfo = getTransactionStatus(transaction);
+
+      // Only allow conversion of completed/paid invoices
+      if (!statusInfo.isCompleted && !statusInfo.isPaid) {
+        addToast?.("Can only convert completed or paid invoices", "warning");
+        return;
+      }
+
+      const documentNumber = transaction.invoiceNo || "this invoice";
+      const confirmConvert = window.confirm(
+        `🔄 Convert Sales Invoice to Purchase Invoice?\n\n` +
+          `Invoice: ${documentNumber}\n` +
+          `Customer: ${transaction.partyName}\n` +
+          `Amount: ₹${formatCurrency(transaction.amount)}\n\n` +
+          `This will create a corresponding purchase invoice for bidirectional tracking.\n\n` +
+          `Continue with conversion?`
+      );
+
+      if (!confirmConvert) return;
+
+      try {
+        setConvertingTransactions((prev) => new Set(prev).add(transactionId));
+        addToast?.("Converting to purchase invoice...", "info");
+
+        const conversionData = {
+          convertedBy: currentUser?.id || currentUser?._id,
+          notes: `Converted from sales invoice ${documentNumber}`,
+          originalSalesInvoiceId: transactionId,
+          targetCompanyId: companyId,
+        };
+
+        const result = await salesService.convertSalesInvoiceToPurchaseInvoice(
+          transactionId,
+          conversionData
+        );
+
+        if (result?.success) {
+          addToast?.(
+            `✅ Successfully converted sales invoice ${documentNumber} to purchase invoice!`,
+            "success"
+          );
+
+          // Refresh the table data if callback is available
+          if (typeof onViewTransaction === "function") {
+            // Trigger refresh by calling a refresh callback if available
+            setTimeout(() => {
+              window.location.reload(); // Fallback refresh
+            }, 1000);
+          }
+        } else {
+          throw new Error(result?.message || "Conversion failed");
+        }
+      } catch (error) {
+        console.error("Conversion error:", error);
+        addToast?.(
+          `❌ Failed to convert to purchase invoice: ${error.message}`,
+          "error"
+        );
+      } finally {
+        setConvertingTransactions((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(transactionId);
+          return newSet;
+        });
+      }
+    },
+    [
+      convertingTransactions,
+      isQuotationMode,
+      addToast,
+      currentUser,
+      companyId,
+      getTransactionStatus,
+      formatCurrency,
+      onViewTransaction,
+    ]
+  );
+
   const ActionButton = ({transaction}) => {
     const transactionId = transaction._id || transaction.id;
     const isDeleting = deletingTransactions.has(transactionId);
+    const isConverting = convertingTransactions.has(transactionId);
     const isCancelled =
       transaction.status === "cancelled" ||
       transaction.status === "deleted" ||
       transaction.status === "void";
     const statusInfo = getTransactionStatus(transaction);
+
+    // Check if this invoice can be converted to purchase invoice
+    const canConvertToPurchase =
+      !isQuotationMode &&
+      !isCancelled &&
+      !transaction.autoGeneratedPurchaseInvoice &&
+      (statusInfo.isCompleted || statusInfo.isPaid) &&
+      !statusInfo.isReturned;
 
     const handleDelete = useCallback(
       async (e) => {
@@ -579,9 +691,6 @@ function SalesInvoicesTable({
         e.stopPropagation();
 
         if (isDeleting || isCancelled) {
-          console.warn(
-            "⚠️ Cannot delete - transaction is cancelled or being deleted"
-          );
           return;
         }
 
@@ -616,88 +725,129 @@ function SalesInvoicesTable({
       ]
     );
 
+    const handleConvertToPurchase = useCallback(
+      (e) => {
+        // Check if event exists before calling preventDefault
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        handleConvertToPurchaseInvoice(transaction);
+      },
+      [transaction, handleConvertToPurchaseInvoice]
+    );
+
     return (
-      <Dropdown>
-        <Dropdown.Toggle
-          variant={isCancelled ? "outline-secondary" : "outline-secondary"}
-          size="sm"
-          className={`border-0 ${isCancelled ? "opacity-50" : ""}`}
-          id={`dropdown-${transactionId}`}
-          disabled={isDeleting}
-        >
-          <FontAwesomeIcon icon={faEllipsisV} />
-        </Dropdown.Toggle>
+      <Menu
+        menuButton={
+          <MenuButton
+            className="action-menu-button"
+            disabled={isDeleting || isConverting}
+            style={{borderRadius: 0}}
+          >
+            <FontAwesomeIcon
+              icon={isConverting ? faSpinner : faEllipsisV}
+              className={isConverting ? "fa-spin" : ""}
+            />
+          </MenuButton>
+        }
+        transition
+        gap={4}
+        direction="left"
+        position="auto"
+        overflow="auto"
+      >
+        <MenuItem onClick={() => handleViewTransaction(transaction)}>
+          <FontAwesomeIcon icon={faEye} className="me-2" />
+          View Details
+        </MenuItem>
 
-        <Dropdown.Menu align="end">
-          <Dropdown.Item onClick={() => handleViewTransaction(transaction)}>
-            <FontAwesomeIcon icon={faEye} className="me-2" />
-            View Details
-          </Dropdown.Item>
+        {enableActions && !isCancelled && (
+          <>
+            <MenuItem
+              onClick={handleEdit}
+              disabled={isDeleting || isConverting}
+            >
+              <FontAwesomeIcon icon={faEdit} className="me-2" />
+              Edit {isQuotationMode ? "Quotation" : "Invoice"}
+            </MenuItem>
 
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Item onClick={handleEdit} disabled={isDeleting}>
-                <FontAwesomeIcon icon={faEdit} className="me-2" />
-                Edit {isQuotationMode ? "Quotation" : "Invoice"}
-              </Dropdown.Item>
+            {/* Quotation to Invoice Conversion */}
+            {statusInfo.canConvert && (
+              <MenuItem
+                onClick={() => handleConvertTransaction(transaction)}
+                disabled={isDeleting || isConverting}
+              >
+                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                Convert to Invoice
+              </MenuItem>
+            )}
 
-              {/* Convert Button for Quotations */}
-              {statusInfo.canConvert && (
-                <Dropdown.Item
-                  onClick={() => handleConvertTransaction(transaction)}
-                  disabled={isDeleting}
-                >
-                  <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                  Convert to Invoice
-                </Dropdown.Item>
-              )}
-
-              <Dropdown.Divider />
-            </>
-          )}
-
-          <Dropdown.Item onClick={() => onPrintTransaction?.(transaction)}>
-            <FontAwesomeIcon icon={faPrint} className="me-2" />
-            Print
-          </Dropdown.Item>
-
-          <Dropdown.Item onClick={() => onShareTransaction?.(transaction)}>
-            <FontAwesomeIcon icon={faShare} className="me-2" />
-            Share
-          </Dropdown.Item>
-
-          <Dropdown.Item onClick={() => onDownloadTransaction?.(transaction)}>
-            <FontAwesomeIcon icon={faDownload} className="me-2" />
-            Download
-          </Dropdown.Item>
-
-          {enableActions && !isCancelled && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Item
-                onClick={handleDelete}
-                className="text-danger"
-                disabled={isDeleting}
+            {/* NEW: Sales Invoice to Purchase Invoice Conversion */}
+            {canConvertToPurchase && (
+              <MenuItem
+                onClick={handleConvertToPurchase}
+                disabled={isDeleting || isConverting}
+                style={{
+                  color: transaction.autoGeneratedPurchaseInvoice
+                    ? "#28a745"
+                    : "#6f42c1",
+                  fontWeight: transaction.autoGeneratedPurchaseInvoice
+                    ? "600"
+                    : "normal",
+                }}
               >
                 <FontAwesomeIcon
-                  icon={isDeleting ? faSpinner : faTrash}
-                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
+                  icon={isConverting ? faSpinner : faExchangeAlt}
+                  className={`me-2 ${isConverting ? "fa-spin" : ""}`}
                 />
-                {isDeleting
-                  ? "Deleting..."
-                  : `Delete ${isQuotationMode ? "Quotation" : "Invoice"}`}
-              </Dropdown.Item>
-            </>
-          )}
-        </Dropdown.Menu>
-      </Dropdown>
+                {isConverting
+                  ? "Converting..."
+                  : transaction.autoGeneratedPurchaseInvoice
+                  ? "✅ Converted to Purchase"
+                  : "🔄 Convert to Purchase Invoice"}
+              </MenuItem>
+            )}
+          </>
+        )}
+
+        <MenuItem onClick={() => onPrintTransaction?.(transaction)}>
+          <FontAwesomeIcon icon={faPrint} className="me-2" />
+          Print
+        </MenuItem>
+
+        <MenuItem onClick={() => onShareTransaction?.(transaction)}>
+          <FontAwesomeIcon icon={faShare} className="me-2" />
+          Share
+        </MenuItem>
+
+        <MenuItem onClick={() => onDownloadTransaction?.(transaction)}>
+          <FontAwesomeIcon icon={faDownload} className="me-2" />
+          Download
+        </MenuItem>
+
+        {enableActions && !isCancelled && (
+          <MenuItem
+            onClick={handleDelete}
+            className="text-danger"
+            disabled={isDeleting || isConverting}
+          >
+            <FontAwesomeIcon
+              icon={isDeleting ? faSpinner : faTrash}
+              className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
+            />
+            {isDeleting
+              ? "Deleting..."
+              : `Delete ${isQuotationMode ? "Quotation" : "Invoice"}`}
+          </MenuItem>
+        )}
+      </Menu>
     );
   };
 
-  // ✅ Enhanced loading component
   const LoadingComponent = () => (
     <div className="text-center py-5">
-      <div className="spinner-border text-primary" role="status">
+      <div className="spinner-border text-purple" role="status">
         <span className="visually-hidden">Loading...</span>
       </div>
       <h5 className="text-muted mt-3">
@@ -707,7 +857,6 @@ function SalesInvoicesTable({
     </div>
   );
 
-  // ✅ Enhanced empty state component
   const EmptyStateComponent = () => (
     <div className="text-center py-5">
       <FontAwesomeIcon
@@ -726,8 +875,9 @@ function SalesInvoicesTable({
             } to get started`}
       </p>
       <Button
-        variant={isQuotationMode ? "info" : "primary"}
+        className="btn-purple"
         onClick={handleCreateNew}
+        style={{borderRadius: 0}}
       >
         <FontAwesomeIcon icon={faPlus} className="me-2" />
         Create {isQuotationMode ? "Quotation" : "Invoice"}
@@ -735,7 +885,6 @@ function SalesInvoicesTable({
     </div>
   );
 
-  // ✅ Main render logic
   if (isLoading) {
     return <LoadingComponent />;
   }
@@ -746,15 +895,146 @@ function SalesInvoicesTable({
 
   return (
     <>
-      <div className="sales-invoices-table-wrapper">
-        {/* ✅ UPDATED: Add responsive wrapper */}
-        <div className="table-responsive-wrapper">
-          <Table responsive hover className="mb-0">
-            {/* ✅ UPDATED: Purple-themed header matching PurchaseOrderTable */}
-            <thead className="table-header-purple">
+      <style jsx>{`
+        .purple-table-header {
+          background: linear-gradient(
+            135deg,
+            #646cff 0%,
+            #8b5cf6 50%,
+            #c084fc 100%
+          ) !important;
+          color: white !important;
+          border: none !important;
+        }
+
+        .purple-table-header th {
+          background: transparent !important;
+          color: white !important;
+          border-color: rgba(255, 255, 255, 0.2) !important;
+          font-weight: 600 !important;
+          padding: 16px 12px !important;
+        }
+
+        .text-purple {
+          color: #646cff !important;
+        }
+
+        .action-menu-button {
+          background: transparent;
+          border: 1px solid #646cff;
+          color: #646cff;
+          padding: 4px 8px;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s ease;
+        }
+
+        .action-menu-button:hover {
+          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          color: white;
+        }
+
+        .action-menu-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .szh-menu {
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+          border-radius: 0;
+          background: white;
+          z-index: 1000;
+        }
+
+        .szh-menu__item {
+          padding: 8px 16px;
+          font-size: 14px;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .szh-menu__item:hover {
+          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          color: white;
+        }
+
+        .szh-menu__item.text-danger {
+          color: #dc2626 !important;
+        }
+
+        .szh-menu__item.text-danger:hover {
+          background: #fef2f2 !important;
+          color: #dc2626 !important;
+        }
+
+        .btn-purple {
+          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          border: none;
+          color: white;
+          border-radius: 0;
+          padding: 8px 16px;
+          font-weight: 500;
+        }
+
+        .btn-purple:hover {
+          background: linear-gradient(135deg, #5752d1 0%, #7c3aed 100%);
+          color: white;
+        }
+
+        .card {
+          border-radius: 0 !important;
+          border-top-left-radius: 0 !important;
+          border-top-right-radius: 0 !important;
+        }
+
+        .table {
+          border-radius: 0 !important;
+        }
+
+        .table-responsive {
+          border-radius: 0 !important;
+        }
+
+        /* NEW: Conversion menu item styles */
+        .szh-menu__item[style*="color: #6f42c1"] {
+          color: #6f42c1 !important;
+        }
+
+        .szh-menu__item[style*="color: #28a745"] {
+          color: #28a745 !important;
+        }
+
+        .szh-menu__item[style*="color: #6f42c1"]:hover,
+        .szh-menu__item[style*="color: #28a745"]:hover {
+          background: rgba(111, 66, 193, 0.1) !important;
+          color: #6f42c1 !important;
+        }
+
+        @media (max-width: 768px) {
+          .table-responsive {
+            font-size: 0.875rem;
+          }
+
+          .action-menu-button {
+            padding: 2px 6px;
+            font-size: 11px;
+          }
+
+          .purple-table-header th {
+            padding: 12px 8px !important;
+          }
+        }
+      `}</style>
+
+      <div className="card shadow-sm border-0" style={{borderRadius: 0}}>
+        <div className="table-responsive">
+          <Table hover className="mb-0 table-sm">
+            <thead className="purple-table-header">
               <tr>
                 {enableBulkActions && (
-                  <th width="40">
+                  <th style={{width: "40px"}}>
                     <Form.Check
                       type="checkbox"
                       checked={
@@ -770,11 +1050,10 @@ function SalesInvoicesTable({
                           );
                         }
                       }}
-                      className="purple-checkbox"
                     />
                   </th>
                 )}
-                <th>
+                <th style={{width: "80px"}}>
                   <div className="d-flex align-items-center">
                     Date
                     <FontAwesomeIcon
@@ -785,10 +1064,12 @@ function SalesInvoicesTable({
                     />
                   </div>
                 </th>
-                <th>{isQuotationMode ? "Quote No." : "Invoice No."}</th>
-                <th>Customer</th>
-                <th>Type</th>
-                <th className="text-end">
+                <th style={{width: "100px"}}>
+                  {isQuotationMode ? "Quote No." : "Invoice No."}
+                </th>
+                <th style={{width: "150px"}}>Customer</th>
+                <th style={{width: "80px"}}>Type</th>
+                <th style={{width: "100px"}} className="text-end">
                   <div className="d-flex align-items-center justify-content-end">
                     Amount
                     <FontAwesomeIcon
@@ -799,15 +1080,19 @@ function SalesInvoicesTable({
                     />
                   </div>
                 </th>
-                <th className="text-end">Paid</th>
-                <th className="text-end">Balance</th>
-                <th>Status</th>
-                <th>Payment</th>
-                {enableActions && <th className="text-center">Actions</th>}
+                <th style={{width: "90px"}} className="text-end">
+                  Balance
+                </th>
+                <th style={{width: "80px"}}>Status</th>
+                <th style={{width: "80px"}}>Payment</th>
+                {enableActions && (
+                  <th style={{width: "70px"}} className="text-center">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {/* Active Transactions */}
               {filteredActiveTransactions.map((transaction, index) => {
                 const calculatedAmounts = calculateDisplayAmounts(transaction);
                 const statusInfo = getTransactionStatus(transaction);
@@ -824,9 +1109,9 @@ function SalesInvoicesTable({
                   <tr
                     key={transactionId || index}
                     className={`
-                      ${isSelected ? "table-active-purple" : ""} 
-                      ${isReturned ? "table-danger bg-opacity-10" : ""} 
-                      ${isCancelled ? "cancelled-transaction-row" : ""}
+                      ${isSelected ? "table-active" : ""} 
+                      ${isReturned ? "table-danger" : ""} 
+                      ${isCancelled ? "table-secondary" : ""}
                     `}
                     style={{cursor: "pointer"}}
                     onClick={() => handleViewTransaction(transaction)}
@@ -851,13 +1136,8 @@ function SalesInvoicesTable({
                       </td>
                     )}
 
-                    {/* Date Cell */}
-                    <td className={isCancelled ? "text-muted" : ""}>
-                      <small
-                        className={isCancelled ? "text-muted" : "text-muted"}
-                      >
-                        {formatDate(transaction.date)}
-                      </small>
+                    <td className={`small ${isCancelled ? "text-muted" : ""}`}>
+                      {formatDate(transaction.date)}
                       {transaction.dueDate && (
                         <div>
                           <small className="text-muted">
@@ -867,24 +1147,36 @@ function SalesInvoicesTable({
                       )}
                     </td>
 
-                    {/* Invoice/Quote Number Cell */}
                     <td>
                       <strong
                         className={
                           isCancelled
                             ? "text-muted text-decoration-line-through"
-                            : isQuotationMode
-                            ? "text-info"
-                            : "text-primary"
+                            : "text-purple"
                         }
                       >
                         {transaction.invoiceNo ||
                           transaction.quotationNumber ||
                           "N/A"}
                       </strong>
+
+                      {/* Show conversion status */}
+                      {transaction.autoGeneratedPurchaseInvoice &&
+                        !isQuotationMode && (
+                          <div className="mt-1">
+                            <small className="text-success">
+                              <FontAwesomeIcon
+                                icon={faExchangeAlt}
+                                className="me-1"
+                              />
+                              ↔️ Converted to Purchase
+                            </small>
+                          </div>
+                        )}
+
                       {isReturned && (
                         <div className="mt-1">
-                          <small className="text-danger fst-italic fw-medium">
+                          <small className="text-danger">
                             <FontAwesomeIcon icon={faUndo} className="me-1" />
                             Returned
                           </small>
@@ -892,7 +1184,7 @@ function SalesInvoicesTable({
                       )}
                       {isCancelled && (
                         <div className="mt-1">
-                          <small className="text-muted fst-italic fw-medium">
+                          <small className="text-muted">
                             <FontAwesomeIcon icon={faTrash} className="me-1" />
                             Cancelled
                           </small>
@@ -900,7 +1192,6 @@ function SalesInvoicesTable({
                       )}
                     </td>
 
-                    {/* Customer Cell */}
                     <td>
                       <div>
                         <div
@@ -909,7 +1200,8 @@ function SalesInvoicesTable({
                           }`}
                           title={transaction.partyName}
                         >
-                          {transaction.partyName || "N/A"}
+                          {(transaction.partyName || "N/A").substring(0, 20)}
+                          {(transaction.partyName || "").length > 20 && "..."}
                         </div>
                         {transaction.partyPhone && (
                           <small className="text-muted">
@@ -919,10 +1211,9 @@ function SalesInvoicesTable({
                       </div>
                     </td>
 
-                    {/* Transaction Type Cell */}
                     <td className="text-center">
                       <div className="d-flex flex-column align-items-center">
-                        <span className="mb-1 fs-5">
+                        <span className="mb-1" style={{fontSize: "0.8rem"}}>
                           {getTransactionIcon(transaction.transaction)}
                         </span>
                         <Badge
@@ -931,18 +1222,19 @@ function SalesInvoicesTable({
                               ? "secondary"
                               : getTransactionVariant(transaction.transaction)
                           }
-                          className={`small fw-medium ${
-                            isCancelled ? "opacity-50" : ""
-                          }`}
+                          className="small"
+                          style={{borderRadius: 0, fontSize: "0.65rem"}}
                         >
                           {transaction.transaction === "gst invoice"
                             ? "GST"
-                            : transaction.transaction || "N/A"}
+                            : (transaction.transaction || "N/A").substring(
+                                0,
+                                8
+                              )}
                         </Badge>
                       </div>
                     </td>
 
-                    {/* Amount Cell */}
                     <td className="text-end">
                       <strong
                         className={
@@ -962,22 +1254,6 @@ function SalesInvoicesTable({
                       )}
                     </td>
 
-                    {/* Paid Cell */}
-                    <td className="text-end">
-                      <div
-                        className={`fw-medium small ${
-                          isCancelled
-                            ? "text-muted text-decoration-line-through"
-                            : "text-dark"
-                        }`}
-                      >
-                        {formatCurrency(
-                          calculatedAmounts.amount - calculatedAmounts.balance
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Balance Cell */}
                     <td className="text-end">
                       <div
                         className={`fw-bold small ${
@@ -993,7 +1269,7 @@ function SalesInvoicesTable({
                         {formatCurrency(Math.abs(calculatedAmounts.balance))}
                       </div>
                       <small
-                        className={`d-block fw-medium ${
+                        className={`d-block ${
                           isCancelled
                             ? "text-muted"
                             : calculatedAmounts.balance > 0
@@ -1011,10 +1287,8 @@ function SalesInvoicesTable({
                       </small>
                     </td>
 
-                    {/* Status Cell */}
                     <td>{getStatusBadge(transaction)}</td>
 
-                    {/* Payment Type Cell */}
                     <td className="text-center">
                       <Badge
                         bg={
@@ -1022,18 +1296,16 @@ function SalesInvoicesTable({
                             ? "secondary"
                             : getPaymentTypeVariant(transaction.paymentType)
                         }
-                        className={`small fw-medium ${
-                          isCancelled ? "opacity-50" : ""
-                        }`}
+                        className="small"
+                        style={{borderRadius: 0, fontSize: "0.65rem"}}
                       >
-                        {transaction.paymentType || "N/A"}
+                        {(transaction.paymentType || "N/A").substring(0, 6)}
                       </Badge>
                     </td>
 
-                    {/* Actions Cell */}
                     {enableActions && (
                       <td
-                        className="text-center dropdown-cell"
+                        className="text-center"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ActionButton transaction={transaction} />
@@ -1043,21 +1315,20 @@ function SalesInvoicesTable({
                 );
               })}
 
-              {/* Returned/Cancelled Transactions Section */}
               {filteredReturnedTransactions.length > 0 && (
                 <>
-                  <tr className="table-danger bg-opacity-10">
+                  <tr className="table-warning">
                     <td
-                      colSpan={enableBulkActions ? "11" : "10"}
+                      colSpan={enableBulkActions ? "10" : "9"}
                       className="py-3 text-center border-0"
                     >
                       <Button
-                        variant="outline-danger"
+                        variant="outline-warning"
                         size="sm"
-                        className="rounded-pill border-2 fw-bold"
                         onClick={() =>
                           setShowReturnedTransactions(!showReturnedTransactions)
                         }
+                        style={{borderRadius: 0}}
                       >
                         <FontAwesomeIcon
                           icon={
@@ -1067,147 +1338,136 @@ function SalesInvoicesTable({
                           }
                           className="me-2"
                         />
-                        <span className="text-dark">
-                          Returned/Cancelled{" "}
-                          {isQuotationMode ? "Quotations" : "Invoices"}
-                        </span>
-                        <Badge bg="danger" className="ms-2">
+                        Returned/Cancelled{" "}
+                        {isQuotationMode ? "Quotations" : "Invoices"}
+                        <Badge
+                          bg="warning"
+                          className="ms-2"
+                          style={{borderRadius: 0}}
+                        >
                           {filteredReturnedTransactions.length}
                         </Badge>
                       </Button>
                     </td>
                   </tr>
 
-                  {showReturnedTransactions && (
-                    <>
-                      {filteredReturnedTransactions.map(
-                        (transaction, index) => {
-                          const calculatedAmounts =
-                            calculateDisplayAmounts(transaction);
-                          const statusInfo = getTransactionStatus(transaction);
-                          const transactionType = (
-                            transaction.transaction || ""
-                          ).toLowerCase();
-                          const isReturned =
-                            statusInfo.isReturned ||
-                            transactionType === "return";
-                          const isCancelled =
-                            statusInfo.isCancelled && !isReturned;
-                          const transactionId =
-                            transaction._id || transaction.id;
+                  {showReturnedTransactions &&
+                    filteredReturnedTransactions.map((transaction, index) => {
+                      const calculatedAmounts =
+                        calculateDisplayAmounts(transaction);
+                      const statusInfo = getTransactionStatus(transaction);
+                      const transactionType = (
+                        transaction.transaction || ""
+                      ).toLowerCase();
+                      const isReturned =
+                        statusInfo.isReturned || transactionType === "return";
+                      const isCancelled = statusInfo.isCancelled && !isReturned;
+                      const transactionId = transaction._id || transaction.id;
 
-                          return (
-                            <tr
-                              key={`returned-${transactionId || index}`}
-                              className={`
-                                ${
-                                  isReturned ? "table-danger bg-opacity-10" : ""
-                                } 
-                                ${
-                                  isCancelled ? "cancelled-transaction-row" : ""
-                                }
-                              `}
-                              style={{cursor: "pointer"}}
-                              onClick={() => handleViewTransaction(transaction)}
-                            >
-                              {/* Same structure as active transactions but with returned styling */}
-                              {enableBulkActions && <td></td>}
+                      return (
+                        <tr
+                          key={`returned-${transactionId || index}`}
+                          className={
+                            isReturned ? "table-danger" : "table-secondary"
+                          }
+                          style={{cursor: "pointer"}}
+                          onClick={() => handleViewTransaction(transaction)}
+                        >
+                          {enableBulkActions && <td></td>}
 
-                              <td className="text-muted">
-                                <small className="text-muted">
-                                  {formatDate(transaction.date)}
-                                </small>
-                              </td>
+                          <td className="text-muted small">
+                            {formatDate(transaction.date)}
+                          </td>
 
-                              <td>
-                                <strong className="text-muted text-decoration-line-through">
-                                  {transaction.invoiceNo ||
-                                    transaction.quotationNumber ||
-                                    "N/A"}
-                                </strong>
-                                <div className="mt-1">
-                                  <small className="text-danger fst-italic fw-medium">
-                                    <FontAwesomeIcon
-                                      icon={isReturned ? faUndo : faTrash}
-                                      className="me-1"
-                                    />
-                                    {isReturned ? "Returned" : "Cancelled"}
-                                  </small>
-                                </div>
-                              </td>
+                          <td>
+                            <strong className="text-muted text-decoration-line-through">
+                              {transaction.invoiceNo ||
+                                transaction.quotationNumber ||
+                                "N/A"}
+                            </strong>
+                            <div className="mt-1">
+                              <small className="text-danger">
+                                <FontAwesomeIcon
+                                  icon={isReturned ? faUndo : faTrash}
+                                  className="me-1"
+                                />
+                                {isReturned ? "Returned" : "Cancelled"}
+                              </small>
+                            </div>
+                          </td>
 
-                              <td>
-                                <div className="fw-medium text-muted">
-                                  {transaction.partyName || "N/A"}
-                                </div>
-                              </td>
-
-                              <td className="text-center">
-                                <Badge
-                                  bg="secondary"
-                                  className="small fw-medium opacity-50"
-                                >
-                                  {transaction.transaction || "N/A"}
-                                </Badge>
-                              </td>
-
-                              <td className="text-end">
-                                <strong className="text-muted text-decoration-line-through">
-                                  {formatCurrency(calculatedAmounts.amount)}
-                                </strong>
-                              </td>
-
-                              <td className="text-end">
-                                <div className="fw-medium small text-muted text-decoration-line-through">
-                                  {formatCurrency(
-                                    calculatedAmounts.amount -
-                                      calculatedAmounts.balance
-                                  )}
-                                </div>
-                              </td>
-
-                              <td className="text-end">
-                                <div className="fw-bold small text-muted text-decoration-line-through">
-                                  {formatCurrency(
-                                    Math.abs(calculatedAmounts.balance)
-                                  )}
-                                </div>
-                              </td>
-
-                              <td>{getStatusBadge(transaction)}</td>
-
-                              <td className="text-center">
-                                <Badge
-                                  bg="secondary"
-                                  className="small fw-medium opacity-50"
-                                >
-                                  {transaction.paymentType || "N/A"}
-                                </Badge>
-                              </td>
-
-                              {enableActions && (
-                                <td
-                                  className="text-center dropdown-cell"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <ActionButton transaction={transaction} />
-                                </td>
+                          <td>
+                            <div className="fw-medium text-muted">
+                              {(transaction.partyName || "N/A").substring(
+                                0,
+                                20
                               )}
-                            </tr>
-                          );
-                        }
-                      )}
-                    </>
-                  )}
+                              {(transaction.partyName || "").length > 20 &&
+                                "..."}
+                            </div>
+                          </td>
+
+                          <td className="text-center">
+                            <Badge
+                              bg="secondary"
+                              className="small"
+                              style={{borderRadius: 0, fontSize: "0.65rem"}}
+                            >
+                              {(transaction.transaction || "N/A").substring(
+                                0,
+                                8
+                              )}
+                            </Badge>
+                          </td>
+
+                          <td className="text-end">
+                            <strong className="text-muted text-decoration-line-through">
+                              {formatCurrency(calculatedAmounts.amount)}
+                            </strong>
+                          </td>
+
+                          <td className="text-end">
+                            <div className="fw-bold small text-muted text-decoration-line-through">
+                              {formatCurrency(
+                                Math.abs(calculatedAmounts.balance)
+                              )}
+                            </div>
+                          </td>
+
+                          <td>{getStatusBadge(transaction)}</td>
+
+                          <td className="text-center">
+                            <Badge
+                              bg="secondary"
+                              className="small"
+                              style={{borderRadius: 0, fontSize: "0.65rem"}}
+                            >
+                              {(transaction.paymentType || "N/A").substring(
+                                0,
+                                6
+                              )}
+                            </Badge>
+                          </td>
+
+                          {enableActions && (
+                            <td
+                              className="text-center"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ActionButton transaction={transaction} />
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                 </>
               )}
 
-              {/* Empty State */}
               {filteredActiveTransactions.length === 0 &&
                 filteredReturnedTransactions.length === 0 && (
                   <tr>
                     <td
-                      colSpan={enableBulkActions ? "11" : "10"}
+                      colSpan={enableBulkActions ? "10" : "9"}
                       className="text-center py-5 border-0"
                     >
                       <EmptyStateComponent />
@@ -1218,384 +1478,6 @@ function SalesInvoicesTable({
           </Table>
         </div>
       </div>
-
-      <style>
-        {`
-        .sales-invoices-table-wrapper {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-          border: 1px solid #e9ecef;
-          position: relative;
-          max-width: 100%;
-          width: 100%;
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-        }
-
-        .sales-invoices-table-wrapper .table-responsive-wrapper {
-          overflow-x: auto;
-          overflow-y: visible;
-          max-width: 100%;
-          position: relative;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
-        }
-
-        .sales-invoices-table-wrapper .table-responsive-wrapper::-webkit-scrollbar {
-          height: 6px;
-        }
-
-        .sales-invoices-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-track {
-          background: #f1f3f4;
-          border-radius: 3px;
-        }
-
-        .sales-invoices-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb {
-          background: rgba(168, 85, 247, 0.3);
-          border-radius: 3px;
-        }
-
-        .sales-invoices-table-wrapper .table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
-          background: rgba(168, 85, 247, 0.5);
-        }
-
-        .sales-invoices-table-wrapper .table-header-purple {
-          background: linear-gradient(
-            135deg,
-            #6f42c1 0%,
-            #8b5cf6 50%,
-            #a855f7 100%
-          );
-          position: sticky;
-          top: 0;
-          z-index: 100;
-        }
-
-        .sales-invoices-table-wrapper .table-header-purple th {
-          background: transparent !important;
-          border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-          font-weight: 600;
-          padding: 16px 12px;
-          font-size: 0.875rem;
-          color: #ffffff !important;
-          white-space: nowrap;
-          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-          position: relative;
-          min-width: 120px;
-        }
-
-        .sales-invoices-table-wrapper .table-header-purple th::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(
-            45deg,
-            rgba(255, 255, 255, 0.1) 0%,
-            transparent 50%
-          );
-          pointer-events: none;
-        }
-
-        .sales-invoices-table-wrapper .table-header-purple th:hover {
-          background: rgba(255, 255, 255, 0.1) !important;
-          transition: all 0.3s ease;
-        }
-
-        .purple-checkbox input[type="checkbox"] {
-          accent-color: #ffffff;
-          transform: scale(1.1);
-        }
-
-        .purple-checkbox input[type="checkbox"]:checked {
-          background-color: #ffffff;
-          border-color: #ffffff;
-        }
-
-        .sales-invoices-table-wrapper .table tbody tr.table-active-purple {
-          background: linear-gradient(
-            90deg,
-            rgba(168, 85, 247, 0.1) 0%,
-            rgba(139, 92, 246, 0.05) 100%
-          );
-          border-left: 4px solid #a855f7;
-        }
-
-        .sales-invoices-table-wrapper .table tbody tr.cancelled-transaction-row {
-          background: linear-gradient(
-            90deg,
-            rgba(108, 117, 125, 0.1) 0%,
-            rgba(173, 181, 189, 0.05) 100%
-          );
-          border-left: 4px solid #6c757d;
-        }
-
-        .sales-invoices-table-wrapper .table {
-          margin-bottom: 0;
-          font-size: 0.9rem;
-          width: 100%;
-          table-layout: auto;
-          min-width: 1400px;
-        }
-
-        .sales-invoices-table-wrapper .table td {
-          padding: 16px 12px;
-          vertical-align: middle;
-          border-bottom: 1px solid #f1f3f4;
-          white-space: nowrap;
-          min-width: inherit;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-cell {
-          position: relative;
-          z-index: 10;
-          overflow: visible;
-        }
-
-        .sales-invoices-table-wrapper .table tbody tr:hover {
-          background: linear-gradient(
-            90deg,
-            rgba(168, 85, 247, 0.05) 0%,
-            rgba(139, 92, 246, 0.02) 100%
-          );
-          transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(168, 85, 247, 0.15);
-          transition: all 0.2s ease;
-          border-left: 3px solid #a855f7;
-        }
-
-        .sales-invoices-table-wrapper .dropdown {
-          position: static;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-toggle {
-          border: none !important;
-          box-shadow: none !important;
-          background: transparent !important;
-          color: #6f42c1;
-          position: relative;
-          z-index: 11;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-toggle:focus,
-        .sales-invoices-table-wrapper .dropdown-toggle:hover {
-          box-shadow: 0 0 0 0.2rem rgba(168, 85, 247, 0.25) !important;
-          background-color: rgba(168, 85, 247, 0.1) !important;
-          color: #6f42c1 !important;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-menu {
-          border: none;
-          box-shadow: 0 8px 32px rgba(168, 85, 247, 0.3);
-          border-radius: 8px;
-          margin-top: 4px;
-          border-top: 3px solid #a855f7;
-          z-index: 9999 !important;
-          position: absolute !important;
-          will-change: transform;
-          min-width: 180px;
-          background: white;
-          transform: translateZ(0);
-        }
-
-        .sales-invoices-table-wrapper .dropdown-menu.show {
-          z-index: 9999 !important;
-          position: absolute !important;
-        }
-
-        .sales-invoices-table-wrapper .badge {
-          font-size: 0.75rem;
-          font-weight: 500;
-          padding: 0.4em 0.8em;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-item {
-          padding: 8px 16px;
-          font-size: 0.875rem;
-          transition: all 0.2s ease;
-          white-space: nowrap;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-item:hover {
-          background: linear-gradient(
-            90deg,
-            rgba(168, 85, 247, 0.1) 0%,
-            rgba(139, 92, 246, 0.05) 100%
-          );
-          color: #6f42c1;
-          padding-left: 20px;
-        }
-
-        .sales-invoices-table-wrapper .dropdown-divider {
-          border-color: rgba(168, 85, 247, 0.2);
-        }
-
-        .sales-invoices-table-wrapper .text-white-50:hover {
-          color: rgba(255, 255, 255, 0.8) !important;
-          transform: scale(1.1);
-          transition: all 0.2s ease;
-        }
-
-        /* Enhanced status badges */
-        .sales-invoices-table-wrapper .badge.bg-secondary {
-          background: linear-gradient(45deg, #6b7280, #4b5563) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-warning {
-          background: linear-gradient(45deg, #f59e0b, #d97706) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-primary {
-          background: linear-gradient(45deg, #8b5cf6, #7c3aed) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-info {
-          background: linear-gradient(45deg, #06b6d4, #0891b2) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-success {
-          background: linear-gradient(45deg, #10b981, #059669) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-danger {
-          background: linear-gradient(45deg, #ef4444, #dc2626) !important;
-        }
-
-        .sales-invoices-table-wrapper .badge.bg-dark {
-          background: linear-gradient(45deg, #374151, #1f2937) !important;
-        }
-
-        .sales-invoices-table-wrapper .cancelled-transaction-row {
-          opacity: 0.7;
-        }
-
-        .sales-invoices-table-wrapper .cancelled-transaction-row:hover {
-          opacity: 0.8;
-          border-left: 3px solid #6c757d !important;
-        }
-
-        @media (max-width: 1400px) {
-          .sales-invoices-table-wrapper .table {
-            min-width: 1200px;
-          }
-          
-          .sales-invoices-table-wrapper .table th,
-          .sales-invoices-table-wrapper .table td {
-            padding: 14px 10px;
-            font-size: 0.85rem;
-          }
-        }
-
-        @media (max-width: 1200px) {
-          .sales-invoices-table-wrapper .table {
-            min-width: 1000px;
-          }
-
-          .sales-invoices-table-wrapper .table th,
-          .sales-invoices-table-wrapper .table td {
-            padding: 12px 8px;
-            font-size: 0.85rem;
-          }
-
-          .sales-invoices-table-wrapper .dropdown-menu {
-            min-width: 160px;
-          }
-        }
-
-        @media (max-width: 992px) {
-          .sales-invoices-table-wrapper .table {
-            min-width: 900px;
-          }
-
-          .sales-invoices-table-wrapper .table th,
-          .sales-invoices-table-wrapper .table td {
-            padding: 10px 6px;
-            font-size: 0.8rem;
-          }
-        }
-
-        @media (max-width: 768px) {
-          .sales-invoices-table-wrapper {
-            font-size: 0.8rem;
-            border-radius: 8px;
-            margin: 0 -15px;
-          }
-
-          .sales-invoices-table-wrapper .table {
-            min-width: 800px;
-          }
-
-          .sales-invoices-table-wrapper .table th,
-          .sales-invoices-table-wrapper .table td {
-            padding: 8px 4px;
-            font-size: 0.75rem;
-          }
-
-          .sales-invoices-table-wrapper .badge {
-            font-size: 0.7rem;
-            padding: 0.3em 0.6em;
-          }
-
-          .sales-invoices-table-wrapper .table-header-purple th {
-            padding: 10px 6px;
-            font-size: 0.75rem;
-          }
-
-          .sales-invoices-table-wrapper .dropdown-menu {
-            min-width: 140px;
-            font-size: 0.8rem;
-          }
-
-          .sales-invoices-table-wrapper .dropdown-item {
-            padding: 6px 12px;
-            font-size: 0.8rem;
-          }
-        }
-
-        @media (max-width: 576px) {
-          .sales-invoices-table-wrapper {
-            border-radius: 0;
-            margin: 0 -15px;
-          }
-
-          .sales-invoices-table-wrapper .table {
-            min-width: 700px;
-          }
-
-          .sales-invoices-table-wrapper .table th,
-          .sales-invoices-table-wrapper .table td {
-            padding: 6px 3px;
-            font-size: 0.7rem;
-          }
-        }
-
-        .sales-invoices-table-wrapper .table tbody tr {
-          transition: all 0.2s ease;
-        }
-
-        .dropdown-menu {
-          z-index: 9999 !important;
-        }
-
-        .table-responsive {
-          overflow: visible !important;
-        }
-
-        .sales-invoices-table-wrapper .dropdown.show .dropdown-menu {
-          z-index: 9999 !important;
-          position: absolute !important;
-          transform: translate3d(0, 0, 0);
-        }
-
-        .sales-invoices-table-wrapper * {
-          box-sizing: border-box;
-        }
-        `}
-      </style>
     </>
   );
 }

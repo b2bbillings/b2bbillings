@@ -53,237 +53,328 @@ class SaleOrderService {
   // ==================== BASIC CRUD OPERATIONS ====================
 
   /**
-   * ✅ ENHANCED: Create a new sales order/quotation/proforma invoice with comprehensive tracking
+   * ✅ 1. Generate fallback order number (needed by generateOrderNumber)
    */
-  async createSalesOrder(orderData) {
+  generateFallbackOrderNumber(
+    companyId,
+    orderType = "quotation",
+    userId = null,
+    currentCompany = null
+  ) {
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2);
+    const month = (now.getMonth() + 1).toString().padStart(2, "0");
+    const day = now.getDate().toString().padStart(2, "0");
+    const hours = now.getHours().toString().padStart(2, "0");
+    const minutes = now.getMinutes().toString().padStart(2, "0");
+    const seconds = now.getSeconds().toString().padStart(2, "0");
+    const milliseconds = now.getMilliseconds().toString().padStart(3, "0");
+
+    // ✅ IMPROVED: Better random number with crypto if available
+    let randomNum;
+    if (
+      typeof window !== "undefined" &&
+      window.crypto &&
+      window.crypto.getRandomValues
+    ) {
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      randomNum = (array[0] % 90000) + 10000;
+    } else {
+      randomNum = Math.floor(10000 + Math.random() * 90000);
+    }
+
+    // ✅ IMPROVED: Better company prefix
+    let companyPrefix = "QUO";
+    if (currentCompany?.companyName) {
+      companyPrefix = currentCompany.companyName
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .substring(0, 3)
+        .padEnd(3, "X");
+    } else if (companyId) {
+      companyPrefix = companyId
+        .slice(-3)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "X");
+    }
+
+    // ✅ Better order type prefixes
+    const typePrefixes = {
+      quotation: "QUO",
+      sales_order: "SO",
+      proforma_invoice: "PI",
+      invoice: "INV",
+      estimate: "EST",
+    };
+    const typePrefix = typePrefixes[orderType] || "QUO";
+
+    // ✅ Add user component
+    const userComponent = userId ? userId.slice(-2).toUpperCase() : "SY";
+
+    return `${companyPrefix}-${typePrefix}-${year}${month}${day}-${hours}${minutes}${seconds}${milliseconds}-${userComponent}${randomNum}`;
+  }
+  createUniqueOrderNumber(
+    companyId,
+    orderType,
+    userId,
+    currentCompany,
+    attemptNumber = 0
+  ) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
+
+    // ✅ Better random number generation
+    let randomNum;
+    if (
+      typeof window !== "undefined" &&
+      window.crypto &&
+      window.crypto.getRandomValues
+    ) {
+      const array = new Uint32Array(2);
+      window.crypto.getRandomValues(array);
+      randomNum = (array[0] % 90000) + 10000;
+    } else {
+      randomNum = Math.floor(10000 + Math.random() * 90000);
+    }
+
+    // Add attempt number to ensure uniqueness
+    const attemptSuffix = attemptNumber > 0 ? `-A${attemptNumber}` : "";
+
+    // ✅ Better company prefix
+    let companyPrefix = "QUO";
+    if (currentCompany?.companyName) {
+      companyPrefix = currentCompany.companyName
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .substring(0, 3)
+        .padEnd(3, "X");
+    }
+
+    // ✅ Order type prefixes
+    const typePrefixes = {
+      quotation: "QUO",
+      sales_order: "SO",
+      proforma_invoice: "PI",
+      invoice: "INV",
+    };
+    const typePrefix = typePrefixes[orderType] || "QUO";
+
+    // ✅ Create multiple format variations
+    const timestamp = Date.now().toString();
+    const formats = [
+      `${typePrefix}-${year}${month}${day}-${hours}${minutes}${seconds}-${randomNum}${attemptSuffix}`,
+      `${companyPrefix}-${typePrefix}-${year}${month}${day}-${milliseconds}${randomNum}${attemptSuffix}`,
+      `${typePrefix}-${timestamp.slice(-8)}-${randomNum}${attemptSuffix}`,
+      `${companyPrefix}-${year}${month}${day}${hours}${minutes}-${randomNum}${attemptSuffix}`,
+      `${typePrefix}-${year}${month}${day}-${timestamp.slice(
+        -6
+      )}${randomNum}${attemptSuffix}`,
+    ];
+
+    // Pick format based on attempt number for variation
+    const selectedFormat = formats[attemptNumber % formats.length];
+
+    return selectedFormat;
+  }
+
+  /**
+   * ✅ 2. Check if order number exists (needed by generateOrderNumber)
+   */
+  async checkOrderNumberExists(companyId, orderNumber) {
     try {
-      // ✅ VALIDATE: Ensure company ID is provided
-      if (!orderData.companyId) {
-        throw new Error("Company ID is required");
+      const endpoints = [
+        "/api/sales-orders/check-number",
+        "/api/sales-orders/exists",
+        `/api/sales-orders/number/${encodeURIComponent(orderNumber)}/exists`,
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const response = await apiClient.get(endpoint, {
+            params: {companyId, orderNumber},
+            timeout: 5000,
+          });
+          return {
+            success: true,
+            exists: response.data?.exists || response.data?.found || false,
+            data: response.data,
+          };
+        } catch (error) {
+          continue;
+        }
       }
 
-      // ✅ ENHANCED: Validate and prepare order data with source company tracking
-      const enhancedOrderData = {
-        ...orderData,
+      return {success: true, exists: false, data: null, fallback: true};
+    } catch (error) {
+      return {success: true, exists: false, data: null, error: error.message};
+    }
+  }
 
-        // ✅ NEW: Enhanced bidirectional tracking fields
-        sourceOrderId: orderData.sourceOrderId || null,
-        sourceOrderNumber: orderData.sourceOrderNumber || null,
-        sourceOrderType: orderData.sourceOrderType || null,
-        sourceCompanyId: orderData.sourceCompanyId || null,
-        isAutoGenerated: orderData.isAutoGenerated || false,
-        generatedFrom: orderData.generatedFrom || "manual",
-        generatedBy: orderData.generatedBy || null,
-        targetCompanyId: orderData.targetCompanyId || null,
-        autoCreateCorrespondingPO: orderData.autoCreateCorrespondingPO || false,
-        autoDetectSourceCompany: orderData.autoDetectSourceCompany ?? true,
+  /**
+   * ✅ 3. Generate order number (uses above methods)
+   */
+  async generateOrderNumber(
+    companyId,
+    orderType = "quotation",
+    userId = null,
+    currentCompany = null
+  ) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required for order number generation");
+      }
 
-        // ✅ NEW: Enhanced creation context
-        purchaseOrderId: orderData.purchaseOrderId || null,
-        preserveItemDetails: orderData.preserveItemDetails ?? true,
-        preservePricing: orderData.preservePricing ?? true,
-        preserveTerms: orderData.preserveTerms ?? true,
-        autoAcceptOrder: orderData.autoAcceptOrder || false,
-        generationNotes: orderData.generationNotes || "",
-        autoLinkCustomer: orderData.autoLinkCustomer ?? true,
-        validateBidirectionalSetup:
-          orderData.validateBidirectionalSetup ?? true,
+      // ✅ STEP 1: Try server-side generation first
+      const endpointsToTry = [
+        "/api/sales-orders/generate-number",
+        "/api/sales-orders/next-order-number",
+        "/api/sales-orders/next-number",
+      ];
 
-        // ✅ Enhanced customer handling
-        customerName: orderData.customerName || null,
-        customerMobile: orderData.customerMobile || null,
-        customer: orderData.customer || null,
-
-        // ✅ Enhanced order settings
-        orderType: orderData.orderType || "quotation",
-        gstEnabled: orderData.gstEnabled ?? true,
-        gstType:
-          orderData.gstType || (orderData.gstEnabled ? "gst" : "non-gst"),
-        taxMode: orderData.taxMode || "without-tax",
-        priceIncludesTax: orderData.priceIncludesTax || false,
-        status: orderData.status || "draft",
-        priority: orderData.priority || "normal",
-        roundOffEnabled: orderData.roundOffEnabled || false,
-        roundOff: orderData.roundOff || 0,
-
-        // ✅ Enhanced metadata
-        createdBy: orderData.createdBy || orderData.employeeName || null,
-        lastModifiedBy: orderData.lastModifiedBy || orderData.createdBy || null,
-        employeeName: orderData.employeeName || null,
-        employeeId: orderData.employeeId || null,
-      };
-
-      console.log(
-        "📥 ENHANCED: Creating sales order with comprehensive tracking:",
-        {
-          companyId: enhancedOrderData.companyId,
-          orderType: enhancedOrderData.orderType,
-          customerName: enhancedOrderData.customerName,
-          sourceCompanyId: enhancedOrderData.sourceCompanyId,
-          autoDetectSourceCompany: enhancedOrderData.autoDetectSourceCompany,
-          isAutoGenerated: enhancedOrderData.isAutoGenerated,
-          purchaseOrderId: enhancedOrderData.purchaseOrderId,
-          preservationSettings: {
-            items: enhancedOrderData.preserveItemDetails,
-            pricing: enhancedOrderData.preservePricing,
-            terms: enhancedOrderData.preserveTerms,
-          },
-          autoSettings: {
-            linkCustomer: enhancedOrderData.autoLinkCustomer,
-            validateSetup: enhancedOrderData.validateBidirectionalSetup,
-          },
-        }
-      );
-
-      // ✅ ENHANCED: Pre-validate if this is a PO → SO generation
-      if (enhancedOrderData.purchaseOrderId) {
-        console.log(
-          "🔄 ENHANCED: Preparing PO → SO generation with validation"
-        );
-
-        // Validate PO exists and get details
+      for (const endpoint of endpointsToTry) {
         try {
-          const poResponse = await apiClient.get(
-            `/api/purchase-orders/${enhancedOrderData.purchaseOrderId}`
-          );
-          const purchaseOrder =
-            poResponse.data?.data?.purchaseOrder ||
-            poResponse.data?.purchaseOrder ||
-            poResponse.data?.data ||
-            poResponse.data;
-
-          if (!purchaseOrder) {
-            throw new Error("Purchase order not found");
-          }
-
-          console.log("✅ ENHANCED: Source PO validated:", {
-            poNumber: purchaseOrder.orderNumber,
-            poCompanyId: purchaseOrder.companyId,
-            poSupplierId: purchaseOrder.supplier,
-            hasSupplier: !!purchaseOrder.supplier,
-            alreadyGenerated: purchaseOrder.autoGeneratedSalesOrder,
+          const params = {companyId, orderType, type: orderType};
+          const response = await apiClient.get(endpoint, {
+            params,
+            timeout: 10000,
           });
 
-          // Check if SO already generated
-          if (purchaseOrder.autoGeneratedSalesOrder) {
-            throw new Error(
-              `Sales order already generated from purchase order ${purchaseOrder.orderNumber}. ` +
-                `Existing SO: ${purchaseOrder.salesOrderNumber || "Unknown"}`
-            );
-          }
+          if (response.data) {
+            const serverNumber =
+              response.data.nextOrderNumber ||
+              response.data.orderNumber ||
+              response.data.number ||
+              response.data.quotationNumber ||
+              response.data.data?.nextOrderNumber;
 
-          // Auto-set source tracking if not provided
-          if (!enhancedOrderData.sourceOrderId) {
-            enhancedOrderData.sourceOrderId = enhancedOrderData.purchaseOrderId;
-            enhancedOrderData.sourceOrderNumber = purchaseOrder.orderNumber;
-            enhancedOrderData.sourceOrderType = "purchase_order";
-            enhancedOrderData.isAutoGenerated = true;
-            enhancedOrderData.generatedFrom = "purchase_order";
+            if (serverNumber && serverNumber.trim()) {
+              return {
+                success: true,
+                data: {nextOrderNumber: serverNumber.trim()},
+                message: "Order number generated successfully",
+                source: "server",
+              };
+            }
           }
-        } catch (poError) {
-          console.error("❌ ENHANCED: PO validation failed:", poError);
-          throw new Error(
-            `Purchase order validation failed: ${poError.message}`
-          );
+        } catch (error) {
+          console.warn(`Server endpoint ${endpoint} failed:`, error.message);
+          continue;
         }
       }
 
-      // ✅ ENHANCED: Client-side data validation
-      const validation = this.validateEnhancedOrderData(enhancedOrderData);
-      if (!validation.isValid) {
-        throw new Error(`Validation failed: ${validation.errors.join(", ")}`);
-      }
+      // ✅ STEP 2: Generate unique fallback number with retry logic
+      let fallbackNumber;
+      let attempts = 0;
+      const maxAttempts = 10;
 
-      const response = await apiClient.post(
-        "/api/sales-orders",
-        enhancedOrderData
-      );
+      do {
+        fallbackNumber = this.generateFallbackOrderNumber(
+          companyId,
+          orderType,
+          userId,
+          currentCompany
+        );
 
-      console.log("✅ ENHANCED: Sales order creation response:", {
-        success: response.data.success,
-        orderNumber: response.data.data?.salesOrder?.orderNumber,
-        sourceCompanyTracking: response.data.data?.sourceCompanyTracking,
-        customerInfo: response.data.data?.customerInfo,
-        bidirectionalSetup: response.data.data?.purchaseOrderSourceTracking,
-      });
+        try {
+          const existsCheck = await this.checkOrderNumberExists(
+            companyId,
+            fallbackNumber
+          );
+          if (!existsCheck.exists) {
+            break;
+          } else {
+            console.warn(
+              `Order number ${fallbackNumber} already exists, retrying...`
+            );
+          }
+        } catch (checkError) {
+          console.warn("Number existence check failed:", checkError.message);
+          break;
+        }
+
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, attempts * 50));
+      } while (attempts < maxAttempts);
 
       return {
         success: true,
-        data: response.data,
-        message: response.data.message || "Sales order created successfully",
-
-        // ✅ ENHANCED: Include tracking summary in response
-        trackingSummary: {
-          hasSourceCompany:
-            !!response.data.data?.sourceCompanyTracking?.detected,
-          sourceCompanyDetectionMethod:
-            response.data.data?.sourceCompanyTracking?.detectionMethod,
-          customerAutoCreated: response.data.data?.customerInfo?.wasCreated,
-          preservationApplied:
-            response.data.data?.purchaseOrderSourceTracking
-              ?.preservationApplied,
-          bidirectionalValidated:
-            response.data.data?.sourceCompanyTracking?.enabled,
-        },
+        data: {nextOrderNumber: fallbackNumber},
+        message: "Order number generated (fallback)",
+        source: "fallback",
+        attempts: attempts + 1,
       };
     } catch (error) {
-      console.error("❌ ENHANCED: Error creating sales order:", error);
+      console.error("Order number generation failed:", error);
 
-      // ✅ ENHANCED: Better error categorization
-      let errorCategory = "GENERAL_ERROR";
-      let errorMessage = "Failed to create sales order";
-
-      if (error.message?.includes("Company ID is required")) {
-        errorCategory = "MISSING_COMPANY_ID";
-        errorMessage = "Company ID is required";
-      } else if (error.message?.includes("Validation failed")) {
-        errorCategory = "VALIDATION_ERROR";
-        errorMessage = error.message;
-      } else if (error.message?.includes("Purchase order validation failed")) {
-        errorCategory = "SOURCE_PO_ERROR";
-        errorMessage = error.message;
-      } else if (error.message?.includes("already generated")) {
-        errorCategory = "DUPLICATE_GENERATION";
-        errorMessage = error.message;
-      } else if (error.response?.status === 400) {
-        errorCategory = "BAD_REQUEST";
-        errorMessage = error.response.data?.message || "Invalid request data";
-      } else if (error.response?.status === 401) {
-        errorCategory = "AUTH_ERROR";
-        errorMessage = "Authentication failed. Please login again.";
-      } else if (error.response?.status === 403) {
-        errorCategory = "PERMISSION_ERROR";
-        errorMessage =
-          "Access denied. You may not have permission to create sales orders.";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
+      // ✅ Emergency fallback
+      const timestamp = Date.now();
+      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+      const emergencyNumber = `QUO-EMRG-${timestamp}-${randomSuffix}`;
 
       return {
-        success: false,
-        message: errorMessage,
-        error: error.response?.data?.error || error.message,
-        errorCategory,
-        details: {
-          originalError: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-          validationErrors: error.response?.data?.validationErrors,
-        },
+        success: true,
+        data: {nextOrderNumber: emergencyNumber},
+        message: "Order number generated (emergency fallback)",
+        source: "emergency",
+        error: error.message,
       };
     }
   }
-  ß;
+
+  async verifyOrderNumberUniqueness(companyId, orderNumber) {
+    try {
+      const checkEndpoints = [
+        "/api/sales-orders/check-number",
+        "/api/sales-orders/exists",
+        `/api/sales-orders/verify-unique`,
+      ];
+
+      for (const endpoint of checkEndpoints) {
+        try {
+          const response = await apiClient.get(endpoint, {
+            params: {companyId, orderNumber},
+            timeout: 5000,
+          });
+
+          const exists = response.data?.exists || response.data?.found || false;
+          return {
+            isUnique: !exists,
+            exists: exists,
+            source: endpoint,
+          };
+        } catch (error) {
+          continue;
+        }
+      }
+
+      // If no endpoint works, assume it's unique
+      return {isUnique: true, exists: false, source: "fallback"};
+    } catch (error) {
+      console.warn("⚠️ Could not verify uniqueness:", error.message);
+      return {isUnique: true, exists: false, source: "error_fallback"};
+    }
+  }
 
   /**
-   * ✅ FIXED: Enhanced order data validation with source company tracking (removed async)
+   * ✅ 4. Get next order number (alias)
+   */
+  async getNextOrderNumber(companyId, orderType = "quotation", userId = null) {
+    return this.generateOrderNumber(companyId, orderType, userId);
+  }
+
+  /**
+   * ✅ 5. Validate order data
    */
   validateEnhancedOrderData(orderData) {
     const errors = [];
 
-    // Basic validation
     if (!orderData.companyId) {
       errors.push("Company ID is required");
     }
@@ -304,7 +395,6 @@ class SaleOrderService {
       errors.push("At least one item is required");
     }
 
-    // Enhanced item validation
     if (orderData.items) {
       orderData.items.forEach((item, index) => {
         if (!item.itemName && !item.productName) {
@@ -322,7 +412,6 @@ class SaleOrderService {
       });
     }
 
-    // Order type validation
     if (
       orderData.orderType &&
       !["quotation", "sales_order", "proforma_invoice"].includes(
@@ -332,7 +421,6 @@ class SaleOrderService {
       errors.push("Invalid order type");
     }
 
-    // ✅ NEW: Enhanced bidirectional validation
     if (
       orderData.sourceOrderId &&
       !orderData.sourceOrderId.match(/^[a-fA-F0-9]{24}$/)
@@ -354,12 +442,10 @@ class SaleOrderService {
       errors.push("Invalid source company ID format");
     }
 
-    // ✅ NEW: PO → SO specific validation
     if (orderData.purchaseOrderId) {
       if (!orderData.purchaseOrderId.match(/^[a-fA-F0-9]{24}$/)) {
         errors.push("Invalid purchase order ID format");
       }
-
       if (orderData.validateBidirectionalSetup && !orderData.autoLinkCustomer) {
         errors.push(
           "Auto-link customer should be enabled when validating bidirectional setup"
@@ -367,7 +453,6 @@ class SaleOrderService {
       }
     }
 
-    // ✅ NEW: Circular reference validation
     if (
       orderData.sourceCompanyId &&
       orderData.companyId &&
@@ -381,6 +466,247 @@ class SaleOrderService {
       errors,
     };
   }
+
+  // ==================== 📝 BASIC CRUD OPERATIONS ====================
+
+  /**
+   * ✅ 6. Create sales order
+   */
+  async createSalesOrder(orderData) {
+    try {
+      if (!orderData.companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const enhancedOrderData = {
+        ...orderData,
+        sourceOrderId: orderData.sourceOrderId || null,
+        sourceOrderNumber: orderData.sourceOrderNumber || null,
+        sourceOrderType: orderData.sourceOrderType || null,
+        sourceCompanyId: orderData.sourceCompanyId || null,
+        isAutoGenerated: orderData.isAutoGenerated || false,
+        generatedFrom: orderData.generatedFrom || "manual",
+        generatedBy: orderData.generatedBy || null,
+        targetCompanyId: orderData.targetCompanyId || null,
+        autoCreateCorrespondingPO: orderData.autoCreateCorrespondingPO || false,
+        autoDetectSourceCompany: orderData.autoDetectSourceCompany ?? true,
+        purchaseOrderId: orderData.purchaseOrderId || null,
+        preserveItemDetails: orderData.preserveItemDetails ?? true,
+        preservePricing: orderData.preservePricing ?? true,
+        preserveTerms: orderData.preserveTerms ?? true,
+        autoAcceptOrder: orderData.autoAcceptOrder || false,
+        generationNotes: orderData.generationNotes || "",
+        autoLinkCustomer: orderData.autoLinkCustomer ?? true,
+        validateBidirectionalSetup:
+          orderData.validateBidirectionalSetup ?? true,
+        customerName: orderData.customerName || null,
+        customerMobile: orderData.customerMobile || null,
+        customer: orderData.customer || null,
+        orderType: orderData.orderType || "quotation",
+        gstEnabled: orderData.gstEnabled ?? true,
+        gstType:
+          orderData.gstType || (orderData.gstEnabled ? "gst" : "non-gst"),
+        taxMode: orderData.taxMode || "without-tax",
+        priceIncludesTax: orderData.priceIncludesTax || false,
+        status: orderData.status || "draft",
+        priority: orderData.priority || "normal",
+        roundOffEnabled: orderData.roundOffEnabled || false,
+        roundOff: orderData.roundOff || 0,
+        createdBy: orderData.createdBy || orderData.employeeName || null,
+        lastModifiedBy: orderData.lastModifiedBy || orderData.createdBy || null,
+        employeeName: orderData.employeeName || null,
+        employeeId: orderData.employeeId || null,
+      };
+
+      // Additional validation and processing...
+      const validation = this.validateEnhancedOrderData(enhancedOrderData);
+      if (!validation.isValid) {
+        throw new Error(`Validation failed: ${validation.errors.join(", ")}`);
+      }
+
+      const response = await apiClient.post(
+        "/api/sales-orders",
+        enhancedOrderData
+      );
+
+      return {
+        success: true,
+        data: response.data,
+        message: response.data.message || "Sales order created successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to create sales order",
+        error: error.response?.data?.error || error.message,
+      };
+    }
+  }
+
+  /**
+   * ✅ 7. Get sales orders
+   */
+  async getSalesOrders(companyId, options = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {
+        companyId: companyId,
+        populate: "customer",
+        includeCustomer: true,
+        includeItems: true,
+        ...options,
+      };
+
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] === undefined ||
+          params[key] === null ||
+          params[key] === ""
+        ) {
+          delete params[key];
+        }
+      });
+
+      const response = await apiClient.get("/api/sales-orders", {params});
+
+      if (!response.data) {
+        throw new Error("No data received from server");
+      }
+
+      let salesOrders = [];
+      let responseData = response.data;
+
+      // Handle multiple response structures
+      if (responseData.success !== undefined) {
+        if (responseData.success === false) {
+          throw new Error(responseData.message || "API returned error");
+        }
+        if (responseData.data) {
+          if (Array.isArray(responseData.data)) {
+            salesOrders = responseData.data;
+          } else if (responseData.data.salesOrders) {
+            salesOrders = responseData.data.salesOrders;
+          } else if (responseData.data.orders) {
+            salesOrders = responseData.data.orders;
+          }
+        }
+      } else if (Array.isArray(responseData)) {
+        salesOrders = responseData;
+      } else if (
+        responseData.salesOrders &&
+        Array.isArray(responseData.salesOrders)
+      ) {
+        salesOrders = responseData.salesOrders;
+      }
+
+      return {
+        success: true,
+        data: {
+          salesOrders: salesOrders,
+          orders: salesOrders,
+          data: salesOrders,
+          count: salesOrders.length,
+          pagination: responseData.pagination || {},
+          summary: responseData.summary || {},
+        },
+        message:
+          responseData.message || `Found ${salesOrders.length} sales orders`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch sales orders",
+        data: {
+          salesOrders: [],
+          orders: [],
+          data: [],
+          count: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ 8. Get sales order by ID
+   */
+  async getSalesOrderById(orderId) {
+    try {
+      if (!orderId) {
+        throw new Error("Order ID is required");
+      }
+      const response = await apiClient.get(`/api/sales-orders/${orderId}`);
+      return {
+        success: true,
+        data: response.data,
+        message: "Sales order fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch sales order",
+      };
+    }
+  }
+
+  /**
+   * ✅ 9. Update sales order
+   */
+  async updateSalesOrder(orderId, orderData) {
+    try {
+      const response = await apiClient.put(
+        `/api/sales-orders/${orderId}`,
+        orderData
+      );
+      return {
+        success: true,
+        data: response.data,
+        message: "Sales order updated successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to update sales order",
+      };
+    }
+  }
+
+  /**
+   * ✅ 10. Delete sales order
+   */
+  async deleteSalesOrder(orderId) {
+    try {
+      const response = await apiClient.delete(`/api/sales-orders/${orderId}`);
+      return {
+        success: true,
+        data: response.data,
+        message: "Sales order cancelled successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to delete sales order",
+      };
+    }
+  }
+
   /**
    * ✅ ENHANCED: Generate sales order from purchase order with comprehensive tracking
    */
@@ -857,188 +1183,6 @@ class SaleOrderService {
   }
 
   /**
-   * ✅ NEW: Enhanced source company validation
-   */
-  async validateSourceCompanySetup(companyId, customerId) {
-    try {
-      // Get customer details to check linking
-      const customerResponse = await apiClient.get(
-        `/api/parties/${customerId}?populate=linkedCompanyId`
-      );
-
-      if (!customerResponse.data) {
-        throw new Error("Failed to fetch customer details");
-      }
-
-      const customerData = customerResponse.data;
-      const customer =
-        customerData.data?.party ||
-        customerData.party ||
-        customerData.data ||
-        customerData;
-
-      const validation = {
-        isValid: true,
-        warnings: [],
-        errors: [],
-        recommendations: [],
-        customer: {
-          id: customer._id,
-          name: customer.name,
-          linkedCompanyId: customer.linkedCompanyId,
-          isLinkedCustomer: customer.isLinkedCustomer,
-          enableBidirectionalOrders: customer.enableBidirectionalOrders,
-        },
-        sourceCompany: null,
-      };
-
-      // Check for bidirectional readiness
-      if (!customer.linkedCompanyId) {
-        validation.warnings.push("Customer does not have a linked company ID");
-        validation.recommendations.push(
-          "Link this customer to their company account for automatic bidirectional order flow"
-        );
-      } else {
-        // Get source company details
-        try {
-          const sourceCompanyResponse = await apiClient.get(
-            `/api/companies/${customer.linkedCompanyId}`
-          );
-          const sourceCompany =
-            sourceCompanyResponse.data?.data?.company ||
-            sourceCompanyResponse.data?.company ||
-            sourceCompanyResponse.data?.data ||
-            sourceCompanyResponse.data;
-
-          if (sourceCompany) {
-            validation.sourceCompany = {
-              id: sourceCompany._id,
-              name: sourceCompany.businessName,
-              isActive: sourceCompany.isActive,
-              gstin: sourceCompany.gstin,
-              email: sourceCompany.email,
-              phoneNumber: sourceCompany.phoneNumber,
-            };
-
-            if (!sourceCompany.isActive) {
-              validation.errors.push("Customer's linked company is inactive");
-              validation.isValid = false;
-            }
-          }
-        } catch (companyError) {
-          validation.errors.push(
-            "Failed to fetch customer's linked company details"
-          );
-          validation.isValid = false;
-        }
-      }
-
-      if (!customer.isLinkedCustomer) {
-        validation.warnings.push("Customer is not marked as a linked customer");
-        validation.recommendations.push(
-          "Enable 'isLinkedCustomer' flag for better tracking"
-        );
-      }
-
-      if (!customer.enableBidirectionalOrders) {
-        validation.errors.push(
-          "Bidirectional orders are not enabled for this customer"
-        );
-        validation.isValid = false;
-        validation.recommendations.push(
-          "Enable bidirectional orders in customer settings"
-        );
-      }
-
-      if (customer.linkedCompanyId?.toString() === companyId.toString()) {
-        validation.errors.push(
-          "Customer's linked company cannot be the same as source company"
-        );
-        validation.isValid = false;
-        validation.recommendations.push(
-          "Customer should be linked to a different company"
-        );
-      }
-
-      return {
-        success: true,
-        data: validation,
-        message: validation.isValid
-          ? "Source company setup is valid"
-          : "Source company setup has issues",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message || "Failed to validate source company setup",
-        data: {
-          isValid: false,
-          errors: [error.message],
-          warnings: [],
-          recommendations: ["Check customer and company data integrity"],
-        },
-      };
-    }
-  }
-
-  /**
-   * ✅ NEW: Get enhanced bidirectional flow analytics
-   */
-  async getEnhancedBidirectionalAnalytics(companyId, filters = {}) {
-    try {
-      const params = {companyId, ...filters};
-      const response = await apiClient.get(
-        "/api/sales-orders/analytics/enhanced-bidirectional",
-        {params}
-      );
-
-      return {
-        success: true,
-        data: response.data,
-        message: "Enhanced bidirectional analytics fetched successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to fetch enhanced bidirectional analytics",
-        data: null,
-      };
-    }
-  }
-
-  /**
-   * ✅ IMPROVED: Get all sales orders with enhanced endpoint handling
-   */
-  async getSalesOrders(companyId, options = {}) {
-    try {
-      const params = new URLSearchParams({
-        companyId: companyId,
-        populate: "customer", // ✅ ADD: Populate customer data
-        ...options,
-      });
-
-      const response = await apiClient.get(`/api/sales-orders?${params}`);
-
-      if (response.data.success) {
-        return {
-          success: true,
-          data: response.data.data,
-          message: response.data.message,
-        };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to fetch sales orders"
-        );
-      }
-    } catch (error) {
-      console.error("❌ Error fetching sales orders:", error);
-      throw error;
-    }
-  }
-  /**
    * ✅ NEW: Get sales (alias for getSalesOrders for backward compatibility with PayIn)
    */
   async getSales(companyId, filters = {}) {
@@ -1378,159 +1522,6 @@ class SaleOrderService {
     }
   }
 
-  /**
-   * Update sales order
-   */
-  async updateSalesOrder(orderId, orderData) {
-    try {
-      const response = await apiClient.put(
-        `/api/sales-orders/${orderId}`,
-        orderData
-      );
-      return {
-        success: true,
-        data: response.data,
-        message: "Sales order updated successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to update sales order",
-      };
-    }
-  }
-
-  /**
-   * Delete/Cancel sales order
-   */
-  async deleteSalesOrder(orderId) {
-    try {
-      const response = await apiClient.delete(`/api/sales-orders/${orderId}`);
-      return {
-        success: true,
-        data: response.data,
-        message: "Sales order cancelled successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to delete sales order",
-      };
-    }
-  }
-
-  // ==================== UTILITY FUNCTIONS ====================
-
-  /**
-   * Enhanced client-side fallback generation with better logic
-   */
-  generateFallbackOrderNumber(
-    companyId,
-    orderType = "quotation",
-    userId = null
-  ) {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-
-    // Use company ID and user ID for uniqueness
-    const companyHash = companyId ? companyId.slice(-3) : "001";
-    const userHash = userId ? userId.slice(-2) : "01";
-    const random = Math.floor(100 + Math.random() * 900);
-
-    let prefix = "DOC";
-    switch (orderType) {
-      case "quotation":
-        prefix = "QUO";
-        break;
-      case "sales_order":
-        prefix = "SO";
-        break;
-      case "proforma_invoice":
-        prefix = "PI";
-        break;
-      default:
-        prefix = "QUO";
-    }
-
-    return `${prefix}-${year}${month}${day}${hours}${minutes}-${companyHash}${userHash}${random}`;
-  }
-
-  /**
-   * Generate order number with exact route matching
-   */
-  async generateOrderNumber(companyId, orderType = "quotation", userId = null) {
-    // Always provide fallback first for immediate response
-    const fallbackNumber = this.generateFallbackOrderNumber(
-      companyId,
-      orderType,
-      userId
-    );
-
-    // Try the exact endpoints that exist in your backend routes
-    const endpointsToTry = [
-      "/api/sales-orders/generate-number",
-      "/api/sales-orders/next-order-number",
-      "/api/sales-orders/next-number",
-    ];
-
-    for (const endpoint of endpointsToTry) {
-      try {
-        const params = {
-          companyId,
-          orderType,
-          type: orderType,
-        };
-
-        const response = await apiClient.get(endpoint, {params});
-
-        if (response.data) {
-          const serverNumber =
-            response.data.nextOrderNumber ||
-            response.data.orderNumber ||
-            response.data.number ||
-            response.data.quotationNumber ||
-            response.data.data?.nextOrderNumber;
-
-          if (serverNumber) {
-            return {
-              success: true,
-              data: {nextOrderNumber: serverNumber},
-              message: "Order number generated successfully",
-              source: "server",
-            };
-          }
-        }
-      } catch (error) {
-        continue;
-      }
-    }
-
-    // All endpoints failed, use fallback
-    return {
-      success: true,
-      data: {nextOrderNumber: fallbackNumber},
-      message: "Order number generated (fallback)",
-      source: "fallback",
-    };
-  }
-
-  /**
-   * Get next order number (alternative method)
-   */
-  async getNextOrderNumber(companyId, orderType = "quotation", userId = null) {
-    return this.generateOrderNumber(companyId, orderType, userId);
-  }
-
   // ==================== FILTERING AND SEARCH ====================
 
   /**
@@ -1778,245 +1769,527 @@ class SaleOrderService {
       };
     }
   }
+
   /**
-   * ✅ NEW: Get bidirectional flow summary for an order
+   * ✅ FIXED: Generate sales order from purchase order with proper company validation
    */
-  async getBidirectionalFlowSummary(orderId) {
+  async generateFromPurchaseOrder(purchaseOrderId, conversionData = {}) {
     try {
-      const [trackingResult, orderResult] = await Promise.all([
-        this.getTrackingChain(orderId),
-        this.getSalesOrderById(orderId),
-      ]);
-
-      const tracking = trackingResult.success ? trackingResult.data : null;
-      const order = orderResult.success ? orderResult.data : null;
-
-      const summary = {
-        orderId,
-        orderNumber: order?.data?.orderNumber || "Unknown",
-        flowType: order?.data?.isAutoGenerated ? "incoming" : "outgoing",
-        hasUpstream: !!order?.data?.sourceOrderId,
-        hasDownstream:
-          !!order?.data?.autoGeneratedPurchaseOrder ||
-          !!order?.data?.convertedToInvoice,
-        trackingChain: tracking?.data?.trackingChain || [],
-        totalSteps: tracking?.data?.trackingChain?.length || 1,
-      };
-
-      return {
-        success: true,
-        data: summary,
-        message: "Bidirectional flow summary retrieved successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message || "Failed to get bidirectional flow summary",
-        data: null,
-      };
-    }
-  }
-
-  /**
-   * ✅ NEW: Format order for bidirectional display
-   */
-  formatOrderForBidirectional(order) {
-    return {
-      id: order._id || order.id,
-      orderNumber: order.orderNumber,
-      orderType: order.orderType,
-      orderDate: order.orderDate,
-      status: order.status,
-      totalAmount: order.totals?.finalTotal || order.totalAmount || 0,
-      isAutoGenerated: order.isAutoGenerated || false,
-      sourceOrderType: order.sourceOrderType,
-      sourceOrderNumber: order.sourceOrderNumber,
-      hasGeneratedPO: order.autoGeneratedPurchaseOrder || false,
-      hasGeneratedSO: order.autoGeneratedSalesOrder || false,
-      bidirectionalReady: order.customer?.enableBidirectionalOrders || false,
-      customerLinked: !!order.customer?.linkedCompanyId,
-      displayText: `${order.orderNumber} - ₹${(
-        order.totals?.finalTotal || 0
-      ).toLocaleString("en-IN")} - ${order.status}${
-        order.isAutoGenerated ? " (Auto)" : ""
-      }`,
-    };
-  }
-  /**
-   * Get proforma invoices
-   */
-  async getProformaInvoices(companyId, filters = {}) {
-    try {
-      const params = {companyId, ...filters};
-      const response = await apiClient.get("/api/sales-orders/proforma", {
-        params,
-      });
-      return {
-        success: true,
-        data: response.data,
-        message: "Proforma invoices fetched successfully",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to fetch proforma invoices",
-      };
-    }
-  }
-
-  // In saleOrderService.js, replace the generatePurchaseOrder method with this enhanced version:
-  /**
-   * ✅ FIXED: Generate purchase order from sales order (SO → PO) with proper error handling
-   */
-  async generatePurchaseOrder(salesOrderId, conversionData = {}) {
-    console.log("🔄 START: generatePurchaseOrder called with:", {
-      salesOrderId,
-      conversionData,
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      // ✅ STEP 1: Validate inputs
-      if (!salesOrderId) {
-        console.error("❌ STEP 1 FAILED: Sales Order ID is required");
-        throw new Error("Sales Order ID is required");
+      // ✅ STEP 1: Enhanced validation with better error messages
+      if (!purchaseOrderId) {
+        throw new Error("Purchase Order ID is required");
       }
 
-      console.log("✅ STEP 1: Input validation passed");
-
-      // ✅ STEP 2: Prepare request payload
-      const requestPayload = {
-        targetCompanyId: conversionData.targetCompanyId,
-        targetSupplierId: conversionData.targetSupplierId,
-        targetSupplierName: conversionData.targetSupplierName,
-        targetSupplierMobile: conversionData.targetSupplierMobile,
-        targetSupplierEmail: conversionData.targetSupplierEmail,
-        convertedBy: conversionData.convertedBy,
-        convertedByName: conversionData.convertedByName,
-        notes: conversionData.notes || "",
-        deliveryDate: conversionData.deliveryDate,
-        validUntil: conversionData.validUntil,
-        priority: conversionData.priority || "normal",
-        terms: conversionData.terms || conversionData.termsAndConditions || "",
-        orderType: conversionData.orderType || "purchase_order",
-        autoLinkSupplier: conversionData.autoLinkSupplier ?? true,
-        validateBidirectionalSetup:
-          conversionData.validateBidirectionalSetup ?? true,
-        conversionReason:
-          conversionData.conversionReason || "sales_order_to_purchase_order",
-        sourceOrderId: conversionData.sourceOrderId || salesOrderId,
-        sourceOrderNumber: conversionData.sourceOrderNumber,
-        sourceOrderType: conversionData.sourceOrderType || "sales_order",
-        sourceCompanyId: conversionData.sourceCompanyId,
-      };
-
-      console.log("✅ STEP 2: Request payload prepared:", {
-        targetCompanyId: requestPayload.targetCompanyId,
-        hasTargetSupplierId: !!requestPayload.targetSupplierId,
-        hasTargetSupplierName: !!requestPayload.targetSupplierName,
-        payloadSize: JSON.stringify(requestPayload).length,
-      });
-
-      // ✅ STEP 3: Check authentication token
-      const token =
-        localStorage.getItem("token") || localStorage.getItem("authToken");
-      if (!token) {
-        console.error("❌ STEP 3 FAILED: No authentication token found");
-        throw new Error("Authentication token not found. Please login again.");
+      if (!purchaseOrderId.match(/^[a-fA-F0-9]{24}$/)) {
+        throw new Error("Invalid Purchase Order ID format");
       }
 
-      console.log("✅ STEP 3: Authentication token found");
-
-      // ✅ STEP 4: Make API call using apiClient (with proper interceptors)
-      console.log("🔄 STEP 4: Making API call to generate purchase order...");
-
-      const response = await apiClient.post(
-        `/api/sales-orders/${salesOrderId}/generate-purchase-order`,
-        requestPayload,
+      console.log(
+        "🔄 ENHANCED: Starting PO → SO generation with comprehensive tracking:",
         {
-          timeout: 30000, // 30 second timeout
-          headers: {
-            "Content-Type": "application/json",
+          purchaseOrderId,
+          conversionData: {
+            targetCompanyId: conversionData.targetCompanyId,
+            autoLinkCustomer: conversionData.autoLinkCustomer,
+            preserveItemDetails: conversionData.preserveItemDetails,
+            preservePricing: conversionData.preservePricing,
+            preserveTerms: conversionData.preserveTerms,
+            validateBidirectionalSetup:
+              conversionData.validateBidirectionalSetup,
           },
         }
       );
 
-      console.log("✅ STEP 4: API call completed successfully:", {
-        status: response.status,
-        statusText: response.statusText,
-        hasData: !!response.data,
-      });
+      // ✅ STEP 2: Get purchase order with comprehensive population
+      const poResponse = await apiClient.get(
+        `/api/purchase-orders/${purchaseOrderId}?populate=supplier,companyId,supplier.linkedCompanyId`
+      );
 
-      // ✅ STEP 5: Process response
-      console.log("🔄 STEP 5: Processing API response...");
-
-      if (!response.data) {
-        throw new Error("No response data received from server");
+      if (!poResponse.data) {
+        throw new Error("Failed to fetch purchase order data");
       }
 
-      const responseData = response.data;
+      const poData = poResponse.data;
+      const purchaseOrder =
+        poData.data?.purchaseOrder ||
+        poData.purchaseOrder ||
+        poData.data ||
+        poData;
 
-      console.log("✅ STEP 5: Response processed successfully:", {
-        success: responseData.success,
-        hasData: !!responseData.data,
-        message: responseData.message,
+      if (!purchaseOrder) {
+        throw new Error("Purchase order not found");
+      }
+
+      console.log("✅ ENHANCED: Purchase order fetched with population:", {
+        orderId: purchaseOrder._id,
+        orderNumber: purchaseOrder.orderNumber,
+        hasSupplier: !!purchaseOrder.supplier,
+        supplierType: typeof purchaseOrder.supplier,
+        supplierLinkedCompany: purchaseOrder.supplier?.linkedCompanyId,
+        hasCompanyId: !!purchaseOrder.companyId,
+        companyType: typeof purchaseOrder.companyId,
+        alreadyGenerated: purchaseOrder.autoGeneratedSalesOrder,
+        targetCompanyId: purchaseOrder.targetCompanyId, // ✅ IMPORTANT: Check existing target
       });
 
-      // ✅ Check if response indicates success
-      if (responseData.success === false) {
+      // ✅ STEP 3: Enhanced pre-generation validation
+      if (purchaseOrder.autoGeneratedSalesOrder) {
         throw new Error(
-          responseData.message || "Server returned unsuccessful response"
+          `Sales order already generated from purchase order ${purchaseOrder.orderNumber}. ` +
+            `Existing sales order: ${
+              purchaseOrder.salesOrderNumber || "Unknown"
+            } (ID: ${purchaseOrder.salesOrderRef || "Unknown"})`
         );
       }
 
-      // ✅ STEP 6: Return success result
-      console.log("✅ SUCCESS: Purchase order generation completed:", {
-        success: true,
-        purchaseOrderId: responseData.data?.purchaseOrder?._id,
-        purchaseOrderNumber: responseData.data?.purchaseOrder?.orderNumber,
-        message: responseData.message,
+      if (!purchaseOrder.supplier) {
+        throw new Error("Purchase order has no supplier information");
+      }
+
+      // ✅ STEP 4: Enhanced supplier validation and company detection
+      let supplierId;
+      let supplierDetails;
+
+      if (
+        typeof purchaseOrder.supplier === "object" &&
+        purchaseOrder.supplier._id
+      ) {
+        supplierId = purchaseOrder.supplier._id;
+        supplierDetails = purchaseOrder.supplier;
+      } else if (typeof purchaseOrder.supplier === "string") {
+        supplierId = purchaseOrder.supplier;
+
+        // Fetch supplier details if not populated
+        try {
+          const supplierResponse = await apiClient.get(
+            `/api/parties/${supplierId}?populate=linkedCompanyId`
+          );
+          supplierDetails =
+            supplierResponse.data?.data?.party ||
+            supplierResponse.data?.party ||
+            supplierResponse.data?.data ||
+            supplierResponse.data;
+        } catch (supplierError) {
+          console.warn(
+            "⚠️ Could not fetch supplier details:",
+            supplierError.message
+          );
+          supplierDetails = null;
+        }
+      }
+
+      if (!supplierDetails) {
+        throw new Error(
+          `Invalid supplier data in purchase order. Supplier field: ${JSON.stringify(
+            purchaseOrder.supplier
+          )}`
+        );
+      }
+
+      console.log("🔍 ENHANCED: Supplier analysis:", {
+        supplierId,
+        supplierName: supplierDetails.name,
+        hasLinkedCompany: !!supplierDetails.linkedCompanyId,
+        linkedCompanyType: typeof supplierDetails.linkedCompanyId,
+        linkedCompanyId:
+          supplierDetails.linkedCompanyId?._id ||
+          supplierDetails.linkedCompanyId,
+        linkedCompanyName: supplierDetails.linkedCompanyId?.businessName,
+        isLinkedSupplier: supplierDetails.isLinkedSupplier,
+        enableBidirectionalOrders: supplierDetails.enableBidirectionalOrders,
       });
+
+      // ✅ STEP 5: FIXED - Enhanced target company detection with priority logic
+      let targetCompanyId = null;
+      let targetCompanyDetails = null;
+      let detectionMethod = "manual";
+
+      // ✅ PRIORITY 1: Use existing targetCompanyId from purchase order if available
+      if (purchaseOrder.targetCompanyId) {
+        targetCompanyId =
+          purchaseOrder.targetCompanyId._id || purchaseOrder.targetCompanyId;
+        detectionMethod = "existing_target_company_id";
+        console.log(
+          "🎯 Using existing targetCompanyId from purchase order:",
+          targetCompanyId
+        );
+
+        // Fetch company details
+        try {
+          const companyResponse = await apiClient.get(
+            `/api/companies/${targetCompanyId}`
+          );
+          targetCompanyDetails =
+            companyResponse.data?.data?.company ||
+            companyResponse.data?.company ||
+            companyResponse.data?.data ||
+            companyResponse.data;
+        } catch (companyError) {
+          console.warn(
+            "⚠️ Could not fetch existing target company details:",
+            companyError.message
+          );
+        }
+      }
+
+      // ✅ PRIORITY 2: Use manual targetCompanyId from conversionData
+      if (!targetCompanyId && conversionData.targetCompanyId) {
+        targetCompanyId = conversionData.targetCompanyId;
+        detectionMethod = "manual_conversion_data";
+        console.log(
+          "🎯 Using manual targetCompanyId from conversion data:",
+          targetCompanyId
+        );
+      }
+
+      // ✅ PRIORITY 3: Use supplier's linkedCompanyId
+      if (!targetCompanyId && supplierDetails.linkedCompanyId) {
+        if (
+          typeof supplierDetails.linkedCompanyId === "object" &&
+          supplierDetails.linkedCompanyId._id
+        ) {
+          targetCompanyId = supplierDetails.linkedCompanyId._id;
+          targetCompanyDetails = supplierDetails.linkedCompanyId;
+          detectionMethod = "supplier_linked_company";
+        } else if (typeof supplierDetails.linkedCompanyId === "string") {
+          targetCompanyId = supplierDetails.linkedCompanyId;
+          detectionMethod = "supplier_linked_company";
+
+          // Fetch company details
+          try {
+            const companyResponse = await apiClient.get(
+              `/api/companies/${targetCompanyId}`
+            );
+            targetCompanyDetails =
+              companyResponse.data?.data?.company ||
+              companyResponse.data?.company ||
+              companyResponse.data?.data ||
+              companyResponse.data;
+          } catch (companyError) {
+            console.warn(
+              "⚠️ Could not fetch target company details:",
+              companyError.message
+            );
+          }
+        }
+      }
+
+      // ✅ PRIORITY 4: Auto-detect by supplier details (only if no other method worked)
+      if (!targetCompanyId) {
+        detectionMethod = "supplier_details_matching";
+        console.log(
+          "🔍 ENHANCED: Attempting company detection by supplier details..."
+        );
+
+        try {
+          const companiesResponse = await apiClient.get("/api/companies");
+          const companiesData = companiesResponse.data;
+          const companies =
+            companiesData.data?.companies ||
+            companiesData.companies ||
+            companiesData.data ||
+            [];
+
+          const buyerCompanyId =
+            purchaseOrder.companyId?._id || purchaseOrder.companyId;
+
+          // Match by GST, phone, or email
+          const matchingCompany = companies.find(
+            (company) =>
+              company._id.toString() !== buyerCompanyId.toString() &&
+              ((supplierDetails.gstNumber &&
+                company.gstin === supplierDetails.gstNumber) ||
+                (supplierDetails.phoneNumber &&
+                  company.phoneNumber === supplierDetails.phoneNumber) ||
+                (supplierDetails.email &&
+                  company.email === supplierDetails.email) ||
+                (supplierDetails.name &&
+                  company.businessName &&
+                  company.businessName.toLowerCase() ===
+                    supplierDetails.name.toLowerCase()))
+          );
+
+          if (matchingCompany) {
+            targetCompanyId = matchingCompany._id;
+            targetCompanyDetails = matchingCompany;
+            console.log(
+              "✅ ENHANCED: Found matching company by supplier details:",
+              {
+                companyId: matchingCompany._id,
+                companyName: matchingCompany.businessName,
+                matchedBy:
+                  supplierDetails.gstNumber === matchingCompany.gstin
+                    ? "GST"
+                    : supplierDetails.phoneNumber ===
+                      matchingCompany.phoneNumber
+                    ? "Phone"
+                    : supplierDetails.email === matchingCompany.email
+                    ? "Email"
+                    : "Name",
+              }
+            );
+          }
+        } catch (companiesError) {
+          console.warn(
+            "⚠️ ENHANCED: Company detection by supplier details failed:",
+            companiesError.message
+          );
+        }
+      }
+
+      if (!targetCompanyId) {
+        throw new Error(
+          `🚨 ENHANCED ERROR: Cannot determine target company for sales order generation.\n\n` +
+            `The supplier "${supplierDetails.name}" must have:\n` +
+            `1. A linkedCompanyId pointing to their company, OR\n` +
+            `2. Matching GST/phone/email with an existing company, OR\n` +
+            `3. Manual targetCompanyId provided in conversion data.\n\n` +
+            `Current supplier data:\n` +
+            `- Name: ${supplierDetails.name}\n` +
+            `- LinkedCompanyId: ${
+              supplierDetails.linkedCompanyId || "None"
+            }\n` +
+            `- GST: ${supplierDetails.gstNumber || "None"}\n` +
+            `- Phone: ${supplierDetails.phoneNumber || "None"}\n` +
+            `- Email: ${supplierDetails.email || "None"}\n\n` +
+            `Please link the supplier to a company first or provide targetCompanyId manually.`
+        );
+      }
+
+      // ✅ STEP 6: FIXED - Enhanced circular reference validation with proper string comparison
+      const buyerCompanyId =
+        purchaseOrder.companyId?._id || purchaseOrder.companyId;
+
+      // ✅ CRITICAL FIX: Proper string comparison with trimming and type conversion
+      const buyerCompanyIdString = buyerCompanyId
+        ? buyerCompanyId.toString().trim()
+        : "";
+      const targetCompanyIdString = targetCompanyId
+        ? targetCompanyId.toString().trim()
+        : "";
+
+      console.log("🔍 COMPANY VALIDATION DEBUG:", {
+        buyerCompanyId: buyerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        buyerType: typeof buyerCompanyId,
+        targetType: typeof targetCompanyId,
+        areEqual: buyerCompanyIdString === targetCompanyIdString,
+        buyerLength: buyerCompanyIdString.length,
+        targetLength: targetCompanyIdString.length,
+        originalBuyer: purchaseOrder.companyId,
+        originalTarget: targetCompanyId,
+        detectionMethod,
+      });
+
+      // ✅ FIXED: Only validate if both IDs exist and are the same
+      if (
+        buyerCompanyIdString &&
+        targetCompanyIdString &&
+        buyerCompanyIdString === targetCompanyIdString
+      ) {
+        throw new Error(
+          `🚨 ENHANCED CIRCULAR REFERENCE ERROR:\n\n` +
+            `The supplier's target company (${targetCompanyIdString}) cannot be the same as the buyer company (${buyerCompanyIdString}).\n\n` +
+            `This would create a circular reference where a company would generate a sales order to sell to itself.\n\n` +
+            `Current setup:\n` +
+            `- Purchase Order: Created by Company ${buyerCompanyIdString}\n` +
+            `- Supplier: ${supplierDetails.name}\n` +
+            `- Supplier's Linked Company: ${targetCompanyIdString}\n` +
+            `- Detection Method: ${detectionMethod}\n\n` +
+            `Solution: The supplier should be linked to a DIFFERENT company that will create the sales order.\n` +
+            `The flow should be: Company A creates PO → Supplier (linked to Company B) → Company B creates SO to sell back to Company A.`
+        );
+      }
+
+      console.log("✅ ENHANCED: Target company validation passed:", {
+        buyerCompanyId: buyerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        targetCompanyName: targetCompanyDetails?.businessName || "Unknown",
+        detectionMethod,
+        supplierName: supplierDetails.name,
+        validationPassed: true,
+      });
+
+      // ✅ STEP 7: Prepare enhanced request payload
+      const enhancedPayload = {
+        purchaseOrderId,
+
+        // ✅ Enhanced targeting
+        targetCompanyId,
+        sourceCompanyId: buyerCompanyId,
+
+        // ✅ Enhanced conversion options
+        autoLinkCustomer: conversionData.autoLinkCustomer ?? true,
+        validateBidirectionalSetup:
+          conversionData.validateBidirectionalSetup ?? true,
+        preserveItemDetails: conversionData.preserveItemDetails ?? true,
+        preservePricing: conversionData.preservePricing ?? true,
+        preserveTerms: conversionData.preserveTerms ?? true,
+        autoAcceptOrder: conversionData.autoAcceptOrder ?? false,
+
+        // ✅ Enhanced metadata
+        generationNotes:
+          conversionData.generationNotes ||
+          `Auto-generated from PO ${purchaseOrder.orderNumber} via enhanced bidirectional flow (${detectionMethod})`,
+        convertedBy: conversionData.convertedBy || null,
+
+        // ✅ Enhanced tracking context
+        enhancedTracking: {
+          detectionMethod,
+          supplierDetails: {
+            id: supplierDetails._id,
+            name: supplierDetails.name,
+            linkedCompanyId: supplierDetails.linkedCompanyId,
+          },
+          targetCompanyDetails: {
+            id: targetCompanyId,
+            name: targetCompanyDetails?.businessName || "Unknown",
+          },
+          sourceCompanyDetails: {
+            id: buyerCompanyId,
+            name: purchaseOrder.companyId?.businessName || "Buyer Company",
+          },
+        },
+      };
+
+      console.log("📦 ENHANCED: Final request payload prepared:", {
+        purchaseOrderId: enhancedPayload.purchaseOrderId,
+        targetCompanyId: enhancedPayload.targetCompanyId,
+        sourceCompanyId: enhancedPayload.sourceCompanyId,
+        detectionMethod,
+        preservationSettings: {
+          items: enhancedPayload.preserveItemDetails,
+          pricing: enhancedPayload.preservePricing,
+          terms: enhancedPayload.preserveTerms,
+        },
+        autoSettings: {
+          linkCustomer: enhancedPayload.autoLinkCustomer,
+          validateSetup: enhancedPayload.validateBidirectionalSetup,
+          autoAccept: enhancedPayload.autoAcceptOrder,
+        },
+      });
+
+      // ✅ STEP 8: Make the enhanced API call
+      const response = await apiClient.post(
+        `/api/sales-orders/generate-from-purchase/${purchaseOrderId}`,
+        enhancedPayload
+      );
+
+      console.log(
+        "✅ ENHANCED: Sales order generation completed successfully:",
+        {
+          success: response.data.success,
+          salesOrderId: response.data.data?.salesOrder?._id,
+          salesOrderNumber: response.data.data?.salesOrder?.orderNumber,
+          customerCreated: response.data.data?.customerCreated,
+          customerLinked: response.data.data?.customerLinked,
+          sourceCompanyTracking: response.data.data?.sourceCompanyTracking,
+          bidirectionalTracking: response.data.data?.bidirectionalTracking,
+        }
+      );
 
       return {
         success: true,
-        data: responseData.data || responseData,
+        data: {
+          salesOrder: response.data.data?.salesOrder,
+          purchaseOrder: response.data.data?.purchaseOrder,
+          customer: response.data.data?.customer,
+
+          // ✅ Enhanced tracking information
+          enhancedTracking: {
+            detectionMethod,
+            targetCompanyId,
+            sourceCompanyId: buyerCompanyId,
+            supplierDetails,
+            targetCompanyDetails,
+            customerCreated: response.data.data?.customerCreated,
+            customerLinked: response.data.data?.customerLinked,
+            preservationApplied: {
+              items: enhancedPayload.preserveItemDetails,
+              pricing: enhancedPayload.preservePricing,
+              terms: enhancedPayload.preserveTerms,
+            },
+            validationResults: response.data.data?.bidirectionalTracking,
+          },
+
+          // ✅ Enhanced conversion summary
+          conversionSummary: {
+            originalPurchaseOrder: purchaseOrder.orderNumber,
+            generatedSalesOrder: response.data.data?.salesOrder?.orderNumber,
+            buyerCompany:
+              purchaseOrder.companyId?.businessName || "Buyer Company",
+            supplierCompany:
+              targetCompanyDetails?.businessName || "Supplier Company",
+            supplier: supplierDetails.name,
+            detectionMethod,
+            itemsConverted: response.data.data?.salesOrder?.items?.length || 0,
+            totalAmount:
+              response.data.data?.salesOrder?.totals?.finalTotal || 0,
+            preservationStatus: {
+              itemsPreserved: enhancedPayload.preserveItemDetails,
+              pricingPreserved: enhancedPayload.preservePricing,
+              termsPreserved: enhancedPayload.preserveTerms,
+            },
+          },
+        },
         message:
-          responseData.message ||
-          "Purchase order generated from sales order successfully",
+          response.data.message ||
+          "Sales order generated from purchase order successfully with enhanced tracking",
       };
     } catch (error) {
-      console.error("❌ FINAL ERROR in generatePurchaseOrder:", {
+      console.error("❌ ENHANCED: PO → SO generation failed:", {
         error: error.message,
-        name: error.name,
-        code: error.code,
-        status: error.response?.status,
+        stack: error.stack,
         response: error.response?.data,
-        timestamp: new Date().toISOString(),
+        status: error.response?.status,
       });
 
-      // Enhanced error handling
-      let errorMessage = "Failed to generate purchase order from sales order";
+      // ✅ Enhanced error categorization and messages
+      let errorMessage = "Failed to generate sales order from purchase order";
       let errorCategory = "GENERAL_ERROR";
 
-      if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-        errorCategory = "TIMEOUT_ERROR";
-        errorMessage =
-          "Request timed out. The server is taking too long to respond.";
-      } else if (error.response?.status === 401) {
-        errorCategory = "AUTH_ERROR";
-        errorMessage = "Authentication failed. Please login again.";
-      } else if (error.response?.status === 404) {
-        errorCategory = "NOT_FOUND_ERROR";
-        errorMessage = "Sales order not found or API endpoint not available.";
+      if (
+        error.message?.includes("same as the buyer company") ||
+        error.message?.includes("CIRCULAR REFERENCE")
+      ) {
+        errorCategory = "CIRCULAR_REFERENCE";
+        errorMessage = error.message; // Use the detailed circular reference error
+      } else if (
+        error.message?.includes("Cannot determine target company") ||
+        error.message?.includes("ENHANCED ERROR")
+      ) {
+        errorCategory = "TARGET_COMPANY_DETECTION";
+        errorMessage = error.message; // Use the detailed target company error
+      } else if (error.message?.includes("already generated")) {
+        errorCategory = "DUPLICATE_GENERATION";
+        errorMessage = error.message; // Use the duplicate generation error
+      } else if (
+        error.message?.includes("no supplier") ||
+        error.message?.includes("Invalid supplier")
+      ) {
+        errorCategory = "SUPPLIER_VALIDATION";
+        errorMessage = error.message; // Use the supplier validation error
+      } else if (error.message?.includes("Purchase Order ID is required")) {
+        errorCategory = "MISSING_PURCHASE_ORDER_ID";
+        errorMessage = "Purchase Order ID is required";
+      } else if (error.message?.includes("Invalid Purchase Order ID format")) {
+        errorCategory = "INVALID_PURCHASE_ORDER_ID";
+        errorMessage = "Invalid Purchase Order ID format";
+      } else if (error.message?.includes("Purchase order not found")) {
+        errorCategory = "PURCHASE_ORDER_NOT_FOUND";
+        errorMessage = "Purchase order not found";
       } else if (error.response?.status === 400) {
-        errorCategory = "VALIDATION_ERROR";
-        errorMessage = error.response?.data?.message || "Invalid request data.";
-      } else if (error.response?.status === 500) {
-        errorCategory = "SERVER_ERROR";
-        errorMessage = "Internal server error. Please try again later.";
+        errorCategory = "BAD_REQUEST";
+        errorMessage =
+          error.response.data?.message ||
+          "Invalid purchase order for conversion";
+      } else if (error.response?.status === 404) {
+        errorCategory = "NOT_FOUND";
+        errorMessage = "Purchase order not found";
+      } else if (error.response?.status === 403) {
+        errorCategory = "PERMISSION_DENIED";
+        errorMessage =
+          "Access denied. You may not have permission to generate sales orders.";
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.message) {
@@ -2027,13 +2300,653 @@ class SaleOrderService {
         success: false,
         message: errorMessage,
         errorCategory,
-        error: error.message,
-        details: {
-          status: error.response?.status,
-          response: error.response?.data,
+        error: {
           originalError: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          details: error.response?.data?.details,
         },
-        timestamp: new Date().toISOString(),
+        data: null,
+      };
+    }
+  }
+
+  /**
+   * ✅ Generate purchase order from sales order
+   */
+  async generatePurchaseOrder(salesOrderId, conversionData = {}) {
+    try {
+      // ✅ STEP 1: Enhanced validation with better error messages
+      if (!salesOrderId) {
+        throw new Error("Sales Order ID is required");
+      }
+
+      if (!salesOrderId.match(/^[a-fA-F0-9]{24}$/)) {
+        throw new Error("Invalid Sales Order ID format");
+      }
+
+      console.log(
+        "🔄 ENHANCED: Starting SO → PO generation with comprehensive tracking:",
+        {
+          salesOrderId,
+          conversionData: {
+            targetCompanyId: conversionData.targetCompanyId,
+            autoLinkSupplier: conversionData.autoLinkSupplier,
+            preserveItemDetails: conversionData.preserveItemDetails,
+            preservePricing: conversionData.preservePricing,
+            preserveTerms: conversionData.preserveTerms,
+            validateBidirectionalSetup:
+              conversionData.validateBidirectionalSetup,
+          },
+        }
+      );
+
+      // ✅ STEP 2: Get sales order with comprehensive population
+      const soResponse = await apiClient.get(
+        `/api/sales-orders/${salesOrderId}?populate=customer,companyId,customer.linkedCompanyId`
+      );
+
+      if (!soResponse.data) {
+        throw new Error("Failed to fetch sales order data");
+      }
+
+      const soData = soResponse.data;
+      const salesOrder =
+        soData.data?.salesOrder || soData.salesOrder || soData.data || soData;
+
+      if (!salesOrder) {
+        throw new Error("Sales order not found");
+      }
+
+      console.log("✅ ENHANCED: Sales order fetched with population:", {
+        orderId: salesOrder._id,
+        orderNumber: salesOrder.orderNumber,
+        hasCustomer: !!salesOrder.customer,
+        customerType: typeof salesOrder.customer,
+        customerLinkedCompany: salesOrder.customer?.linkedCompanyId,
+        hasCompanyId: !!salesOrder.companyId,
+        companyType: typeof salesOrder.companyId,
+        alreadyGenerated: salesOrder.autoGeneratedPurchaseOrder,
+        // ✅ CRITICAL: Check for sourceCompanyId and targetCompanyId
+        sourceCompanyId: salesOrder.sourceCompanyId,
+        targetCompanyId: salesOrder.targetCompanyId,
+        hasSourceCompany: !!salesOrder.sourceCompanyId,
+        hasTargetCompany: !!salesOrder.targetCompanyId,
+        isBidirectionalSO: !!salesOrder.sourceCompanyId,
+      });
+
+      // ✅ STEP 3: Enhanced pre-generation validation
+      if (salesOrder.autoGeneratedPurchaseOrder) {
+        throw new Error(
+          `Purchase order already generated from sales order ${salesOrder.orderNumber}. ` +
+            `Existing purchase order: ${
+              salesOrder.purchaseOrderNumber || "Unknown"
+            } (ID: ${salesOrder.purchaseOrderRef || "Unknown"})`
+        );
+      }
+
+      if (!salesOrder.customer) {
+        throw new Error("Sales order has no customer information");
+      }
+
+      // ✅ STEP 4: Enhanced customer validation and company detection
+      let customerId;
+      let customerDetails;
+
+      if (typeof salesOrder.customer === "object" && salesOrder.customer._id) {
+        customerId = salesOrder.customer._id;
+        customerDetails = salesOrder.customer;
+      } else if (typeof salesOrder.customer === "string") {
+        customerId = salesOrder.customer;
+
+        // Fetch customer details if not populated
+        try {
+          const customerResponse = await apiClient.get(
+            `/api/parties/${customerId}?populate=linkedCompanyId`
+          );
+          customerDetails =
+            customerResponse.data?.data?.party ||
+            customerResponse.data?.party ||
+            customerResponse.data?.data ||
+            customerResponse.data;
+        } catch (customerError) {
+          console.warn(
+            "⚠️ Could not fetch customer details:",
+            customerError.message
+          );
+          customerDetails = null;
+        }
+      }
+
+      if (!customerDetails) {
+        throw new Error(
+          `Invalid customer data in sales order. Customer field: ${JSON.stringify(
+            salesOrder.customer
+          )}`
+        );
+      }
+
+      console.log("🔍 ENHANCED: Customer analysis:", {
+        customerId,
+        customerName: customerDetails.name,
+        hasLinkedCompany: !!customerDetails.linkedCompanyId,
+        linkedCompanyType: typeof customerDetails.linkedCompanyId,
+        linkedCompanyId:
+          customerDetails.linkedCompanyId?._id ||
+          customerDetails.linkedCompanyId,
+        linkedCompanyName: customerDetails.linkedCompanyId?.businessName,
+        isLinkedCustomer: customerDetails.isLinkedCustomer,
+        enableBidirectionalOrders: customerDetails.enableBidirectionalOrders,
+      });
+
+      // ✅ STEP 5: Enhanced target company detection with sourceCompanyId PRIORITY
+      let targetCompanyId = null;
+      let targetCompanyDetails = null;
+      let detectionMethod = "manual";
+
+      // ✅ PRIORITY 0: Use sourceCompanyId if this is a bidirectional SO (HIGHEST PRIORITY)
+      if (salesOrder.sourceCompanyId) {
+        targetCompanyId =
+          salesOrder.sourceCompanyId._id || salesOrder.sourceCompanyId;
+        detectionMethod = "bidirectional_source_company";
+        console.log(
+          "🎯 Using sourceCompanyId (bidirectional SO):",
+          targetCompanyId
+        );
+
+        // Fetch company details
+        try {
+          const companyResponse = await apiClient.get(
+            `/api/companies/${targetCompanyId}`
+          );
+          targetCompanyDetails =
+            companyResponse.data?.data?.company ||
+            companyResponse.data?.company ||
+            companyResponse.data?.data ||
+            companyResponse.data;
+
+          console.log("✅ Source company details fetched:", {
+            companyId: targetCompanyId,
+            companyName: targetCompanyDetails?.businessName || "Unknown",
+            detectionMethod: "bidirectional_source_company",
+          });
+        } catch (companyError) {
+          console.warn(
+            "⚠️ Could not fetch source company details:",
+            companyError.message
+          );
+        }
+      }
+
+      // ✅ PRIORITY 1: Use existing targetCompanyId from sales order if available (only if no sourceCompanyId)
+      else if (salesOrder.targetCompanyId) {
+        targetCompanyId =
+          salesOrder.targetCompanyId._id || salesOrder.targetCompanyId;
+        detectionMethod = "existing_target_company_id";
+        console.log(
+          "🎯 Using existing targetCompanyId from sales order:",
+          targetCompanyId
+        );
+
+        // Fetch company details
+        try {
+          const companyResponse = await apiClient.get(
+            `/api/companies/${targetCompanyId}`
+          );
+          targetCompanyDetails =
+            companyResponse.data?.data?.company ||
+            companyResponse.data?.company ||
+            companyResponse.data?.data ||
+            companyResponse.data;
+        } catch (companyError) {
+          console.warn(
+            "⚠️ Could not fetch existing target company details:",
+            companyError.message
+          );
+        }
+      }
+
+      // ✅ PRIORITY 2: Use manual targetCompanyId from conversionData
+      else if (conversionData.targetCompanyId) {
+        targetCompanyId = conversionData.targetCompanyId;
+        detectionMethod = "manual_conversion_data";
+        console.log(
+          "🎯 Using manual targetCompanyId from conversion data:",
+          targetCompanyId
+        );
+      }
+
+      // ✅ PRIORITY 3: Use customer's linkedCompanyId
+      else if (customerDetails.linkedCompanyId) {
+        if (
+          typeof customerDetails.linkedCompanyId === "object" &&
+          customerDetails.linkedCompanyId._id
+        ) {
+          targetCompanyId = customerDetails.linkedCompanyId._id;
+          targetCompanyDetails = customerDetails.linkedCompanyId;
+          detectionMethod = "customer_linked_company";
+        } else if (typeof customerDetails.linkedCompanyId === "string") {
+          targetCompanyId = customerDetails.linkedCompanyId;
+          detectionMethod = "customer_linked_company";
+
+          // Fetch company details
+          try {
+            const companyResponse = await apiClient.get(
+              `/api/companies/${targetCompanyId}`
+            );
+            targetCompanyDetails =
+              companyResponse.data?.data?.company ||
+              companyResponse.data?.company ||
+              companyResponse.data?.data ||
+              companyResponse.data;
+          } catch (companyError) {
+            console.warn(
+              "⚠️ Could not fetch target company details:",
+              companyError.message
+            );
+          }
+        }
+      }
+
+      // ✅ PRIORITY 4: Auto-detect by customer details (only if no other method worked)
+      else {
+        detectionMethod = "customer_details_matching";
+        console.log(
+          "🔍 ENHANCED: Attempting company detection by customer details..."
+        );
+
+        try {
+          const companiesResponse = await apiClient.get("/api/companies");
+          const companiesData = companiesResponse.data;
+          const companies =
+            companiesData.data?.companies ||
+            companiesData.companies ||
+            companiesData.data ||
+            [];
+
+          const sellerCompanyId =
+            salesOrder.companyId?._id || salesOrder.companyId;
+
+          // Match by GST, phone, or email
+          const matchingCompany = companies.find(
+            (company) =>
+              company._id.toString() !== sellerCompanyId.toString() &&
+              ((customerDetails.gstNumber &&
+                company.gstin === customerDetails.gstNumber) ||
+                (customerDetails.phoneNumber &&
+                  company.phoneNumber === customerDetails.phoneNumber) ||
+                (customerDetails.email &&
+                  company.email === customerDetails.email) ||
+                (customerDetails.name &&
+                  company.businessName &&
+                  company.businessName.toLowerCase() ===
+                    customerDetails.name.toLowerCase()))
+          );
+
+          if (matchingCompany) {
+            targetCompanyId = matchingCompany._id;
+            targetCompanyDetails = matchingCompany;
+            console.log(
+              "✅ ENHANCED: Found matching company by customer details:",
+              {
+                companyId: matchingCompany._id,
+                companyName: matchingCompany.businessName,
+                matchedBy:
+                  customerDetails.gstNumber === matchingCompany.gstin
+                    ? "GST"
+                    : customerDetails.phoneNumber ===
+                      matchingCompany.phoneNumber
+                    ? "Phone"
+                    : customerDetails.email === matchingCompany.email
+                    ? "Email"
+                    : "Name",
+              }
+            );
+          }
+        } catch (companiesError) {
+          console.warn(
+            "⚠️ ENHANCED: Company detection by customer details failed:",
+            companiesError.message
+          );
+        }
+      }
+
+      // ✅ Add logging to show what was detected
+      console.log("✅ ENHANCED: Target company detection result:", {
+        targetCompanyId,
+        detectionMethod,
+        sourceCompanyId: salesOrder.sourceCompanyId,
+        hasSourceCompany: !!salesOrder.sourceCompanyId,
+        targetCompanyName: targetCompanyDetails?.businessName || "Unknown",
+        isBidirectionalSO: !!salesOrder.sourceCompanyId,
+        flow: salesOrder.sourceCompanyId
+          ? `Bidirectional SO: Company(${salesOrder.sourceCompanyId}) → SO in Company(${salesOrder.companyId}) → PO back to Company(${salesOrder.sourceCompanyId})`
+          : "Regular SO flow",
+      });
+
+      if (!targetCompanyId) {
+        throw new Error(
+          `🚨 ENHANCED ERROR: Cannot determine target company for purchase order generation.\n\n` +
+            `The customer "${customerDetails.name}" must have:\n` +
+            `1. A linkedCompanyId pointing to their company, OR\n` +
+            `2. Matching GST/phone/email with an existing company, OR\n` +
+            `3. Manual targetCompanyId provided in conversion data.\n\n` +
+            `Current customer data:\n` +
+            `- Name: ${customerDetails.name}\n` +
+            `- LinkedCompanyId: ${
+              customerDetails.linkedCompanyId || "None"
+            }\n` +
+            `- GST: ${customerDetails.gstNumber || "None"}\n` +
+            `- Phone: ${customerDetails.phoneNumber || "None"}\n` +
+            `- Email: ${customerDetails.email || "None"}\n\n` +
+            `Sales Order Context:\n` +
+            `- Source Company ID: ${salesOrder.sourceCompanyId || "None"}\n` +
+            `- Target Company ID: ${salesOrder.targetCompanyId || "None"}\n` +
+            `- Is Bidirectional SO: ${!!salesOrder.sourceCompanyId}\n\n` +
+            `Please link the customer to a company first or provide targetCompanyId manually.`
+        );
+      }
+
+      // ✅ STEP 6: Enhanced circular reference validation with proper string comparison
+      const sellerCompanyId = salesOrder.companyId?._id || salesOrder.companyId;
+
+      // ✅ CRITICAL FIX: Proper string comparison with trimming and type conversion
+      const sellerCompanyIdString = sellerCompanyId
+        ? sellerCompanyId.toString().trim()
+        : "";
+      const targetCompanyIdString = targetCompanyId
+        ? targetCompanyId.toString().trim()
+        : "";
+
+      console.log("🔍 COMPANY VALIDATION DEBUG:", {
+        sellerCompanyId: sellerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        sellerType: typeof sellerCompanyId,
+        targetType: typeof targetCompanyId,
+        areEqual: sellerCompanyIdString === targetCompanyIdString,
+        sellerLength: sellerCompanyIdString.length,
+        targetLength: targetCompanyIdString.length,
+        originalSeller: salesOrder.companyId,
+        originalTarget: targetCompanyId,
+        detectionMethod,
+        isBidirectionalSO: !!salesOrder.sourceCompanyId,
+        bidirectionalFlow: salesOrder.sourceCompanyId
+          ? `Source(${salesOrder.sourceCompanyId}) → Seller(${sellerCompanyId}) → Target(${targetCompanyId})`
+          : "Not bidirectional",
+      });
+
+      // ✅ ENHANCED: Only validate circular reference if not using sourceCompanyId for bidirectional flow
+      if (
+        sellerCompanyIdString &&
+        targetCompanyIdString &&
+        sellerCompanyIdString === targetCompanyIdString &&
+        detectionMethod !== "bidirectional_source_company" // Allow sourceCompanyId to be same as seller for reverse flow
+      ) {
+        throw new Error(
+          `🚨 ENHANCED CIRCULAR REFERENCE ERROR:\n\n` +
+            `The customer's target company (${targetCompanyIdString}) cannot be the same as the seller company (${sellerCompanyIdString}).\n\n` +
+            `This would create a circular reference where a company would generate a purchase order to buy from itself.\n\n` +
+            `Current setup:\n` +
+            `- Sales Order: Created by Company ${sellerCompanyIdString}\n` +
+            `- Customer: ${customerDetails.name}\n` +
+            `- Customer's Linked Company: ${targetCompanyIdString}\n` +
+            `- Detection Method: ${detectionMethod}\n` +
+            `- Is Bidirectional SO: ${!!salesOrder.sourceCompanyId}\n\n` +
+            `Solution: The customer should be linked to a DIFFERENT company that will create the purchase order.\n` +
+            `The flow should be: Company A creates SO → Customer (linked to Company B) → Company B creates PO to buy from Company A.`
+        );
+      }
+
+      // ✅ SPECIAL CASE: For bidirectional SOs using sourceCompanyId, this is the correct reverse flow
+      if (
+        detectionMethod === "bidirectional_source_company" &&
+        sellerCompanyIdString === targetCompanyIdString
+      ) {
+        console.log("✅ BIDIRECTIONAL REVERSE FLOW DETECTED:", {
+          explanation:
+            "This is a reverse bidirectional flow where the source company is creating a purchase order back to the seller",
+          originalFlow: `Company ${salesOrder.sourceCompanyId} → created SO in Company ${sellerCompanyId}`,
+          reverseFlow: `Company ${sellerCompanyId} → creating PO back to Company ${targetCompanyId}`,
+          isValid: true,
+          allowCircularForBidirectional: true,
+        });
+      }
+
+      console.log("✅ ENHANCED: Target company validation passed:", {
+        sellerCompanyId: sellerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        targetCompanyName: targetCompanyDetails?.businessName || "Unknown",
+        detectionMethod,
+        customerName: customerDetails.name,
+        validationPassed: true,
+        isBidirectionalFlow: detectionMethod === "bidirectional_source_company",
+      });
+
+      // ✅ STEP 7: Prepare enhanced request payload
+      const enhancedPayload = {
+        salesOrderId,
+
+        // ✅ Enhanced targeting
+        targetCompanyId,
+        sourceCompanyId: sellerCompanyId,
+
+        // ✅ Enhanced conversion options
+        autoLinkSupplier: conversionData.autoLinkSupplier ?? true,
+        validateBidirectionalSetup:
+          conversionData.validateBidirectionalSetup ?? true,
+        preserveItemDetails: conversionData.preserveItemDetails ?? true,
+        preservePricing: conversionData.preservePricing ?? true,
+        preserveTerms: conversionData.preserveTerms ?? true,
+        autoAcceptOrder: conversionData.autoAcceptOrder ?? false,
+
+        // ✅ Enhanced metadata
+        generationNotes:
+          conversionData.generationNotes ||
+          `Auto-generated from SO ${salesOrder.orderNumber} via enhanced bidirectional flow (${detectionMethod})`,
+        convertedBy:
+          conversionData.convertedBy || localStorage.getItem("userId") || null,
+
+        // ✅ Enhanced tracking context
+        enhancedTracking: {
+          detectionMethod,
+          isBidirectionalSO: !!salesOrder.sourceCompanyId,
+          originalSourceCompanyId: salesOrder.sourceCompanyId,
+          customerDetails: {
+            id: customerDetails._id,
+            name: customerDetails.name,
+            linkedCompanyId: customerDetails.linkedCompanyId,
+          },
+          targetCompanyDetails: {
+            id: targetCompanyId,
+            name: targetCompanyDetails?.businessName || "Unknown",
+          },
+          sourceCompanyDetails: {
+            id: sellerCompanyId,
+            name: salesOrder.companyId?.businessName || "Seller Company",
+          },
+          bidirectionalFlow: salesOrder.sourceCompanyId
+            ? {
+                originalSourceCompany: salesOrder.sourceCompanyId,
+                salesOrderCompany: sellerCompanyId,
+                purchaseOrderCompany: targetCompanyId,
+                isReverseFlow:
+                  detectionMethod === "bidirectional_source_company",
+              }
+            : null,
+        },
+      };
+
+      console.log("📦 ENHANCED: Final request payload prepared:", {
+        salesOrderId: enhancedPayload.salesOrderId,
+        targetCompanyId: enhancedPayload.targetCompanyId,
+        sourceCompanyId: enhancedPayload.sourceCompanyId,
+        detectionMethod,
+        isBidirectionalSO: !!salesOrder.sourceCompanyId,
+        preservationSettings: {
+          items: enhancedPayload.preserveItemDetails,
+          pricing: enhancedPayload.preservePricing,
+          terms: enhancedPayload.preserveTerms,
+        },
+        autoSettings: {
+          linkSupplier: enhancedPayload.autoLinkSupplier,
+          validateSetup: enhancedPayload.validateBidirectionalSetup,
+          autoAccept: enhancedPayload.autoAcceptOrder,
+        },
+        bidirectionalContext:
+          enhancedPayload.enhancedTracking.bidirectionalFlow,
+      });
+
+      // ✅ STEP 8: Make the enhanced API call with CORRECTED URL
+      const response = await apiClient.post(
+        `/api/sales-orders/${salesOrderId}/generate-purchase-order`, // ✅ FIXED: Correct URL pattern
+        enhancedPayload
+      );
+
+      console.log(
+        "✅ ENHANCED: Purchase order generation completed successfully:",
+        {
+          success: response.data.success,
+          purchaseOrderId: response.data.data?.purchaseOrder?._id,
+          purchaseOrderNumber: response.data.data?.purchaseOrder?.orderNumber,
+          supplierCreated: response.data.data?.supplierCreated,
+          supplierLinked: response.data.data?.supplierLinked,
+          sourceCompanyTracking: response.data.data?.sourceCompanyTracking,
+          bidirectionalTracking: response.data.data?.bidirectionalTracking,
+          detectionMethod,
+        }
+      );
+
+      return {
+        success: true,
+        data: {
+          purchaseOrder: response.data.data?.purchaseOrder,
+          salesOrder: response.data.data?.salesOrder,
+          supplier: response.data.data?.supplier,
+
+          // ✅ Enhanced tracking information
+          enhancedTracking: {
+            detectionMethod,
+            targetCompanyId,
+            sourceCompanyId: sellerCompanyId,
+            customerDetails,
+            targetCompanyDetails,
+            supplierCreated: response.data.data?.supplierCreated,
+            supplierLinked: response.data.data?.supplierLinked,
+            preservationApplied: {
+              items: enhancedPayload.preserveItemDetails,
+              pricing: enhancedPayload.preservePricing,
+              terms: enhancedPayload.preserveTerms,
+            },
+            validationResults: response.data.data?.bidirectionalTracking,
+            isBidirectionalSO: !!salesOrder.sourceCompanyId,
+            bidirectionalFlow:
+              enhancedPayload.enhancedTracking.bidirectionalFlow,
+          },
+
+          // ✅ Enhanced conversion summary
+          conversionSummary: {
+            originalSalesOrder: salesOrder.orderNumber,
+            generatedPurchaseOrder:
+              response.data.data?.purchaseOrder?.orderNumber,
+            sellerCompany:
+              salesOrder.companyId?.businessName || "Seller Company",
+            customerCompany:
+              targetCompanyDetails?.businessName || "Customer Company",
+            customer: customerDetails.name,
+            detectionMethod,
+            itemsConverted:
+              response.data.data?.purchaseOrder?.items?.length || 0,
+            totalAmount:
+              response.data.data?.purchaseOrder?.totals?.finalTotal || 0,
+            preservationStatus: {
+              itemsPreserved: enhancedPayload.preserveItemDetails,
+              pricingPreserved: enhancedPayload.preservePricing,
+              termsPreserved: enhancedPayload.preserveTerms,
+            },
+            bidirectionalInfo: {
+              isBidirectionalSO: !!salesOrder.sourceCompanyId,
+              originalSourceCompany: salesOrder.sourceCompanyId,
+              isReverseFlow: detectionMethod === "bidirectional_source_company",
+              flowDescription: salesOrder.sourceCompanyId
+                ? `Reverse flow: Company ${salesOrder.sourceCompanyId} → SO in ${sellerCompanyId} → PO back to ${targetCompanyId}`
+                : "Standard flow: SO → PO generation",
+            },
+          },
+        },
+        message:
+          response.data.message ||
+          "Purchase order generated from sales order successfully with enhanced bidirectional tracking",
+      };
+    } catch (error) {
+      console.error("❌ ENHANCED: SO → PO generation failed:", {
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
+      // ✅ Enhanced error categorization and messages
+      let errorMessage = "Failed to generate purchase order from sales order";
+      let errorCategory = "GENERAL_ERROR";
+
+      if (
+        error.message?.includes("same as the seller company") ||
+        error.message?.includes("CIRCULAR REFERENCE")
+      ) {
+        errorCategory = "CIRCULAR_REFERENCE";
+        errorMessage = error.message; // Use the detailed circular reference error
+      } else if (
+        error.message?.includes("Cannot determine target company") ||
+        error.message?.includes("ENHANCED ERROR")
+      ) {
+        errorCategory = "TARGET_COMPANY_DETECTION";
+        errorMessage = error.message; // Use the detailed target company error
+      } else if (error.message?.includes("already generated")) {
+        errorCategory = "DUPLICATE_GENERATION";
+        errorMessage = error.message; // Use the duplicate generation error
+      } else if (
+        error.message?.includes("no customer") ||
+        error.message?.includes("Invalid customer")
+      ) {
+        errorCategory = "CUSTOMER_VALIDATION";
+        errorMessage = error.message; // Use the customer validation error
+      } else if (error.message?.includes("Sales Order ID is required")) {
+        errorCategory = "MISSING_SALES_ORDER_ID";
+        errorMessage = "Sales Order ID is required";
+      } else if (error.message?.includes("Invalid Sales Order ID format")) {
+        errorCategory = "INVALID_SALES_ORDER_ID";
+        errorMessage = "Invalid Sales Order ID format";
+      } else if (error.message?.includes("Sales order not found")) {
+        errorCategory = "SALES_ORDER_NOT_FOUND";
+        errorMessage = "Sales order not found";
+      } else if (error.response?.status === 400) {
+        errorCategory = "BAD_REQUEST";
+        errorMessage =
+          error.response.data?.message || "Invalid sales order for conversion";
+      } else if (error.response?.status === 404) {
+        errorCategory = "NOT_FOUND";
+        errorMessage = "Sales order not found";
+      } else if (error.response?.status === 403) {
+        errorCategory = "PERMISSION_DENIED";
+        errorMessage =
+          "Access denied. You may not have permission to generate purchase orders.";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      return {
+        success: false,
+        message: errorMessage,
+        errorCategory,
+        error: {
+          originalError: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          details: error.response?.data?.details,
+        },
+        data: null,
       };
     }
   }
@@ -3024,35 +3937,45 @@ class SaleOrderService {
   // ==================== BIDIRECTIONAL FUNCTIONALITY ====================
 
   /**
-   * ✅ ENHANCED: Generate sales order from purchase order with bidirectional tracking
+   * ✅ ENHANCED: Generate sales order from purchase order with sourceCompanyId priority
    */
   async generateFromPurchaseOrder(purchaseOrderId, conversionData = {}) {
     try {
-      // ✅ STEP 1: Validate required parameters
+      // ✅ STEP 1: Enhanced validation with better error messages
       if (!purchaseOrderId) {
         throw new Error("Purchase Order ID is required");
       }
 
-      // ✅ STEP 2: Get purchase order with full supplier details - ENHANCED WITH POPULATION
-      const poResponse = await fetch(
-        `${apiConfig.baseURL}/api/purchase-orders/${purchaseOrderId}?populate=supplier,companyId`,
+      if (!purchaseOrderId.match(/^[a-fA-F0-9]{24}$/)) {
+        throw new Error("Invalid Purchase Order ID format");
+      }
+
+      console.log(
+        "🔄 ENHANCED: Starting PO → SO generation with sourceCompanyId priority:",
         {
-          headers: {
-            Authorization: `Bearer ${
-              localStorage.getItem("token") || localStorage.getItem("authToken")
-            }`,
-            "Content-Type": "application/json",
+          purchaseOrderId,
+          conversionData: {
+            targetCompanyId: conversionData.targetCompanyId,
+            autoLinkCustomer: conversionData.autoLinkCustomer,
+            preserveItemDetails: conversionData.preserveItemDetails,
+            preservePricing: conversionData.preservePricing,
+            preserveTerms: conversionData.preserveTerms,
+            validateBidirectionalSetup:
+              conversionData.validateBidirectionalSetup,
           },
         }
       );
 
-      if (!poResponse.ok) {
-        throw new Error(
-          `Failed to fetch purchase order: ${poResponse.statusText}`
-        );
+      // ✅ STEP 2: Get purchase order with comprehensive population
+      const poResponse = await apiClient.get(
+        `/api/purchase-orders/${purchaseOrderId}?populate=supplier,companyId,supplier.linkedCompanyId`
+      );
+
+      if (!poResponse.data) {
+        throw new Error("Failed to fetch purchase order data");
       }
 
-      const poData = await poResponse.json();
+      const poData = poResponse.data;
       const purchaseOrder =
         poData.data?.purchaseOrder ||
         poData.purchaseOrder ||
@@ -3063,300 +3986,387 @@ class SaleOrderService {
         throw new Error("Purchase order not found");
       }
 
-      console.log("🔍 Purchase order data:", {
+      console.log("✅ ENHANCED: Purchase order fetched with population:", {
         orderId: purchaseOrder._id,
         orderNumber: purchaseOrder.orderNumber,
         hasSupplier: !!purchaseOrder.supplier,
         supplierType: typeof purchaseOrder.supplier,
-        supplierId: purchaseOrder.supplier?._id || purchaseOrder.supplier,
+        supplierLinkedCompany: purchaseOrder.supplier?.linkedCompanyId,
         hasCompanyId: !!purchaseOrder.companyId,
-        companyIdType: typeof purchaseOrder.companyId,
+        companyType: typeof purchaseOrder.companyId,
+        alreadyGenerated: purchaseOrder.autoGeneratedSalesOrder,
+        // ✅ CRITICAL: Check for sourceCompanyId and targetCompanyId
+        sourceCompanyId: purchaseOrder.sourceCompanyId,
+        targetCompanyId: purchaseOrder.targetCompanyId,
+        hasSourceCompany: !!purchaseOrder.sourceCompanyId,
+        hasTargetCompany: !!purchaseOrder.targetCompanyId,
+        isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
       });
 
-      // ✅ STEP 3: ENHANCED - Validate and get supplier ID
-      let supplierId = null;
+      // ✅ STEP 3: Enhanced pre-generation validation
+      if (purchaseOrder.autoGeneratedSalesOrder) {
+        throw new Error(
+          `Sales order already generated from purchase order ${purchaseOrder.orderNumber}. ` +
+            `Existing sales order: ${
+              purchaseOrder.salesOrderNumber || "Unknown"
+            } (ID: ${purchaseOrder.salesOrderRef || "Unknown"})`
+        );
+      }
+
+      if (!purchaseOrder.supplier) {
+        throw new Error("Purchase order has no supplier information");
+      }
+
+      // ✅ STEP 4: Enhanced supplier validation and company detection
+      let supplierId;
+      let supplierDetails;
 
       if (
         typeof purchaseOrder.supplier === "object" &&
-        purchaseOrder.supplier?._id
+        purchaseOrder.supplier._id
       ) {
-        // Supplier is already populated
         supplierId = purchaseOrder.supplier._id;
-        console.log(
-          "✅ Supplier already populated:",
-          purchaseOrder.supplier.name
-        );
-      } else if (
-        typeof purchaseOrder.supplier === "string" &&
-        purchaseOrder.supplier
-      ) {
-        // Supplier is just an ID
+        supplierDetails = purchaseOrder.supplier;
+      } else if (typeof purchaseOrder.supplier === "string") {
         supplierId = purchaseOrder.supplier;
-        console.log("🔍 Supplier ID found:", supplierId);
-      } else {
+
+        // Fetch supplier details if not populated
+        try {
+          const supplierResponse = await apiClient.get(
+            `/api/parties/${supplierId}?populate=linkedCompanyId`
+          );
+          supplierDetails =
+            supplierResponse.data?.data?.party ||
+            supplierResponse.data?.party ||
+            supplierResponse.data?.data ||
+            supplierResponse.data;
+        } catch (supplierError) {
+          console.warn(
+            "⚠️ Could not fetch supplier details:",
+            supplierError.message
+          );
+          supplierDetails = null;
+        }
+      }
+
+      if (!supplierDetails) {
         throw new Error(
-          `Purchase order has no valid supplier. Supplier field: ${JSON.stringify(
+          `Invalid supplier data in purchase order. Supplier field: ${JSON.stringify(
             purchaseOrder.supplier
           )}`
         );
       }
 
-      // ✅ STEP 4: Get supplier details with populated linkedCompanyId - ONLY IF NOT ALREADY POPULATED
-      let supplier = null;
-
-      if (
-        typeof purchaseOrder.supplier === "object" &&
-        purchaseOrder.supplier?.name
-      ) {
-        // Supplier is already populated, but we need to check if linkedCompanyId is populated
-        supplier = purchaseOrder.supplier;
-
-        // If linkedCompanyId is not populated (just an ID), fetch it separately
-        if (
-          supplier.linkedCompanyId &&
-          typeof supplier.linkedCompanyId === "string"
-        ) {
-          try {
-            const linkedCompanyResponse = await fetch(
-              `${apiConfig.baseURL}/api/companies/${supplier.linkedCompanyId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${
-                    localStorage.getItem("token") ||
-                    localStorage.getItem("authToken")
-                  }`,
-                  "Content-Type": "application/json",
-                },
-              }
-            );
-
-            if (linkedCompanyResponse.ok) {
-              const linkedCompanyData = await linkedCompanyResponse.json();
-              const linkedCompany =
-                linkedCompanyData.data?.company ||
-                linkedCompanyData.company ||
-                linkedCompanyData.data ||
-                linkedCompanyData;
-              if (linkedCompany) {
-                supplier.linkedCompanyId = linkedCompany;
-                console.log(
-                  "✅ Populated linkedCompanyId:",
-                  linkedCompany.businessName
-                );
-              }
-            }
-          } catch (linkedCompanyError) {
-            console.warn(
-              "⚠️ Could not populate linkedCompanyId:",
-              linkedCompanyError.message
-            );
-          }
-        }
-      } else {
-        // Need to fetch supplier details
-        const supplierResponse = await fetch(
-          `${apiConfig.baseURL}/api/parties/${supplierId}?populate=linkedCompanyId`,
-          {
-            headers: {
-              Authorization: `Bearer ${
-                localStorage.getItem("token") ||
-                localStorage.getItem("authToken")
-              }`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!supplierResponse.ok) {
-          throw new Error(
-            `Failed to fetch supplier details: ${supplierResponse.statusText}`
-          );
-        }
-
-        const supplierData = await supplierResponse.json();
-        supplier =
-          supplierData.data?.party ||
-          supplierData.party ||
-          supplierData.data ||
-          supplierData;
-
-        if (!supplier) {
-          throw new Error("Supplier not found");
-        }
-      }
-
-      console.log("🔍 ENHANCED SUPPLIER ANALYSIS:", {
-        supplier: {
-          id: supplier._id,
-          name: supplier.name,
-          linkedCompanyId: supplier.linkedCompanyId,
-          linkedCompanyType: typeof supplier.linkedCompanyId,
-          linkedCompanyName:
-            supplier.linkedCompanyId?.businessName ||
-            supplier.linkedCompanyId?.name,
-          isLinkedSupplier: supplier.isLinkedSupplier,
-          enableBidirectionalOrders: supplier.enableBidirectionalOrders,
-          autoLinkByGST: supplier.autoLinkByGST,
-          autoLinkByPhone: supplier.autoLinkByPhone,
-          autoLinkByEmail: supplier.autoLinkByEmail,
-          gstNumber: supplier.gstNumber,
-          phoneNumber: supplier.phoneNumber,
-          email: supplier.email,
-        },
-        buyerCompany: {
-          id: purchaseOrder.companyId?._id || purchaseOrder.companyId,
-          name:
-            purchaseOrder.companyId?.businessName ||
-            "Company making the purchase (buyer)",
-        },
+      console.log("🔍 ENHANCED: Supplier analysis:", {
+        supplierId,
+        supplierName: supplierDetails.name,
+        hasLinkedCompany: !!supplierDetails.linkedCompanyId,
+        linkedCompanyType: typeof supplierDetails.linkedCompanyId,
+        linkedCompanyId:
+          supplierDetails.linkedCompanyId?._id ||
+          supplierDetails.linkedCompanyId,
+        linkedCompanyName: supplierDetails.linkedCompanyId?.businessName,
+        isLinkedSupplier: supplierDetails.isLinkedSupplier,
+        enableBidirectionalOrders: supplierDetails.enableBidirectionalOrders,
       });
 
-      let targetCompanyId;
-      let sourceCompanyDetails = null;
+      // ✅ STEP 5: *** UPDATED *** - Enhanced target company detection with sourceCompanyId PRIORITY
+      let targetCompanyId = null;
+      let targetCompanyDetails = null;
+      let detectionMethod = "manual";
 
-      // ✅ PRIORITY 1: Auto-detect from supplier's linkedCompanyId FIRST
-      if (supplier.linkedCompanyId) {
-        // Use supplier's linkedCompanyId as target
-        if (
-          typeof supplier.linkedCompanyId === "object" &&
-          supplier.linkedCompanyId._id
-        ) {
-          targetCompanyId = supplier.linkedCompanyId._id;
-          sourceCompanyDetails = supplier.linkedCompanyId;
-        } else if (typeof supplier.linkedCompanyId === "string") {
-          targetCompanyId = supplier.linkedCompanyId;
-        }
+      // ✅ PRIORITY 0: Use sourceCompanyId if this is a bidirectional PO (HIGHEST PRIORITY)
+      if (purchaseOrder.sourceCompanyId) {
+        targetCompanyId =
+          purchaseOrder.sourceCompanyId._id || purchaseOrder.sourceCompanyId;
+        detectionMethod = "bidirectional_source_company";
         console.log(
-          "🔍 Auto-detected target company from supplier's linkedCompanyId:",
+          "🎯 Using sourceCompanyId (bidirectional PO):",
           targetCompanyId
         );
+
+        // Fetch company details
+        try {
+          const companyResponse = await apiClient.get(
+            `/api/companies/${targetCompanyId}`
+          );
+          targetCompanyDetails =
+            companyResponse.data?.data?.company ||
+            companyResponse.data?.company ||
+            companyResponse.data?.data ||
+            companyResponse.data;
+
+          console.log("✅ Source company details fetched:", {
+            companyId: targetCompanyId,
+            companyName: targetCompanyDetails?.businessName || "Unknown",
+            detectionMethod: "bidirectional_source_company",
+          });
+        } catch (companyError) {
+          console.warn(
+            "⚠️ Could not fetch source company details:",
+            companyError.message
+          );
+        }
       }
-      // ✅ PRIORITY 2: Manual target company provided (only if no linkedCompanyId)
+
+      // ✅ PRIORITY 1: Use existing targetCompanyId from purchase order if available (only if no sourceCompanyId)
+      else if (purchaseOrder.targetCompanyId) {
+        targetCompanyId =
+          purchaseOrder.targetCompanyId._id || purchaseOrder.targetCompanyId;
+        detectionMethod = "existing_target_company_id";
+        console.log(
+          "🎯 Using existing targetCompanyId from purchase order:",
+          targetCompanyId
+        );
+
+        // Fetch company details
+        try {
+          const companyResponse = await apiClient.get(
+            `/api/companies/${targetCompanyId}`
+          );
+          targetCompanyDetails =
+            companyResponse.data?.data?.company ||
+            companyResponse.data?.company ||
+            companyResponse.data?.data ||
+            companyResponse.data;
+        } catch (companyError) {
+          console.warn(
+            "⚠️ Could not fetch existing target company details:",
+            companyError.message
+          );
+        }
+      }
+
+      // ✅ PRIORITY 2: Use manual targetCompanyId from conversionData
       else if (conversionData.targetCompanyId) {
         targetCompanyId = conversionData.targetCompanyId;
+        detectionMethod = "manual_conversion_data";
         console.log(
-          "🎯 Using manual target company (no linkedCompanyId):",
+          "🎯 Using manual targetCompanyId from conversion data:",
           targetCompanyId
         );
       }
-      // ✅ PRIORITY 3: Fallback - try to detect by matching supplier details
+
+      // ✅ PRIORITY 3: Use supplier's linkedCompanyId
+      else if (supplierDetails.linkedCompanyId) {
+        if (
+          typeof supplierDetails.linkedCompanyId === "object" &&
+          supplierDetails.linkedCompanyId._id
+        ) {
+          targetCompanyId = supplierDetails.linkedCompanyId._id;
+          targetCompanyDetails = supplierDetails.linkedCompanyId;
+          detectionMethod = "supplier_linked_company";
+        } else if (typeof supplierDetails.linkedCompanyId === "string") {
+          targetCompanyId = supplierDetails.linkedCompanyId;
+          detectionMethod = "supplier_linked_company";
+
+          // Fetch company details
+          try {
+            const companyResponse = await apiClient.get(
+              `/api/companies/${targetCompanyId}`
+            );
+            targetCompanyDetails =
+              companyResponse.data?.data?.company ||
+              companyResponse.data?.company ||
+              companyResponse.data?.data ||
+              companyResponse.data;
+          } catch (companyError) {
+            console.warn(
+              "⚠️ Could not fetch target company details:",
+              companyError.message
+            );
+          }
+        }
+      }
+
+      // ✅ PRIORITY 4: Auto-detect by supplier details (only if no other method worked)
       else {
+        detectionMethod = "supplier_details_matching";
         console.log(
-          "⚠️ No linkedCompanyId found, attempting company detection by supplier details..."
+          "🔍 ENHANCED: Attempting company detection by supplier details..."
         );
 
         try {
-          const companiesResponse = await fetch(
-            `${apiConfig.baseURL}/api/companies`,
-            {
-              headers: {
-                Authorization: `Bearer ${
-                  localStorage.getItem("token") ||
-                  localStorage.getItem("authToken")
-                }`,
-                "Content-Type": "application/json",
-              },
-            }
+          const companiesResponse = await apiClient.get("/api/companies");
+          const companiesData = companiesResponse.data;
+          const companies =
+            companiesData.data?.companies ||
+            companiesData.companies ||
+            companiesData.data ||
+            [];
+
+          const buyerCompanyId =
+            purchaseOrder.companyId?._id || purchaseOrder.companyId;
+
+          // Match by GST, phone, or email
+          const matchingCompany = companies.find(
+            (company) =>
+              company._id.toString() !== buyerCompanyId.toString() &&
+              ((supplierDetails.gstNumber &&
+                company.gstin === supplierDetails.gstNumber) ||
+                (supplierDetails.phoneNumber &&
+                  company.phoneNumber === supplierDetails.phoneNumber) ||
+                (supplierDetails.email &&
+                  company.email === supplierDetails.email) ||
+                (supplierDetails.name &&
+                  company.businessName &&
+                  company.businessName.toLowerCase() ===
+                    supplierDetails.name.toLowerCase()))
           );
 
-          if (companiesResponse.ok) {
-            const companiesData = await companiesResponse.json();
-            const companies =
-              companiesData.data?.companies ||
-              companiesData.companies ||
-              companiesData.data ||
-              [];
-
-            // Get buyer company ID
-            const buyerCompanyId =
-              purchaseOrder.companyId?._id || purchaseOrder.companyId;
-
-            // Try to match by GST, phone, or email
-            const matchingCompany = companies.find(
-              (company) =>
-                company._id.toString() !== buyerCompanyId.toString() &&
-                ((supplier.gstNumber && company.gstin === supplier.gstNumber) ||
-                  (supplier.phoneNumber &&
-                    company.phoneNumber === supplier.phoneNumber) ||
-                  (supplier.email && company.email === supplier.email))
-            );
-
-            if (matchingCompany) {
-              targetCompanyId = matchingCompany._id;
-              sourceCompanyDetails = matchingCompany;
-              console.log("✅ Found matching company by supplier details:", {
+          if (matchingCompany) {
+            targetCompanyId = matchingCompany._id;
+            targetCompanyDetails = matchingCompany;
+            console.log(
+              "✅ ENHANCED: Found matching company by supplier details:",
+              {
                 companyId: matchingCompany._id,
                 companyName: matchingCompany.businessName,
                 matchedBy:
-                  supplier.gstNumber === matchingCompany.gstin
+                  supplierDetails.gstNumber === matchingCompany.gstin
                     ? "GST"
-                    : supplier.phoneNumber === matchingCompany.phoneNumber
+                    : supplierDetails.phoneNumber ===
+                      matchingCompany.phoneNumber
                     ? "Phone"
-                    : "Email",
-              });
-            }
+                    : supplierDetails.email === matchingCompany.email
+                    ? "Email"
+                    : "Name",
+              }
+            );
           }
-        } catch (error) {
-          console.warn("⚠️ Company detection failed:", error.message);
+        } catch (companiesError) {
+          console.warn(
+            "⚠️ ENHANCED: Company detection by supplier details failed:",
+            companiesError.message
+          );
         }
       }
+
+      // ✅ Add logging to show what was detected
+      console.log("✅ ENHANCED: Target company detection result:", {
+        targetCompanyId,
+        detectionMethod,
+        sourceCompanyId: purchaseOrder.sourceCompanyId,
+        hasSourceCompany: !!purchaseOrder.sourceCompanyId,
+        targetCompanyName: targetCompanyDetails?.businessName || "Unknown",
+        isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+        flow: purchaseOrder.sourceCompanyId
+          ? `Bidirectional PO: Company(${purchaseOrder.sourceCompanyId}) → PO in Company(${purchaseOrder.companyId}) → SO back to Company(${purchaseOrder.sourceCompanyId})`
+          : "Regular PO flow",
+      });
 
       if (!targetCompanyId) {
         throw new Error(
-          "🚨 Cannot determine target company for sales order generation. " +
-            "The supplier must have a linkedCompanyId or matching company details. " +
-            "Please link the supplier to a company first or provide targetCompanyId manually."
+          `🚨 ENHANCED ERROR: Cannot determine target company for sales order generation.\n\n` +
+            `The supplier "${supplierDetails.name}" must have:\n` +
+            `1. A linkedCompanyId pointing to their company, OR\n` +
+            `2. Matching GST/phone/email with an existing company, OR\n` +
+            `3. Manual targetCompanyId provided in conversion data.\n\n` +
+            `Current supplier data:\n` +
+            `- Name: ${supplierDetails.name}\n` +
+            `- LinkedCompanyId: ${
+              supplierDetails.linkedCompanyId || "None"
+            }\n` +
+            `- GST: ${supplierDetails.gstNumber || "None"}\n` +
+            `- Phone: ${supplierDetails.phoneNumber || "None"}\n` +
+            `- Email: ${supplierDetails.email || "None"}\n\n` +
+            `Purchase Order Context:\n` +
+            `- Source Company ID: ${
+              purchaseOrder.sourceCompanyId || "None"
+            }\n` +
+            `- Target Company ID: ${
+              purchaseOrder.targetCompanyId || "None"
+            }\n` +
+            `- Is Bidirectional PO: ${!!purchaseOrder.sourceCompanyId}\n\n` +
+            `Please link the supplier to a company first or provide targetCompanyId manually.`
         );
       }
 
-      // ✅ STEP 6: CRITICAL VALIDATION - Ensure target is different from buyer
+      // ✅ STEP 6: FIXED - Enhanced circular reference validation with proper string comparison
       const buyerCompanyId =
         purchaseOrder.companyId?._id || purchaseOrder.companyId;
 
-      if (targetCompanyId.toString() === buyerCompanyId.toString()) {
+      // ✅ CRITICAL FIX: Proper string comparison with trimming and type conversion
+      const buyerCompanyIdString = buyerCompanyId
+        ? buyerCompanyId.toString().trim()
+        : "";
+      const targetCompanyIdString = targetCompanyId
+        ? targetCompanyId.toString().trim()
+        : "";
+
+      console.log("🔍 COMPANY VALIDATION DEBUG:", {
+        buyerCompanyId: buyerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        buyerType: typeof buyerCompanyId,
+        targetType: typeof targetCompanyId,
+        areEqual: buyerCompanyIdString === targetCompanyIdString,
+        buyerLength: buyerCompanyIdString.length,
+        targetLength: targetCompanyIdString.length,
+        originalBuyer: purchaseOrder.companyId,
+        originalTarget: targetCompanyId,
+        detectionMethod,
+        isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+        bidirectionalFlow: purchaseOrder.sourceCompanyId
+          ? `Source(${purchaseOrder.sourceCompanyId}) → Buyer(${buyerCompanyId}) → Target(${targetCompanyId})`
+          : "Not bidirectional",
+      });
+
+      // ✅ ENHANCED: Only validate circular reference if not using sourceCompanyId for bidirectional flow
+      if (
+        buyerCompanyIdString &&
+        targetCompanyIdString &&
+        buyerCompanyIdString === targetCompanyIdString &&
+        detectionMethod !== "bidirectional_source_company" // Allow sourceCompanyId to be same as buyer for reverse flow
+      ) {
         throw new Error(
-          `🚨 CRITICAL ERROR: Supplier's linkedCompanyId (${targetCompanyId}) cannot be the same as buyer company (${buyerCompanyId}). ` +
-            `The supplier should be linked to a DIFFERENT company to enable bidirectional orders. ` +
-            `Current setup: Supplier "${supplier.name}" is linked to the same company that's making the purchase.`
+          `🚨 ENHANCED CIRCULAR REFERENCE ERROR:\n\n` +
+            `The supplier's target company (${targetCompanyIdString}) cannot be the same as the buyer company (${buyerCompanyIdString}).\n\n` +
+            `This would create a circular reference where a company would generate a sales order to sell to itself.\n\n` +
+            `Current setup:\n` +
+            `- Purchase Order: Created by Company ${buyerCompanyIdString}\n` +
+            `- Supplier: ${supplierDetails.name}\n` +
+            `- Supplier's Linked Company: ${targetCompanyIdString}\n` +
+            `- Detection Method: ${detectionMethod}\n` +
+            `- Is Bidirectional PO: ${!!purchaseOrder.sourceCompanyId}\n\n` +
+            `Solution: The supplier should be linked to a DIFFERENT company that will create the sales order.\n` +
+            `The flow should be: Company A creates PO → Supplier (linked to Company B) → Company B creates SO to sell back to Company A.`
         );
       }
 
-      console.log("✅ CORRECTED COMPANY MAPPING:", {
-        purchaseOrderCompany: buyerCompanyId, // Company making the purchase (buyer)
-        salesOrderCompany: targetCompanyId, // Company creating the sales order (supplier's company)
-        supplierLinkedCompany: supplier.linkedCompanyId,
-        logic:
-          "PO in buyer company → SO in supplier's company selling TO buyer company",
-        flow: `${supplier.name} (supplier) → creates SO in Company(${targetCompanyId}) → selling to Company(${buyerCompanyId})`,
-      });
-
-      // ✅ STEP 7: Get buyer company details for customer creation
-      const buyerCompanyResponse = await fetch(
-        `${apiConfig.baseURL}/api/companies/${buyerCompanyId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${
-              localStorage.getItem("token") || localStorage.getItem("authToken")
-            }`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      let buyerCompanyDetails = null;
-      if (buyerCompanyResponse.ok) {
-        const buyerData = await buyerCompanyResponse.json();
-        buyerCompanyDetails =
-          buyerData.data?.company ||
-          buyerData.company ||
-          buyerData.data ||
-          buyerData;
+      // ✅ SPECIAL CASE: For bidirectional POs using sourceCompanyId, this is the correct reverse flow
+      if (
+        detectionMethod === "bidirectional_source_company" &&
+        buyerCompanyIdString === targetCompanyIdString
+      ) {
+        console.log("✅ BIDIRECTIONAL REVERSE FLOW DETECTED:", {
+          explanation:
+            "This is a reverse bidirectional flow where the source company is creating a sales order back to the buyer",
+          originalFlow: `Company ${purchaseOrder.sourceCompanyId} → created PO in Company ${buyerCompanyId}`,
+          reverseFlow: `Company ${buyerCompanyId} → creating SO back to Company ${targetCompanyId}`,
+          isValid: true,
+          allowCircularForBidirectional: true,
+        });
       }
 
-      // ✅ STEP 8: Prepare the request payload
-      const requestPayload = {
+      console.log("✅ ENHANCED: Target company validation passed:", {
+        buyerCompanyId: buyerCompanyIdString,
+        targetCompanyId: targetCompanyIdString,
+        targetCompanyName: targetCompanyDetails?.businessName || "Unknown",
+        detectionMethod,
+        supplierName: supplierDetails.name,
+        validationPassed: true,
+        isBidirectionalFlow: detectionMethod === "bidirectional_source_company",
+      });
+
+      // ✅ STEP 7: Prepare enhanced request payload
+      const enhancedPayload = {
         purchaseOrderId,
+
+        // ✅ Enhanced targeting
         targetCompanyId,
+        sourceCompanyId: buyerCompanyId,
+
+        // ✅ Enhanced conversion options
         autoLinkCustomer: conversionData.autoLinkCustomer ?? true,
         validateBidirectionalSetup:
           conversionData.validateBidirectionalSetup ?? true,
@@ -3364,54 +4374,82 @@ class SaleOrderService {
         preservePricing: conversionData.preservePricing ?? true,
         preserveTerms: conversionData.preserveTerms ?? true,
         autoAcceptOrder: conversionData.autoAcceptOrder ?? false,
+
+        // ✅ Enhanced metadata
         generationNotes:
           conversionData.generationNotes ||
-          "Auto-generated from purchase order via bidirectional flow",
+          `Auto-generated from PO ${purchaseOrder.orderNumber} via enhanced bidirectional flow (${detectionMethod})`,
+        convertedBy: conversionData.convertedBy || null,
 
-        // ✅ NEW: Enhanced tracking data
-        sourceCompanyDetails: {
-          id: buyerCompanyId,
-          name: buyerCompanyDetails?.businessName || "Buyer Company",
-          details: buyerCompanyDetails,
-        },
-        targetCompanyDetails: {
-          id: targetCompanyId,
-          name: sourceCompanyDetails?.businessName || "Supplier Company",
-          details: sourceCompanyDetails,
-        },
-        supplierDetails: {
-          id: supplier._id,
-          name: supplier.name,
-          linkedCompanyId: supplier.linkedCompanyId,
-          details: supplier,
+        // ✅ Enhanced tracking context
+        enhancedTracking: {
+          detectionMethod,
+          isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+          originalSourceCompanyId: purchaseOrder.sourceCompanyId,
+          supplierDetails: {
+            id: supplierDetails._id,
+            name: supplierDetails.name,
+            linkedCompanyId: supplierDetails.linkedCompanyId,
+          },
+          targetCompanyDetails: {
+            id: targetCompanyId,
+            name: targetCompanyDetails?.businessName || "Unknown",
+          },
+          sourceCompanyDetails: {
+            id: buyerCompanyId,
+            name: purchaseOrder.companyId?.businessName || "Buyer Company",
+          },
+          bidirectionalFlow: purchaseOrder.sourceCompanyId
+            ? {
+                originalSourceCompany: purchaseOrder.sourceCompanyId,
+                purchaseOrderCompany: buyerCompanyId,
+                salesOrderCompany: targetCompanyId,
+                isReverseFlow:
+                  detectionMethod === "bidirectional_source_company",
+              }
+            : null,
         },
       };
 
-      console.log("📦 Final request payload:", {
-        purchaseOrderId: requestPayload.purchaseOrderId,
-        targetCompanyId: requestPayload.targetCompanyId,
-        autoLinkCustomer: requestPayload.autoLinkCustomer,
-        sourceCompany: requestPayload.sourceCompanyDetails?.name,
-        targetCompany: requestPayload.targetCompanyDetails?.name,
-        supplier: requestPayload.supplierDetails?.name,
+      console.log("📦 ENHANCED: Final request payload prepared:", {
+        purchaseOrderId: enhancedPayload.purchaseOrderId,
+        targetCompanyId: enhancedPayload.targetCompanyId,
+        sourceCompanyId: enhancedPayload.sourceCompanyId,
+        detectionMethod,
+        isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+        preservationSettings: {
+          items: enhancedPayload.preserveItemDetails,
+          pricing: enhancedPayload.preservePricing,
+          terms: enhancedPayload.preserveTerms,
+        },
+        autoSettings: {
+          linkCustomer: enhancedPayload.autoLinkCustomer,
+          validateSetup: enhancedPayload.validateBidirectionalSetup,
+          autoAccept: enhancedPayload.autoAcceptOrder,
+        },
+        bidirectionalContext:
+          enhancedPayload.enhancedTracking.bidirectionalFlow,
       });
 
-      // ✅ STEP 9: Make the API call
+      // ✅ STEP 8: Make the enhanced API call
       const response = await apiClient.post(
         `/api/sales-orders/generate-from-purchase/${purchaseOrderId}`,
-        requestPayload
+        enhancedPayload
       );
 
-      console.log("✅ BIDIRECTIONAL SALES ORDER GENERATION SUCCESS:", {
-        success: response.data.success,
-        salesOrderId: response.data.data?.salesOrder?._id,
-        salesOrderNumber: response.data.data?.salesOrder?.orderNumber,
-        targetCompanyId: response.data.data?.targetCompanyId,
-        customerCreated: response.data.data?.customerCreated,
-        customerLinked: response.data.data?.customerLinked,
-        bidirectionalTracking: response.data.data?.bidirectionalTracking,
-        message: response.data.message,
-      });
+      console.log(
+        "✅ ENHANCED: Sales order generation completed successfully:",
+        {
+          success: response.data.success,
+          salesOrderId: response.data.data?.salesOrder?._id,
+          salesOrderNumber: response.data.data?.salesOrder?.orderNumber,
+          customerCreated: response.data.data?.customerCreated,
+          customerLinked: response.data.data?.customerLinked,
+          sourceCompanyTracking: response.data.data?.sourceCompanyTracking,
+          bidirectionalTracking: response.data.data?.bidirectionalTracking,
+          detectionMethod,
+        }
+      );
 
       return {
         success: true,
@@ -3419,51 +4457,111 @@ class SaleOrderService {
           salesOrder: response.data.data?.salesOrder,
           purchaseOrder: response.data.data?.purchaseOrder,
           customer: response.data.data?.customer,
-          bidirectionalTracking: response.data.data?.bidirectionalTracking,
-          targetCompanyId: response.data.data?.targetCompanyId,
-          sourceCompanyId: buyerCompanyId,
-          supplierDetails: requestPayload.supplierDetails,
+
+          // ✅ Enhanced tracking information
+          enhancedTracking: {
+            detectionMethod,
+            targetCompanyId,
+            sourceCompanyId: buyerCompanyId,
+            supplierDetails,
+            targetCompanyDetails,
+            customerCreated: response.data.data?.customerCreated,
+            customerLinked: response.data.data?.customerLinked,
+            preservationApplied: {
+              items: enhancedPayload.preserveItemDetails,
+              pricing: enhancedPayload.preservePricing,
+              terms: enhancedPayload.preserveTerms,
+            },
+            validationResults: response.data.data?.bidirectionalTracking,
+            isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+            bidirectionalFlow:
+              enhancedPayload.enhancedTracking.bidirectionalFlow,
+          },
+
+          // ✅ Enhanced conversion summary
           conversionSummary: {
             originalPurchaseOrder: purchaseOrder.orderNumber,
             generatedSalesOrder: response.data.data?.salesOrder?.orderNumber,
-            buyerCompany: buyerCompanyDetails?.businessName,
+            buyerCompany:
+              purchaseOrder.companyId?.businessName || "Buyer Company",
             supplierCompany:
-              sourceCompanyDetails?.businessName || "Supplier Company",
-            customerCreated: response.data.data?.customerCreated,
-            customerLinked: response.data.data?.customerLinked,
+              targetCompanyDetails?.businessName || "Supplier Company",
+            supplier: supplierDetails.name,
+            detectionMethod,
             itemsConverted: response.data.data?.salesOrder?.items?.length || 0,
             totalAmount:
               response.data.data?.salesOrder?.totals?.finalTotal || 0,
+            preservationStatus: {
+              itemsPreserved: enhancedPayload.preserveItemDetails,
+              pricingPreserved: enhancedPayload.preservePricing,
+              termsPreserved: enhancedPayload.preserveTerms,
+            },
+            bidirectionalInfo: {
+              isBidirectionalPO: !!purchaseOrder.sourceCompanyId,
+              originalSourceCompany: purchaseOrder.sourceCompanyId,
+              isReverseFlow: detectionMethod === "bidirectional_source_company",
+              flowDescription: purchaseOrder.sourceCompanyId
+                ? `Reverse flow: Company ${purchaseOrder.sourceCompanyId} → PO in ${buyerCompanyId} → SO back to ${targetCompanyId}`
+                : "Standard flow: PO → SO generation",
+            },
           },
         },
         message:
           response.data.message ||
-          "Sales order generated from purchase order successfully",
+          "Sales order generated from purchase order successfully with enhanced bidirectional tracking",
       };
     } catch (error) {
-      console.error("❌ BIDIRECTIONAL GENERATION FAILED:", {
+      console.error("❌ ENHANCED: PO → SO generation failed:", {
         error: error.message,
         stack: error.stack,
         response: error.response?.data,
         status: error.response?.status,
       });
 
-      // ✅ Enhanced error messages
+      // ✅ Enhanced error categorization and messages
       let errorMessage = "Failed to generate sales order from purchase order";
+      let errorCategory = "GENERAL_ERROR";
 
-      if (error.message?.includes("same as buyer company")) {
+      if (
+        error.message?.includes("same as the buyer company") ||
+        error.message?.includes("CIRCULAR REFERENCE")
+      ) {
+        errorCategory = "CIRCULAR_REFERENCE";
         errorMessage = error.message; // Use the detailed circular reference error
-      } else if (error.message?.includes("Cannot determine target company")) {
+      } else if (
+        error.message?.includes("Cannot determine target company") ||
+        error.message?.includes("ENHANCED ERROR")
+      ) {
+        errorCategory = "TARGET_COMPANY_DETECTION";
         errorMessage = error.message; // Use the detailed target company error
-      } else if (error.message?.includes("no valid supplier")) {
+      } else if (error.message?.includes("already generated")) {
+        errorCategory = "DUPLICATE_GENERATION";
+        errorMessage = error.message; // Use the duplicate generation error
+      } else if (
+        error.message?.includes("no supplier") ||
+        error.message?.includes("Invalid supplier")
+      ) {
+        errorCategory = "SUPPLIER_VALIDATION";
         errorMessage = error.message; // Use the supplier validation error
+      } else if (error.message?.includes("Purchase Order ID is required")) {
+        errorCategory = "MISSING_PURCHASE_ORDER_ID";
+        errorMessage = "Purchase Order ID is required";
+      } else if (error.message?.includes("Invalid Purchase Order ID format")) {
+        errorCategory = "INVALID_PURCHASE_ORDER_ID";
+        errorMessage = "Invalid Purchase Order ID format";
+      } else if (error.message?.includes("Purchase order not found")) {
+        errorCategory = "PURCHASE_ORDER_NOT_FOUND";
+        errorMessage = "Purchase order not found";
       } else if (error.response?.status === 400) {
+        errorCategory = "BAD_REQUEST";
         errorMessage =
           error.response.data?.message ||
           "Invalid purchase order for conversion";
       } else if (error.response?.status === 404) {
+        errorCategory = "NOT_FOUND";
         errorMessage = "Purchase order not found";
       } else if (error.response?.status === 403) {
+        errorCategory = "PERMISSION_DENIED";
         errorMessage =
           "Access denied. You may not have permission to generate sales orders.";
       } else if (error.response?.data?.message) {
@@ -3475,6 +4573,7 @@ class SaleOrderService {
       return {
         success: false,
         message: errorMessage,
+        errorCategory,
         error: {
           originalError: error.message,
           response: error.response?.data,

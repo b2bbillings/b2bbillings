@@ -1,16 +1,47 @@
-import React, {useState, useEffect, useRef} from "react";
-import {Row, Col, Form, Spinner, Button, Card} from "react-bootstrap";
+import React, {useState, useEffect, useRef, useCallback} from "react";
+import {createPortal} from "react-dom";
+import {
+  Row,
+  Col,
+  Form,
+  Spinner,
+  Button,
+  Alert,
+  Container,
+  Card,
+  InputGroup,
+  Badge,
+} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
-  faUserPlus,
   faUser,
+  faUserPlus,
+  faPhone,
   faSpinner,
   faRefresh,
-  faCalendarAlt,
   faFileInvoice,
+  faCalendarAlt,
+  faSearch,
+  faTimes,
+  faEnvelope,
+  faBuilding,
+  faIdCard,
+  faExclamationTriangle,
   faTruck,
+  faArrowLeft,
+  faCheckCircle,
+  faEdit,
+  faSave,
+  faClipboard,
+  faCheck,
+  faReceipt,
+  faFileContract,
+  faEye,
+  faCog,
   faTag,
+  faShoppingCart,
 } from "@fortawesome/free-solid-svg-icons";
+import {useNavigate} from "react-router-dom";
 import partyService from "../../../../services/partyService";
 import purchaseOrderService from "../../../../services/purchaseOrderService";
 import authService from "../../../../services/authService";
@@ -25,45 +56,185 @@ function PurchaseOrderFormHeader({
   addToast,
   errors = {},
   disabled = false,
+  editMode = false,
+  onBack,
+  showHeader = true,
+  showBackButton = true,
+  hasUnsavedChanges = false,
 }) {
+  const navigate = useNavigate();
+
+  const entityType = "supplier";
+  const EntityTypeCapitalized = "Supplier";
+  const entityIcon = faUserPlus;
+
   const [currentUser, setCurrentUser] = useState(propCurrentUser || null);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [userError, setUserError] = useState(null);
 
-  // States for data loading
   const [parties, setParties] = useState([]);
   const [isLoadingParties, setIsLoadingParties] = useState(false);
   const [partySearchTerm, setPartySearchTerm] = useState("");
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
-  const [isGeneratingOrderNumber, setIsGeneratingOrderNumber] = useState(false);
   const [selectedPartySuggestionIndex, setSelectedPartySuggestionIndex] =
     useState(-1);
-  const [partyLoadError, setPartyLoadError] = useState(null);
+  const [searchError, setSearchError] = useState(null);
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
 
-  // Modal states for adding new party
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
   const [quickAddPartyData, setQuickAddPartyData] = useState(null);
 
-  // Refs for keyboard navigation
+  const [orderNumberPreview, setOrderNumberPreview] = useState("");
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+
   const partyInputRef = useRef(null);
+  const partyInputGroupRef = useRef(null);
   const isSelectingPartyRef = useRef(false);
   const searchTimeoutRef = useRef(null);
-  const shouldMaintainFocusRef = useRef(false);
-  const cursorPositionRef = useRef(0);
+  const dateInputRef = useRef(null);
 
   const fieldRefs = useRef({
     gstType: null,
-    deliveryDate: null,
     partyName: null,
+    purchaseOrderNumber: null,
     purchaseDate: null,
+    deliveryDate: null,
   });
 
-  // Initialize search term when formData.partyName changes
-  useEffect(() => {
-    if (formData.partyName && formData.partyName !== partySearchTerm) {
-      setPartySearchTerm(formData.partyName);
+  const getTheme = () => {
+    return {
+      primary: "#6366f1",
+      primaryLight: "#8b5cf6",
+      primaryDark: "#4f46e5",
+      primaryRgb: "99, 102, 241",
+      secondary: "#6c757d",
+      accent: "#8b5cf6",
+      background: "#f8fafc",
+      surface: "#ffffff",
+      success: "#10b981",
+      warning: "#f59e0b",
+      error: "#ef4444",
+      text: "#1e293b",
+      textMuted: "#64748b",
+      border: "#e2e8f0",
+      borderDark: "#cbd5e1",
+    };
+  };
+
+  const theme = getTheme();
+
+  const getInputStyle = (fieldName) => ({
+    borderColor: errors[fieldName] ? theme.error : theme.border,
+    fontSize: "14px",
+    padding: "10px 14px",
+    height: "42px",
+    borderWidth: "1px",
+    borderRadius: "0",
+    transition: "all 0.2s ease",
+    backgroundColor: theme.surface,
+    boxShadow: errors[fieldName] ? `0 0 0 2px rgba(239, 68, 68, 0.1)` : "none",
+  });
+
+  const updateDropdownPosition = useCallback(() => {
+    if (partyInputGroupRef.current) {
+      const rect = partyInputGroupRef.current.getBoundingClientRect();
+      const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+
+      setDropdownPosition({
+        top: rect.bottom + scrollY + 4,
+        left: rect.left + scrollX,
+        width: rect.width,
+      });
     }
-  }, [formData.partyName]);
+  }, []);
+
+  const loadOrderNumberPreview = useCallback(
+    async (gstTypeOverride = null) => {
+      if (editMode || !companyId) {
+        return;
+      }
+
+      try {
+        setIsLoadingPreview(true);
+        setPreviewError(null);
+
+        const gstType =
+          gstTypeOverride !== null ? gstTypeOverride : formData.gstType;
+
+        try {
+          const response = await purchaseOrderService.generateOrderNumber(
+            companyId,
+            formData.orderType || "purchase_order",
+            currentUser?.id || propCurrentUser?.id,
+            gstType
+          );
+
+          if (response.success && response.data?.nextOrderNumber) {
+            const previewNumber = response.data.nextOrderNumber;
+            setOrderNumberPreview(previewNumber);
+            return;
+          }
+        } catch (apiError) {
+          // Continue with fallback
+        }
+
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, "0");
+        const day = String(today.getDate()).padStart(2, "0");
+        const dateStr = `${year}${month}${day}`;
+
+        let companyPrefix = "PO";
+        if (currentCompany) {
+          if (currentCompany.code) {
+            companyPrefix = currentCompany.code
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "")
+              .substring(0, 6);
+          } else if (currentCompany.businessName) {
+            companyPrefix = currentCompany.businessName
+              .replace(/[^A-Za-z]/g, "")
+              .substring(0, 3)
+              .toUpperCase();
+          }
+        }
+
+        const gstPrefix = gstType === "gst" ? "GST-" : "NGST-";
+        const localPreview = `${companyPrefix}-PO-${gstPrefix}${dateStr}-XXXX`;
+        setOrderNumberPreview(localPreview);
+        setPreviewError("Using pattern preview");
+      } catch (error) {
+        setPreviewError(error.message || "Preview failed");
+
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, "0");
+        const day = String(today.getDate()).padStart(2, "0");
+        const gstType =
+          gstTypeOverride !== null ? gstTypeOverride : formData.gstType;
+        const gstPrefix = gstType === "gst" ? "GST-" : "NGST-";
+        const emergencyPreview = `PO-${gstPrefix}${year}${month}${day}-XXXX`;
+        setOrderNumberPreview(emergencyPreview);
+      } finally {
+        setIsLoadingPreview(false);
+      }
+    },
+    [
+      companyId,
+      formData.gstType,
+      formData.orderType,
+      editMode,
+      currentCompany,
+      currentUser,
+      propCurrentUser,
+    ]
+  );
 
   const fetchCurrentUser = async () => {
     try {
@@ -71,7 +242,6 @@ function PurchaseOrderFormHeader({
       setUserError(null);
 
       const userResult = await authService.getCurrentUserSafe();
-
       if (userResult.success && userResult.user) {
         setCurrentUser(userResult.user);
         return userResult.user;
@@ -121,51 +291,6 @@ function PurchaseOrderFormHeader({
     }
   };
 
-  const getUserDisplayInfo = () => {
-    const user = currentUser || propCurrentUser;
-
-    if (isLoadingUser) {
-      return {
-        displayText: "Loading user...",
-        isLoading: true,
-        hasUser: false,
-      };
-    }
-
-    if (userError) {
-      return {
-        displayText: "User unavailable",
-        isLoading: false,
-        hasUser: false,
-        error: userError,
-      };
-    }
-
-    if (formData.employeeName) {
-      return {
-        displayText: formData.employeeName,
-        isLoading: false,
-        hasUser: true,
-        user: user,
-      };
-    }
-
-    if (user?.name) {
-      return {
-        displayText: user.name,
-        isLoading: false,
-        hasUser: true,
-        user: user,
-      };
-    }
-
-    return {
-      displayText: "User information unavailable",
-      isLoading: false,
-      hasUser: false,
-    };
-  };
-
   const retryUserFetch = async () => {
     const user = await fetchCurrentUser();
     if (user) {
@@ -173,557 +298,141 @@ function PurchaseOrderFormHeader({
     }
   };
 
-  const maintainFocus = () => {
-    if (partyInputRef.current && shouldMaintainFocusRef.current) {
-      const currentPosition = cursorPositionRef.current;
-      partyInputRef.current.focus();
-      partyInputRef.current.setSelectionRange(currentPosition, currentPosition);
-      shouldMaintainFocusRef.current = false;
+  const handleInputChange = (field, value) => {
+    if (field === "gstType" && !editMode) {
+      setOrderNumberPreview("");
+      setIsLoadingPreview(true);
+      onFormDataChange(field, value);
+      setTimeout(() => {
+        loadOrderNumberPreview(value);
+      }, 50);
+      return;
+    }
+
+    onFormDataChange(field, value);
+  };
+
+  const handleBack = () => {
+    if (hasUnsavedChanges && !disabled) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to go back?"
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    if (onBack && typeof onBack === "function") {
+      onBack();
+    } else {
+      if (companyId) {
+        navigate(`/companies/${companyId}/purchase-orders`);
+      } else {
+        navigate(-1);
+      }
     }
   };
 
-  const loadParties = async (searchTerm = "") => {
-    if (!companyId) {
-      console.warn("🚫 No companyId provided for party loading");
-      setPartyLoadError("Company ID is required");
-      return;
+  useEffect(() => {
+    if (formData.partyName && formData.partyName !== partySearchTerm) {
+      setPartySearchTerm(formData.partyName);
     }
+  }, [formData.partyName]);
 
-    if (isLoadingParties) {
-      console.log("⏳ Already loading parties, skipping duplicate request");
-      return;
+  useEffect(() => {
+    if (!editMode && companyId) {
+      loadOrderNumberPreview();
     }
+  }, [loadOrderNumberPreview]);
+
+  const loadParties = async (searchTerm = "") => {
+    if (!companyId) return;
 
     try {
       setIsLoadingParties(true);
-      setPartyLoadError(null);
+      setSearchError(null);
 
-      console.log("🔍 Loading parties:", {
-        companyId,
-        searchTerm: searchTerm.trim(),
-        searchLength: searchTerm.length,
-        hasSearchTerm: Boolean(searchTerm && searchTerm.trim()),
-      });
-
-      const searchParams = {
-        search: searchTerm.trim(),
-        limit: searchTerm && searchTerm.trim() ? 50 : 20,
+      const response = await partyService.getParties(companyId, {
+        search: searchTerm,
+        limit: searchTerm ? 20 : 100,
+        type: entityType,
         page: 1,
         sortBy: "name",
         sortOrder: "asc",
-        includeInactive: false,
-      };
+      });
 
-      let response;
-      let supplierList = [];
+      if (response.success) {
+        const supplierList = response.data?.parties || response.data || [];
+        const formattedParties = supplierList.map((supplier) => ({
+          id: supplier._id || supplier.id,
+          name: supplier.name || supplier.partyName || "Unknown Supplier",
+          phone:
+            supplier.phoneNumber || supplier.phone || supplier.mobile || "",
+          email: supplier.email || "",
+          address: supplier.homeAddressLine || supplier.address || "",
+          gstNumber: supplier.gstNumber || "",
+          balance: supplier.currentBalance || supplier.balance || 0,
+          type: supplier.partyType || entityType,
+          companyName: supplier.companyName || "",
+          creditLimit: supplier.creditLimit || 0,
+        }));
 
-      try {
-        response = await partyService.getParties(companyId, {
-          ...searchParams,
-          type: "supplier",
-        });
-        console.log("📦 Supplier response:", response);
-      } catch (error) {
-        console.warn("⚠️ Supplier fetch failed, trying all parties:", error);
-      }
+        setParties(formattedParties);
 
-      if (
-        !response?.success ||
-        !response?.data ||
-        (Array.isArray(response.data) && response.data.length === 0) ||
-        (response.data.parties && response.data.parties.length === 0)
-      ) {
-        console.log("🔄 Trying to fetch all parties without type filter");
-        try {
-          response = await partyService.getParties(companyId, searchParams);
-          console.log("📦 All parties response:", response);
-        } catch (error) {
-          console.error("❌ All parties fetch failed:", error);
-          throw error;
+        if (searchTerm && !isSelectingPartyRef.current) {
+          setTimeout(() => {
+            updateDropdownPosition();
+            setShowPartySuggestions(true);
+          }, 100);
         }
-      }
-
-      if (response?.success) {
-        supplierList =
-          response.data?.parties ||
-          response.data?.data?.parties ||
-          response.data ||
-          response.parties ||
-          [];
-
-        console.log("📋 Raw party data:", supplierList);
-
-        if (!Array.isArray(supplierList)) {
-          console.warn("⚠️ Party data is not an array:", typeof supplierList);
-          supplierList = [];
-        }
-
-        const formattedParties = supplierList
-          .filter((party) => {
-            const hasName =
-              party &&
-              (party.name ||
-                party.partyName ||
-                party.supplierName ||
-                party.customerName ||
-                party.displayName ||
-                party.businessName);
-            console.log("🔍 Filtering party:", {party, hasName});
-            return hasName;
-          })
-          .map((party, index) => {
-            const formattedParty = {
-              id: party._id || party.id || `temp_${index}`,
-              name:
-                party.name ||
-                party.partyName ||
-                party.supplierName ||
-                party.customerName ||
-                party.displayName ||
-                party.businessName ||
-                "Unknown Supplier",
-              phone:
-                party.phoneNumber ||
-                party.phone ||
-                party.mobile ||
-                party.contactNumber ||
-                party.mobileNumber ||
-                "",
-              email: party.email || party.emailAddress || "",
-              address:
-                party.homeAddressLine ||
-                party.address ||
-                party.billingAddress ||
-                party.fullAddress ||
-                "",
-              gstNumber:
-                party.gstNumber || party.gstNo || party.taxNumber || "",
-              balance:
-                party.currentBalance ||
-                party.balance ||
-                party.openingBalance ||
-                0,
-              type:
-                party.partyType ||
-                party.type ||
-                party.supplierType ||
-                "supplier",
-              companyName: party.companyName || party.businessName || "",
-              creditLimit: party.creditLimit || 0,
-            };
-            console.log("✅ Formatted party:", formattedParty);
-            return formattedParty;
-          });
-
-        let finalParties = formattedParties;
-        if (searchTerm && searchTerm.trim().length >= 2) {
-          const searchLower = searchTerm.trim().toLowerCase();
-          finalParties = formattedParties.filter(
-            (party) =>
-              party.name.toLowerCase().includes(searchLower) ||
-              party.phone.includes(searchTerm.trim()) ||
-              (party.gstNumber &&
-                party.gstNumber.toLowerCase().includes(searchLower)) ||
-              (party.email && party.email.toLowerCase().includes(searchLower))
-          );
-          console.log(
-            `🔍 Filtered ${formattedParties.length} parties to ${finalParties.length} based on search: "${searchTerm}"`
-          );
-        }
-
-        console.log("📊 Final formatted parties:", finalParties);
-        setParties(finalParties);
-
-        if (
-          searchTerm &&
-          searchTerm.trim().length >= 2 &&
-          !isSelectingPartyRef.current
-        ) {
-          setShowPartySuggestions(true);
-        } else {
-          setShowPartySuggestions(false);
-        }
-
-        if (finalParties.length > 0) {
-          console.log(`✅ Successfully loaded ${finalParties.length} parties`);
-          if (searchTerm && searchTerm.trim()) {
-            console.log(
-              `🔍 Search results for "${searchTerm}":`,
-              finalParties.map((p) => p.name)
-            );
-          }
-        } else {
-          console.log("📭 No parties found");
-          if (searchTerm && searchTerm.trim().length >= 2) {
-            setPartyLoadError(`No suppliers found matching "${searchTerm}"`);
-          } else if (!searchTerm || searchTerm.trim().length === 0) {
-            setPartyLoadError(
-              "No suppliers found. Click 'Add New Supplier' to create one."
-            );
-          }
-        }
-
-        setTimeout(maintainFocus, 10);
       } else {
-        console.error("❌ Party service response not successful:", response);
         setParties([]);
-        setPartyLoadError(response?.message || "Failed to load suppliers");
+        addToast?.(
+          `Failed to load ${entityType}s: ` +
+            (response.message || "Unknown error"),
+          "error"
+        );
       }
     } catch (error) {
-      console.error("❌ Error loading parties:", error);
       setParties([]);
-      setPartyLoadError(error.message || "Failed to load suppliers");
-
-      if (addToast) {
-        addToast(`Error loading suppliers: ${error.message}`, "error");
-      }
+      setSearchError(`Failed to load ${entityType}s: ${error.message}`);
+      addToast?.(`Failed to load ${entityType}s: ${error.message}`, "error");
     } finally {
       setIsLoadingParties(false);
     }
   };
 
-  const retryPartyLoad = () => {
-    console.log("🔄 Retrying party load");
-    setPartyLoadError(null);
-    loadParties(partySearchTerm);
-  };
-
-  const searchPartiesAlternative = async (searchTerm) => {
-    if (!companyId || !searchTerm || searchTerm.trim().length < 2) {
-      console.log("🚫 Skipping alternative search - insufficient criteria");
-      return;
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
 
-    if (isLoadingParties) {
-      console.log("⏳ Already loading, skipping alternative search");
-      return;
-    }
-
-    try {
-      console.log("🔍 Alternative search for:", searchTerm);
-
-      let response;
-
-      try {
-        response = await partyService.searchParties({
-          query: searchTerm,
-          partyType: "supplier",
-          limit: 20,
-        });
-        console.log("📦 Search parties response:", response);
-      } catch (error) {
-        console.warn("⚠️ Search parties failed:", error);
-      }
-
-      if (!response?.success || !response?.data || response.data.length === 0) {
+    if (
+      partySearchTerm.length >= 2 &&
+      !isSelectingPartyRef.current &&
+      !formData.selectedParty
+    ) {
+      searchTimeoutRef.current = setTimeout(async () => {
         try {
-          response = await partyService.getParties(companyId, {
-            search: searchTerm,
-            type: "supplier",
-            limit: 20,
-          });
-          console.log("📦 Get parties with search response:", response);
+          await loadParties(partySearchTerm);
         } catch (error) {
-          console.warn("⚠️ Get parties with search failed:", error);
+          // Handle error silently
         }
-      }
-
-      if (
-        !response?.success ||
-        !response?.data ||
-        (Array.isArray(response.data) && response.data.length === 0)
-      ) {
-        console.log("🔄 Fallback to load all and filter locally");
-        await loadParties(searchTerm);
-        return;
-      }
-
-      if (response?.success && response.data) {
-        const supplierList = response.data?.parties || response.data || [];
-
-        if (Array.isArray(supplierList) && supplierList.length > 0) {
-          const formattedParties = supplierList.map((supplier) => ({
-            id: supplier._id || supplier.id,
-            name: supplier.name || supplier.partyName || "Unknown Supplier",
-            phone:
-              supplier.phoneNumber ||
-              supplier.phone ||
-              supplier.mobile ||
-              supplier.contactNumber ||
-              "",
-            email: supplier.email || "",
-            address: supplier.homeAddressLine || supplier.address || "",
-            gstNumber: supplier.gstNumber || "",
-            balance:
-              supplier.currentBalance ||
-              supplier.balance ||
-              supplier.openingBalance ||
-              0,
-            type: supplier.partyType || "supplier",
-            companyName: supplier.companyName || "",
-            creditLimit: supplier.creditLimit || 0,
-          }));
-
-          setParties(formattedParties);
-
-          if (!isSelectingPartyRef.current) {
-            setShowPartySuggestions(true);
-          }
-
-          console.log(
-            `✅ Alternative search found ${formattedParties.length} suppliers`
-          );
-        } else {
-          console.log("📭 Alternative search returned no results");
-          setPartyLoadError(`No suppliers found matching "${searchTerm}"`);
-        }
-      }
-    } catch (error) {
-      console.error("❌ Alternative search failed:", error);
-      await loadParties(searchTerm);
-    }
-  };
-
-  // ✅ FIXED: Enhanced order number generation with proper error handling
-  const generateOrderNumber = async () => {
-    if (!companyId) {
-      console.warn("🚫 Cannot generate order number: Company ID is required");
-      addToast?.("Company ID is required for order number generation", "error");
-      return;
+      }, 300);
+    } else if (partySearchTerm.length === 0) {
+      setShowPartySuggestions(false);
+      loadParties();
     }
 
-    try {
-      setIsGeneratingOrderNumber(true);
-      console.log("🔢 Generating order number for company:", companyId);
-
-      // ✅ Use the purchaseOrderService method that calls the backend endpoint
-      const response = await purchaseOrderService.generateOrderNumber(
-        companyId,
-        formData.orderType || "purchase_order",
-        currentUser?.id || propCurrentUser?.id
-      );
-
-      console.log("📦 Order number generation response:", response);
-
-      if (response.success && response.data?.nextOrderNumber) {
-        const generatedNumber = response.data.nextOrderNumber;
-        console.log("✅ Successfully generated order number:", generatedNumber);
-
-        // ✅ FIXED: Update both field names for full compatibility
-        onFormDataChange("purchaseOrderNumber", generatedNumber);
-        onFormDataChange("orderNumber", generatedNumber);
-
-        // Show success message
-        if (addToast) {
-          addToast(`Order number generated: ${generatedNumber}`, "success");
-        }
-
-        return generatedNumber;
-      } else {
-        // Handle API failure
-        console.warn("⚠️ Backend generation failed, using fallback");
-
-        // Generate fallback number
-        const now = new Date();
-        const year = now.getFullYear().toString().slice(-2);
-        const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        const day = now.getDate().toString().padStart(2, "0");
-        const hours = now.getHours().toString().padStart(2, "0");
-        const minutes = now.getMinutes().toString().padStart(2, "0");
-        const seconds = now.getSeconds().toString().padStart(2, "0");
-
-        const fallbackNumber = `PO-${year}${month}${day}-${hours}${minutes}${seconds}`;
-
-        console.log("🚨 Using fallback order number:", fallbackNumber);
-
-        onFormDataChange("purchaseOrderNumber", fallbackNumber);
-        onFormDataChange("orderNumber", fallbackNumber);
-
-        if (addToast) {
-          addToast(
-            `Order number generated (fallback): ${fallbackNumber}`,
-            "warning"
-          );
-        }
-
-        return fallbackNumber;
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
       }
-    } catch (error) {
-      console.error("❌ Error generating order number:", error);
-
-      // Emergency fallback with more unique number
-      const timestamp = Date.now().toString();
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      const emergencyNumber = `PO-EMRG-${timestamp.slice(-8)}-${randomNum}`;
-
-      console.log("🚨 Using emergency order number:", emergencyNumber);
-
-      onFormDataChange("purchaseOrderNumber", emergencyNumber);
-      onFormDataChange("orderNumber", emergencyNumber);
-
-      if (addToast) {
-        addToast(
-          `Order generation failed. Using emergency number: ${emergencyNumber}`,
-          "error"
-        );
-      }
-
-      return emergencyNumber;
-    } finally {
-      setIsGeneratingOrderNumber(false);
-    }
-  };
-
-  const focusNextField = (currentField) => {
-    const fieldOrder = ["gstType", "deliveryDate", "partyName", "purchaseDate"];
-    const currentIndex = fieldOrder.indexOf(currentField);
-
-    if (currentIndex < fieldOrder.length - 1) {
-      const nextField = fieldOrder[currentIndex + 1];
-      const nextFieldRef = fieldRefs.current[nextField];
-      if (nextFieldRef) {
-        nextFieldRef.focus();
-        if (nextFieldRef.select) nextFieldRef.select();
-      }
-    } else {
-      const firstProductInput = document.querySelector(
-        '[data-product-input="0"]'
-      );
-      if (firstProductInput) {
-        firstProductInput.focus();
-      }
-    }
-  };
-
-  const handleFieldKeyDown = (e, fieldName) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-
-      if (fieldName === "partyName") {
-        if (showPartySuggestions && selectedPartySuggestionIndex >= 0) {
-          const filteredParties = parties.filter(
-            (party) =>
-              party.name
-                .toLowerCase()
-                .includes(partySearchTerm.toLowerCase()) ||
-              party.phone.includes(partySearchTerm)
-          );
-
-          if (selectedPartySuggestionIndex < filteredParties.length) {
-            handlePartySelect(filteredParties[selectedPartySuggestionIndex]);
-            return;
-          } else if (selectedPartySuggestionIndex === filteredParties.length) {
-            handleAddNewParty();
-            return;
-          }
-        }
-      }
-
-      focusNextField(fieldName);
-    }
-  };
-
-  const handlePartySearchKeyDown = (e) => {
-    if (!showPartySuggestions) {
-      handleFieldKeyDown(e, "partyName");
-      return;
-    }
-
-    const filteredParties = parties.filter(
-      (party) =>
-        party.name.toLowerCase().includes(partySearchTerm.toLowerCase()) ||
-        party.phone.includes(partySearchTerm)
-    );
-
-    const hasAddNewOption =
-      filteredParties.length === 0 || partySearchTerm.length >= 2;
-    const totalOptions = filteredParties.length + (hasAddNewOption ? 1 : 0);
-
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setSelectedPartySuggestionIndex((prev) =>
-          Math.min(prev + 1, totalOptions - 1)
-        );
-        break;
-
-      case "ArrowUp":
-        e.preventDefault();
-        setSelectedPartySuggestionIndex((prev) => Math.max(prev - 1, -1));
-        break;
-
-      case "Enter":
-        e.preventDefault();
-        if (selectedPartySuggestionIndex === -1) {
-          focusNextField("partyName");
-        } else if (selectedPartySuggestionIndex < filteredParties.length) {
-          handlePartySelect(filteredParties[selectedPartySuggestionIndex]);
-        } else if (
-          hasAddNewOption &&
-          selectedPartySuggestionIndex === filteredParties.length
-        ) {
-          handleAddNewParty();
-        }
-        break;
-
-      case "Escape":
-        e.preventDefault();
-        setShowPartySuggestions(false);
-        setSelectedPartySuggestionIndex(-1);
-        break;
-
-      case "Tab":
-        setShowPartySuggestions(false);
-        setSelectedPartySuggestionIndex(-1);
-        break;
-
-      default:
-        setSelectedPartySuggestionIndex(-1);
-        break;
-    }
-  };
-
-  const handleAddNewParty = () => {
-    isSelectingPartyRef.current = true;
-    setQuickAddPartyData({
-      name: partySearchTerm || "",
-      type: "supplier",
-    });
-    setShowAddPartyModal(true);
-    setShowPartySuggestions(false);
-  };
-
-  const handlePartyCreated = (newParty) => {
-    const formattedParty = {
-      id: newParty._id || newParty.id,
-      name: newParty.name || newParty.partyName,
-      phone: newParty.phoneNumber || newParty.phone || newParty.mobile || "",
-      email: newParty.email || "",
-      address: newParty.homeAddressLine || newParty.address || "",
-      gstNumber: newParty.gstNumber || "",
-      balance: newParty.currentBalance || newParty.balance || 0,
-      type: newParty.partyType || "supplier",
-      companyName: newParty.companyName || "",
-      creditLimit: newParty.creditLimit || 0,
     };
-
-    handlePartySelect(formattedParty);
-    setParties((prev) => [formattedParty, ...prev]);
-    setShowAddPartyModal(false);
-    setShowPartySuggestions(false);
-
-    setTimeout(() => {
-      isSelectingPartyRef.current = false;
-      const purchaseDateRef = fieldRefs.current.purchaseDate;
-      if (purchaseDateRef) {
-        purchaseDateRef.focus();
-      }
-    }, 100);
-  };
+  }, [partySearchTerm]);
 
   useEffect(() => {
     if (companyId) {
-      console.log("🏢 Component mounted with companyId:", companyId);
       loadParties();
 
       if (propCurrentUser) {
@@ -738,23 +447,6 @@ function PurchaseOrderFormHeader({
       } else {
         autoFillUserData(currentUser);
       }
-
-      // ✅ FIXED: Only auto-generate if no order number exists and not editing
-      if (
-        (!formData.purchaseOrderNumber ||
-          formData.purchaseOrderNumber.trim() === "") &&
-        !formData.isEditing
-      ) {
-        console.log(
-          "📝 No order number found, generating after component mount"
-        );
-        // Use a small delay to ensure component is fully mounted
-        const timer = setTimeout(() => {
-          generateOrderNumber();
-        }, 500);
-
-        return () => clearTimeout(timer);
-      }
     }
   }, [companyId, propCurrentUser]);
 
@@ -767,94 +459,64 @@ function PurchaseOrderFormHeader({
   }, [propCurrentUser]);
 
   useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    if (partySearchTerm.length >= 2 && !isSelectingPartyRef.current) {
-      searchTimeoutRef.current = setTimeout(async () => {
-        try {
-          console.log("🔍 Debounced search triggered for:", partySearchTerm);
-          await searchPartiesAlternative(partySearchTerm);
-        } catch (error) {
-          console.error("❌ Search failed, falling back to load all:", error);
-          await loadParties(partySearchTerm);
-        }
-      }, 300);
-    } else if (partySearchTerm.length === 0 && !isSelectingPartyRef.current) {
-      console.log("🧹 Input cleared, loading all parties once");
-      setShowPartySuggestions(false);
-      setPartyLoadError(null);
-
-      if (parties.length === 0 || partySearchTerm !== "") {
-        loadParties();
-      }
-    } else if (partySearchTerm.length === 1) {
-      console.log("📝 Single character entered, waiting for more input");
-      setPartyLoadError(null);
-      setShowPartySuggestions(false);
-    }
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
+    const handlePositionUpdate = () => {
+      if (showPartySuggestions) {
+        updateDropdownPosition();
       }
     };
-  }, [partySearchTerm, companyId]);
 
-  const handleInputChange = (field, value) => {
-    onFormDataChange(field, value);
+    const handleScroll = (e) => {
+      if (e && e.target && typeof e.target.closest === "function") {
+        if (!e.target.closest('[data-dropdown="supplier-suggestions"]')) {
+          setShowPartySuggestions(false);
+        }
+      } else {
+        setShowPartySuggestions(false);
+      }
+      handlePositionUpdate();
+    };
 
-    if (field === "gstType") {
-      onFormDataChange("_gstTypeChanged", Date.now());
-    }
-  };
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handlePositionUpdate);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handlePositionUpdate);
+    };
+  }, [showPartySuggestions, updateDropdownPosition]);
 
   const handlePartySearchChange = (value) => {
     if (isSelectingPartyRef.current) {
       return;
     }
 
-    console.log("🔍 Party search changed:", value);
-    shouldMaintainFocusRef.current = true;
-    cursorPositionRef.current = partyInputRef.current?.selectionStart || 0;
-
     setPartySearchTerm(value);
     onFormDataChange("partyName", value);
+    onFormDataChange("supplierName", value);
 
-    // ✅ ADDED: Sync backend field names when party name changes
-    onFormDataChange("supplierName", value); // Backend expects this field
-
-    // Clear selected party if user is typing different text
     if (formData.selectedParty && value !== formData.partyName) {
       onFormDataChange("selectedParty", "");
-      onFormDataChange("supplier", ""); // Backend field
+      onFormDataChange("supplier", "");
       onFormDataChange("partyPhone", "");
-      onFormDataChange("supplierMobile", ""); // Backend field
+      onFormDataChange("supplierMobile", "");
       onFormDataChange("partyEmail", "");
-      onFormDataChange("supplierEmail", ""); // Backend field
+      onFormDataChange("supplierEmail", "");
       onFormDataChange("partyAddress", "");
       onFormDataChange("partyGstNumber", "");
-    }
-
-    if (value.length === 0) {
-      setShowPartySuggestions(false);
-      setSelectedPartySuggestionIndex(-1);
     }
   };
 
   const handlePartySelect = (party) => {
     isSelectingPartyRef.current = true;
 
-    // ✅ FIXED: Update both frontend and backend field names
     onFormDataChange("selectedParty", party.id);
-    onFormDataChange("supplier", party.id); // Backend field
+    onFormDataChange("supplier", party.id);
     onFormDataChange("partyName", party.name);
-    onFormDataChange("supplierName", party.name); // Backend field
+    onFormDataChange("supplierName", party.name);
     onFormDataChange("partyPhone", party.phone);
-    onFormDataChange("supplierMobile", party.phone); // Backend field
+    onFormDataChange("supplierMobile", party.phone);
     onFormDataChange("partyEmail", party.email);
-    onFormDataChange("supplierEmail", party.email); // Backend field
+    onFormDataChange("supplierEmail", party.email);
     onFormDataChange("partyAddress", party.address);
     onFormDataChange("partyGstNumber", party.gstNumber);
 
@@ -864,30 +526,62 @@ function PurchaseOrderFormHeader({
 
     setTimeout(() => {
       isSelectingPartyRef.current = false;
-      const purchaseDateRef = fieldRefs.current.purchaseDate;
-      if (purchaseDateRef) {
-        purchaseDateRef.focus();
-      }
     }, 200);
+  };
+
+  const handleAddNewParty = () => {
+    isSelectingPartyRef.current = true;
+    setQuickAddPartyData({
+      name: partySearchTerm || "",
+      type: entityType,
+    });
+    setShowAddPartyModal(true);
+    setShowPartySuggestions(false);
+  };
+
+  const handlePartyCreated = (newParty) => {
+    const formattedParty = {
+      id: newParty._id || newParty.id,
+      name: newParty.name || newParty.partyName,
+      phone: newParty.phoneNumber || newParty.phone || newParty.mobile || "",
+      email: newParty.email || "",
+      address: newParty.homeAddressLine || newParty.address || "",
+      gstNumber: newParty.gstNumber || "",
+      balance: newParty.currentBalance || newParty.balance || 0,
+      type: newParty.partyType || entityType,
+      companyName: newParty.companyName || "",
+      creditLimit: newParty.creditLimit || 0,
+    };
+
+    handlePartySelect(formattedParty);
+    setParties((prev) => [formattedParty, ...prev]);
+    setShowAddPartyModal(false);
+    setShowPartySuggestions(false);
+
+    addToast?.(
+      `${EntityTypeCapitalized} "${formattedParty.name}" created and selected successfully!`,
+      "success"
+    );
+
+    setTimeout(() => {
+      isSelectingPartyRef.current = false;
+    }, 100);
   };
 
   const clearPartySelection = () => {
     isSelectingPartyRef.current = true;
-
-    // ✅ FIXED: Clear both frontend and backend field names
     onFormDataChange("selectedParty", "");
-    onFormDataChange("supplier", ""); // Backend field
+    onFormDataChange("supplier", "");
     onFormDataChange("partyName", "");
-    onFormDataChange("supplierName", ""); // Backend field
+    onFormDataChange("supplierName", "");
     onFormDataChange("partyPhone", "");
-    onFormDataChange("supplierMobile", ""); // Backend field
+    onFormDataChange("supplierMobile", "");
     onFormDataChange("partyEmail", "");
-    onFormDataChange("supplierEmail", ""); // Backend field
+    onFormDataChange("supplierEmail", "");
     onFormDataChange("partyAddress", "");
     onFormDataChange("partyGstNumber", "");
     setPartySearchTerm("");
     setShowPartySuggestions(false);
-    setPartyLoadError(null);
 
     setTimeout(() => {
       isSelectingPartyRef.current = false;
@@ -895,13 +589,16 @@ function PurchaseOrderFormHeader({
   };
 
   const handlePartyInputFocus = () => {
-    if (
-      partySearchTerm.length >= 2 &&
-      !isSelectingPartyRef.current &&
-      !formData.selectedParty
-    ) {
-      setShowPartySuggestions(true);
-    }
+    setTimeout(() => {
+      updateDropdownPosition();
+      if (
+        partySearchTerm.length >= 2 &&
+        !isSelectingPartyRef.current &&
+        !formData.selectedParty
+      ) {
+        setShowPartySuggestions(true);
+      }
+    }, 150);
   };
 
   const handlePartyInputBlur = () => {
@@ -911,692 +608,768 @@ function PurchaseOrderFormHeader({
           setShowPartySuggestions(false);
           setSelectedPartySuggestionIndex(-1);
         }
-      }, 150);
+      }, 200);
+    }
+  };
+
+  const handleDateInputGroupClick = () => {
+    if (dateInputRef.current) {
+      dateInputRef.current.focus();
+      dateInputRef.current.showPicker();
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (!showPartySuggestions) return;
+
+    const totalOptions =
+      filteredParties.length + (partySearchTerm.trim() ? 1 : 0);
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedPartySuggestionIndex((prev) =>
+          prev < totalOptions - 1 ? prev + 1 : 0
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedPartySuggestionIndex((prev) =>
+          prev > 0 ? prev - 1 : totalOptions - 1
+        );
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (selectedPartySuggestionIndex >= 0) {
+          if (selectedPartySuggestionIndex < filteredParties.length) {
+            handlePartySelect(filteredParties[selectedPartySuggestionIndex]);
+          } else {
+            handleAddNewParty();
+          }
+        }
+        break;
+      case "Escape":
+        setShowPartySuggestions(false);
+        setSelectedPartySuggestionIndex(-1);
+        break;
     }
   };
 
   const filteredParties = parties.filter(
     (party) =>
       party.name.toLowerCase().includes(partySearchTerm.toLowerCase()) ||
-      party.phone.includes(partySearchTerm) ||
-      (party.gstNumber &&
-        party.gstNumber.toLowerCase().includes(partySearchTerm.toLowerCase()))
+      party.phone.includes(partySearchTerm)
   );
 
-  const userDisplayInfo = getUserDisplayInfo();
-
-  // Theme-consistent styling
-  const inputStyle = {
-    borderColor: "#000",
-    fontSize: "13px",
-    padding: "10px 14px",
-    height: "42px",
-    borderWidth: "2px",
-    borderRadius: "8px",
-    fontWeight: "500",
+  const getDocumentLabels = () => {
+    return {
+      documentNumber: "Purchase Order Number",
+      documentDate: "Purchase Date",
+      documentIcon: faShoppingCart,
+      documentType: "Purchase Order",
+      formatPrefix: "PO",
+      headerTitle: editMode ? "Edit Purchase Order" : "Create Purchase Order",
+      headerSubtitle: editMode
+        ? `Updating purchase order${
+            formData.purchaseOrderNumber
+              ? ` ${formData.purchaseOrderNumber}`
+              : ""
+          }`
+        : "Create a new purchase order for your suppliers",
+    };
   };
 
-  const getInputStyleWithError = (fieldName) => ({
-    ...inputStyle,
-    borderColor: errors[fieldName] ? "#dc3545" : "#000",
-    backgroundColor: errors[fieldName] ? "#fff5f5" : "white",
-  });
+  const documentLabels = getDocumentLabels();
 
-  const labelStyle = {
-    fontSize: "14px",
-    fontWeight: "bold",
-    marginBottom: "8px",
-    color: "#2c3e50",
-  };
+  if (!showHeader) {
+    return null;
+  }
 
-  const cardStyle = {
-    border: "3px solid #000",
-    borderRadius: "12px",
-    backgroundColor: "white",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+  const SupplierDropdown = () => {
+    if (!showPartySuggestions || formData.selectedParty) return null;
+
+    return createPortal(
+      <div
+        className="bg-white border shadow-lg"
+        data-dropdown="supplier-suggestions"
+        style={{
+          position: "absolute",
+          zIndex: 1050,
+          top: `${dropdownPosition.top}px`,
+          left: `${dropdownPosition.left}px`,
+          width: `${dropdownPosition.width}px`,
+          maxHeight: "400px",
+          overflowY: "auto",
+          border: `1px solid ${theme.border}`,
+          borderRadius: "0",
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+          backgroundColor: "white",
+          minWidth: "320px",
+        }}
+        onMouseDown={(e) => {
+          if (e.target.closest("[data-party-item]")) {
+            e.preventDefault();
+          }
+        }}
+      >
+        {isLoadingParties ? (
+          <div className="p-3 text-center">
+            <Spinner
+              size="sm"
+              className="me-2"
+              style={{color: theme.primary}}
+            />
+            <span className="text-muted">Searching suppliers...</span>
+          </div>
+        ) : filteredParties.length > 0 ? (
+          <>
+            <div
+              className="p-2 border-bottom fw-bold"
+              style={{
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderBottom: `1px solid ${theme.border}`,
+              }}
+            >
+              <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+              Found {filteredParties.length} supplier
+              {filteredParties.length > 1 ? "s" : ""}
+            </div>
+
+            {filteredParties.slice(0, 8).map((party, index) => (
+              <div
+                key={party.id}
+                data-party-item="true"
+                className={`p-2 ${
+                  index === selectedPartySuggestionIndex ? "text-white" : ""
+                }`}
+                style={{
+                  cursor: "pointer",
+                  borderBottom:
+                    index === filteredParties.slice(0, 8).length - 1
+                      ? "none"
+                      : `1px solid ${theme.border}`,
+                  transition: "all 0.2s ease",
+                  backgroundColor:
+                    index === selectedPartySuggestionIndex
+                      ? theme.primary
+                      : "transparent",
+                }}
+                onClick={() => handlePartySelect(party)}
+                onMouseEnter={() => setSelectedPartySuggestionIndex(index)}
+              >
+                <div className="d-flex align-items-center">
+                  <div className="flex-grow-1">
+                    <div className="fw-bold mb-1">{party.name}</div>
+                    <small
+                      className={
+                        index === selectedPartySuggestionIndex
+                          ? "text-white-50"
+                          : "text-muted"
+                      }
+                    >
+                      {party.phone && (
+                        <>
+                          <FontAwesomeIcon icon={faPhone} className="me-1" />
+                          {party.phone}
+                        </>
+                      )}
+                      {party.gstNumber && ` | GST: ${party.gstNumber}`}
+                      {party.balance !== 0 && ` | ₹${party.balance}`}
+                    </small>
+                  </div>
+                  <FontAwesomeIcon
+                    icon={faCheck}
+                    className={`ms-2 ${
+                      index === selectedPartySuggestionIndex
+                        ? "text-white"
+                        : "text-success"
+                    }`}
+                  />
+                </div>
+              </div>
+            ))}
+
+            {partySearchTerm.trim() && (
+              <div
+                data-party-item="true"
+                className={`p-2 border-top ${
+                  selectedPartySuggestionIndex === filteredParties.length
+                    ? "text-white"
+                    : ""
+                }`}
+                style={{
+                  cursor: "pointer",
+                  borderTop: `1px solid ${theme.border}`,
+                  transition: "all 0.2s ease",
+                  backgroundColor:
+                    selectedPartySuggestionIndex === filteredParties.length
+                      ? theme.success
+                      : theme.background,
+                }}
+                onClick={handleAddNewParty}
+                onMouseEnter={() =>
+                  setSelectedPartySuggestionIndex(filteredParties.length)
+                }
+              >
+                <div className="d-flex align-items-center">
+                  <FontAwesomeIcon
+                    icon={faUserPlus}
+                    className={`me-2 ${
+                      selectedPartySuggestionIndex === filteredParties.length
+                        ? "text-white"
+                        : "text-success"
+                    }`}
+                  />
+                  <div>
+                    <div
+                      className={`fw-bold ${
+                        selectedPartySuggestionIndex === filteredParties.length
+                          ? "text-white"
+                          : "text-success"
+                      }`}
+                    >
+                      Create "{partySearchTerm}"
+                    </div>
+                    <small
+                      className={
+                        selectedPartySuggestionIndex === filteredParties.length
+                          ? "text-white-50"
+                          : "text-muted"
+                      }
+                    >
+                      Add this as a new supplier
+                    </small>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="p-3">
+            <div className="text-center text-muted mb-2">
+              <FontAwesomeIcon
+                icon={faUserPlus}
+                size="2x"
+                className="mb-2 d-block"
+              />
+              <div className="fw-bold">No suppliers found</div>
+              <small>for "{partySearchTerm}"</small>
+            </div>
+
+            {partySearchTerm.trim() && (
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="w-100"
+                onClick={handleAddNewParty}
+                style={{
+                  borderColor: theme.primary,
+                  color: theme.primary,
+                  transition: "all 0.2s ease",
+                  borderRadius: "0",
+                }}
+              >
+                <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+                Create "{partySearchTerm}" as new supplier
+              </Button>
+            )}
+          </div>
+        )}
+      </div>,
+      document.body
+    );
   };
 
   return (
-    <div className="purchase-order-form-header mb-4">
-      {/* Header Section */}
-      <Card className="mb-4" style={cardStyle}>
-        <Card.Header
-          className="bg-light border-bottom-3"
-          style={{borderBottomColor: "#000", padding: "15px 20px"}}
-        >
-          <div className="d-flex align-items-center">
-            <FontAwesomeIcon
-              icon={faFileInvoice}
-              className="me-3 text-primary"
-              size="lg"
-            />
-            <h5 className="mb-0 fw-bold text-dark">Purchase Order Details</h5>
+    <>
+      <style>
+        {`
+          .card,
+          .card *,
+          .btn,
+          .btn *,
+          .form-control,
+          .form-select,
+          .input-group-text,
+          .badge,
+          .dropdown-menu,
+          .modal-content,
+          .modal-header,
+          .modal-body,
+          .modal-footer,
+          .alert {
+            border-radius: 0 !important;
+            -webkit-border-radius: 0 !important;
+            -moz-border-radius: 0 !important;
+            -ms-border-radius: 0 !important;
+          }
+          
+          * {
+            --bs-border-radius: 0 !important;
+            --bs-border-radius-sm: 0 !important;
+            --bs-border-radius-lg: 0 !important;
+            --bs-border-radius-xl: 0 !important;
+            --bs-border-radius-2xl: 0 !important;
+            --bs-border-radius-pill: 0 !important;
+          }
+
+          .form-label {
+            font-size: 15px !important;
+            font-weight: 600 !important;
+          }
+        `}
+      </style>
+
+      <Container
+        fluid
+        className="px-0"
+        style={{maxWidth: "1200px", margin: "0 auto"}}
+      >
+        {showBackButton && (
+          <div
+            className="d-flex align-items-center mb-2 p-3"
+            style={{
+              background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryLight} 100%)`,
+              color: "white",
+              boxShadow: `0 4px 20px rgba(${theme.primaryRgb}, 0.3)`,
+            }}
+          >
+            <Button
+              variant="link"
+              onClick={handleBack}
+              className="text-white p-0 me-3"
+              style={{
+                fontSize: "18px",
+                textDecoration: "none",
+                border: "none",
+                background: "none",
+              }}
+            >
+              <FontAwesomeIcon icon={faArrowLeft} />
+            </Button>
+            <div>
+              <h4 className="mb-1 fw-bold">{documentLabels.headerTitle}</h4>
+              <small className="opacity-90">
+                {documentLabels.headerSubtitle}
+              </small>
+            </div>
           </div>
-        </Card.Header>
-        <Card.Body className="p-4">
-          <Row className="g-4">
-            {/* Left Column */}
-            <Col md={6}>
-              <Form.Group className="mb-4">
-                <Form.Label
-                  className="d-flex align-items-center"
-                  style={labelStyle}
-                >
-                  <FontAwesomeIcon icon={faTag} className="me-2 text-primary" />
-                  GST / Non GST *
-                </Form.Label>
-                <Form.Select
-                  ref={(el) => (fieldRefs.current.gstType = el)}
-                  value={formData.gstType || "gst"}
-                  onChange={(e) => handleInputChange("gstType", e.target.value)}
-                  onKeyDown={(e) => handleFieldKeyDown(e, "gstType")}
-                  style={{
-                    ...getInputStyleWithError("gstType"),
-                    backgroundColor:
-                      formData.gstType === "gst" ? "#e8f5e8" : "#fff3e0",
-                    cursor: "pointer",
-                  }}
-                  disabled={disabled}
-                  isInvalid={!!errors.gstType}
-                >
-                  <option value="gst">✅ GST Applicable</option>
-                  <option value="non-gst">❌ Non-GST</option>
-                </Form.Select>
-                {errors.gstType && (
-                  <Form.Control.Feedback
-                    type="invalid"
-                    style={{fontSize: "12px", fontWeight: "bold"}}
+        )}
+
+        <Card
+          className="mb-2"
+          style={{
+            border: "none",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryLight} 100%)`,
+              color: "white",
+              padding: "16px 20px",
+            }}
+          >
+            <div className="d-flex align-items-center">
+              <FontAwesomeIcon
+                icon={documentLabels.documentIcon}
+                size="lg"
+                className="me-3"
+              />
+              <h5 className="mb-0 fw-bold">
+                {documentLabels.documentType} Details
+              </h5>
+            </div>
+          </div>
+
+          <Card.Body style={{padding: "16px"}}>
+            <Row className="g-2">
+              <Col lg={6} md={6}>
+                <Form.Group>
+                  <Form.Label className="d-flex align-items-center fw-bold text-primary mb-2">
+                    <FontAwesomeIcon icon={faTag} className="me-2 text-info" />
+                    GST / Non GST *
+                  </Form.Label>
+                  <Form.Select
+                    value={formData.gstType || "gst"}
+                    onChange={(e) =>
+                      handleInputChange("gstType", e.target.value)
+                    }
+                    style={getInputStyle("gstType")}
+                    disabled={disabled}
+                    ref={(el) => (fieldRefs.current.gstType = el)}
                   >
-                    {errors.gstType}
-                  </Form.Control.Feedback>
-                )}
-                <Form.Text
-                  className="text-info fw-bold"
-                  style={{fontSize: "12px"}}
-                >
-                  {formData.gstType === "gst"
-                    ? "✅ GST will be calculated on items"
-                    : "⚠️ No GST will be applied"}
-                </Form.Text>
-              </Form.Group>
-
-              <Form.Group className="mb-4">
-                <Form.Label
-                  className="d-flex align-items-center"
-                  style={labelStyle}
-                >
-                  <FontAwesomeIcon
-                    icon={faTruck}
-                    className="me-2 text-warning"
-                  />
-                  Expected Delivery Date
-                </Form.Label>
-                <Form.Control
-                  ref={(el) => (fieldRefs.current.deliveryDate = el)}
-                  type="date"
-                  value={formData.deliveryDate || ""}
-                  onChange={(e) =>
-                    handleInputChange("deliveryDate", e.target.value)
-                  }
-                  onKeyDown={(e) => handleFieldKeyDown(e, "deliveryDate")}
-                  style={{
-                    ...getInputStyleWithError("deliveryDate"),
-                    cursor: "pointer",
-                  }}
-                  disabled={disabled}
-                  isInvalid={!!errors.deliveryDate}
-                  min={new Date().toISOString().split("T")[0]}
-                />
-                {errors.deliveryDate && (
-                  <Form.Control.Feedback
-                    type="invalid"
-                    style={{fontSize: "12px", fontWeight: "bold"}}
-                  >
-                    {errors.deliveryDate}
-                  </Form.Control.Feedback>
-                )}
-                <Form.Text
-                  className="text-muted fw-bold"
-                  style={{fontSize: "12px"}}
-                >
-                  📅 When do you expect delivery from supplier?
-                </Form.Text>
-              </Form.Group>
-
-              <Form.Group className="position-relative">
-                <Form.Label
-                  className="d-flex align-items-center justify-content-between"
-                  style={{...labelStyle, color: "#dc3545"}}
-                >
-                  <span>
-                    <FontAwesomeIcon
-                      icon={faUserPlus}
-                      className="me-2 text-danger"
-                    />
-                    Select Supplier *
-                  </span>
-                  {partyLoadError && (
-                    <Button
-                      variant="outline-warning"
-                      size="sm"
-                      onClick={retryPartyLoad}
-                      disabled={isLoadingParties}
-                      title="Retry loading suppliers"
-                      style={{
-                        fontSize: "11px",
-                        padding: "4px 8px",
-                        borderWidth: "2px",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faRefresh} className="me-1" />
-                      🔄 Retry
-                    </Button>
-                  )}
-                </Form.Label>
-
-                <div className="position-relative">
-                  <Form.Control
-                    ref={(el) => {
-                      partyInputRef.current = el;
-                      fieldRefs.current.partyName = el;
-                    }}
-                    type="text"
-                    value={partySearchTerm}
-                    onChange={(e) => handlePartySearchChange(e.target.value)}
-                    onKeyDown={handlePartySearchKeyDown}
-                    onFocus={handlePartyInputFocus}
-                    onBlur={handlePartyInputBlur}
-                    style={getInputStyleWithError("partyName")}
-                    placeholder="🔍 Search supplier name, phone, or GST..."
-                    disabled={disabled || isLoadingParties}
-                    isInvalid={!!errors.partyName}
-                  />
-
-                  {isLoadingParties && (
-                    <div className="position-absolute top-50 end-0 translate-middle-y me-3">
-                      <Spinner size="sm" className="text-primary" />
-                    </div>
-                  )}
-                </div>
-
-                {partyLoadError && !isLoadingParties && (
-                  <div className="mt-2 p-2 bg-warning bg-opacity-10 border border-warning rounded">
-                    <div
-                      className="text-warning fw-bold"
-                      style={{fontSize: "12px"}}
-                    >
-                      ⚠️ {partyLoadError}
-                    </div>
+                    <option value="gst">GST Applicable</option>
+                    <option value="non-gst">Non-GST</option>
+                  </Form.Select>
+                  {formData.gstType === "gst" && (
                     <div className="mt-1">
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        onClick={handleAddNewParty}
-                        style={{
-                          fontSize: "11px",
-                          padding: "4px 8px",
-                          marginRight: "8px",
-                        }}
-                      >
-                        ➕ Add New Supplier
-                      </Button>
-                      <Button
-                        variant="outline-warning"
-                        size="sm"
-                        onClick={retryPartyLoad}
-                        disabled={isLoadingParties}
-                        style={{
-                          fontSize: "11px",
-                          padding: "4px 8px",
-                        }}
-                      >
-                        🔄 Retry Load
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {showPartySuggestions &&
-                  partySearchTerm.length >= 2 &&
-                  !formData.selectedParty && (
-                    <div
-                      className="position-absolute w-100 bg-white border-3 rounded-3 mt-2 shadow-lg"
-                      style={{
-                        zIndex: 1000,
-                        maxHeight: "250px",
-                        overflowY: "auto",
-                        borderColor: "#000 !important",
-                      }}
-                    >
-                      {filteredParties.length > 0 &&
-                        filteredParties.slice(0, 5).map((party, index) => (
-                          <div
-                            key={party.id}
-                            className={`p-3 border-bottom cursor-pointer ${
-                              selectedPartySuggestionIndex === index
-                                ? "bg-primary text-white"
-                                : "hover-bg-light"
-                            }`}
-                            style={{
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              transition: "all 0.2s ease",
-                              borderRadius:
-                                selectedPartySuggestionIndex === index
-                                  ? "8px"
-                                  : "0",
-                            }}
-                            onClick={() => handlePartySelect(party)}
-                            onMouseEnter={() =>
-                              setSelectedPartySuggestionIndex(index)
-                            }
-                          >
-                            <div
-                              className={`fw-bold mb-1 ${
-                                selectedPartySuggestionIndex === index
-                                  ? "text-white"
-                                  : "text-primary"
-                              }`}
-                              style={{fontSize: "14px"}}
-                            >
-                              🏢 {party.name}
-                            </div>
-                            {party.phone && (
-                              <div
-                                className={`${
-                                  selectedPartySuggestionIndex === index
-                                    ? "text-light"
-                                    : "text-muted"
-                                }`}
-                                style={{fontSize: "12px"}}
-                              >
-                                📞 {party.phone}
-                              </div>
-                            )}
-                            {party.gstNumber && (
-                              <div
-                                className={`${
-                                  selectedPartySuggestionIndex === index
-                                    ? "text-light"
-                                    : "text-info"
-                                }`}
-                                style={{fontSize: "11px"}}
-                              >
-                                🏷️ GST: {party.gstNumber}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-
-                      <div
-                        className={`p-3 cursor-pointer border-top-3 ${
-                          selectedPartySuggestionIndex ===
-                          filteredParties.length
-                            ? "bg-success text-white"
-                            : "bg-light"
-                        }`}
-                        style={{
-                          fontSize: "13px",
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                          borderTopColor: "#000 !important",
-                        }}
-                        onClick={handleAddNewParty}
-                        onMouseEnter={() =>
-                          setSelectedPartySuggestionIndex(
-                            filteredParties.length
-                          )
-                        }
-                      >
-                        <div className="text-center">
-                          <FontAwesomeIcon
-                            icon={faUserPlus}
-                            className={`me-2 ${
-                              selectedPartySuggestionIndex ===
-                              filteredParties.length
-                                ? "text-white"
-                                : "text-success"
-                            }`}
-                          />
-                          <span
-                            className={`fw-bold ${
-                              selectedPartySuggestionIndex ===
-                              filteredParties.length
-                                ? "text-white"
-                                : "text-success"
-                            }`}
-                            style={{fontSize: "13px"}}
-                          >
-                            ➕ Add New Supplier
-                          </span>
-                        </div>
-                      </div>
+                      <Badge bg="success" className="me-2">
+                        <FontAwesomeIcon icon={faCheck} className="me-1" />
+                        GST will be calculated on items
+                      </Badge>
                     </div>
                   )}
+                  <small className="text-muted mt-1 d-block">
+                    Select GST type for this purchase order
+                  </small>
+                </Form.Group>
+              </Col>
 
-                {formData.selectedParty && formData.partyName && (
-                  <div
-                    className="mt-3 p-3 bg-success bg-opacity-10 border-3 rounded-3"
-                    style={{borderColor: "#28a745"}}
+              <Col lg={6} md={6}>
+                <Form.Group>
+                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                    {documentLabels.documentDate} *
+                  </Form.Label>
+                  <InputGroup
+                    onClick={handleDateInputGroupClick}
+                    style={{cursor: "pointer"}}
                   >
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <div
-                          className="fw-bold text-success mb-1"
-                          style={{fontSize: "14px"}}
+                    <Form.Control
+                      type="date"
+                      value={
+                        formData.purchaseDate ||
+                        new Date().toISOString().split("T")[0]
+                      }
+                      onChange={(e) =>
+                        handleInputChange("purchaseDate", e.target.value)
+                      }
+                      style={getInputStyle("purchaseDate")}
+                      disabled={disabled}
+                      ref={(el) => {
+                        fieldRefs.current.purchaseDate = el;
+                        dateInputRef.current = el;
+                      }}
+                    />
+                    <InputGroup.Text
+                      style={{
+                        backgroundColor: theme.surface,
+                        borderColor: errors.purchaseDate
+                          ? theme.error
+                          : theme.border,
+                        borderWidth: "1px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <FontAwesomeIcon
+                        icon={faCalendarAlt}
+                        className="text-muted"
+                      />
+                    </InputGroup.Text>
+                  </InputGroup>
+                  <small className="text-muted mt-1 d-block">
+                    📅 Date of purchase order creation
+                  </small>
+                </Form.Group>
+              </Col>
+
+              <Col lg={6} md={6}>
+                <Form.Group>
+                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
+                    <FontAwesomeIcon icon={faTruck} className="me-2" />
+                    Expected Delivery Date
+                  </Form.Label>
+                  <InputGroup style={{cursor: "pointer"}}>
+                    <Form.Control
+                      type="date"
+                      value={formData.deliveryDate || ""}
+                      onChange={(e) =>
+                        handleInputChange("deliveryDate", e.target.value)
+                      }
+                      style={getInputStyle("deliveryDate")}
+                      disabled={disabled}
+                      min={new Date().toISOString().split("T")[0]}
+                      ref={(el) => (fieldRefs.current.deliveryDate = el)}
+                    />
+                    <InputGroup.Text
+                      style={{
+                        backgroundColor: theme.surface,
+                        borderColor: errors.deliveryDate
+                          ? theme.error
+                          : theme.border,
+                        borderWidth: "1px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faTruck} className="text-muted" />
+                    </InputGroup.Text>
+                  </InputGroup>
+                  <small className="text-muted mt-1 d-block">
+                    🚚 Expected delivery date for this order
+                  </small>
+                </Form.Group>
+              </Col>
+
+              <Col lg={6} md={6}>
+                <Form.Group>
+                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
+                    <FontAwesomeIcon icon={faReceipt} className="me-2" />
+                    {documentLabels.documentNumber} *
+                  </Form.Label>
+
+                  {!editMode ? (
+                    <div>
+                      <InputGroup>
+                        <Form.Control
+                          type="text"
+                          value={
+                            isLoadingPreview
+                              ? "Loading preview..."
+                              : orderNumberPreview || "Loading..."
+                          }
+                          style={{
+                            ...getInputStyle("purchaseOrderNumber"),
+                            backgroundColor: "#f8f9fa",
+                            color: "#6c757d",
+                            fontWeight: "500",
+                          }}
+                          disabled
+                          placeholder="Purchase order number will be generated when saved"
+                          title="This is a preview. Actual number will be generated when you save."
+                        />
+                        <InputGroup.Text
+                          style={{
+                            backgroundColor: "#f8f9fa",
+                            borderColor: theme.border,
+                            borderWidth: "1px",
+                          }}
                         >
-                          ✅ {formData.partyName}
-                        </div>
-                        {formData.partyPhone && (
-                          <div
-                            className="text-muted"
-                            style={{fontSize: "12px"}}
-                          >
-                            📞 {formData.partyPhone}
-                          </div>
-                        )}
-                        {formData.partyGstNumber && (
-                          <div className="text-info" style={{fontSize: "11px"}}>
-                            🏷️ GST: {formData.partyGstNumber}
-                          </div>
-                        )}
+                          {isLoadingPreview ? (
+                            <FontAwesomeIcon
+                              icon={faSpinner}
+                              spin
+                              className="text-primary"
+                            />
+                          ) : (
+                            <FontAwesomeIcon
+                              icon={faEye}
+                              className="text-primary"
+                            />
+                          )}
+                        </InputGroup.Text>
+                      </InputGroup>
+
+                      {/* ✅ REMOVED: Bottom text completely removed */}
+                    </div>
+                  ) : (
+                    <div>
+                      <InputGroup>
+                        <Form.Control
+                          type="text"
+                          value={formData.purchaseOrderNumber || ""}
+                          style={{
+                            ...getInputStyle("purchaseOrderNumber"),
+                            backgroundColor: "#e8f5e8",
+                            fontWeight: "600",
+                            color: "#0f5132",
+                          }}
+                          disabled
+                          placeholder={`Edit ${documentLabels.documentNumber}`}
+                          ref={(el) =>
+                            (fieldRefs.current.purchaseOrderNumber = el)
+                          }
+                          title="Model-generated purchase order number (preserved during edits)"
+                        />
+                        <InputGroup.Text
+                          style={{
+                            backgroundColor: "#e8f5e8",
+                            borderColor: theme.border,
+                            borderWidth: "1px",
+                          }}
+                        >
+                          <FontAwesomeIcon
+                            icon={faCog}
+                            className="text-success"
+                          />
+                        </InputGroup.Text>
+                      </InputGroup>
+
+                      <div className="mt-1">
+                        <Badge bg="success">
+                          <FontAwesomeIcon icon={faCheck} className="me-1" />
+                          {documentLabels.formatPrefix}:{" "}
+                          {formData.purchaseOrderNumber}
+                        </Badge>
+                        <Badge bg="info" className="ms-2">
+                          <FontAwesomeIcon
+                            icon={faCheckCircle}
+                            className="me-1"
+                          />
+                          Model Generated
+                        </Badge>
                       </div>
+
+                      {/* ✅ REMOVED: Bottom text completely removed */}
+                    </div>
+                  )}
+                </Form.Group>
+              </Col>
+
+              {/* ✅ SWAPPED: Select Supplier moved to position 5 (before Employee) */}
+              <Col lg={6} md={6}>
+                <Form.Group className="position-relative">
+                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
+                    <FontAwesomeIcon icon={entityIcon} className="me-2" />
+                    Select {EntityTypeCapitalized} *
+                  </Form.Label>
+
+                  <InputGroup
+                    ref={partyInputGroupRef}
+                    style={{
+                      position: "relative",
+                    }}
+                  >
+                    <InputGroup.Text
+                      style={{
+                        backgroundColor: theme.surface,
+                        borderColor: errors.partyName
+                          ? theme.error
+                          : theme.border,
+                        borderWidth: "1px",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faSearch} className="text-muted" />
+                    </InputGroup.Text>
+                    <Form.Control
+                      type="text"
+                      value={partySearchTerm}
+                      onChange={(e) => handlePartySearchChange(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      style={{
+                        ...getInputStyle("partyName"),
+                        backgroundColor: formData.selectedParty
+                          ? "#e8f5e8"
+                          : "white",
+                      }}
+                      placeholder="Search supplier name, phone, or GST number..."
+                      disabled={disabled}
+                      ref={(el) => {
+                        fieldRefs.current.partyName = el;
+                        partyInputRef.current = el;
+                      }}
+                      onFocus={handlePartyInputFocus}
+                      onBlur={handlePartyInputBlur}
+                      autoComplete="off"
+                    />
+
+                    {isLoadingParties && (
+                      <InputGroup.Text
+                        style={{
+                          backgroundColor: theme.surface,
+                          borderColor: errors.partyName
+                            ? theme.error
+                            : theme.border,
+                          borderWidth: "1px",
+                        }}
+                      >
+                        <Spinner size="sm" />
+                      </InputGroup.Text>
+                    )}
+
+                    {formData.selectedParty && (
                       <Button
                         variant="outline-danger"
-                        size="sm"
                         onClick={clearPartySelection}
                         disabled={disabled}
-                        title="Clear selection"
                         style={{
-                          fontSize: "12px",
-                          padding: "6px 12px",
-                          borderWidth: "2px",
-                          fontWeight: "bold",
+                          borderColor: errors.partyName
+                            ? theme.error
+                            : theme.border,
+                          borderWidth: "1px",
                         }}
                       >
-                        ✕ Clear
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {errors.partyName && (
-                  <div
-                    className="invalid-feedback d-block fw-bold"
-                    style={{fontSize: "12px"}}
-                  >
-                    ⚠️ {errors.partyName}
-                  </div>
-                )}
-              </Form.Group>
-            </Col>
-
-            {/* Right Column */}
-            <Col md={6}>
-              <Form.Group className="mb-4">
-                <Form.Label
-                  className="d-flex align-items-center"
-                  style={{...labelStyle, color: "#dc3545"}}
-                >
-                  <FontAwesomeIcon
-                    icon={faCalendarAlt}
-                    className="me-2 text-danger"
-                  />
-                  Purchase Date *
-                </Form.Label>
-                <Form.Control
-                  ref={(el) => (fieldRefs.current.purchaseDate = el)}
-                  type="date"
-                  value={
-                    formData.purchaseDate ||
-                    new Date().toISOString().split("T")[0]
-                  }
-                  onChange={(e) =>
-                    handleInputChange("purchaseDate", e.target.value)
-                  }
-                  onKeyDown={(e) => handleFieldKeyDown(e, "purchaseDate")}
-                  style={{
-                    ...getInputStyleWithError("purchaseDate"),
-                    cursor: "pointer",
-                  }}
-                  disabled={disabled}
-                  isInvalid={!!errors.purchaseDate}
-                />
-                {errors.purchaseDate && (
-                  <Form.Control.Feedback
-                    type="invalid"
-                    style={{fontSize: "12px", fontWeight: "bold"}}
-                  >
-                    {errors.purchaseDate}
-                  </Form.Control.Feedback>
-                )}
-                <Form.Text
-                  className="text-muted fw-bold"
-                  style={{fontSize: "12px"}}
-                >
-                  📅 Date of purchase order creation
-                </Form.Text>
-              </Form.Group>
-
-              <Form.Group className="mb-4">
-                <Form.Label
-                  className="d-flex align-items-center justify-content-between"
-                  style={{...labelStyle, color: "#dc3545"}}
-                >
-                  <span>
-                    <FontAwesomeIcon
-                      icon={faFileInvoice}
-                      className="me-2 text-danger"
-                    />
-                    Purchase Order No. *
-                  </span>
-                  {/* ✅ ENHANCED: Better generation button logic */}
-                  {(!formData.purchaseOrderNumber ||
-                    formData.purchaseOrderNumber.trim() === "") &&
-                    !formData.isEditing && (
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        onClick={generateOrderNumber}
-                        disabled={isGeneratingOrderNumber || !companyId}
-                        style={{
-                          fontSize: "11px",
-                          padding: "4px 8px",
-                          borderWidth: "2px",
-                          fontWeight: "bold",
-                        }}
-                        title={
-                          !companyId
-                            ? "Company ID required for order number generation"
-                            : "Generate order number"
-                        }
-                      >
-                        {isGeneratingOrderNumber ? (
-                          <>
-                            <Spinner size="sm" className="me-1" />
-                            Generating...
-                          </>
-                        ) : (
-                          "🔄 Generate Now"
-                        )}
+                        <FontAwesomeIcon icon={faTimes} />
                       </Button>
                     )}
-                </Form.Label>
-                <div className="position-relative">
-                  <Form.Control
-                    type="text"
-                    value={formData.purchaseOrderNumber || ""}
-                    style={{
-                      ...getInputStyleWithError("purchaseOrderNumber"),
-                      backgroundColor: isGeneratingOrderNumber
-                        ? "#f8f9fa"
-                        : formData.purchaseOrderNumber
-                        ? "#e8f5e8"
-                        : "#e9ecef",
-                      fontWeight: "bold",
-                      color: formData.purchaseOrderNumber
-                        ? "#28a745"
-                        : "#6c757d",
-                    }}
-                    disabled
-                    readOnly
-                    isInvalid={!!errors.purchaseOrderNumber}
-                    placeholder={
-                      isGeneratingOrderNumber
-                        ? "🔄 Auto-generating order number..."
-                        : !companyId
-                        ? "📋 Company ID required for order number generation"
-                        : formData.isEditing
-                        ? "📋 Order number (editing mode)"
-                        : "📋 Order number will be generated automatically"
-                    }
-                  />
-                  {isGeneratingOrderNumber && (
-                    <div className="position-absolute top-50 end-0 translate-middle-y me-3">
-                      <Spinner size="sm" className="text-primary" />
+                  </InputGroup>
+
+                  {formData.selectedParty && (
+                    <div className="mt-1">
+                      <Badge bg="success" className="me-2">
+                        <FontAwesomeIcon icon={faCheck} className="me-1" />
+                        Selected: {formData.partyName}
+                      </Badge>
+                      {formData.partyPhone && (
+                        <Badge bg="info">
+                          <FontAwesomeIcon icon={faPhone} className="me-1" />
+                          {formData.partyPhone}
+                        </Badge>
+                      )}
                     </div>
                   )}
-                </div>
-                {formData.purchaseOrderNumber && (
-                  <Form.Text
-                    className="text-success fw-bold"
-                    style={{fontSize: "12px"}}
-                  >
-                    ✅ Order number:{" "}
-                    <strong>{formData.purchaseOrderNumber}</strong>
-                  </Form.Text>
-                )}
-                {errors.purchaseOrderNumber && (
-                  <Form.Control.Feedback
-                    type="invalid"
-                    style={{fontSize: "12px", fontWeight: "bold"}}
-                  >
-                    {errors.purchaseOrderNumber}
-                  </Form.Control.Feedback>
-                )}
-                {/* ✅ NEW: Helpful hint */}
-                {!formData.purchaseOrderNumber &&
-                  !isGeneratingOrderNumber &&
-                  !formData.isEditing && (
-                    <Form.Text
-                      className="text-info fw-bold"
-                      style={{fontSize: "12px"}}
-                    >
-                      💡 Order number will be auto-generated in format:
-                      PO-YYYYMMDD-NNNN
-                    </Form.Text>
-                  )}
-              </Form.Group>
 
-              <Form.Group>
-                <Form.Label
-                  className="d-flex align-items-center justify-content-between"
-                  style={{...labelStyle, color: "#dc3545"}}
-                >
-                  <span>
-                    <FontAwesomeIcon
-                      icon={faUser}
-                      className="me-2 text-danger"
-                    />
+                  {errors.partyName && (
+                    <div className="text-danger small mt-1">
+                      <FontAwesomeIcon
+                        icon={faExclamationTriangle}
+                        className="me-1"
+                      />
+                      {errors.partyName}
+                    </div>
+                  )}
+                </Form.Group>
+              </Col>
+
+              {/* ✅ SWAPPED: Employee moved to position 6 (after Select Supplier) */}
+              <Col lg={6} md={6}>
+                <Form.Group>
+                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
+                    <FontAwesomeIcon icon={faUser} className="me-2" />
                     Employee *
-                  </span>
-                  {userError && (
-                    <Button
-                      variant="outline-warning"
-                      size="sm"
-                      onClick={retryUserFetch}
-                      disabled={isLoadingUser}
-                      title="Retry fetching user information"
-                      style={{
-                        fontSize: "11px",
-                        padding: "4px 8px",
-                        borderWidth: "2px",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faRefresh} className="me-1" />
-                      🔄 Retry
-                    </Button>
-                  )}
-                </Form.Label>
-
-                <div className="position-relative">
+                    {userError && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="p-0 ms-2 text-decoration-none"
+                        style={{fontSize: "12px"}}
+                        onClick={retryUserFetch}
+                        disabled={isLoadingUser}
+                        title="Retry fetching user information"
+                      >
+                        <FontAwesomeIcon icon={faRefresh} className="me-1" />
+                        Retry
+                      </Button>
+                    )}
+                  </Form.Label>
                   <Form.Control
                     type="text"
-                    value={userDisplayInfo.displayText}
+                    value={
+                      formData.employeeName ||
+                      currentUser?.name ||
+                      currentUser?.fullName ||
+                      (isLoadingUser ? "Loading user..." : "Current User")
+                    }
                     style={{
-                      ...getInputStyleWithError("employeeName"),
-                      backgroundColor: userDisplayInfo.hasUser
-                        ? "#e8f5e8"
-                        : userDisplayInfo.error
-                        ? "#fff5f5"
-                        : "#f8f9fa",
-                      fontWeight: "bold",
-                      color: userDisplayInfo.hasUser
-                        ? "#28a745"
-                        : userDisplayInfo.error
-                        ? "#dc3545"
-                        : "#6c757d",
+                      ...getInputStyle("employee"),
+                      backgroundColor: "#e8f5e8",
                     }}
                     disabled
-                    readOnly
-                    isInvalid={!!errors.employeeName || !!userError}
-                    placeholder={
-                      userDisplayInfo.isLoading
-                        ? "Loading employee information..."
-                        : "Employee information will be auto-filled"
-                    }
                   />
-
-                  {userDisplayInfo.isLoading && (
-                    <div className="position-absolute top-50 end-0 translate-middle-y me-3">
-                      <Spinner size="sm" className="text-primary" />
-                    </div>
-                  )}
-                </div>
-
-                {userDisplayInfo.hasUser && formData.employeeName && (
-                  <Form.Text
-                    className="text-success fw-bold"
-                    style={{fontSize: "12px"}}
-                  >
-                    ✅ Employee: <strong>{formData.employeeName}</strong>
-                  </Form.Text>
-                )}
-
-                {userError && (
-                  <div
-                    className="invalid-feedback d-block fw-bold"
-                    style={{fontSize: "12px"}}
-                  >
-                    ⚠️ {userError}
+                  <div className="mt-1">
+                    <Badge bg="success">
+                      <FontAwesomeIcon icon={faCheck} className="me-1" />
+                      Employee:{" "}
+                      {formData.employeeName ||
+                        currentUser?.name ||
+                        currentUser?.fullName ||
+                        "Current User"}{" "}
+                      👤
+                    </Badge>
                   </div>
-                )}
+                  <small className="text-muted mt-1 d-block">
+                    Employee creating this purchase order
+                  </small>
+                </Form.Group>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
 
-                {errors.employeeName && (
-                  <div
-                    className="invalid-feedback d-block fw-bold"
-                    style={{fontSize: "12px"}}
-                  >
-                    ⚠️ {errors.employeeName}
-                  </div>
-                )}
+        <SupplierDropdown />
 
-                <Form.Text
-                  className="text-muted fw-bold"
-                  style={{fontSize: "12px"}}
-                >
-                  👤 Employee creating this purchase order
-                </Form.Text>
-              </Form.Group>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
-
-      {/* Add Party Modal */}
-      {showAddPartyModal && (
         <AddNewParty
           show={showAddPartyModal}
           onHide={() => {
@@ -1608,11 +1381,15 @@ function PurchaseOrderFormHeader({
           }}
           onPartyCreated={handlePartyCreated}
           companyId={companyId}
-          initialData={quickAddPartyData}
           addToast={addToast}
+          currentUser={currentUser || propCurrentUser}
+          initialData={quickAddPartyData}
+          partyType={entityType}
+          entityIcon={entityIcon}
+          EntityTypeCapitalized={EntityTypeCapitalized}
         />
-      )}
-    </div>
+      </Container>
+    </>
   );
 }
 

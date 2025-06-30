@@ -26,10 +26,8 @@ import {
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ ADD: Import the bank accounts hook
 import {useBankAccounts} from "./itemsTableWithTotals/itemsTableHooks";
 
-// ✅ UPDATE: Add companyId prop to function signature
 function PaymentSection({
   paymentMethod,
   notes,
@@ -49,25 +47,22 @@ function PaymentSection({
   existingPaymentData = null,
   formData = {},
   disabled = false,
-  companyId, // ✅ ADD: Company ID prop
+  companyId,
+  onPaymentDataChange,
 }) {
   const [showCreditOptions, setShowCreditOptions] = useState(false);
   const [isPartialPayment, setIsPartialPayment] = useState(false);
   const [calculatedDueDate, setCalculatedDueDate] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [internalPaymentMethod, setInternalPaymentMethod] = useState("");
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
-  // ✅ ADD: Bank accounts integration
   const {
     bankAccounts,
     loadingBankAccounts,
     retryLoadBankAccounts,
     getBankAccountById,
-    validateBankAccountSelection,
   } = useBankAccounts(companyId);
-
-  // ✅ ADD: Bank account selection state
-  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
   const paymentOptions = [
     {
@@ -114,15 +109,12 @@ function PaymentSection({
     },
   ];
 
-  // ✅ Enhanced payment method normalization function
+  // Payment method normalization
   const normalizePaymentMethod = (method) => {
     if (!method) return "cash";
 
     const methodStr = method.toString().toLowerCase();
-
-    // ✅ Handle various payment method formats - CONSISTENT WITH BACKEND
     const methodMappings = {
-      // Bank transfer variations - ✅ All map to "bank" for frontend consistency
       bank_transfer: "bank",
       banktransfer: "bank",
       "bank transfer": "bank",
@@ -130,78 +122,56 @@ function PaymentSection({
       neft: "bank",
       rtgs: "bank",
       imps: "bank",
-
-      // Card variations
       card: "card",
       credit_card: "card",
       debit_card: "card",
       creditcard: "card",
       debitcard: "card",
-
-      // UPI variations
       upi: "upi",
       upi_payment: "upi",
       upipayment: "upi",
       paytm: "upi",
       gpay: "upi",
       phonepe: "upi",
-
-      // Cash variations
       cash: "cash",
       cash_payment: "cash",
       cashpayment: "cash",
-
-      // Credit variations
       credit: "credit",
       credit_sale: "credit",
       creditsale: "credit",
-
-      // Partial variations
       partial: "partial",
       partial_payment: "partial",
       partialpayment: "partial",
     };
 
     const normalizedMethod = methodMappings[methodStr] || methodStr;
-
-    console.log(
-      `💳 PaymentSection normalization: "${method}" -> "${normalizedMethod}"`
-    );
-
-    // Validate against available options
     const validMethod = paymentOptions.find(
       (option) => option.value === normalizedMethod
     );
     return validMethod ? normalizedMethod : "cash";
   };
 
-  // ✅ ADD: Bank account change handler
+  // Bank account selection handler
   const handleBankAccountChange = (accountId) => {
     setSelectedBankAccountId(accountId);
 
     if (accountId) {
       const account = getBankAccountById(accountId);
-      if (account) {
-        console.log("🏦 Bank account selected:", account.displayName);
+      if (account && onNotesChange) {
+        const bankNote = `Bank: ${account.bankName} | Account: ${account.accountName} | A/C No: ${account.accountNumber}`;
+        const existingNotes = notes || "";
 
-        // Notify parent component about bank account selection
-        if (onNotesChange) {
-          const bankNote = `Bank: ${account.bankName} | Account: ${account.accountName} | A/C No: ${account.accountNumber}`;
-          const existingNotes = notes || "";
-
-          // Only add bank info if not already present
-          if (!existingNotes.includes(account.bankName)) {
-            const updatedNotes = existingNotes
-              ? `${existingNotes} | ${bankNote}`
-              : bankNote;
-            onNotesChange(updatedNotes);
-          }
+        if (!existingNotes.includes(account.bankName)) {
+          const updatedNotes = existingNotes
+            ? `${existingNotes} | ${bankNote}`
+            : bankNote;
+          onNotesChange(updatedNotes);
         }
       }
     }
   };
 
-  // ✅ Enhanced payment data calculation
+  // Payment data calculation
   const paymentData = useMemo(() => {
     const effectivePaidAmount = parseFloat(paidAmount) || 0;
     const effectiveTotalAmount = parseFloat(totalAmount) || 0;
@@ -223,20 +193,62 @@ function PaymentSection({
     };
   }, [paidAmount, totalAmount]);
 
-  // ✅ Initialize internal payment method from props
+  // Payment data for parent component
+  const getPaymentDataForParent = () => {
+    const paymentInfo = {
+      method: effectivePaymentMethod,
+      paymentType: effectivePaymentMethod,
+      amount: paidAmount,
+      paidAmount: paidAmount,
+      pendingAmount: paymentData.remainingAmount,
+      totalAmount: totalAmount,
+      paymentDate: paymentDate,
+      dueDate: dueDate || calculatedDueDate,
+      creditDays: parseInt(creditDays) || 0,
+      notes: notes,
+      reference: notes,
+      status: paymentData.isFullyPaid
+        ? "paid"
+        : paymentData.isPartiallyPaid
+        ? "partial"
+        : "pending",
+      isPartialPayment: paymentData.isPartiallyPaid,
+      isFullyPaid: paymentData.isFullyPaid,
+      isOverpaid: paymentData.isOverpaid,
+      sourceCompanyId: companyId,
+      companyId: companyId,
+    };
+
+    // Bank account info for bank transfers
+    if (effectivePaymentMethod === "bank" && selectedBankAccountId) {
+      paymentInfo.bankAccountId = selectedBankAccountId;
+      paymentInfo.bankAccountName = getBankAccountById(
+        selectedBankAccountId
+      )?.accountName;
+    }
+
+    // Payment method specific fields
+    if (effectivePaymentMethod === "cheque") {
+      paymentInfo.chequeNumber = notes.match(/Cheque.*?(\d+)/i)?.[1] || "";
+      paymentInfo.chequeDate = paymentDate;
+    }
+
+    if (["upi", "online", "neft", "rtgs"].includes(effectivePaymentMethod)) {
+      paymentInfo.transactionId =
+        notes.match(/(?:Ref|Trans|ID).*?([A-Z0-9]+)/i)?.[1] || "";
+    }
+
+    return paymentInfo;
+  };
+
+  // Initialize internal payment method
   useEffect(() => {
     const normalized = normalizePaymentMethod(paymentMethod);
     if (normalized !== internalPaymentMethod) {
-      console.log("🔄 Setting internal payment method:", {
-        original: paymentMethod,
-        normalized,
-        current: internalPaymentMethod,
-      });
       setInternalPaymentMethod(normalized);
     }
   }, [paymentMethod, internalPaymentMethod]);
 
-  // ✅ Use internal payment method for selection
   const effectivePaymentMethod =
     internalPaymentMethod || normalizePaymentMethod(paymentMethod);
 
@@ -244,37 +256,16 @@ function PaymentSection({
     (option) => option.value === effectivePaymentMethod
   );
 
-  console.log("🔍 PaymentSection method matching:", {
-    originalMethod: paymentMethod,
-    normalizedMethod: effectivePaymentMethod,
-    internalMethod: internalPaymentMethod,
-    selectedPayment: selectedPayment?.label,
-    availableOptions: paymentOptions.map((o) => o.value),
-    bankAccountSelected: selectedBankAccountId,
-    bankAccountsLoaded: bankAccounts.length,
-  });
-
-  // ✅ Enhanced initialization for edit mode with better data detection
+  // Initialize for edit mode
   useEffect(() => {
     if (
       editMode &&
       !initialized &&
       (existingPaymentData || formData || totalAmount > 0)
     ) {
-      console.log("🔄 PaymentSection initializing for edit mode:", {
-        existingPaymentData,
-        formData,
-        totalAmount,
-        paidAmount,
-        paymentMethod,
-        effectivePaymentMethod,
-      });
-
-      // Get payment data from multiple sources with priority
       const paymentInfo =
         existingPaymentData || formData.paymentData || formData.payment || {};
 
-      // ✅ Enhanced payment method detection with normalization
       const rawPaymentMethod =
         paymentMethod ||
         paymentInfo.method ||
@@ -285,7 +276,6 @@ function PaymentSection({
 
       const initialPaymentMethod = normalizePaymentMethod(rawPaymentMethod);
 
-      // ✅ Enhanced paid amount calculation with multiple fallbacks
       const calculatedPaidAmount = formData.totalAmount
         ? formData.totalAmount -
           (formData.balance || formData.pendingAmount || 0)
@@ -300,7 +290,6 @@ function PaymentSection({
         calculatedPaidAmount ||
         0;
 
-      // ✅ Enhanced date initialization
       const initialPaymentDate =
         paymentDate ||
         paymentInfo.paymentDate ||
@@ -309,10 +298,8 @@ function PaymentSection({
         new Date().toISOString().split("T")[0];
 
       const initialDueDate = dueDate || paymentInfo.dueDate || formData.dueDate;
-
       const initialCreditDays =
         creditDays || paymentInfo.creditDays || formData.creditDays || 0;
-
       const initialNotes =
         notes ||
         paymentInfo.notes ||
@@ -321,35 +308,18 @@ function PaymentSection({
         formData.paymentReference ||
         "";
 
-      // ✅ Initialize bank account selection for bank transfers
       const initialBankAccountId =
         paymentInfo.bankAccountId ||
         formData.bankAccountId ||
         formData.paymentData?.bankAccountId ||
         "";
 
-      console.log("💰 Payment initialization values:", {
-        rawMethod: rawPaymentMethod,
-        normalizedMethod: initialPaymentMethod,
-        paidAmount: initialPaidAmount,
-        totalAmount: totalAmount,
-        calculatedPaidAmount,
-        paymentDate: initialPaymentDate,
-        dueDate: initialDueDate,
-        creditDays: initialCreditDays,
-        notes: initialNotes,
-        bankAccountId: initialBankAccountId,
-      });
-
-      // ✅ Set internal payment method first
       setInternalPaymentMethod(initialPaymentMethod);
 
-      // ✅ Set bank account if it's a bank transfer
       if (initialBankAccountId && initialPaymentMethod === "bank") {
         setSelectedBankAccountId(initialBankAccountId);
       }
 
-      // ✅ Set initial states based on payment method and amounts
       if (initialPaymentMethod === "credit") {
         setShowCreditOptions(true);
         setIsPartialPayment(false);
@@ -364,49 +334,32 @@ function PaymentSection({
         setIsPartialPayment(false);
       }
 
-      // ✅ Update parent components with initialized values - use normalized method
       if (
         onPaymentMethodChange &&
         initialPaymentMethod !== effectivePaymentMethod
       ) {
-        console.log("🔄 Updating payment method:", initialPaymentMethod);
         onPaymentMethodChange(initialPaymentMethod);
       }
 
       if (onPaidAmountChange && initialPaidAmount !== paidAmount) {
-        console.log("🔄 Updating paid amount:", initialPaidAmount);
         onPaidAmountChange(initialPaidAmount);
       }
 
       if (onPaymentDateChange && initialPaymentDate !== paymentDate) {
-        console.log("🔄 Updating payment date:", initialPaymentDate);
         onPaymentDateChange(initialPaymentDate);
       }
 
       if (onDueDateChange && initialDueDate && initialDueDate !== dueDate) {
-        console.log("🔄 Updating due date:", initialDueDate);
         onDueDateChange(initialDueDate);
       }
 
       if (onCreditDaysChange && initialCreditDays !== creditDays) {
-        console.log("🔄 Updating credit days:", initialCreditDays);
         onCreditDaysChange(initialCreditDays);
       }
 
       if (onNotesChange && initialNotes !== notes) {
-        console.log("🔄 Updating payment notes:", initialNotes);
         onNotesChange(initialNotes);
       }
-
-      console.log("✅ PaymentSection initialized successfully with:", {
-        method: initialPaymentMethod,
-        paidAmount: initialPaidAmount,
-        paymentDate: initialPaymentDate,
-        dueDate: initialDueDate,
-        creditDays: initialCreditDays,
-        notes: initialNotes,
-        bankAccountId: initialBankAccountId,
-      });
 
       setInitialized(true);
     }
@@ -431,39 +384,50 @@ function PaymentSection({
       const formattedDate = calculatedDate.toISOString().split("T")[0];
       setCalculatedDueDate(formattedDate);
 
-      // Only update if no manual due date is set
       if (onDueDateChange && !dueDate) {
         onDueDateChange(formattedDate);
       }
     }
   }, [paymentDate, creditDays, onDueDateChange, dueDate]);
 
-  // ✅ UPDATED: Enhanced payment method change handler with bank account logic
+  // Notify parent of payment data changes
+  useEffect(() => {
+    if (onPaymentDataChange && typeof onPaymentDataChange === "function") {
+      const currentPaymentData = getPaymentDataForParent();
+      onPaymentDataChange(currentPaymentData);
+    }
+  }, [
+    effectivePaymentMethod,
+    paidAmount,
+    paymentDate,
+    dueDate,
+    creditDays,
+    notes,
+    selectedBankAccountId,
+    companyId,
+    totalAmount,
+  ]);
+
+  // Payment method change handler
   const handlePaymentMethodChange = (method) => {
     const normalizedMethod = normalizePaymentMethod(method);
-    console.log("💳 Payment method changed:", method, "->", normalizedMethod);
-
-    // ✅ Update internal state first
     setInternalPaymentMethod(normalizedMethod);
 
-    // ✅ Clear bank account selection for non-bank methods
     if (!["bank", "bank_transfer"].includes(normalizedMethod)) {
       setSelectedBankAccountId("");
     }
 
-    // ✅ Then notify parent
     onPaymentMethodChange(normalizedMethod);
 
     if (normalizedMethod === "credit") {
       setShowCreditOptions(true);
       setIsPartialPayment(false);
       if (onPaidAmountChange && !editMode) {
-        onPaidAmountChange(0); // No immediate payment for credit (only for new)
+        onPaidAmountChange(0);
       }
     } else if (normalizedMethod === "partial") {
       setShowCreditOptions(true);
       setIsPartialPayment(true);
-      // Keep existing paid amount or set to 50% if none
       if (onPaidAmountChange && (!paidAmount || paidAmount === 0)) {
         onPaidAmountChange(totalAmount * 0.5);
       }
@@ -471,21 +435,19 @@ function PaymentSection({
       setShowCreditOptions(false);
       setIsPartialPayment(false);
       if (onPaidAmountChange && !editMode) {
-        onPaidAmountChange(totalAmount); // Full payment for immediate methods (only for new invoices)
+        onPaidAmountChange(totalAmount);
       }
     }
   };
 
-  // Handle paid amount change
+  // Paid amount change handler
   const handlePaidAmountChange = (amount) => {
     const numericAmount = parseFloat(amount) || 0;
-    console.log("💰 Paid amount changed to:", numericAmount);
 
     if (onPaidAmountChange) {
       onPaidAmountChange(numericAmount);
     }
 
-    // Auto-detect partial payment
     if (
       numericAmount > 0 &&
       numericAmount < totalAmount &&
@@ -496,23 +458,21 @@ function PaymentSection({
     } else if (numericAmount >= totalAmount) {
       setIsPartialPayment(false);
       if (effectivePaymentMethod === "partial") {
-        // Switch to appropriate payment method for full payment
         handlePaymentMethodChange("cash");
       }
     }
   };
 
-  // Handle credit days change
+  // Credit days change handler
   const handleCreditDaysChange = (days) => {
     const numericDays = parseInt(days) || 0;
-    console.log("📅 Credit days changed to:", numericDays);
 
     if (onCreditDaysChange) {
       onCreditDaysChange(numericDays);
     }
   };
 
-  // ✅ Enhanced payment status badge
+  // Payment status badge
   const getPaymentStatusBadge = () => {
     if (paymentData.isOverpaid) {
       return (
@@ -548,7 +508,7 @@ function PaymentSection({
     }
   };
 
-  // Get due date status
+  // Due date status
   const getDueDateStatus = () => {
     const effectiveDueDate = dueDate || calculatedDueDate;
     if (!effectiveDueDate) return null;
@@ -569,7 +529,7 @@ function PaymentSection({
     }
   };
 
-  // ✅ Enhanced payment summary for edit mode
+  // Payment summary for edit mode
   const getPaymentSummary = () => {
     if (!editMode) return null;
 
@@ -638,7 +598,7 @@ function PaymentSection({
     );
   };
 
-  // ✅ Enhanced edit mode indicator
+  // Edit mode warning
   const getEditModeIndicator = () => {
     if (!editMode || !paymentData.isPartiallyPaid) return null;
 
@@ -670,14 +630,11 @@ function PaymentSection({
         </div>
       </Card.Header>
       <Card.Body>
-        {/* ✅ Payment Summary for Edit Mode */}
         {getPaymentSummary()}
-
-        {/* ✅ Edit Mode Warning */}
         {getEditModeIndicator()}
 
         {/* Payment Amount Summary */}
-        <div className="mb-3 p-3 bg-light rounded">
+        <div className="mb-3 p-3 bg-light">
           <Row className="g-2">
             <Col xs={6}>
               <small className="text-muted d-block">Total Amount</small>
@@ -744,7 +701,7 @@ function PaymentSection({
           </Form.Label>
           <div className="d-grid gap-2">
             {paymentOptions.map((option) => (
-              <div key={option.value} className="border rounded p-2">
+              <div key={option.value} className="border p-2">
                 <Form.Check
                   type="radio"
                   id={`payment-${option.value}`}
@@ -776,7 +733,7 @@ function PaymentSection({
           </div>
         </Form.Group>
 
-        {/* ✅ ADD: Bank Account Selection for Bank Transfer */}
+        {/* Bank Account Selection */}
         {effectivePaymentMethod === "bank" && (
           <Form.Group className="mb-3">
             <Form.Label className="text-muted fw-bold">
@@ -785,7 +742,7 @@ function PaymentSection({
             </Form.Label>
 
             {loadingBankAccounts ? (
-              <div className="text-center py-3 bg-light rounded border">
+              <div className="text-center py-3 bg-light border">
                 <FontAwesomeIcon
                   icon={faSpinner}
                   className="fa-spin me-2 text-primary"
@@ -867,7 +824,7 @@ function PaymentSection({
           />
         </Form.Group>
 
-        {/* ✅ Enhanced Paid Amount Input - Always show in edit mode or for partial payments */}
+        {/* Paid Amount Input */}
         {(effectivePaymentMethod === "partial" ||
           isPartialPayment ||
           editMode ||
@@ -889,7 +846,7 @@ function PaymentSection({
                 value={paidAmount}
                 onChange={(e) => handlePaidAmountChange(e.target.value)}
                 min="0"
-                max={totalAmount * 1.1} // Allow 10% overpayment
+                max={totalAmount * 1.1}
                 step="0.01"
                 placeholder="Enter paid amount"
                 disabled={disabled}
@@ -1000,7 +957,6 @@ function PaymentSection({
                 </Col>
               </Row>
 
-              {/* Credit Summary */}
               {paymentData.remainingAmount > 0 && (
                 <Alert variant="info" className="mt-3 mb-0">
                   <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
@@ -1059,7 +1015,6 @@ function PaymentSection({
           </Alert>
         )}
 
-        {/* ✅ Bank Account Validation Warning */}
         {effectivePaymentMethod === "bank" && !selectedBankAccountId && (
           <Alert variant="danger" className="mb-3">
             <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
@@ -1068,7 +1023,7 @@ function PaymentSection({
           </Alert>
         )}
 
-        {/* Notes Section */}
+        {/* Payment Notes */}
         <Form.Group>
           <Form.Label className="text-muted fw-bold">
             Payment Notes (Optional)
@@ -1089,7 +1044,6 @@ function PaymentSection({
         </Form.Group>
       </Card.Body>
 
-      {/* Custom Styles */}
       <style jsx>{`
         .payment-option:checked + label {
           background-color: var(--bs-primary-bg-subtle);

@@ -51,11 +51,11 @@ function PurchaseForm({
   purchaseOrderService,
   show = true,
   onHide,
-  saving: propSaving = false, // ✅ NEW: Accept external saving state
-  isPageMode = false, // ✅ NEW: For page vs modal mode
-  showHeader = true, // ✅ NEW: Show/hide header
-  enableAutoSave = false, // ✅ NEW: Auto-save functionality
-  validateOnMount = false, // ✅ NEW: Validate on mount
+  saving: propSaving = false,
+  isPageMode = false,
+  showHeader = true,
+  enableAutoSave = false,
+  validateOnMount = false,
 }) {
   const {companyId: urlCompanyId} = useParams();
   const navigate = useNavigate();
@@ -65,10 +65,10 @@ function PurchaseForm({
   const [saving, setSaving] = useState(propSaving);
   const [initializing, setInitializing] = useState(false);
   const [initializationComplete, setInitializationComplete] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({}); // ✅ NEW: Validation state
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // ✅ NEW: Track changes
+  const [validationErrors, setValidationErrors] = useState({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // ✅ NEW: Update saving state when prop changes
+  // Update saving state when prop changes
   useEffect(() => {
     setSaving(propSaving);
   }, [propSaving]);
@@ -112,7 +112,7 @@ function PurchaseForm({
     );
   }, [mode, documentType, formType, orderType]);
 
-  // ✅ ENHANCED: Better toast function with validation
+  // Enhanced toast function with validation
   const defaultAddToast = useCallback((message, type = "info") => {
     console.log(`🔔 Toast [${type.toUpperCase()}]: ${message}`);
 
@@ -236,9 +236,9 @@ function PurchaseForm({
     return {
       gstEnabled: true,
       invoiceType: "gst",
-      taxMode: "without-tax", // Purchase default
+      taxMode: "without-tax",
       priceIncludesTax: false,
-      customer: null, // Will store supplier data
+      customer: null,
       mobileNumber: "",
       invoiceNumber: generateDocumentNumber("gst"),
       invoiceDate: new Date().toISOString().split("T")[0],
@@ -265,7 +265,7 @@ function PurchaseForm({
     };
   });
 
-  // ✅ ENHANCED: Update form data function with change tracking
+  // Update form data function with change tracking
   const updateFormData = useCallback(
     (field, value) => {
       setFormData((prev) => {
@@ -274,7 +274,6 @@ function PurchaseForm({
           updated.companyId = effectiveCompanyId;
         }
 
-        // ✅ NEW: Track unsaved changes
         if (!editMode || JSON.stringify(updated) !== JSON.stringify(prev)) {
           setHasUnsavedChanges(true);
         }
@@ -282,7 +281,6 @@ function PurchaseForm({
         return updated;
       });
 
-      // ✅ NEW: Clear field-specific validation errors
       if (validationErrors[field]) {
         setValidationErrors((prev) => {
           const updated = {...prev};
@@ -308,7 +306,7 @@ function PurchaseForm({
     }
   }, [effectiveCompanyId, formData.companyId, getEffectiveCompanyId]);
 
-  // ✅ NEW: Validation function
+  // Validation function
   const validateForm = useCallback(() => {
     const errors = {};
 
@@ -328,7 +326,6 @@ function PurchaseForm({
       errors.items = "Please add at least one item";
     }
 
-    // Validate items
     if (formData.items && formData.items.length > 0) {
       const itemErrors = [];
       formData.items.forEach((item, index) => {
@@ -369,7 +366,6 @@ function PurchaseForm({
       setInitializing(false);
       setInitializationComplete(true);
 
-      // ✅ NEW: Validate on mount if requested
       if (validateOnMount) {
         validateForm();
       }
@@ -423,7 +419,7 @@ function PurchaseForm({
     }
   };
 
-  // Initialize form from transaction data (keeping existing logic)
+  // Initialize form from transaction data
   const initializeFormFromTransaction = useCallback(
     async (transaction) => {
       if (initializationComplete) return;
@@ -440,7 +436,7 @@ function PurchaseForm({
           transaction
         );
 
-        // Transform supplier data (stored in customer field for consistency)
+        // Transform supplier data
         let transformedSupplier = null;
         if (transaction.supplier && typeof transaction.supplier === "object") {
           transformedSupplier = {
@@ -473,7 +469,6 @@ function PurchaseForm({
         const transformedItems = (transaction.items || []).map(
           (item, index) => {
             const quantity = parseFloat(item.quantity || item.qty || 0);
-            // Purchase-specific: Use purchase price fields
             const pricePerUnit = parseFloat(
               item.pricePerUnit ||
                 item.purchasePrice ||
@@ -577,7 +572,7 @@ function PurchaseForm({
             return new Date().toISOString().split("T")[0];
           })(),
 
-          customer: transformedSupplier, // Store supplier in customer field
+          customer: transformedSupplier,
           mobileNumber:
             transaction.supplierMobile ||
             transaction.mobileNumber ||
@@ -634,8 +629,6 @@ function PurchaseForm({
         };
 
         setFormData((prev) => ({...prev, ...newFormData}));
-
-        // ✅ NEW: Mark as no unsaved changes after loading
         setHasUnsavedChanges(false);
 
         console.log(
@@ -673,7 +666,7 @@ function PurchaseForm({
     );
   };
 
-  // ✅ ENHANCED: Cancel handler with unsaved changes warning
+  // Cancel handler with unsaved changes warning
   const handleCancel = useCallback(() => {
     if (hasUnsavedChanges && !saving) {
       const confirmed = window.confirm(
@@ -691,7 +684,6 @@ function PurchaseForm({
     } else if (onHide) {
       onHide();
     } else if (effectiveCompanyId) {
-      // Default navigation back to list
       const listPath = `/companies/${effectiveCompanyId}/${
         isPurchaseOrdersMode ? "purchase-orders" : "purchases"
       }`;
@@ -722,7 +714,7 @@ function PurchaseForm({
           pageTitle ||
           (editMode ? "Edit Purchase Order" : "Create Purchase Order"),
         icon: faShoppingCart,
-        color: "warning",
+        color: "primary", // ✅ Changed from "warning" to "primary"
       },
     };
 
@@ -849,7 +841,7 @@ function PurchaseForm({
       data-mode={mode}
     >
       <Container fluid className="py-3 px-4">
-        {/* ✅ ENHANCED: Header Component with conditional rendering */}
+        {/* Header Component with conditional rendering */}
         {showHeader && (
           <div className="mb-3">
             <PurchaseInvoiceHeader
@@ -859,19 +851,19 @@ function PurchaseForm({
               currentUser={currentUser}
               currentCompany={currentCompany}
               addToast={effectiveAddToast}
-              errors={validationErrors} // ✅ NEW: Pass validation errors
+              errors={validationErrors}
               disabled={saving}
               mode={mode}
               documentType={documentType}
               isPurchaseOrdersMode={isPurchaseOrdersMode}
               labels={labels}
-              isPageMode={isPageMode} // ✅ NEW: Pass page mode
-              hasUnsavedChanges={hasUnsavedChanges} // ✅ NEW: Pass unsaved changes state
+              isPageMode={isPageMode}
+              hasUnsavedChanges={hasUnsavedChanges}
             />
           </div>
         )}
 
-        {/* ✅ ENHANCED: Main Form Component */}
+        {/* Main Form Component */}
         <div className="mb-3">
           <PurchaseInvoiceFormSection
             formData={formData}
@@ -880,10 +872,10 @@ function PurchaseForm({
             currentUser={currentUser}
             currentCompany={currentCompany}
             addToast={effectiveAddToast}
-            onSave={onSave} // Pass through parent onSave for additional handling if needed
-            onCancel={handleCancel} // ✅ NEW: Use enhanced cancel handler
+            onSave={onSave}
+            onCancel={handleCancel}
             onShare={handleShare}
-            errors={validationErrors} // ✅ NEW: Pass validation errors
+            errors={validationErrors}
             disabled={saving}
             mode={mode}
             documentType={documentType}
@@ -891,31 +883,33 @@ function PurchaseForm({
             editMode={editMode}
             saving={saving}
             labels={labels}
-            transactionId={transactionId} // Pass transactionId for edit mode
-            isPageMode={isPageMode} // ✅ NEW: Pass page mode
-            hasUnsavedChanges={hasUnsavedChanges} // ✅ NEW: Pass unsaved changes state
-            validateForm={validateForm} // ✅ NEW: Pass validation function
-            onValidationChange={setValidationErrors} // ✅ NEW: Pass validation setter
+            transactionId={transactionId}
+            isPageMode={isPageMode}
+            hasUnsavedChanges={hasUnsavedChanges}
+            validateForm={validateForm}
+            onValidationChange={setValidationErrors}
           />
         </div>
       </Container>
 
-      {/* ✅ ENHANCED: Custom Styles */}
+      {/* ✅ UPDATED: Clean Styles - Removed orange colors and curves */}
       <style jsx>{`
+        /* ✅ FIXED: Changed orange colors to blue/purple theme */
         .purchase-form-wrapper[data-mode="purchase-orders"] {
-          --primary-color: #ffc107;
-          --primary-rgb: 255, 193, 7;
-          --secondary-color: #fd7e14;
+          --primary-color: #6f42c1; /* Purple instead of orange */
+          --primary-rgb: 111, 66, 193; /* Purple RGB */
+          --secondary-color: #8b5cf6; /* Light purple */
         }
 
         .purchase-form-wrapper[data-mode="purchases"] {
-          --primary-color: #6c63ff;
-          --primary-rgb: 108, 99, 255;
-          --secondary-color: #9c88ff;
+          --primary-color: #0d6efd; /* Blue */
+          --primary-rgb: 13, 110, 253; /* Blue RGB */
+          --secondary-color: #6c757d; /* Gray */
         }
 
         .purchase-form-wrapper[data-mode="purchase-orders"] .card {
           border-left: 4px solid var(--primary-color) !important;
+          border-radius: 0 !important; /* ✅ Remove curves */
         }
 
         .purchase-form-wrapper[data-mode="purchase-orders"] .card-header {
@@ -924,18 +918,35 @@ function PurchaseForm({
             rgba(var(--primary-rgb), 0.1) 0%,
             rgba(var(--primary-rgb), 0.05) 100%
           );
+          border-radius: 0 !important; /* ✅ Remove curves */
         }
 
         .purchase-form-wrapper[data-mode="purchase-orders"] .btn-primary {
           background-color: var(--primary-color);
           border-color: var(--primary-color);
+          border-radius: 0 !important; /* ✅ Remove curves */
         }
 
         .purchase-form-wrapper[data-mode="purchase-orders"] .text-primary {
           color: var(--primary-color) !important;
         }
 
-        /* ✅ NEW: Enhanced styles */
+        /* ✅ GLOBAL: Remove all border radius */
+        .purchase-form-wrapper .card,
+        .purchase-form-wrapper .btn,
+        .purchase-form-wrapper .alert,
+        .purchase-form-wrapper .badge,
+        .purchase-form-wrapper .form-control,
+        .purchase-form-wrapper .form-select,
+        .purchase-form-wrapper .input-group-text,
+        .purchase-form-wrapper .modal-content,
+        .purchase-form-wrapper .modal-header,
+        .purchase-form-wrapper .modal-body,
+        .purchase-form-wrapper .modal-footer {
+          border-radius: 0 !important;
+        }
+
+        /* Enhanced styles */
         .purchase-form-wrapper .has-validation-error {
           border-color: #dc3545 !important;
           box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
@@ -968,6 +979,7 @@ function PurchaseForm({
           display: flex;
           align-items: center;
           justify-content: center;
+          border-radius: 0 !important; /* ✅ Remove curves */
         }
 
         /* Responsive adjustments */
