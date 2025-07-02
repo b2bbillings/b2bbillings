@@ -803,7 +803,6 @@ const partyController = {
     }
   },
 
-  // ... keep all existing methods (createQuickParty, checkPhoneExists, getAllParties, etc.)
   async createQuickParty(req, res) {
     try {
       const {name, phone, type = "customer"} = req.body;
@@ -981,7 +980,6 @@ const partyController = {
     }
   },
 
-  // ✅ ENHANCED: getAllParties with linking information
   async getAllParties(req, res) {
     try {
       const {
@@ -1093,8 +1091,6 @@ const partyController = {
       });
     }
   },
-
-  // ... keep all other existing methods (getPartyById, deleteParty, searchParties, etc.)
 
   async getPartyById(req, res) {
     try {
@@ -1314,7 +1310,6 @@ const partyController = {
     }
   },
 
-  // ... keep all other existing methods (getPartyStats, searchPartiesGet, etc.)
   async getPartyStats(req, res) {
     try {
       const userId = req.user?.id || req.user?._id;
@@ -1595,7 +1590,6 @@ const partyController = {
     }
   },
 
-  // Keep existing external search methods
   async searchExternalDatabase(req, res) {
     try {
       const {query, filter, source, limit = 10} = req.body;

@@ -23,6 +23,255 @@ const healthCheck = async (req, res) => {
   }
 };
 
+const getAllCompaniesAdmin = async (req, res) => {
+  try {
+    console.log("🔍 Admin access - Development Mode (No Auth Required)");
+
+    const {
+      page = 1,
+      limit = 50,
+      search = "",
+      businessType = "",
+      businessCategory = "",
+      state = "",
+      city = "",
+      isActive = "",
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // Search functionality
+    if (search && search.trim()) {
+      filter.$or = [
+        {businessName: {$regex: search, $options: "i"}},
+        {email: {$regex: search, $options: "i"}},
+        {phoneNumber: {$regex: search, $options: "i"}},
+        {ownerName: {$regex: search, $options: "i"}},
+        {gstin: {$regex: search, $options: "i"}},
+      ];
+    }
+
+    // Filter by business type
+    if (businessType && businessType.trim()) {
+      filter.businessType = businessType;
+    }
+
+    // Filter by business category
+    if (businessCategory && businessCategory.trim()) {
+      filter.businessCategory = businessCategory;
+    }
+
+    // Filter by state
+    if (state && state.trim()) {
+      filter.state = state;
+    }
+
+    // Filter by city
+    if (city && city.trim()) {
+      filter.city = city;
+    }
+
+    // Filter by active status
+    if (isActive !== "") {
+      filter.isActive = isActive === "true";
+    }
+
+    // Pagination
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    // Sorting
+    const sortObject = {};
+    sortObject[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+    // ✅ FIX: Remove the incorrect populate and use correct field
+    const companies = await Company.find(filter)
+      .sort(sortObject)
+      .skip(skip)
+      .limit(limitNum)
+      .populate("owner", "name email") // ✅ Use 'owner' instead of 'createdBy'
+      .lean();
+
+    const totalCompanies = await Company.countDocuments(filter);
+
+    // ✅ Calculate additional stats for admin
+    const totalActiveCompanies = await Company.countDocuments({
+      ...filter,
+      isActive: true,
+    });
+
+    const companiesWithGST = await Company.countDocuments({
+      ...filter,
+      gstin: {$exists: true, $ne: ""},
+    });
+
+    const pagination = {
+      current: pageNum,
+      total: Math.ceil(totalCompanies / limitNum),
+      totalItems: totalCompanies,
+      hasNextPage: pageNum < Math.ceil(totalCompanies / limitNum),
+      hasPrevPage: pageNum > 1,
+      limit: limitNum,
+    };
+
+    // ✅ Format companies for admin view
+    const formattedCompanies = companies.map((company) => ({
+      id: company._id,
+      businessName: company.businessName,
+      phoneNumber: company.phoneNumber,
+      email: company.email || "",
+      gstin: company.gstin || "",
+      businessType: company.businessType || "",
+      businessCategory: company.businessCategory || "",
+      state: company.state || "",
+      city: company.city || "",
+      isActive: company.isActive,
+      createdAt: company.createdAt,
+      updatedAt: company.updatedAt,
+      ownerName: company.ownerName || "",
+      totalActiveUsers: company.totalActiveUsers || 0,
+      hasActiveSubscription: company.hasActiveSubscription || false,
+      // ✅ FIX: Use 'owner' field instead of 'createdBy'
+      owner: company.owner || null,
+      ownerInfo: company.owner
+        ? {
+            id: company.owner._id || company.owner,
+            name: company.owner.name || "Unknown",
+            email: company.owner.email || "",
+          }
+        : null,
+      // ✅ Admin-specific fields
+      adminView: true,
+      createdDaysAgo: Math.floor(
+        (Date.now() - new Date(company.createdAt)) / (1000 * 60 * 60 * 24)
+      ),
+    }));
+
+    console.log(`✅ Admin: Retrieved ${formattedCompanies.length} companies`);
+
+    res.json({
+      success: true,
+      message: `Retrieved ${formattedCompanies.length} companies for admin dashboard`,
+      data: {
+        companies: formattedCompanies,
+        pagination,
+        stats: {
+          totalCompanies,
+          totalActiveCompanies,
+          companiesWithGST,
+          inactiveCompanies: totalCompanies - totalActiveCompanies,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllCompaniesAdmin:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving companies for admin",
+      error: error.message,
+    });
+  }
+};
+const getAdminCompanyStats = async (req, res) => {
+  try {
+    console.log("📊 Admin stats access - Development Mode");
+
+    // ✅ Get company statistics
+    const totalCompanies = await Company.countDocuments();
+    const activeCompanies = await Company.countDocuments({isActive: true});
+    const inactiveCompanies = totalCompanies - activeCompanies;
+
+    const companiesWithGST = await Company.countDocuments({
+      gstin: {$exists: true, $ne: ""},
+    });
+
+    // ✅ Get business type distribution
+    const businessTypeStats = await Company.aggregate([
+      {$match: {isActive: true}},
+      {
+        $group: {
+          _id: "$businessType",
+          count: {$sum: 1},
+        },
+      },
+      {$sort: {count: -1}},
+    ]);
+
+    // ✅ Get state distribution
+    const stateStats = await Company.aggregate([
+      {$match: {isActive: true, state: {$exists: true, $ne: ""}}},
+      {
+        $group: {
+          _id: "$state",
+          count: {$sum: 1},
+        },
+      },
+      {$sort: {count: -1}},
+      {$limit: 10},
+    ]);
+
+    // ✅ Get recent companies (last 7 days)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentCompanies = await Company.countDocuments({
+      createdAt: {$gte: sevenDaysAgo},
+    });
+
+    // ✅ Monthly growth data
+    const monthlyStats = await Company.aggregate([
+      {
+        $group: {
+          _id: {
+            year: {$year: "$createdAt"},
+            month: {$month: "$createdAt"},
+          },
+          count: {$sum: 1},
+        },
+      },
+      {$sort: {"_id.year": -1, "_id.month": -1}},
+      {$limit: 12},
+    ]);
+
+    const formattedStats = {
+      totalCompanies,
+      activeCompanies,
+      inactiveCompanies,
+      companiesWithGST,
+      recentCompanies,
+      businessTypeDistribution: businessTypeStats.reduce((acc, item) => {
+        acc[item._id || "Other"] = item.count;
+        return acc;
+      }, {}),
+      stateDistribution: stateStats.reduce((acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      }, {}),
+      monthlyGrowth: monthlyStats.map((item) => ({
+        year: item._id.year,
+        month: item._id.month,
+        count: item.count,
+      })),
+    };
+
+    console.log("✅ Admin stats calculated successfully");
+
+    res.json({
+      success: true,
+      message: "Admin company statistics retrieved successfully",
+      data: formattedStats,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAdminCompanyStats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving admin statistics",
+      error: error.message,
+    });
+  }
+};
 const searchExternalCompanies = async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
@@ -1068,6 +1317,8 @@ const getCompanyStats = async (req, res) => {
 
 module.exports = {
   healthCheck,
+  getAllCompaniesAdmin,
+  getAdminCompanyStats,
   searchExternalCompanies,
   createCompany,
   getAllCompanies,

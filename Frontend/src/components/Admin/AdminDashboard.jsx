@@ -1,4 +1,5 @@
 import React, {useState, useEffect} from "react";
+import {Routes, Route, useNavigate, useLocation} from "react-router-dom";
 import {
   Container,
   Row,
@@ -8,6 +9,8 @@ import {
   Tab,
   Alert,
   Spinner,
+  Badge,
+  Button,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -20,151 +23,746 @@ import {
   faFileAlt,
   faBell,
   faUserShield,
+  faTachometerAlt,
+  faArrowLeft,
+  faBoxes,
+  faShoppingCart,
+  faClipboardList,
 } from "@fortawesome/free-solid-svg-icons";
+
 import AdminSidebar from "./AdminSidebar";
 import AdminStats from "./AdminStats";
+import AdminOverview from "./AdminOverview";
 import CompanyManagement from "./CompanyManagement";
 import UserManagement from "./UserManagement";
 import SystemSettings from "./SystemSettings";
 import SecurityManagement from "./SecurityManagement";
 import DatabaseManagement from "./DatabaseManagement";
 import ReportsAnalytics from "./ReportsAnalytics";
+import UserDetailPage from "./UserDetail/UserDetailPage";
+import CompanyDetailPage from "./UserDetail/CompanyDetailPage";
 
-// ✅ UPDATED: Compact NotificationCenter component
+// NotificationCenter component
 const NotificationCenter = ({adminData, currentUser, addToast}) => {
   return (
-    <div className="notification-center">
-      <h4 className="mb-3">
-        <FontAwesomeIcon icon={faBell} className="me-2" />
-        Notification Center
-      </h4>
-      <Alert variant="info" className="mb-3">
-        <h6 className="mb-2">System Notifications</h6>
-        <p className="mb-2">
-          You have {adminData?.notifications || 0} pending notifications.
-        </p>
-        <ul className="mb-0">
-          <li>System backup completed successfully</li>
-          <li>2 new user registrations pending approval</li>
-          <li>Database optimization scheduled for tonight</li>
-        </ul>
-      </Alert>
+    <Container fluid>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h4 className="mb-1">
+            <FontAwesomeIcon icon={faBell} className="me-2 text-primary" />
+            Notification Center
+          </h4>
+          <p className="text-muted mb-0">System alerts and notifications</p>
+        </div>
+        <Badge bg="primary" className="fs-6">
+          {adminData?.notifications || 0} New
+        </Badge>
+      </div>
 
-      <Row>
-        <Col md={6}>
-          <Card className="mb-3">
-            <Card.Header className="py-2">
-              <h6 className="mb-0">Recent Alerts</h6>
+      <Row className="g-4">
+        <Col lg={6}>
+          <Card className="h-100">
+            <Card.Header className="bg-light">
+              <h6 className="mb-0 fw-bold">Recent Alerts</h6>
             </Card.Header>
-            <Card.Body className="py-2">
-              <div className="notification-item">
-                <div className="notification-icon bg-warning">
-                  <FontAwesomeIcon icon={faBell} />
+            <Card.Body>
+              <div className="d-flex align-items-start mb-3 pb-3 border-bottom">
+                <div className="flex-shrink-0">
+                  <div
+                    className="rounded-circle bg-warning d-flex align-items-center justify-content-center"
+                    style={{width: "40px", height: "40px"}}
+                  >
+                    <FontAwesomeIcon icon={faBell} className="text-white" />
+                  </div>
                 </div>
-                <div className="notification-content">
-                  <strong>Low Storage Warning</strong>
-                  <p className="small text-muted mb-0">Storage is 85% full</p>
+                <div className="flex-grow-1 ms-3">
+                  <h6 className="mb-1">Low Storage Warning</h6>
+                  <p className="text-muted small mb-1">Storage is 85% full</p>
+                  <small className="text-muted">2 hours ago</small>
                 </div>
               </div>
-              <div className="notification-item">
-                <div className="notification-icon bg-success">
-                  <FontAwesomeIcon icon={faShieldAlt} />
+              <div className="d-flex align-items-start">
+                <div className="flex-shrink-0">
+                  <div
+                    className="rounded-circle bg-success d-flex align-items-center justify-content-center"
+                    style={{width: "40px", height: "40px"}}
+                  >
+                    <FontAwesomeIcon
+                      icon={faShieldAlt}
+                      className="text-white"
+                    />
+                  </div>
                 </div>
-                <div className="notification-content">
-                  <strong>Security Scan Complete</strong>
-                  <p className="small text-muted mb-0">No threats detected</p>
+                <div className="flex-grow-1 ms-3">
+                  <h6 className="mb-1">Security Scan Complete</h6>
+                  <p className="text-muted small mb-1">No threats detected</p>
+                  <small className="text-muted">4 hours ago</small>
                 </div>
               </div>
             </Card.Body>
           </Card>
         </Col>
-        <Col md={6}>
-          <Card className="mb-3">
-            <Card.Header className="py-2">
-              <h6 className="mb-0">System Status</h6>
+
+        <Col lg={6}>
+          <Card className="h-100">
+            <Card.Header className="bg-light">
+              <h6 className="mb-0 fw-bold">System Status</h6>
             </Card.Header>
-            <Card.Body className="py-2">
-              <div className="status-item d-flex justify-content-between">
-                <span>Database Status:</span>
-                <span className="badge bg-success">Online</span>
+            <Card.Body>
+              <div className="d-flex justify-content-between align-items-center py-2">
+                <span className="fw-medium">Database Status:</span>
+                <Badge bg="success">Online</Badge>
               </div>
-              <div className="status-item d-flex justify-content-between">
-                <span>API Status:</span>
-                <span className="badge bg-success">Operational</span>
+              <hr className="my-2" />
+              <div className="d-flex justify-content-between align-items-center py-2">
+                <span className="fw-medium">API Status:</span>
+                <Badge bg="success">Operational</Badge>
               </div>
-              <div className="status-item d-flex justify-content-between">
-                <span>Backup Status:</span>
-                <span className="badge bg-success">Scheduled</span>
+              <hr className="my-2" />
+              <div className="d-flex justify-content-between align-items-center py-2">
+                <span className="fw-medium">Backup Status:</span>
+                <Badge bg="info">Scheduled</Badge>
+              </div>
+              <hr className="my-2" />
+              <div className="d-flex justify-content-between align-items-center py-2">
+                <span className="fw-medium">Server Load:</span>
+                <Badge bg="warning">Medium</Badge>
               </div>
             </Card.Body>
           </Card>
         </Col>
       </Row>
-    </div>
+
+      <Row className="g-4 mt-2">
+        <Col lg={12}>
+          <Card>
+            <Card.Header className="bg-light">
+              <h6 className="mb-0 fw-bold">Notification Settings</h6>
+            </Card.Header>
+            <Card.Body>
+              <Row>
+                <Col md={6}>
+                  <div className="form-check mb-3">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      defaultChecked
+                    />
+                    <label className="form-check-label">
+                      Email notifications
+                    </label>
+                  </div>
+                  <div className="form-check mb-3">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      defaultChecked
+                    />
+                    <label className="form-check-label">Security alerts</label>
+                  </div>
+                </Col>
+                <Col md={6}>
+                  <div className="form-check mb-3">
+                    <input className="form-check-input" type="checkbox" />
+                    <label className="form-check-label">
+                      SMS notifications
+                    </label>
+                  </div>
+                  <div className="form-check mb-3">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      defaultChecked
+                    />
+                    <label className="form-check-label">
+                      System maintenance alerts
+                    </label>
+                  </div>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+    </Container>
   );
 };
 
-// ✅ UPDATED: Compact components for missing sections
+// Enhanced Analytics Component
 const Analytics = ({adminData, addToast}) => (
-  <div>
-    <h4 className="mb-3">
-      <FontAwesomeIcon icon={faChartLine} className="me-2" />
-      Advanced Analytics
-    </h4>
-    <Alert variant="info" className="mb-3">
-      <h6 className="mb-2">Analytics Dashboard</h6>
-      <p className="mb-2">
-        Advanced analytics and insights will be available here.
-      </p>
-      <ul className="mb-0">
-        <li>User behavior analysis</li>
-        <li>Performance metrics</li>
-        <li>Business intelligence reports</li>
-        <li>Predictive analytics</li>
-      </ul>
-    </Alert>
-  </div>
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faChartLine} className="me-2 text-primary" />
+          Advanced Analytics
+        </h4>
+        <p className="text-muted mb-0">
+          Comprehensive business insights and metrics
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export Report
+        </Button>
+        <Button variant="primary" size="sm">
+          <FontAwesomeIcon icon={faChartLine} className="me-1" />
+          Generate Insights
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="text-center h-100 border-0 shadow-sm">
+          <Card.Body>
+            <div
+              className="rounded-circle bg-primary bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faUsers} className="fs-2 text-primary" />
+            </div>
+            <h5 className="fw-bold">User Analytics</h5>
+            <p className="text-muted small">
+              Track user engagement and behavior patterns
+            </p>
+            <Badge bg="primary" className="w-100">
+              Coming Soon
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="text-center h-100 border-0 shadow-sm">
+          <Card.Body>
+            <div
+              className="rounded-circle bg-success bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon
+                icon={faBuilding}
+                className="fs-2 text-success"
+              />
+            </div>
+            <h5 className="fw-bold">Business Metrics</h5>
+            <p className="text-muted small">
+              Monitor key business performance indicators
+            </p>
+            <Badge bg="success" className="w-100">
+              Available
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="text-center h-100 border-0 shadow-sm">
+          <Card.Body>
+            <div
+              className="rounded-circle bg-info bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faChartLine} className="fs-2 text-info" />
+            </div>
+            <h5 className="fw-bold">Growth Analytics</h5>
+            <p className="text-muted small">
+              Analyze growth trends and forecasts
+            </p>
+            <Badge bg="info" className="w-100">
+              In Development
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="text-center h-100 border-0 shadow-sm">
+          <Card.Body>
+            <div
+              className="rounded-circle bg-warning bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon
+                icon={faDatabase}
+                className="fs-2 text-warning"
+              />
+            </div>
+            <h5 className="fw-bold">Data Insights</h5>
+            <p className="text-muted small">
+              Deep dive into data patterns and insights
+            </p>
+            <Badge bg="warning" className="w-100">
+              Beta
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Row className="g-4">
+      <Col lg={8}>
+        <Card className="h-100 border-0 shadow-sm">
+          <Card.Header className="bg-light border-0">
+            <h6 className="mb-0 fw-bold">Analytics Dashboard Preview</h6>
+          </Card.Header>
+          <Card.Body className="text-center py-5">
+            <FontAwesomeIcon
+              icon={faChartLine}
+              className="fs-1 text-muted mb-3"
+            />
+            <h5 className="text-muted">Interactive Analytics Dashboard</h5>
+            <p className="text-muted mb-4">
+              Advanced analytics and insights will be available here including
+              real-time charts, performance metrics, and business intelligence
+              reports.
+            </p>
+            <Button variant="primary">
+              <FontAwesomeIcon icon={faChartLine} className="me-2" />
+              View Analytics
+            </Button>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={4}>
+        <Card className="h-100 border-0 shadow-sm">
+          <Card.Header className="bg-light border-0">
+            <h6 className="mb-0 fw-bold">Quick Stats</h6>
+          </Card.Header>
+          <Card.Body>
+            <div className="d-flex justify-content-between align-items-center py-3 border-bottom">
+              <span className="text-muted">Total Revenue</span>
+              <h6 className="mb-0 text-success">₹2,45,680</h6>
+            </div>
+            <div className="d-flex justify-content-between align-items-center py-3 border-bottom">
+              <span className="text-muted">Active Companies</span>
+              <h6 className="mb-0 text-primary">45</h6>
+            </div>
+            <div className="d-flex justify-content-between align-items-center py-3 border-bottom">
+              <span className="text-muted">Total Users</span>
+              <h6 className="mb-0 text-info">187</h6>
+            </div>
+            <div className="d-flex justify-content-between align-items-center py-3">
+              <span className="text-muted">Growth Rate</span>
+              <h6 className="mb-0 text-success">+23.5%</h6>
+            </div>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+  </Container>
 );
 
+// Enhanced Staff Management Component
 const StaffManagement = ({adminData, addToast}) => (
-  <div>
-    <h4 className="mb-3">
-      <FontAwesomeIcon icon={faUsers} className="me-2" />
-      Staff Management
-    </h4>
-    <Alert variant="info" className="mb-3">
-      <h6 className="mb-2">Internal Staff Management</h6>
-      <p className="mb-2">Manage internal staff and their roles.</p>
-      <ul className="mb-0">
-        <li>Staff member profiles</li>
-        <li>Role assignments</li>
-        <li>Performance tracking</li>
-        <li>Access permissions</li>
-      </ul>
-    </Alert>
-  </div>
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faUsers} className="me-2 text-primary" />
+          Staff Management
+        </h4>
+        <p className="text-muted mb-0">Manage internal staff and their roles</p>
+      </div>
+      <Button variant="primary">
+        <FontAwesomeIcon icon={faUsers} className="me-2" />
+        Add Staff Member
+      </Button>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-primary mb-2">12</h3>
+            <p className="text-muted mb-0">Total Staff</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-success mb-2">10</h3>
+            <p className="text-muted mb-0">Active Staff</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-warning mb-2">5</h3>
+            <p className="text-muted mb-0">Admins</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-info mb-2">7</h3>
+            <p className="text-muted mb-0">Managers</p>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Staff Directory</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faUsers} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Staff Management System</h5>
+        <p className="text-muted mb-4">
+          Comprehensive staff management including role assignments, performance
+          tracking, and access permissions.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faUsers} className="me-2" />
+          Manage Staff
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
 );
 
+// Enhanced Permissions Component
 const Permissions = ({adminData, addToast}) => (
-  <div>
-    <h4 className="mb-3">
-      <FontAwesomeIcon icon={faShieldAlt} className="me-2" />
-      Permissions Management
-    </h4>
-    <Alert variant="warning" className="mb-3">
-      <h6 className="mb-2">Role-Based Access Control</h6>
-      <p className="mb-2">Configure user permissions and access levels.</p>
-      <ul className="mb-0">
-        <li>User roles and permissions</li>
-        <li>Access control lists</li>
-        <li>Feature-based permissions</li>
-        <li>Resource access management</li>
-      </ul>
-    </Alert>
-  </div>
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faShieldAlt} className="me-2 text-primary" />
+          Permissions Management
+        </h4>
+        <p className="text-muted mb-0">
+          Configure user permissions and access levels
+        </p>
+      </div>
+      <Button variant="primary">
+        <FontAwesomeIcon icon={faShieldAlt} className="me-2" />
+        Create Role
+      </Button>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-success bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon
+                icon={faUserShield}
+                className="fs-2 text-success"
+              />
+            </div>
+            <h5 className="fw-bold">Super Admin</h5>
+            <p className="text-muted small">Full system access and control</p>
+            <Badge bg="success">3 Users</Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-primary bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faUsers} className="fs-2 text-primary" />
+            </div>
+            <h5 className="fw-bold">Admin</h5>
+            <p className="text-muted small">Administrative privileges</p>
+            <Badge bg="primary">8 Users</Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-info bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faShieldAlt} className="fs-2 text-info" />
+            </div>
+            <h5 className="fw-bold">Manager</h5>
+            <p className="text-muted small">Limited administrative access</p>
+            <Badge bg="info">15 Users</Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Role-Based Access Control</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faShieldAlt} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Advanced Permission System</h5>
+        <p className="text-muted mb-4">
+          Configure user permissions, access control lists, feature-based
+          permissions, and resource access management.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faShieldAlt} className="me-2" />
+          Configure Permissions
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
+);
+
+// Enhanced Product Management Component
+const ProductManagement = ({adminData, addToast}) => (
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faBoxes} className="me-2 text-primary" />
+          Product Management
+        </h4>
+        <p className="text-muted mb-0">
+          Manage your product inventory and catalog
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export Products
+        </Button>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faBoxes} className="me-2" />
+          Add Product
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-primary mb-2">1,245</h3>
+            <p className="text-muted mb-0">Total Products</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-success mb-2">1,198</h3>
+            <p className="text-muted mb-0">In Stock</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-warning mb-2">32</h3>
+            <p className="text-muted mb-0">Low Stock</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-danger mb-2">15</h3>
+            <p className="text-muted mb-0">Out of Stock</p>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Product Catalog Overview</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faBoxes} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Product Catalog Management</h5>
+        <p className="text-muted mb-4">
+          Comprehensive product management including adding, editing, and
+          removing products, product categories and tags, pricing and stock
+          management.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faBoxes} className="me-2" />
+          Manage Products
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
+);
+
+// Enhanced Inventory Management Component
+const InventoryManagement = ({adminData, addToast}) => (
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faDatabase} className="me-2 text-primary" />
+          Inventory Management
+        </h4>
+        <p className="text-muted mb-0">
+          Monitor and manage your inventory levels
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export Inventory
+        </Button>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faDatabase} className="me-2" />
+          Stock Adjustment
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-info mb-2">₹12.5L</h3>
+            <p className="text-muted mb-0">Total Stock Value</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-success mb-2">8,520</h3>
+            <p className="text-muted mb-0">Total Quantity</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-warning mb-2">125</h3>
+            <p className="text-muted mb-0">Low Stock Items</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-danger mb-2">45</h3>
+            <p className="text-muted mb-0">Critical Stock</p>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Inventory Control Center</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faDatabase} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Advanced Inventory Management</h5>
+        <p className="text-muted mb-4">
+          Stock level monitoring, low stock alerts, inventory tracking, and
+          supplier management all in one place.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faDatabase} className="me-2" />
+          Manage Inventory
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
+);
+
+// Enhanced Order Management Component
+const OrderManagement = ({adminData, addToast}) => (
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon
+            icon={faShoppingCart}
+            className="me-2 text-primary"
+          />
+          Order Management
+        </h4>
+        <p className="text-muted mb-0">
+          Manage customer orders and fulfillment
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export Orders
+        </Button>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+          Create Order
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-primary mb-2">2,840</h3>
+            <p className="text-muted mb-0">Total Orders</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-success mb-2">2,654</h3>
+            <p className="text-muted mb-0">Completed</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-warning mb-2">156</h3>
+            <p className="text-muted mb-0">Pending</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-danger mb-2">30</h3>
+            <p className="text-muted mb-0">Cancelled</p>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Order Processing Center</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon
+          icon={faShoppingCart}
+          className="fs-1 text-muted mb-3"
+        />
+        <h5 className="text-muted">Complete Order Management</h5>
+        <p className="text-muted mb-4">
+          Order processing workflow, status tracking, customer communication,
+          and shipping and delivery management.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
+          Manage Orders
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
 );
 
 function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLoading, setIsLoading] = useState(true);
   const [adminData, setAdminData] = useState(null);
@@ -174,6 +772,40 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
   useEffect(() => {
     loadAdminData();
   }, []);
+
+  // Update active tab based on current route
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.includes("/users/")) {
+      setActiveTab("users");
+    } else if (path.includes("/companies")) {
+      setActiveTab("companies");
+    } else if (path.includes("/analytics")) {
+      setActiveTab("analytics");
+    } else if (path.includes("/products")) {
+      setActiveTab("products");
+    } else if (path.includes("/inventory")) {
+      setActiveTab("inventory");
+    } else if (path.includes("/orders")) {
+      setActiveTab("orders");
+    } else if (path.includes("/staff")) {
+      setActiveTab("staff");
+    } else if (path.includes("/permissions")) {
+      setActiveTab("permissions");
+    } else if (path.includes("/security")) {
+      setActiveTab("security");
+    } else if (path.includes("/database")) {
+      setActiveTab("database");
+    } else if (path.includes("/reports")) {
+      setActiveTab("reports");
+    } else if (path.includes("/notifications")) {
+      setActiveTab("notifications");
+    } else if (path.includes("/settings")) {
+      setActiveTab("settings");
+    } else {
+      setActiveTab("dashboard");
+    }
+  }, [location.pathname]);
 
   const loadAdminData = async () => {
     try {
@@ -191,12 +823,15 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         lastBackup: new Date().toISOString(),
         notifications: 8,
         alerts: 2,
+        totalProducts: 1245,
+        totalOrders: 2840,
+        totalRevenue: 245680,
+        monthlyGrowth: 23.5,
       };
 
       setAdminData(mockAdminData);
       addToast?.("Admin dashboard loaded successfully", "success");
     } catch (error) {
-      console.error("Error loading admin data:", error);
       setError(error.message);
       addToast?.("Failed to load admin dashboard", "error");
     } finally {
@@ -206,6 +841,7 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    navigate(`/admin/${tab}`);
   };
 
   const handleToggleSidebar = () => {
@@ -216,15 +852,14 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
     if (onLogout) {
       onLogout();
     } else {
-      // Fallback navigation
       window.location.href = "/";
     }
   };
 
   if (isLoading) {
     return (
-      <div className="admin-loading">
-        <Container className="mt-4 text-center">
+      <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
+        <div className="text-center">
           <Spinner
             animation="border"
             variant="primary"
@@ -232,467 +867,530 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
             className="mb-3"
           />
           <h5 className="text-muted">Loading Admin Dashboard...</h5>
-        </Container>
+          <p className="text-muted">
+            Please wait while we prepare your admin interface...
+          </p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <Container className="mt-4">
-        <Alert variant="danger">
+      <Container className="mt-5">
+        <Alert variant="danger" className="text-center">
+          <FontAwesomeIcon icon={faArrowLeft} className="fs-1 mb-3" />
           <Alert.Heading>Error Loading Admin Dashboard</Alert.Heading>
-          <p>{error}</p>
+          <p className="mb-3">{error}</p>
+          <Button variant="danger" onClick={() => window.location.reload()}>
+            Retry Loading
+          </Button>
         </Alert>
       </Container>
     );
   }
 
-  // Render content based on active tab
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case "dashboard":
-        return (
-          <AdminStats
-            adminData={adminData}
-            onRefresh={loadAdminData}
-            addToast={addToast}
-          />
-        );
-      case "analytics":
-        return <Analytics adminData={adminData} addToast={addToast} />;
-      case "companies":
-        return (
-          <CompanyManagement
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "users":
-        return (
-          <UserManagement
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "staff":
-        return <StaffManagement adminData={adminData} addToast={addToast} />;
-      case "security":
-        return (
-          <SecurityManagement
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "permissions":
-        return <Permissions adminData={adminData} addToast={addToast} />;
-      case "database":
-        return (
-          <DatabaseManagement
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "reports":
-        return (
-          <ReportsAnalytics
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "notifications":
-        return (
-          <NotificationCenter
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-          />
-        );
-      case "settings":
-        return (
-          <SystemSettings
-            adminData={adminData}
-            currentUser={currentUser}
-            addToast={addToast}
-            onSettingsUpdate={loadAdminData}
-          />
-        );
-      default:
-        return (
-          <Alert variant="info" className="mb-3">
-            <h6 className="mb-1">Coming Soon</h6>
-            <p className="mb-0">This section is under development.</p>
-          </Alert>
-        );
-    }
-  };
-
   return (
-    <div className="admin-dashboard-container">
-      {/* ✅ Admin Sidebar */}
-      <AdminSidebar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        currentUser={currentUser}
-        onLogout={handleExitAdmin}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={handleToggleSidebar}
-        adminData={adminData}
-      />
-      {/* ✅ Main Content Area */}
-      <div
-        className={`admin-main-content ${
-          sidebarCollapsed ? "sidebar-collapsed" : ""
-        }`}
-      >
-        {/* ✅ UPDATED: Compact Header */}
-        <div className="admin-header">
-          <Container fluid>
-            <Row className="align-items-center">
-              <Col>
-                <h3 className="admin-title mb-1">
-                  <FontAwesomeIcon
-                    icon={faUserShield}
-                    className="me-2 text-primary"
+    <>
+      <div className="admin-dashboard-container">
+        {/* Admin Sidebar */}
+        <AdminSidebar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          currentUser={currentUser}
+          onLogout={handleExitAdmin}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleSidebar}
+          adminData={adminData}
+        />
+
+        {/* Main Content Area */}
+        <div
+          className={`admin-main-content ${
+            sidebarCollapsed ? "sidebar-collapsed" : ""
+          }`}
+        >
+          {/* Header */}
+          <div className="admin-header bg-white border-bottom shadow-sm">
+            <Container fluid>
+              <Row className="align-items-center">
+                <Col>
+                  <div className="d-flex align-items-center">
+                    <FontAwesomeIcon
+                      icon={faUserShield}
+                      className="text-primary me-2 fs-4"
+                    />
+                    <div>
+                      <h4 className="mb-0 fw-bold text-dark">
+                        Shop Management Admin
+                      </h4>
+                      <small className="text-muted">
+                        Welcome back,{" "}
+                        <strong>
+                          {currentUser?.name || currentUser?.email || "Admin"}
+                        </strong>
+                      </small>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs="auto">
+                  <div className="d-flex align-items-center gap-3">
+                    <Badge
+                      bg={isOnline ? "success" : "danger"}
+                      className="fs-6"
+                    >
+                      <FontAwesomeIcon
+                        icon={faTachometerAlt}
+                        className="me-1"
+                      />
+                      {isOnline ? "System Online" : "System Offline"}
+                    </Badge>
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      onClick={handleExitAdmin}
+                    >
+                      <FontAwesomeIcon icon={faArrowLeft} className="me-1" />
+                      Exit Admin
+                    </Button>
+                  </div>
+                </Col>
+              </Row>
+            </Container>
+          </div>
+
+          {/* Routes Content */}
+          <div className="admin-content">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <AdminOverview
+                    adminData={adminData}
+                    addToast={addToast}
+                    onTabChange={handleTabChange}
                   />
-                  Admin Dashboard
-                  <span className="badge bg-warning text-dark ms-2">
-                    Development Mode
-                  </span>
-                </h3>
-                <p className="text-muted mb-1 small">
-                  System administration and management portal
-                </p>
-                <small className="text-muted">
-                  Logged in as:{" "}
-                  <strong>
-                    {currentUser?.name || currentUser?.email || "User"}
-                  </strong>
-                </small>
-              </Col>
-              <Col xs="auto">
-                <div className="d-flex align-items-center">
-                  <span
-                    className={`status-indicator ${
-                      isOnline ? "online" : "offline"
-                    }`}
-                  >
-                    {isOnline ? "System Online" : "System Offline"}
-                  </span>
-                </div>
-              </Col>
-            </Row>
-          </Container>
+                }
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <AdminOverview
+                    adminData={adminData}
+                    addToast={addToast}
+                    onTabChange={handleTabChange}
+                  />
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <Analytics adminData={adminData} addToast={addToast} />
+                }
+              />
+              <Route
+                path="/companies"
+                element={
+                  <CompanyManagement
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <UserManagement
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/users/:userId/*"
+                element={<UserDetailPage addToast={addToast} />}
+              />
+              <Route
+                path="/products"
+                element={
+                  <ProductManagement
+                    adminData={adminData}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <InventoryManagement
+                    adminData={adminData}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/orders"
+                element={
+                  <OrderManagement adminData={adminData} addToast={addToast} />
+                }
+              />
+              <Route
+                path="/staff"
+                element={
+                  <StaffManagement adminData={adminData} addToast={addToast} />
+                }
+              />
+              <Route
+                path="/security"
+                element={
+                  <SecurityManagement
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/permissions"
+                element={
+                  <Permissions adminData={adminData} addToast={addToast} />
+                }
+              />
+              <Route
+                path="/database"
+                element={
+                  <DatabaseManagement
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <ReportsAnalytics
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <NotificationCenter
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <SystemSettings
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                    onSettingsUpdate={loadAdminData}
+                  />
+                }
+              />
+              <Route
+                path="/companies/:companyId/*"
+                element={<CompanyDetailPage addToast={addToast} />}
+              />
+            </Routes>
+          </div>
         </div>
-
-        {/* ✅ UPDATED: Compact Development Warning */}
-        <Container fluid>
-          <Alert variant="warning" className="mb-3 py-2">
-            <FontAwesomeIcon icon={faShieldAlt} className="me-2" />
-            <strong>Development Mode:</strong> Admin restrictions are disabled.
-            All users can access admin features for development purposes.
-          </Alert>
-        </Container>
-
-        {/* ✅ UPDATED: Compact Tab Content */}
-        <Container fluid className="admin-content">
-          <div className="content-wrapper">{renderTabContent()}</div>
-        </Container>
       </div>
-      {/* ✅ UPDATED: Compact Custom Styles */}
 
-      <style jsx>{`
-        /* ✅ FIXED: Selective resets - NOT breaking everything */
+      <style>
+        {`
+    .admin-dashboard-container {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      background: #f8f9fa;
+      position: fixed;
+      top: 0;
+      left: 0;
+      margin: 0;
+      padding: 1rem;
+      z-index: 1000;
+      overflow: hidden;
+    }
 
-        .admin-dashboard-container {
-          display: flex;
-          height: 100vh;
-          width: 100vw;
-          background: #f8f9fa;
-          position: fixed;
-          top: 0;
-          left: 0;
-          margin: 0;
-          padding: 0;
-          z-index: 1000;
-        }
+    .admin-main-content {
+      flex: 1;
+      margin-left: 280px;
+      transition: margin-left 0.3s ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
 
-        .admin-main-content {
-          flex: 1;
-          margin-left: 280px;
-          transition: margin-left 0.3s ease;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-        }
+    .admin-main-content.sidebar-collapsed {
+      margin-left: 70px;
+    }
 
-        .admin-main-content.sidebar-collapsed {
-          margin-left: 70px;
-        }
+    .admin-header {
+      padding: 1rem 0;
+      flex-shrink: 0;
+      min-height: 80px;
+      border-bottom: 2px solid #e9ecef !important;
+      background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    }
 
-        .admin-header {
-          background: white;
-          border-bottom: 1px solid #e9ecef;
-          padding: 1rem;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          flex-shrink: 0;
-        }
+    /* ✅ UPDATED: Reduced padding from 2rem to 0.5rem */
+    .admin-content {
+      flex: 1;
+      padding: 0.5rem;
+      background: #f8f9fa;
+      overflow-y: auto;
+    }
 
-        .admin-title {
-          color: #495057;
-          font-weight: 600;
-          font-size: 1.5rem;
-          margin-bottom: 0.25rem;
-        }
+    /* Enhanced Bootstrap Cards */
+    .admin-content .card {
+      border: none;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+      transition: all 0.15s ease-in-out;
+      border-radius: 0.75rem;
+    }
 
-        .status-indicator {
-          padding: 4px 10px;
-          border-radius: 16px;
-          font-size: 11px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
+    .admin-content .card:hover {
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+      transform: translateY(-2px);
+    }
 
-        .status-indicator.online {
-          background: #d4edda;
-          color: #155724;
-          border: 1px solid #c3e6cb;
-        }
+    .admin-content .card-header {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+      font-weight: 600;
+      border-radius: 0.75rem 0.75rem 0 0 !important;
+    }
 
-        .status-indicator.offline {
-          background: #f8d7da;
-          color: #721c24;
-          border: 1px solid #f5c6cb;
-        }
+    /* Enhanced Alerts */
+    .admin-content .alert {
+      border: none;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
 
-        .admin-content {
-          flex: 1;
-          padding: 1rem;
-        }
+    /* Enhanced Badges */
+    .admin-content .badge {
+      font-weight: 500;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.5rem;
+    }
 
-        .content-wrapper {
-          background: white;
-          border-radius: 8px;
-          padding: 1.5rem;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          border: 1px solid #e9ecef;
-          min-height: calc(100vh - 180px);
-        }
+    /* Enhanced Buttons */
+    .admin-content .btn {
+      border-radius: 0.5rem;
+      font-weight: 500;
+      transition: all 0.15s ease-in-out;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
 
-        /* ✅ Only target admin containers, not everything */
-        .admin-dashboard-container .container-fluid {
-          padding-left: 1rem;
-          padding-right: 1rem;
-        }
+    .admin-content .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
+    }
 
-        .admin-dashboard-container .alert {
-          margin-bottom: 1rem;
-        }
+    /* Status indicators */
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 50px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
 
-        .admin-loading {
-          height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #f8f9fa;
-          position: fixed;
-          top: 0;
-          left: 0;
-          z-index: 1001;
-        }
+    /* Enhanced Statistics Cards */
+    .admin-content .card h3 {
+      font-weight: 700;
+      font-size: 2rem;
+    }
 
-        .notification-item {
-          display: flex;
-          align-items: center;
-          padding: 0.75rem;
-          border-bottom: 1px solid #e9ecef;
-        }
+    /* Gradient backgrounds for feature cards */
+    .admin-content .bg-primary.bg-opacity-10 {
+      background: linear-gradient(135deg, rgba(13, 110, 253, 0.1) 0%, rgba(13, 110, 253, 0.05) 100%) !important;
+    }
 
-        .notification-item:last-child {
-          border-bottom: none;
-        }
+    .admin-content .bg-success.bg-opacity-10 {
+      background: linear-gradient(135deg, rgba(25, 135, 84, 0.1) 0%, rgba(25, 135, 84, 0.05) 100%) !important;
+    }
 
-        .notification-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          margin-right: 0.75rem;
-          font-size: 0.9rem;
-        }
+    .admin-content .bg-info.bg-opacity-10 {
+      background: linear-gradient(135deg, rgba(13, 202, 240, 0.1) 0%, rgba(13, 202, 240, 0.05) 100%) !important;
+    }
 
-        .notification-content {
-          flex: 1;
-        }
+    .admin-content .bg-warning.bg-opacity-10 {
+      background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%) !important;
+    }
 
-        .status-item {
-          padding: 0.5rem 0;
-          border-bottom: 1px solid #f8f9fa;
-        }
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+      .admin-main-content {
+        margin-left: 0;
+      }
 
-        .status-item:last-child {
-          border-bottom: none;
-        }
+      .admin-main-content.sidebar-collapsed {
+        margin-left: 0;
+      }
 
-        /* ✅ Preserve Bootstrap spacing for cards and content */
-        .admin-dashboard-container .card {
-          margin-bottom: 1rem;
-        }
+      .admin-header {
+        padding: 0.75rem 0;
+        min-height: 70px;
+      }
 
-        .admin-dashboard-container .card-header {
-          padding: 0.75rem 1rem;
-        }
+      /* ✅ UPDATED: Mobile padding also reduced to 0.5rem */
+      .admin-content {
+        padding: 0.5rem;
+      }
 
-        .admin-dashboard-container .card-body {
-          padding: 1rem;
-        }
+      .admin-header h4 {
+        font-size: 1.1rem;
+      }
 
-        /* ✅ Preserve normal Bootstrap row/col behavior inside admin */
-        .admin-dashboard-container .row {
-          margin-left: -0.75rem;
-          margin-right: -0.75rem;
-        }
+      .admin-content .card {
+        border-radius: 0.5rem;
+      }
 
-        .admin-dashboard-container .col,
-        .admin-dashboard-container [class*="col-"] {
-          padding-left: 0.75rem;
-          padding-right: 0.75rem;
-        }
+      .admin-content h3 {
+        font-size: 1.5rem !important;
+      }
+    }
 
-        /* ✅ Alert spacing */
-        .admin-dashboard-container .alert h6 {
-          font-size: 1rem;
-          font-weight: 600;
-          margin-bottom: 0.5rem;
-        }
+    @media (max-width: 576px) {
+      .admin-header {
+        padding: 0.5rem 0;
+        min-height: 60px;
+      }
 
-        .admin-dashboard-container .alert p {
-          font-size: 0.9rem;
-          margin-bottom: 0.5rem;
-        }
+      /* ✅ UPDATED: Small mobile padding to 0.5rem */
+      .admin-content {
+        padding: 0.5rem;
+      }
 
-        .admin-dashboard-container .alert ul {
-          font-size: 0.85rem;
-          padding-left: 1.2rem;
-          margin-bottom: 0;
-        }
+      .admin-header h4 {
+        font-size: 1rem;
+      }
 
-        .admin-dashboard-container .alert ul li {
-          margin-bottom: 0.25rem;
-        }
+      .admin-header .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+      }
 
-        /* ✅ Preserve normal spacing for titles and text */
-        .admin-dashboard-container h1,
-        .admin-dashboard-container h2,
-        .admin-dashboard-container h3,
-        .admin-dashboard-container h4,
-        .admin-dashboard-container h5,
-        .admin-dashboard-container h6 {
-          margin-bottom: 0.5rem;
-        }
+      .admin-content .card-body {
+        padding: 1rem;
+      }
+    }
 
-        .admin-dashboard-container p {
-          margin-bottom: 1rem;
-        }
+    /* Custom scrollbar for admin content */
+    .admin-content::-webkit-scrollbar {
+      width: 8px;
+    }
 
-        .admin-dashboard-container .mb-0 {
-          margin-bottom: 0 !important;
-        }
+    .admin-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
 
-        .admin-dashboard-container .mb-1 {
-          margin-bottom: 0.25rem !important;
-        }
+    .admin-content::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
 
-        .admin-dashboard-container .mb-2 {
-          margin-bottom: 0.5rem !important;
-        }
+    .admin-content::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
 
-        .admin-dashboard-container .mb-3 {
-          margin-bottom: 1rem !important;
-        }
+    /* Loading and transition animations */
+    .admin-content > * {
+      animation: fadeInUp 0.3s ease-out;
+    }
 
-        .admin-dashboard-container .mb-4 {
-          margin-bottom: 1.5rem !important;
-        }
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
-        .admin-dashboard-container .me-2 {
-          margin-right: 0.5rem !important;
-        }
+    /* Enhanced focus states for accessibility */
+    .admin-content .btn:focus,
+    .admin-content .card:focus-within {
+      box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+      outline: none;
+    }
 
-        .admin-dashboard-container .ms-2 {
-          margin-left: 0.5rem !important;
-        }
+    /* Enhanced border radius consistency */
+    .admin-content .border-bottom {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+    }
 
-        /* ✅ Preserve Bootstrap button spacing */
-        .admin-dashboard-container .btn {
-          padding: 0.375rem 0.75rem;
-          margin-bottom: 0;
-          font-size: 1rem;
-          line-height: 1.5;
-          border-radius: 0.25rem;
-        }
+    .admin-content .border-0 {
+      border: none !important;
+    }
 
-        .admin-dashboard-container .btn-sm {
-          padding: 0.25rem 0.5rem;
-          font-size: 0.875rem;
-          line-height: 1.5;
-          border-radius: 0.2rem;
-        }
+    .admin-content .shadow-sm {
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+    }
 
-        /* ✅ Preserve badge spacing */
-        .admin-dashboard-container .badge {
-          padding: 0.25em 0.5em;
-          font-size: 0.75em;
-          font-weight: 700;
-          line-height: 1;
-          color: #fff;
-          text-align: center;
-          white-space: nowrap;
-          vertical-align: baseline;
-          border-radius: 0.25rem;
-        }
+    /* ✅ ADDITIONAL: Tighter spacing for better content utilization */
+    .admin-content .container-fluid {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
 
-        /* Mobile Responsiveness */
-        @media (max-width: 768px) {
-          .admin-main-content {
-            margin-left: 0;
-          }
+    .admin-content .row {
+      margin-left: -0.25rem;
+      margin-right: -0.25rem;
+    }
 
-          .admin-main-content.sidebar-collapsed {
-            margin-left: 0;
-          }
+    .admin-content .col,
+    .admin-content [class*="col-"] {
+      padding-left: 0.25rem;
+      padding-right: 0.25rem;
+    }
 
-          .admin-header {
-            padding: 0.75rem 1rem;
-          }
+    /* ✅ ADDITIONAL: Compact spacing for cards and components */
+    .admin-content .card-body {
+      padding: 1rem;
+    }
 
-          .admin-title {
-            font-size: 1.25rem;
-          }
+    .admin-content .card-header {
+      padding: 0.75rem 1rem;
+    }
 
-          .content-wrapper {
-            padding: 1rem;
-          }
+    .admin-content .mb-4 {
+      margin-bottom: 1rem !important;
+    }
 
-          .notification-icon {
-            width: 28px;
-            height: 28px;
-            font-size: 0.8rem;
-          }
-        }
-      `}</style>
-    </div>
+    .admin-content .mb-3 {
+      margin-bottom: 0.75rem !important;
+    }
+
+    /* ✅ ADDITIONAL: Optimize vertical spacing */
+    .admin-content .g-4 {
+      --bs-gutter-x: 0.5rem;
+      --bs-gutter-y: 0.5rem;
+    }
+  `}
+      </style>
+    </>
   );
 }
 

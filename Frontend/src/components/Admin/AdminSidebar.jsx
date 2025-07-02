@@ -277,165 +277,235 @@ function AdminSidebar({
   };
 
   return (
-    <div
-      className={`bg-primary position-fixed top-0 start-0 h-100 ${
-        isCollapsed ? "" : ""
-      }`}
-      style={{
-        width: isCollapsed ? "70px" : "280px",
-        background: "linear-gradient(180deg, #4e73df 0%, #3a5bd7 100%)",
-        transition: "width 0.3s ease",
-        zIndex: 1000,
-        overflowY: "auto",
-        overflowX: "hidden",
-      }}
-    >
-      {/* Sidebar Header */}
+    <>
       <div
-        className="d-flex align-items-center justify-content-between text-white px-3"
+        className={`bg-primary position-fixed top-0 start-0 h-100 admin-sidebar ${
+          isCollapsed ? "" : ""
+        }`}
         style={{
-          height: "70px",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-          flexShrink: 0,
+          width: isCollapsed ? "70px" : "280px",
+          background: "linear-gradient(180deg, #4e73df 0%, #3a5bd7 100%)",
+          transition: "width 0.3s ease",
+          zIndex: 1000,
+          overflowY: "auto",
+          overflowX: "hidden",
         }}
       >
-        <h3
-          className={`mb-0 fw-bold text-uppercase ${
-            isCollapsed ? "d-none" : ""
-          }`}
-          style={{
-            fontSize: "1.5rem",
-            letterSpacing: "1px",
-            transition: "opacity 0.3s ease",
-          }}
-        >
-          Management
-        </h3>
-        <button
-          className="btn text-white p-2 rounded-circle"
-          onClick={onToggleCollapse}
-          aria-label="Toggle Sidebar"
-          style={{
-            backgroundColor: "transparent",
-            border: "none",
-            width: "36px",
-            height: "36px",
-            transition: "all 0.3s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-            e.target.style.transform = "scale(1.1)";
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.backgroundColor = "transparent";
-            e.target.style.transform = "scale(1)";
-          }}
-        >
-          <FontAwesomeIcon icon={isCollapsed ? faAnglesRight : faAnglesLeft} />
-        </button>
-      </div>
-
-      {/* Sidebar Menu */}
-      <div
-        className="py-3"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "calc(100vh - 70px)",
-        }}
-      >
-        {/* Main Navigation */}
+        {/* Sidebar Header */}
         <div
-          className="px-2 mb-3"
+          className="d-flex align-items-center justify-content-between text-white px-3"
           style={{
+            height: "70px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-            paddingBottom: "15px",
+            flexShrink: 0,
           }}
         >
-          <ul className="nav flex-column">
-            {mainNavItems.map((item) => renderNavItem(item, true))}
-          </ul>
+          <h3
+            className={`mb-0 fw-bold text-uppercase ${
+              isCollapsed ? "d-none" : ""
+            }`}
+            style={{
+              fontSize: "1.5rem",
+              letterSpacing: "1px",
+              transition: "opacity 0.3s ease",
+            }}
+          >
+            Management
+          </h3>
+          <button
+            className="btn text-white p-2 rounded-circle"
+            onClick={onToggleCollapse}
+            aria-label="Toggle Sidebar"
+            style={{
+              backgroundColor: "transparent",
+              border: "none",
+              width: "36px",
+              height: "36px",
+              transition: "all 0.3s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+              e.target.style.transform = "scale(1.1)";
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = "transparent";
+              e.target.style.transform = "scale(1)";
+            }}
+          >
+            <FontAwesomeIcon
+              icon={isCollapsed ? faAnglesRight : faAnglesLeft}
+            />
+          </button>
         </div>
 
-        {/* Additional Sections */}
-        <div className="flex-grow-1">
-          {navigationSections.map(renderSection)}
-        </div>
+        {/* Sidebar Menu */}
+        <div
+          className="py-3"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "calc(100vh - 70px)",
+          }}
+        >
+          {/* Main Navigation */}
+          <div
+            className="px-2 mb-3"
+            style={{
+              borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+              paddingBottom: "15px",
+            }}
+          >
+            <ul className="nav flex-column">
+              {mainNavItems.map((item) => renderNavItem(item, true))}
+            </ul>
+          </div>
 
-        {/* Logout Section */}
-        <div className="mt-auto px-2">
-          <ul className="nav flex-column">
-            <li
-              className="nav-item"
-              style={{
-                borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                paddingTop: "15px",
-              }}
-            >
-              <a
-                href="#"
-                className="nav-link d-flex align-items-center text-white-50"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onLogout();
-                }}
+          {/* Additional Sections */}
+          <div className="flex-grow-1">
+            {navigationSections.map(renderSection)}
+          </div>
+
+          {/* Logout Section */}
+          <div className="mt-auto px-2">
+            <ul className="nav flex-column">
+              <li
+                className="nav-item"
                 style={{
-                  padding: "12px 15px",
-                  transition: "all 0.3s ease",
-                  borderRadius: "8px",
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.color = "#ff6b6b";
-                  e.target.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.color = "rgba(255, 255, 255, 0.5)";
-                  e.target.style.backgroundColor = "transparent";
+                  borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                  paddingTop: "15px",
                 }}
               >
-                <FontAwesomeIcon
-                  icon={faSignOutAlt}
-                  className={`${isCollapsed ? "text-center" : "me-3"}`}
-                  style={{
-                    width: "20px",
-                    fontSize: isCollapsed ? "1.2rem" : "1rem",
+                <a
+                  href="#"
+                  className="nav-link d-flex align-items-center text-white-50"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onLogout();
                   }}
-                />
-                {!isCollapsed && <span>Logout</span>}
-              </a>
-            </li>
-          </ul>
+                  style={{
+                    padding: "12px 15px",
+                    transition: "all 0.3s ease",
+                    borderRadius: "8px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.color = "#ff6b6b";
+                    e.target.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.color = "rgba(255, 255, 255, 0.5)";
+                    e.target.style.backgroundColor = "transparent";
+                  }}
+                >
+                  <FontAwesomeIcon
+                    icon={faSignOutAlt}
+                    className={`${isCollapsed ? "text-center" : "me-3"}`}
+                    style={{
+                      width: "20px",
+                      fontSize: isCollapsed ? "1.2rem" : "1rem",
+                    }}
+                  />
+                  {!isCollapsed && <span>Logout</span>}
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
 
-      {/* Custom scrollbar styles */}
-      <style jsx>{`
-        .admin-sidebar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .admin-sidebar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.1);
-        }
-        .admin-sidebar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.3);
-          border-radius: 2px;
-        }
-        .admin-sidebar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.5);
-        }
+      {/* Custom Styles */}
+      <style>
+        {`
+          .admin-sidebar::-webkit-scrollbar {
+            width: 4px;
+          }
+          .admin-sidebar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+          }
+          .admin-sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+          }
+          .admin-sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+          }
 
-        /* Mobile responsiveness */
-        @media (max-width: 767px) {
-          .admin-sidebar {
-            transform: translateX(-100%);
-            transition: transform 0.3s ease;
+          /* Mobile responsiveness */
+          @media (max-width: 767px) {
+            .admin-sidebar {
+              transform: translateX(-100%);
+              transition: transform 0.3s ease;
+            }
+            .admin-sidebar.show {
+              transform: translateX(0);
+            }
           }
-          .admin-sidebar.show {
-            transform: translateX(0);
+
+          /* Hover effects for nav items */
+          .admin-sidebar .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white !important;
+            transform: translateX(5px);
           }
-        }
-      `}</style>
-    </div>
+
+          .admin-sidebar .nav-item.active .nav-link {
+            background-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+
+          /* Smooth animations */
+          .admin-sidebar .nav-link,
+          .admin-sidebar .nav-item {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+
+          /* Badge animations */
+          .admin-sidebar .badge {
+            animation: pulse 2s infinite;
+          }
+
+          @keyframes pulse {
+            0% {
+              transform: scale(1);
+            }
+            50% {
+              transform: scale(1.05);
+            }
+            100% {
+              transform: scale(1);
+            }
+          }
+
+          /* Collapsed state improvements */
+          .admin-sidebar .nav-link[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            left: 80px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            z-index: 1001;
+            opacity: 0;
+            animation: fadeIn 0.3s ease forwards;
+          }
+
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: translateY(-50%) translateX(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(-50%) translateX(0);
+            }
+          }
+        `}
+      </style>
+    </>
   );
 }
 

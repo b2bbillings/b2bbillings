@@ -2,6 +2,8 @@ const express = require("express");
 const {body} = require("express-validator");
 const {
   healthCheck,
+  getAllCompaniesAdmin,
+  getAdminCompanyStats,
   searchExternalCompanies,
   createCompany,
   getAllCompanies,
@@ -248,6 +250,10 @@ const addUserValidation = [
 
 // 🔧 Health check route - NO AUTH REQUIRED (must be first)
 router.get("/health", healthCheck);
+
+// In your routes/companies.js file
+router.get("/admin/all", getAllCompaniesAdmin);
+router.get("/admin/stats", getAdminCompanyStats);
 
 // 🔍 External company search - MUST BE BEFORE /:id route
 router.get("/external/search", authenticate, searchExternalCompanies);

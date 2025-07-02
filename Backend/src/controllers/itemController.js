@@ -2,6 +2,7 @@ const Item = require("../models/Item");
 const mongoose = require("mongoose");
 
 const itemController = {
+  // ✅ Existing functions (keep as they are)
   getItems: async (req, res) => {
     try {
       const {companyId} = req.params;
@@ -788,6 +789,569 @@ const itemController = {
       });
     }
   },
-};
+
+  // ✅ FIXED: Admin functions as object methods (not const declarations)
+  getAllItemsAdmin: async (req, res) => {
+    try {
+      console.log(
+        "🔍 Admin items access - Development Mode (No Auth Required)"
+      );
+
+      const {
+        page = 1,
+        limit = 50,
+        search = "",
+        type = "",
+        category = "",
+        isActive = "",
+        companyId = "",
+        stockStatus = "",
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = req.query;
+
+      // Build filter object
+      const filter = {};
+
+      // Search functionality
+      if (search && search.trim()) {
+        filter.$or = [
+          {name: {$regex: search, $options: "i"}},
+          {itemCode: {$regex: search, $options: "i"}},
+          {description: {$regex: search, $options: "i"}},
+          {category: {$regex: search, $options: "i"}},
+          {hsnNumber: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      // Filter by type
+      if (type && type.trim()) {
+        filter.type = type;
+      }
+
+      // Filter by category
+      if (category && category.trim()) {
+        filter.category = {$regex: category, $options: "i"};
+      }
+
+      // Filter by company
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(companyId);
+      }
+
+      // Filter by active status
+      if (isActive !== "") {
+        filter.isActive = isActive === "true";
+      }
+
+      // Filter by stock status
+      if (stockStatus && stockStatus.trim()) {
+        switch (stockStatus) {
+          case "outOfStock":
+            filter.type = "product";
+            filter.currentStock = 0;
+            break;
+          case "lowStock":
+            filter.type = "product";
+            filter.$expr = {
+              $and: [
+                {$gt: [{$ifNull: ["$currentStock", 0]}, 0]},
+                {
+                  $lte: [
+                    {$ifNull: ["$currentStock", 0]},
+                    {$ifNull: ["$minStockLevel", 0]},
+                  ],
+                },
+              ],
+            };
+            break;
+          case "inStock":
+            filter.type = "product";
+            filter.$expr = {
+              $gt: [
+                {$ifNull: ["$currentStock", 0]},
+                {$ifNull: ["$minStockLevel", 0]},
+              ],
+            };
+            break;
+        }
+      }
+
+      // Pagination
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+      const skip = (pageNum - 1) * limitNum;
+
+      // Sorting
+      const sortObject = {};
+      sortObject[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+      // Execute query with company population
+      const items = await Item.find(filter)
+        .sort(sortObject)
+        .skip(skip)
+        .limit(limitNum)
+        .populate("companyId", "businessName phoneNumber email state city")
+        .lean();
+
+      const totalItems = await Item.countDocuments(filter);
+
+      // Calculate additional stats
+      const totalActiveItems = await Item.countDocuments({
+        ...filter,
+        isActive: true,
+      });
+
+      const totalProducts = await Item.countDocuments({
+        ...filter,
+        type: "product",
+      });
+
+      const totalServices = await Item.countDocuments({
+        ...filter,
+        type: "service",
+      });
+
+      const pagination = {
+        current: pageNum,
+        total: Math.ceil(totalItems / limitNum),
+        totalItems: totalItems,
+        hasNextPage: pageNum < Math.ceil(totalItems / limitNum),
+        hasPrevPage: pageNum > 1,
+        limit: limitNum,
+      };
+
+      // Format items for admin view
+      const formattedItems = items.map((item) => ({
+        id: item._id,
+        name: item.name,
+        itemCode: item.itemCode,
+        hsnNumber: item.hsnNumber,
+        type: item.type,
+        category: item.category,
+        unit: item.unit,
+        description: item.description,
+
+        // Pricing
+        buyPrice: item.buyPrice || 0,
+        salePrice: item.salePrice || 0,
+        gstRate: item.gstRate || 0,
+
+        // Stock info (for products)
+        currentStock: item.type === "product" ? item.currentStock || 0 : null,
+        minStockLevel: item.type === "product" ? item.minStockLevel || 0 : null,
+        stockStatus:
+          item.type === "service"
+            ? "N/A"
+            : item.currentStock === 0
+            ? "Out of Stock"
+            : item.currentStock <= (item.minStockLevel || 0)
+            ? "Low Stock"
+            : "In Stock",
+        stockHealth:
+          item.type === "service"
+            ? "good"
+            : item.currentStock === 0
+            ? "critical"
+            : item.currentStock <= (item.minStockLevel || 0)
+            ? "warning"
+            : "good",
+
+        // Status
+        isActive: item.isActive,
+
+        // Company info
+        companyInfo: item.companyId
+          ? {
+              id: item.companyId._id,
+              name: item.companyId.businessName,
+              phone: item.companyId.phoneNumber,
+              email: item.companyId.email,
+              location: `${item.companyId.city || ""}, ${
+                item.companyId.state || ""
+              }`.replace(/^,\s*|,\s*$/g, ""),
+            }
+          : null,
+
+        // Timestamps
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        createdBy: item.createdBy,
+        lastModifiedBy: item.lastModifiedBy,
+
+        // Admin-specific fields
+        adminView: true,
+        createdDaysAgo: Math.floor(
+          (Date.now() - new Date(item.createdAt)) / (1000 * 60 * 60 * 24)
+        ),
+      }));
+
+      console.log(`✅ Admin: Retrieved ${formattedItems.length} items`);
+
+      res.json({
+        success: true,
+        message: `Retrieved ${formattedItems.length} items for admin dashboard`,
+        data: {
+          items: formattedItems,
+          pagination,
+          stats: {
+            totalItems,
+            totalActiveItems,
+            totalProducts,
+            totalServices,
+            inactiveItems: totalItems - totalActiveItems,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error in getAllItemsAdmin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error retrieving items for admin",
+        error: error.message,
+      });
+    }
+  },
+
+  getAdminItemStats: async (req, res) => {
+    try {
+      console.log("📊 Admin item stats access - Development Mode");
+
+      // Basic counts
+      const totalItems = await Item.countDocuments();
+      const totalProducts = await Item.countDocuments({type: "product"});
+      const totalServices = await Item.countDocuments({type: "service"});
+      const activeItems = await Item.countDocuments({isActive: true});
+      const inactiveItems = totalItems - activeItems;
+
+      // Stock analysis (products only)
+      const stockAnalysis = await Item.aggregate([
+        {$match: {type: "product", isActive: true}},
+        {
+          $project: {
+            currentStock: {$ifNull: ["$currentStock", 0]},
+            minStockLevel: {$ifNull: ["$minStockLevel", 0]},
+            stockStatus: {
+              $cond: [
+                {$eq: [{$ifNull: ["$currentStock", 0]}, 0]},
+                "outOfStock",
+                {
+                  $cond: [
+                    {
+                      $lte: [
+                        {$ifNull: ["$currentStock", 0]},
+                        {$ifNull: ["$minStockLevel", 0]},
+                      ],
+                    },
+                    "lowStock",
+                    "inStock",
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$stockStatus",
+            count: {$sum: 1},
+          },
+        },
+      ]);
+
+      // Category distribution
+      const categoryStats = await Item.aggregate([
+        {$match: {isActive: true}},
+        {
+          $group: {
+            _id: "$category",
+            count: {$sum: 1},
+            products: {
+              $sum: {$cond: [{$eq: ["$type", "product"]}, 1, 0]},
+            },
+            services: {
+              $sum: {$cond: [{$eq: ["$type", "service"]}, 1, 0]},
+            },
+          },
+        },
+        {$sort: {count: -1}},
+        {$limit: 10},
+      ]);
+
+      // GST rate distribution
+      const gstStats = await Item.aggregate([
+        {$match: {isActive: true}},
+        {
+          $group: {
+            _id: "$gstRate",
+            count: {$sum: 1},
+          },
+        },
+        {$sort: {_id: 1}},
+      ]);
+
+      // Recent items (last 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recentItems = await Item.countDocuments({
+        createdAt: {$gte: sevenDaysAgo},
+      });
+
+      // Company with most items
+      const companyItemStats = await Item.aggregate([
+        {$match: {isActive: true}},
+        {
+          $group: {
+            _id: "$companyId",
+            itemCount: {$sum: 1},
+          },
+        },
+        {$sort: {itemCount: -1}},
+        {$limit: 5},
+        {
+          $lookup: {
+            from: "companies",
+            localField: "_id",
+            foreignField: "_id",
+            as: "company",
+          },
+        },
+        {
+          $project: {
+            itemCount: 1,
+            companyName: {$arrayElemAt: ["$company.businessName", 0]},
+          },
+        },
+      ]);
+
+      // Format stock analysis
+      const stockSummary = {
+        inStock: 0,
+        lowStock: 0,
+        outOfStock: 0,
+      };
+
+      stockAnalysis.forEach((item) => {
+        stockSummary[item._id] = item.count;
+      });
+
+      const formattedStats = {
+        totalItems,
+        totalProducts,
+        totalServices,
+        activeItems,
+        inactiveItems,
+        recentItems,
+        stockSummary,
+        categoryDistribution: categoryStats.reduce((acc, item) => {
+          acc[item._id] = {
+            total: item.count,
+            products: item.products,
+            services: item.services,
+          };
+          return acc;
+        }, {}),
+        gstDistribution: gstStats.reduce((acc, item) => {
+          acc[`${item._id}%`] = item.count;
+          return acc;
+        }, {}),
+        topCompanies: companyItemStats.map((item) => ({
+          companyName: item.companyName || "Unknown",
+          itemCount: item.itemCount,
+        })),
+      };
+
+      console.log("✅ Admin item stats calculated successfully");
+
+      res.json({
+        success: true,
+        message: "Admin item statistics retrieved successfully",
+        data: formattedStats,
+      });
+    } catch (error) {
+      console.error("❌ Error in getAdminItemStats:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error retrieving admin item statistics",
+        error: error.message,
+      });
+    }
+  },
+
+  exportAllItemsAdmin: async (req, res) => {
+    try {
+      console.log("📊 Admin export items access - Development Mode");
+
+      const {format = "csv", ...filters} = req.query;
+
+      // Build filter object (same as getAllItemsAdmin)
+      const filter = {};
+
+      if (filters.search && filters.search.trim()) {
+        filter.$or = [
+          {name: {$regex: filters.search, $options: "i"}},
+          {itemCode: {$regex: filters.search, $options: "i"}},
+          {category: {$regex: filters.search, $options: "i"}},
+        ];
+      }
+
+      if (filters.type && filters.type.trim()) {
+        filter.type = filters.type;
+      }
+
+      if (filters.category && filters.category.trim()) {
+        filter.category = {$regex: filters.category, $options: "i"};
+      }
+
+      if (filters.isActive !== "") {
+        filter.isActive = filters.isActive === "true";
+      }
+
+      const items = await Item.find(filter)
+        .populate("companyId", "businessName phoneNumber email state city")
+        .lean();
+
+      // Format for export
+      const formattedData = items.map((item) => ({
+        "Item Name": item.name,
+        "Item Code": item.itemCode || "",
+        "HSN Number": item.hsnNumber || "",
+        Type: item.type,
+        Category: item.category,
+        Unit: item.unit,
+        Description: item.description || "",
+        "Buy Price": item.buyPrice || 0,
+        "Sale Price": item.salePrice || 0,
+        "GST Rate": `${item.gstRate || 0}%`,
+        "Current Stock":
+          item.type === "product" ? item.currentStock || 0 : "N/A",
+        "Min Stock Level":
+          item.type === "product" ? item.minStockLevel || 0 : "N/A",
+        "Stock Status":
+          item.type === "service"
+            ? "N/A"
+            : item.currentStock === 0
+            ? "Out of Stock"
+            : item.currentStock <= (item.minStockLevel || 0)
+            ? "Low Stock"
+            : "In Stock",
+        Status: item.isActive ? "Active" : "Inactive",
+        Company: item.companyId?.businessName || "Unknown",
+        "Company Phone": item.companyId?.phoneNumber || "",
+        "Company Location": `${item.companyId?.city || ""}, ${
+          item.companyId?.state || ""
+        }`.replace(/^,\s*|,\s*$/g, ""),
+        "Created Date": new Date(item.createdAt).toLocaleDateString(),
+        "Created By": item.createdBy || "system",
+      }));
+
+      if (format === "json") {
+        res.json({
+          success: true,
+          data: formattedData,
+          total: formattedData.length,
+        });
+      } else {
+        // For CSV format
+        const csv = [
+          Object.keys(formattedData[0] || {}).join(","),
+          ...formattedData.map((row) =>
+            Object.values(row)
+              .map((val) => `"${val}"`)
+              .join(",")
+          ),
+        ].join("\n");
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="items_export_${Date.now()}.csv"`
+        );
+        res.send(csv);
+      }
+    } catch (error) {
+      console.error("❌ Error in exportAllItemsAdmin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error exporting items",
+        error: error.message,
+      });
+    }
+  },
+
+  getAllLowStockItemsAdmin: async (req, res) => {
+    try {
+      console.log("📊 Admin low stock items access - Development Mode");
+
+      const {limit = 100, companyId = ""} = req.query;
+
+      const filter = {
+        type: "product",
+        isActive: true,
+        $expr: {
+          $lte: [
+            {$ifNull: ["$currentStock", 0]},
+            {$ifNull: ["$minStockLevel", 0]},
+          ],
+        },
+      };
+
+      // Filter by specific company if provided
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(companyId);
+      }
+
+      const lowStockItems = await Item.find(filter)
+        .populate("companyId", "businessName phoneNumber email state city")
+        .select(
+          "name itemCode category currentStock minStockLevel unit salePrice companyId createdAt"
+        )
+        .limit(parseInt(limit))
+        .sort({currentStock: 1})
+        .lean();
+
+      const formattedItems = lowStockItems.map((item) => ({
+        id: item._id,
+        name: item.name,
+        itemCode: item.itemCode,
+        category: item.category,
+        currentStock: item.currentStock || 0,
+        minStockLevel: item.minStockLevel || 0,
+        unit: item.unit,
+        salePrice: item.salePrice || 0,
+        stockDeficit: (item.minStockLevel || 0) - (item.currentStock || 0),
+        companyInfo: item.companyId
+          ? {
+              id: item.companyId._id,
+              name: item.companyId.businessName,
+              phone: item.companyId.phoneNumber,
+              location: `${item.companyId.city || ""}, ${
+                item.companyId.state || ""
+              }`.replace(/^,\s*|,\s*$/g, ""),
+            }
+          : null,
+        urgency: item.currentStock === 0 ? "critical" : "warning",
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          items: formattedItems,
+          count: formattedItems.length,
+          totalStockDeficit: formattedItems.reduce(
+            (sum, item) => sum + item.stockDeficit,
+            0
+          ),
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error in getAllLowStockItemsAdmin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching admin low stock items",
+        error: error.message,
+      });
+    }
+  },
+}; // ✅ FIXED: Proper closing of itemController object
 
 module.exports = itemController;

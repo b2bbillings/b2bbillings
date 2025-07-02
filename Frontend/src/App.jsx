@@ -31,10 +31,7 @@ import PurchaseForm from "./components/Home/Purchases/PurchaseForm";
 import SalesOrderForm from "./components/Home/Sales/SalesOrder/SalesOrderForm";
 import EditSalesInvoice from "./components/Home/Sales/EditSalesInvoice";
 import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
-
-// ✅ FIXED: Import the actual PurchaseOrderForm component
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
-// import EditPurchaseOrder from "./components/Home/Purchases/EditPurchaseOrder"; // TODO: Create if needed
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -257,7 +254,6 @@ function App() {
     }
   };
 
-  // Helper to get companyId from all possible sources
   const getCompanyId = () => {
     return (
       currentCompany?.id ||
@@ -277,19 +273,13 @@ function App() {
   };
 
   const showToast = (message, type = "info") => {
-    console.log(`Toast [${type}]: ${message}`);
     if (type === "error") {
       alert(`Error: ${message}`);
-    } else if (type === "success") {
-      console.log(`Success: ${message}`);
     }
   };
 
-  // ✅ SALES HANDLERS - Keep existing
   const handleSalesFormSave = async (saleData) => {
     try {
-      console.log("🧾 Saving sales invoice:", saleData);
-
       const effectiveCompanyId =
         saleData.companyId ||
         getCompanyId() ||
@@ -315,7 +305,6 @@ function App() {
         throw new Error(response?.message || "Failed to create sales invoice");
       }
     } catch (error) {
-      console.error("❌ Error saving sales invoice:", error);
       showToast("Error saving sales invoice: " + error.message, "error");
       return {success: false, error: error.message};
     }
@@ -323,8 +312,6 @@ function App() {
 
   const handleSalesFormUpdate = async (saleData) => {
     try {
-      console.log("🧾 Updating sales invoice:", saleData);
-
       const effectiveCompanyId =
         saleData.companyId ||
         getCompanyId() ||
@@ -350,17 +337,13 @@ function App() {
         throw new Error(response?.message || "Failed to update sales invoice");
       }
     } catch (error) {
-      console.error("❌ Error updating sales invoice:", error);
       showToast("Error updating sales invoice: " + error.message, "error");
       return {success: false, error: error.message};
     }
   };
 
-  // ✅ QUOTATION HANDLERS - Keep existing
   const handleQuotationSave = async (quotationData) => {
     try {
-      console.log("📋 Saving quotation:", quotationData);
-
       const effectiveCompanyId =
         quotationData.companyId ||
         getCompanyId() ||
@@ -387,7 +370,6 @@ function App() {
         throw new Error(response?.message || "Failed to create quotation");
       }
     } catch (error) {
-      console.error("❌ Error saving quotation:", error);
       showToast("Error saving quotation: " + error.message, "error");
       return {success: false, error: error.message};
     }
@@ -395,8 +377,6 @@ function App() {
 
   const handleQuotationUpdate = async (quotationData) => {
     try {
-      console.log("📋 Updating quotation:", quotationData);
-
       const effectiveCompanyId =
         quotationData.companyId ||
         getCompanyId() ||
@@ -426,17 +406,13 @@ function App() {
         throw new Error(response?.message || "Failed to update quotation");
       }
     } catch (error) {
-      console.error("❌ Error updating quotation:", error);
       showToast("Error updating quotation: " + error.message, "error");
       return {success: false, error: error.message};
     }
   };
 
-  // ✅ PURCHASE BILL HANDLERS - Keep existing but clarify naming
   const handlePurchaseFormSave = async (purchaseData) => {
     try {
-      console.log("🧾 Saving purchase bill:", purchaseData);
-
       const effectiveCompanyId =
         purchaseData.companyId ||
         getCompanyId() ||
@@ -462,7 +438,6 @@ function App() {
         throw new Error(result?.message || "Failed to create purchase bill");
       }
     } catch (error) {
-      console.error("❌ Error saving purchase bill:", error);
       showToast("Error saving purchase bill: " + error.message, "error");
       return {
         success: false,
@@ -474,8 +449,6 @@ function App() {
 
   const handlePurchaseFormUpdate = async (purchaseData) => {
     try {
-      console.log("🧾 Updating purchase bill:", purchaseData);
-
       const effectiveCompanyId =
         purchaseData.companyId ||
         getCompanyId() ||
@@ -501,7 +474,6 @@ function App() {
         throw new Error(result?.message || "Failed to update purchase bill");
       }
     } catch (error) {
-      console.error("❌ Error updating purchase bill:", error);
       showToast("Error updating purchase bill: " + error.message, "error");
       return {
         success: false,
@@ -511,15 +483,8 @@ function App() {
     }
   };
 
-  // ✅ FIXED: Purchase Order handlers - prevent double submission
   const handlePurchaseOrderSave = async (purchaseOrderData) => {
     try {
-      console.log(
-        "📦 App.jsx handlePurchaseOrderSave called with:",
-        purchaseOrderData
-      );
-
-      // ✅ CRITICAL: Check if this is response data from a successful creation
       const isResponseData =
         purchaseOrderData.purchaseOrder ||
         purchaseOrderData.order ||
@@ -528,26 +493,14 @@ function App() {
         (purchaseOrderData._id && purchaseOrderData.orderNumber);
 
       if (isResponseData) {
-        console.log(
-          "✅ This appears to be response data from successful creation, not creating again"
-        );
-
-        // ✅ Just show success and navigate - don't create again
         showToast("Purchase order created successfully!", "success");
         navigateToListView("purchase-orders");
-
         return {
           success: true,
           data: purchaseOrderData,
           message: "Purchase order processed successfully",
         };
       }
-
-      // ✅ Only create if this is actual form data
-      console.log(
-        "📦 Creating new purchase order with form data:",
-        purchaseOrderData
-      );
 
       const effectiveCompanyId =
         purchaseOrderData.companyId ||
@@ -575,7 +528,6 @@ function App() {
         throw new Error(response?.message || "Failed to create purchase order");
       }
     } catch (error) {
-      console.error("❌ Error in App.jsx handlePurchaseOrderSave:", error);
       showToast("Error saving purchase order: " + error.message, "error");
       return {success: false, error: error.message};
     }
@@ -583,9 +535,6 @@ function App() {
 
   const handlePurchaseOrderUpdate = async (purchaseOrderData) => {
     try {
-      console.log("📦 Updating purchase order:", purchaseOrderData);
-
-      // ✅ CRITICAL: Check if this is response data from a successful update
       const isResponseData =
         purchaseOrderData.purchaseOrder ||
         purchaseOrderData.order ||
@@ -593,13 +542,8 @@ function App() {
         purchaseOrderData.success === true;
 
       if (isResponseData) {
-        console.log(
-          "✅ This appears to be response data from successful update, not updating again"
-        );
-
         showToast("Purchase order updated successfully!", "success");
         navigateToListView("purchase-orders");
-
         return {
           success: true,
           data: purchaseOrderData,
@@ -607,7 +551,6 @@ function App() {
         };
       }
 
-      // ✅ Only update if this is actual form data
       const effectiveCompanyId =
         purchaseOrderData.companyId ||
         getCompanyId() ||
@@ -637,17 +580,13 @@ function App() {
         throw new Error(response?.message || "Failed to update purchase order");
       }
     } catch (error) {
-      console.error("❌ Error updating purchase order:", error);
       showToast("Error updating purchase order: " + error.message, "error");
       return {success: false, error: error.message};
     }
   };
 
-  // ✅ SALES ORDER HANDLERS - Keep existing
   const handleSalesOrderSave = async (orderData) => {
     try {
-      console.log("📦 Saving sales order:", orderData);
-
       const effectiveCompanyId =
         orderData.companyId ||
         getCompanyId() ||
@@ -674,13 +613,11 @@ function App() {
         throw new Error(response?.message || "Failed to create sales order");
       }
     } catch (error) {
-      console.error("❌ Error saving sales order:", error);
       showToast("Error saving sales order: " + error.message, "error");
       return {success: false, error: error.message};
     }
   };
 
-  // ✅ COMMUNITY PAGE WRAPPER - Keep existing
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -715,22 +652,26 @@ function App() {
     );
   };
 
-  // ✅ ADMIN DASHBOARD WRAPPER - UPDATED (no admin check for development)
   const AdminDashboardWrapper = () => {
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
     }
 
-    // ✅ REMOVED: Admin check for development
-    // Check if user is admin
-    // if (!currentUser?.isAdmin) {
-    //   return <Navigate to="/" replace />;
-    // }
-
     return (
       <div
         className="admin-app"
-        style={{minHeight: "100vh", backgroundColor: "#f8f9fa"}}
+        style={{
+          minHeight: "100vh",
+          backgroundColor: "#f8f9fa",
+          margin: "0",
+          padding: "0",
+          position: "fixed",
+          top: "0",
+          left: "0",
+          width: "100vw",
+          height: "100vh",
+          overflow: "hidden",
+        }}
       >
         <AdminDashboard
           currentUser={currentUser}
@@ -742,18 +683,8 @@ function App() {
     );
   };
 
-  // ✅ FORM WRAPPERS
-
   const SalesFormWrapper = ({isEdit = false}) => {
     const {companyId} = useParams();
-
-    React.useEffect(() => {
-      console.log("🧾 SalesFormWrapper mounted:", {
-        isEdit,
-        companyId,
-        currentCompany: !!currentCompany,
-      });
-    }, [isEdit, companyId]);
 
     if (!currentCompany) {
       return (
@@ -791,15 +722,6 @@ function App() {
     const {companyId, quotationId} = useParams();
     const navigate = useNavigate();
 
-    React.useEffect(() => {
-      console.log("📋 QuotationFormWrapper mounted:", {
-        isEdit,
-        companyId,
-        quotationId,
-        currentCompany: !!currentCompany,
-      });
-    }, [isEdit, companyId, quotationId]);
-
     if (!currentCompany) {
       return (
         <div className="container mt-5 text-center">
@@ -826,7 +748,6 @@ function App() {
         currentUser={currentUser}
         addToast={showToast}
         onNavigate={(page) => {
-          console.log("📋 SalesOrderForm navigation:", page);
           if (page === "quotations") {
             navigate(`/companies/${companyId}/quotations`);
           }
@@ -836,17 +757,8 @@ function App() {
     );
   };
 
-  // ✅ Purchase Form Wrapper (for purchase bills ONLY)
   const PurchaseFormWrapper = ({isEdit = false}) => {
     const {companyId} = useParams();
-
-    React.useEffect(() => {
-      console.log("🧾 PurchaseFormWrapper (Bills) mounted:", {
-        isEdit,
-        companyId,
-        currentCompany: !!currentCompany,
-      });
-    }, [isEdit, companyId]);
 
     if (!currentCompany) {
       return (
@@ -882,19 +794,9 @@ function App() {
     );
   };
 
-  // ✅ UPDATED: Purchase Order Form Wrapper with actual component
   const PurchaseOrderFormWrapper = ({isEdit = false}) => {
     const {companyId, id} = useParams();
     const navigate = useNavigate();
-
-    React.useEffect(() => {
-      console.log("📦 PurchaseOrderFormWrapper mounted:", {
-        isEdit,
-        companyId,
-        id,
-        currentCompany: !!currentCompany,
-      });
-    }, [isEdit, companyId, id]);
 
     if (!currentCompany) {
       return (
@@ -907,18 +809,16 @@ function App() {
       );
     }
 
-    // ✅ FIXED: Use the actual PurchaseOrderForm component
     return (
       <PurchaseOrderForm
         onSave={isEdit ? handlePurchaseOrderUpdate : handlePurchaseOrderSave}
         onCancel={() => navigate(`/companies/${companyId}/purchase-orders`)}
-        editingOrder={isEdit && id ? {id} : null} // Pass editing order if applicable
+        editingOrder={isEdit && id ? {id} : null}
         currentCompany={currentCompany}
         currentUser={currentUser}
         companyId={companyId}
         addToast={showToast}
         onNavigate={(page) => {
-          console.log("📦 PurchaseOrderForm navigation:", page);
           if (page === "purchase-orders") {
             navigate(`/companies/${companyId}/purchase-orders`);
           } else if (page) {
@@ -931,16 +831,6 @@ function App() {
 
   const EditSalesInvoiceWrapper = ({mode, documentType}) => {
     const {companyId, transactionId} = useParams();
-
-    React.useEffect(() => {
-      console.log("✏️ EditSalesInvoiceWrapper mounted:", {
-        mode,
-        documentType,
-        companyId,
-        transactionId,
-        currentCompany: !!currentCompany,
-      });
-    }, [mode, documentType, companyId, transactionId]);
 
     if (!currentCompany) {
       return (
@@ -977,15 +867,6 @@ function App() {
 
   const SalesOrderFormWrapper = ({isEdit = false}) => {
     const {companyId, id} = useParams();
-
-    React.useEffect(() => {
-      console.log("📦 SalesOrderFormWrapper mounted:", {
-        isEdit,
-        companyId,
-        id,
-        currentCompany: !!currentCompany,
-      });
-    }, [isEdit, companyId, id]);
 
     if (!currentCompany) {
       return (
@@ -1113,16 +994,13 @@ function App() {
             }
           />
 
-          {/* ✅ ADMIN DASHBOARD ROUTE - NO ADMIN CHECK (Development) */}
           <Route path="/admin/*" element={<AdminDashboardWrapper />} />
 
-          {/* Community Route - Standalone without Layout */}
           <Route
             path="/companies/:companyId/community"
             element={<CommunityPageWrapper />}
           />
 
-          {/* ✅ Purchase Bill Routes (using PurchaseFormWrapper) */}
           <Route
             path="/companies/:companyId/purchases/add"
             element={
@@ -1147,7 +1025,6 @@ function App() {
             }
           />
 
-          {/* ✅ Purchase Order Routes (using ACTUAL PurchaseOrderFormWrapper) */}
           <Route
             path="/companies/:companyId/purchase-orders/add"
             element={
@@ -1166,7 +1043,6 @@ function App() {
             }
           />
 
-          {/* Sales Routes */}
           <Route
             path="/companies/:companyId/sales/add"
             element={
@@ -1188,7 +1064,6 @@ function App() {
             }
           />
 
-          {/* Quotation Routes */}
           <Route
             path="/companies/:companyId/quotations/add"
             element={
@@ -1210,7 +1085,6 @@ function App() {
             }
           />
 
-          {/* Sales Order Routes */}
           <Route
             path="/companies/:companyId/sales-orders/add"
             element={
@@ -1229,7 +1103,6 @@ function App() {
             }
           />
 
-          {/* Main App Routes */}
           <Route
             path="/companies/:companyId/*"
             element={

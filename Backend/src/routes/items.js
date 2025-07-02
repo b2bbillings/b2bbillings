@@ -1,25 +1,24 @@
-
-const express = require('express');
-const router = express.Router({ mergeParams: true }); // ⭐ IMPORTANT: mergeParams must be true
-const itemController = require('../controllers/itemController');
+const express = require("express");
+const router = express.Router({mergeParams: true}); // ⭐ IMPORTANT: mergeParams must be true
+const itemController = require("../controllers/itemController");
 
 // Middleware to validate companyId parameter
 router.use((req, res, next) => {
-    const { companyId } = req.params;
-    console.log('🔍 CompanyId validation:', companyId);
+  const {companyId} = req.params;
+  console.log("🔍 CompanyId validation:", companyId);
 
-    if (!companyId) {
-        return res.status(400).json({
-            success: false,
-            message: 'Company ID is required',
-            debug: {
-                params: req.params,
-                url: req.url,
-                originalUrl: req.originalUrl
-            }
-        });
-    }
-    next();
+  if (!companyId) {
+    return res.status(400).json({
+      success: false,
+      message: "Company ID is required",
+      debug: {
+        params: req.params,
+        url: req.url,
+        originalUrl: req.originalUrl,
+      },
+    });
+  }
+  next();
 });
 
 // Routes for items management
@@ -28,85 +27,103 @@ router.use((req, res, next) => {
 // ===== ITEM CRUD ROUTES =====
 
 // POST /api/companies/:companyId/items - Create new item
-router.post('/', itemController.createItem);
+router.post("/", itemController.createItem);
 
 // GET /api/companies/:companyId/items - Get all items for a company
-router.get('/', itemController.getItems);
+router.get("/", itemController.getItems);
 
 // ===== SPECIAL ROUTES (must be before /:itemId) =====
 
 // GET /api/companies/:companyId/items/search - Search items (autocomplete)
-router.get('/search', itemController.searchItems);
+router.get("/search", itemController.searchItems);
 
 // GET /api/companies/:companyId/items/categories - Get all categories
-router.get('/categories', itemController.getCategories);
+router.get("/categories", itemController.getCategories);
 
 // 📊 GET /api/companies/:companyId/items/low-stock - Get low stock items
-router.get('/low-stock', itemController.getLowStockItems);
+router.get("/low-stock", itemController.getLowStockItems);
+
+// ===== ADMIN ROUTES (NEW) =====
+
+// 🔧 GET /api/companies/:companyId/items/admin/all - Get all items across companies (Admin)
+router.get("/admin/all", itemController.getAllItemsAdmin);
+
+// 📊 GET /api/companies/:companyId/items/admin/stats - Get comprehensive item statistics (Admin)
+router.get("/admin/stats", itemController.getAdminItemStats);
+
+// 📋 GET /api/companies/:companyId/items/admin/export - Export all items data (Admin)
+router.get("/admin/export", itemController.exportAllItemsAdmin);
+
+// 🚨 GET /api/companies/:companyId/items/admin/low-stock - Get low stock items across companies (Admin)
+router.get("/admin/low-stock", itemController.getAllLowStockItemsAdmin);
 
 // ===== STOCK MANAGEMENT ROUTES =====
 
 // GET /api/companies/:companyId/stock-summary - Get stock summary/analytics
-router.get('/stock-summary', itemController.getStockSummary);
+router.get("/stock-summary", itemController.getStockSummary);
 
 // PATCH /api/companies/:companyId/items/bulk/stock - Bulk update stock
-router.patch('/bulk/stock', itemController.bulkUpdateStock);
+router.patch("/bulk/stock", itemController.bulkUpdateStock);
 
 // ===== INDIVIDUAL ITEM ROUTES =====
 
 // GET /api/companies/:companyId/items/:itemId - Get single item
-router.get('/:itemId', itemController.getItemById);
+router.get("/:itemId", itemController.getItemById);
 
 // PUT /api/companies/:companyId/items/:itemId - Update item
-router.put('/:itemId', itemController.updateItem);
+router.put("/:itemId", itemController.updateItem);
 
 // DELETE /api/companies/:companyId/items/:itemId - Delete item
-router.delete('/:itemId', itemController.deleteItem);
+router.delete("/:itemId", itemController.deleteItem);
 
 // ===== STOCK ADJUSTMENT ROUTES =====
 
 // 📊 PUT /api/companies/:companyId/items/:itemId/adjust-stock - Adjust stock for specific item
-router.put('/:itemId/adjust-stock', itemController.adjustStock);
+router.put("/:itemId/adjust-stock", itemController.adjustStock);
 
 // 📊 GET /api/companies/:companyId/items/:itemId/stock-history - Get stock history for specific item
-router.get('/:itemId/stock-history', itemController.getStockHistory);
+router.get("/:itemId/stock-history", itemController.getStockHistory);
 
 // ===== ROUTE TESTING/DEBUG =====
 
 // Debug middleware to log all routes
 router.use((req, res, next) => {
-    console.log(`📍 Route hit: ${req.method} ${req.originalUrl}`);
-    console.log(`📍 Params:`, req.params);
-    console.log(`📍 Query:`, req.query);
-    next();
+  console.log(`📍 Route hit: ${req.method} ${req.originalUrl}`);
+  console.log(`📍 Params:`, req.params);
+  console.log(`📍 Query:`, req.query);
+  next();
 });
 
 // Catch-all route for debugging unmatched routes
-router.use('*', (req, res) => {
-    console.log(`❌ Unmatched route: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({
-        success: false,
-        message: 'Route not found',
-        debug: {
-            method: req.method,
-            url: req.originalUrl,
-            params: req.params,
-            availableRoutes: [
-                'POST /',
-                'GET /',
-                'GET /search',
-                'GET /categories',
-                'GET /low-stock',
-                'GET /stock-summary',
-                'PATCH /bulk/stock',
-                'GET /:itemId',
-                'PUT /:itemId',
-                'DELETE /:itemId',
-                'PUT /:itemId/adjust-stock',
-                'GET /:itemId/stock-history'
-            ]
-        }
-    });
+router.use("*", (req, res) => {
+  console.log(`❌ Unmatched route: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    debug: {
+      method: req.method,
+      url: req.originalUrl,
+      params: req.params,
+      availableRoutes: [
+        "POST /",
+        "GET /",
+        "GET /search",
+        "GET /categories",
+        "GET /low-stock",
+        "GET /admin/all", // ✅ NEW
+        "GET /admin/stats", // ✅ NEW
+        "GET /admin/export", // ✅ NEW
+        "GET /admin/low-stock", // ✅ NEW
+        "GET /stock-summary",
+        "PATCH /bulk/stock",
+        "GET /:itemId",
+        "PUT /:itemId",
+        "DELETE /:itemId",
+        "PUT /:itemId/adjust-stock",
+        "GET /:itemId/stock-history",
+      ],
+    },
+  });
 });
 
 module.exports = router;
