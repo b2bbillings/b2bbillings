@@ -208,7 +208,7 @@ function SalesInvoicesHeader({
         </Container>
       </Navbar>
 
-      <style jsx>{`
+      <style>{`
         /* Container spacing */
         .p-3 {
           margin: 0.75rem 0;

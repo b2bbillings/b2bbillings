@@ -241,18 +241,7 @@ class PurchaseService {
       if (!purchaseData.companyId) {
         throw new Error("Company ID is required");
       }
-
-      console.log(
-        "🔄 createPurchaseWithTransaction - Creating purchase first..."
-      );
       const purchaseResponse = await this.createPurchase(purchaseData);
-
-      console.log("🔍 Purchase creation response:", {
-        success: purchaseResponse?.success,
-        hasData: !!purchaseResponse?.data,
-        dataType: typeof purchaseResponse?.data,
-        responseKeys: purchaseResponse ? Object.keys(purchaseResponse) : [],
-      });
 
       // ✅ ENHANCED: Better response validation and extraction
       let createdPurchase = null;
@@ -298,18 +287,12 @@ class PurchaseService {
         );
       }
 
-      console.log("✅ Purchase created successfully:", {
-        purchaseId: createdPurchase._id || createdPurchase.id,
-        purchaseNumber: createdPurchase.purchaseNumber,
-      });
-
       const paymentMade = parseFloat(
         purchaseData.paymentReceived || purchaseData.payment?.paidAmount || 0
       );
 
       if (paymentMade > 0 && purchaseData.bankAccountId) {
         try {
-          console.log("🔄 Creating payment transaction...");
           const transactionData = {
             companyId: purchaseData.companyId,
             bankAccountId: purchaseData.bankAccountId,
@@ -373,7 +356,6 @@ class PurchaseService {
             );
 
           if (transactionResponse?.success) {
-            console.log("✅ Payment transaction created successfully");
             createdPurchase.transaction = transactionResponse.data;
             createdPurchase.transactionId =
               transactionResponse.data._id || transactionResponse.data.id;
@@ -825,20 +807,6 @@ class PurchaseService {
 
   async createPurchase(purchaseData) {
     try {
-      console.log("🔄 PurchaseService.createPurchase called with:", {
-        hasCompanyId: !!purchaseData.companyId,
-        hasSupplier: !!purchaseData.customer || !!purchaseData.supplier,
-        hasItems: !!purchaseData.items && purchaseData.items.length > 0,
-        dataStructure: {
-          _id: !!purchaseData._id,
-          purchaseNumber: !!purchaseData.purchaseNumber,
-          success: purchaseData.success,
-          hasResponseWrapper: !!(purchaseData.bill || purchaseData.purchase),
-          createdAt: !!purchaseData.createdAt,
-          hasV: purchaseData.__v !== undefined,
-        },
-      });
-
       // ✅ CRITICAL: Only skip for actual backend response data with clear indicators
       const isActualResponseData =
         // Has success field (API response)
@@ -859,8 +827,6 @@ class PurchaseService {
           purchaseData.companyId.$oid);
 
       if (isActualResponseData) {
-        console.log("✅ Data appears to be actual response/saved data");
-
         // ✅ CRITICAL: Ensure proper response format for frontend
         if (purchaseData.success === true) {
           return purchaseData;
@@ -881,21 +847,12 @@ class PurchaseService {
         }
       }
 
-      // ✅ IMPORTANT: Allow form data with purchaseNumber to be processed normally
-      // Form data should be transformed and sent to API even if it has some fields
-      console.log(
-        "🔄 Processing form data - transforming and sending to API..."
-      );
-
       const backendData = this.transformToBackendFormat(purchaseData);
 
-      console.log("🔄 Sending transformed data to API...");
       const response = await this.apiCallWithRetry("/purchases", {
         method: "POST",
         body: JSON.stringify(backendData),
       });
-
-      console.log("✅ PurchaseService.createPurchase API response:", response);
 
       // ✅ ENHANCED: Ensure response always has success field
       if (response && typeof response === "object") {
@@ -933,10 +890,6 @@ class PurchaseService {
         (error.message.includes("supplier") ||
           error.message.includes("Company"))
       ) {
-        console.log(
-          "🔍 Validation error detected, but purchase might be created..."
-        );
-
         // Check if this looks like it could be a successful creation despite validation error
         if (
           purchaseData.purchaseNumber ||
@@ -944,9 +897,6 @@ class PurchaseService {
           purchaseData.id ||
           (purchaseData.supplier && purchaseData.items && purchaseData.totals)
         ) {
-          console.log(
-            "✅ Purchase appears to be created despite validation error"
-          );
           return {
             success: true,
             data: purchaseData,
@@ -993,10 +943,6 @@ class PurchaseService {
 
   async getPurchaseWithTransactionData(purchaseId) {
     try {
-      console.log(
-        `🔄 PurchaseService.getPurchaseWithTransactionData - Fetching purchase ${purchaseId} with transaction data...`
-      );
-
       // ✅ Step 1: Get purchase data
       const purchaseResponse = await this.getPurchaseById(purchaseId);
 
@@ -1031,10 +977,6 @@ class PurchaseService {
             transactions.find((t) => t.bankAccountId) || transactions[0];
 
           if (bankTransaction) {
-            console.log(
-              "✅ Found related transaction, merging with purchase data"
-            );
-
             // ✅ Merge transaction data with purchase data
             purchaseData = {
               ...purchaseData,
@@ -1123,33 +1065,14 @@ class PurchaseService {
     }
   }
 
-  // ✅ UPDATE: Enhanced getPurchaseForEdit to use transaction data
   async getPurchaseForEdit(id) {
     try {
-      console.log(
-        `🔄 PurchaseService.getPurchaseForEdit - Fetching purchase ${id} for editing...`
-      );
-
       // ✅ Use the enhanced method that includes transaction data
       const response = await this.getPurchaseWithTransactionData(id);
 
       if (!response.success) {
         throw new Error(response.message || "Failed to fetch purchase data");
       }
-
-      console.log(
-        "✅ Purchase data with transaction info fetched and transformed for editing:",
-        {
-          purchaseId: id,
-          purchaseNumber: response.data.purchaseNumber,
-          supplierName: response.data.supplierName,
-          paymentMethod: response.data.paymentMethod,
-          bankAccountId: response.data.bankAccountId,
-          bankAccountName: response.data.bankAccountName,
-          itemsCount: response.data.items?.length || 0,
-          hasTransactionData: !!response.data.paymentTransactionId,
-        }
-      );
 
       return response;
     } catch (error) {
@@ -1160,10 +1083,6 @@ class PurchaseService {
 
   async updatePurchase(id, purchaseData, employeeContext = {}) {
     try {
-      console.log(
-        `🔄 PurchaseService.updatePurchase - Updating purchase ${id}...`
-      );
-
       // Add update metadata
       const updateData = {
         ...purchaseData,
@@ -1177,13 +1096,10 @@ class PurchaseService {
       // Transform for backend
       const backendData = this.transformToBackendFormat(updateData);
 
-      console.log("🔄 Sending update data to API...");
       const response = await this.apiCall(`/purchases/${id}`, {
         method: "PUT",
         body: JSON.stringify(backendData),
       });
-
-      console.log("✅ Purchase updated successfully:", response);
 
       // ✅ Ensure response format consistency
       if (response && typeof response === "object") {
@@ -1215,11 +1131,9 @@ class PurchaseService {
       throw error;
     }
   }
-  // ✅ FIXED: Enhanced checkPurchaseExists method with better error handling
+
   async checkPurchaseExists(id) {
     try {
-      console.log("🔍 Checking if purchase exists:", id);
-
       // ✅ CRITICAL: Validate the ID format first
       if (!id || typeof id !== "string" || id.trim() === "") {
         console.error("❌ Invalid purchase ID provided:", id);
@@ -1235,27 +1149,14 @@ class PurchaseService {
         const directResponse = await this.apiCall(`/purchases/${id}`);
 
         if (directResponse.success && directResponse.data) {
-          console.log("✅ Purchase exists (direct fetch):", {
-            id: directResponse.data.id || directResponse.data._id,
-            purchaseNumber: directResponse.data.purchaseNumber,
-            status: directResponse.data.status,
-          });
           return {
             exists: true,
             purchase: directResponse.data,
           };
         }
       } catch (directError) {
-        console.log(
-          "⚠️ Direct fetch failed, trying check endpoint:",
-          directError.status
-        );
-
         // If it's a 404, the purchase doesn't exist
         if (directError.status === 404) {
-          console.log(
-            "❌ Purchase confirmed not found (404 from direct fetch)"
-          );
           return {
             exists: false,
             purchase: null,
@@ -1271,17 +1172,11 @@ class PurchaseService {
         const response = await this.apiCall(`/purchases/check/${id}`);
 
         if (response.success) {
-          console.log("✅ Purchase exists (check endpoint):", {
-            id: response.data?.purchase?.id,
-            purchaseNumber: response.data?.purchase?.purchaseNumber,
-            status: response.data?.purchase?.status,
-          });
           return {
             exists: true,
             purchase: response.data?.purchase || null,
           };
         } else {
-          console.log("❌ Purchase not found in successful response");
           return {
             exists: false,
             purchase: null,
@@ -1327,11 +1222,9 @@ class PurchaseService {
       };
     }
   }
-  // ✅ SIMPLIFIED: Direct delete without existence checks
+
   async deletePurchase(id, options = {}) {
     try {
-      console.log("🗑️ Deleting purchase:", id, "Options:", options);
-
       // ✅ Basic ID validation only
       if (!id || typeof id !== "string" || id.trim() === "") {
         throw new Error("Valid purchase ID is required for deletion");
@@ -1351,8 +1244,6 @@ class PurchaseService {
       // ✅ Add deletion reason in request body if provided
       const requestBody = options.reason ? {reason: options.reason} : {};
 
-      console.log("📤 Sending delete request to:", url);
-
       // ✅ DIRECT DELETE - No existence check needed
       const response = await this.apiCall(url, {
         method: "DELETE",
@@ -1362,11 +1253,8 @@ class PurchaseService {
             : undefined,
       });
 
-      console.log("✅ Delete response:", response);
       return response;
     } catch (error) {
-      console.log("⚠️ Delete error:", error.status, error.message);
-
       // ✅ Handle 404 gracefully - Purchase already gone
       if (error.status === 404) {
         return {
@@ -1428,8 +1316,6 @@ class PurchaseService {
       if (!params.companyId) {
         throw new Error("Company ID is required");
       }
-
-      console.log("🔢 Getting next purchase number preview:", params);
 
       const response = await this.apiCall(
         "/purchases/next-purchase-number",
@@ -1679,11 +1565,6 @@ class PurchaseService {
 
   // ✅ NEW: Add method to transform saved purchase data for editing
   transformForEditing(savedPurchaseData) {
-    console.log(
-      "🔄 PurchaseService.transformForEditing - Input data:",
-      savedPurchaseData
-    );
-
     // ✅ Extract the actual purchase data from various response formats
     let purchaseData = savedPurchaseData;
 
@@ -1697,11 +1578,6 @@ class PurchaseService {
   }
 
   transformForEditing(savedPurchaseData) {
-    console.log(
-      "🔄 PurchaseService.transformForEditing - Input data:",
-      savedPurchaseData
-    );
-
     // ✅ Extract the actual purchase data from various response formats
     let purchaseData = savedPurchaseData;
 
@@ -1890,27 +1766,10 @@ class PurchaseService {
       updatedAt: purchaseData.updatedAt,
     };
 
-    console.log("✅ PurchaseService.transformForEditing - Output data:", {
-      purchaseNumber: transformedData.purchaseNumber,
-      supplierName: transformedData.supplierName,
-      itemsCount: transformedData.items?.length || 0,
-      paymentMethod: transformedData.paymentMethod,
-      bankAccountId: transformedData.bankAccountId,
-      paymentReceived: transformedData.paymentReceived,
-      hasPaymentInfo: !!(
-        transformedData.paymentMethod || transformedData.bankAccountId
-      ),
-    });
-
     return transformedData;
   }
 
   transformToBackendFormat(purchaseData) {
-    console.log(
-      "🔄 PurchaseService transformToBackendFormat - Input data:",
-      purchaseData
-    );
-
     // ✅ ENHANCED: More precise detection of already processed backend data
     const isActualBackendData =
       // Response wrapper objects (API responses)
@@ -1931,13 +1790,8 @@ class PurchaseService {
         purchaseData.companyId.$oid);
 
     if (isActualBackendData) {
-      console.log("✅ Data appears to be actual backend data, returning as-is");
       return purchaseData;
     }
-
-    // ✅ IMPORTANT: Form data should be processed even if it has purchaseNumber
-    // Only skip if it's clearly already processed backend data
-    console.log("🔄 Processing form data for backend transformation...");
 
     // ✅ CRITICAL: Ensure companyId is always present
     const companyId =
@@ -1953,15 +1807,6 @@ class PurchaseService {
     let supplierName = "";
     let supplierMobile = "";
     let supplierId = null;
-
-    console.log("🔍 Extracting supplier information from:", {
-      hasCustomer: !!purchaseData.customer,
-      hasSupplier: !!purchaseData.supplier,
-      supplierName: purchaseData.supplierName,
-      partyName: purchaseData.partyName,
-      customerName: purchaseData.customer?.name,
-      supplierType: typeof purchaseData.supplier,
-    });
 
     // ✅ METHOD 1: Extract from customer field (most common in frontend)
     if (purchaseData.customer && typeof purchaseData.customer === "object") {
@@ -1981,10 +1826,6 @@ class PurchaseService {
       supplierName = supplierData.name;
       supplierMobile = supplierData.mobile;
       supplierId = supplierData.id;
-      console.log("✅ Supplier extracted from customer field:", {
-        supplierName,
-        supplierId,
-      });
     }
 
     // ✅ METHOD 2: Extract from supplier field if customer didn't work
@@ -1995,26 +1836,17 @@ class PurchaseService {
         supplierMobile =
           purchaseData.supplier.mobile || purchaseData.supplier.phone || "";
         supplierId = purchaseData.supplier.id || purchaseData.supplier._id;
-        console.log("✅ Supplier extracted from supplier object:", {
-          supplierName,
-          supplierId,
-        });
       } else if (typeof purchaseData.supplier === "string") {
         // Supplier is just an ID
         supplierId = purchaseData.supplier;
         supplierName = purchaseData.supplierName || "";
         supplierMobile = purchaseData.supplierMobile || "";
-        console.log("✅ Supplier extracted from supplier ID:", {
-          supplierName,
-          supplierId,
-        });
       }
     }
 
     // ✅ METHOD 3: Extract from individual fields if above methods failed
     if (!supplierName) {
       supplierName = purchaseData.supplierName || purchaseData.partyName || "";
-      console.log("✅ Supplier name from individual fields:", supplierName);
     }
 
     if (!supplierMobile) {
@@ -2088,14 +1920,6 @@ class PurchaseService {
         "No valid items found. Each item must have name, quantity > 0, and price >= 0"
       );
     }
-
-    console.log("✅ Form data validation passed:", {
-      companyId,
-      supplierName,
-      supplierId,
-      validItemsCount: validItems.length,
-      originalItemsCount: rawItems.length,
-    });
 
     // ✅ Continue with the rest of the transformation logic...
     // (Keep all the existing item processing and data transformation code - I'll keep it the same)
@@ -2375,19 +2199,6 @@ class PurchaseService {
       gstType: purchaseData.gstEnabled ? "gst" : "non-gst",
       billType: purchaseData.gstEnabled ? "gst" : "non-gst",
     };
-
-    console.log("✅ PurchaseService transformToBackendFormat - Output data:", {
-      companyId: transformedData.companyId,
-      supplierName: transformedData.supplierName,
-      supplierId: transformedData.supplierId,
-      itemsCount: transformedData.items?.length || 0,
-      totalAmount: transformedData.finalTotal,
-      hasRequiredFields: !!(
-        transformedData.companyId &&
-        transformedData.supplierName &&
-        transformedData.items?.length > 0
-      ),
-    });
 
     // ✅ Final validation for form data - STRICT
     if (!transformedData.companyId) {
@@ -2678,6 +2489,619 @@ class PurchaseService {
         success: false,
         message: error.message,
         data: {paid: [], partial: [], pending: [], overdue: [], dueToday: []},
+      };
+    }
+  }
+
+  // ==================== ADMIN FUNCTIONS ====================
+
+  /**
+   * ✅ NEW: Get all purchases for admin (across all companies)
+   */
+  async getAllPurchasesForAdmin(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        populate: "supplier,companyId",
+        page: filters.page || 1,
+        limit: filters.limit || 100,
+        ...filters,
+      });
+
+      // Remove undefined/null values
+      for (const [key, value] of queryParams.entries()) {
+        if (value === undefined || value === null || value === "") {
+          queryParams.delete(key);
+        }
+      }
+
+      const response = await this.apiCall(
+        `/purchases/admin/all?${queryParams}`
+      );
+
+      if (!response) {
+        throw new Error("No data received from server");
+      }
+
+      let purchases = [];
+      let responseData = response;
+
+      // Handle multiple response structures
+      if (responseData.success !== undefined) {
+        if (responseData.success === false) {
+          throw new Error(responseData.message || "API returned error");
+        }
+        if (responseData.data) {
+          if (Array.isArray(responseData.data)) {
+            purchases = responseData.data;
+          } else if (responseData.data.purchases) {
+            purchases = responseData.data.purchases;
+          } else if (responseData.data.bills) {
+            purchases = responseData.data.bills;
+          } else if (responseData.data.invoices) {
+            purchases = responseData.data.invoices;
+          }
+        }
+      } else if (Array.isArray(responseData)) {
+        purchases = responseData;
+      } else if (
+        responseData.purchases &&
+        Array.isArray(responseData.purchases)
+      ) {
+        purchases = responseData.purchases;
+      } else if (responseData.bills && Array.isArray(responseData.bills)) {
+        purchases = responseData.bills;
+      }
+
+      return {
+        success: true,
+        data: {
+          purchases: purchases,
+          bills: purchases,
+          invoices: purchases,
+          data: purchases,
+          count: purchases.length,
+          pagination: responseData.pagination || {},
+          summary: responseData.summary || {},
+          adminStats: responseData.adminStats || {},
+        },
+        message: responseData.message || `Found ${purchases.length} purchases`,
+      };
+    } catch (error) {
+      console.error("❌ Error fetching admin purchases:", error);
+
+      return {
+        success: false,
+        message: error.message || "Failed to fetch all purchases for admin",
+        data: {
+          purchases: [],
+          bills: [],
+          invoices: [],
+          data: [],
+          count: 0,
+          pagination: {},
+          summary: {},
+          adminStats: {},
+        },
+      };
+    }
+  }
+  /**
+   * ✅ NEW: Get purchase statistics for admin dashboard
+   */
+  async getPurchaseStatsForAdmin(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/admin/stats?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Purchase statistics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Failed to fetch purchase statistics",
+        data: {
+          totalPurchases: 0,
+          totalAmount: 0,
+          purchasesByStatus: {},
+          purchasesByCompany: {},
+          purchasesByMonth: {},
+          recentPurchases: [],
+          topSuppliers: [],
+          pendingPurchases: 0,
+          completedPurchases: 0,
+          paidPurchases: 0,
+          unpaidPurchases: 0,
+          overduePurchases: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin analytics for purchases
+   */
+  async getAdminPurchaseAnalytics(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/admin/analytics?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Admin purchase analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Failed to fetch admin purchase analytics",
+        data: {
+          totalPurchaseValue: 0,
+          companiesWithPurchases: 0,
+          averagePurchaseValue: 0,
+          monthlyTrends: [],
+          topCompanies: [],
+          statusDistribution: {},
+          paymentStatusDistribution: {},
+          supplierAnalytics: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin dashboard summary for purchases
+   */
+  async getAdminPurchaseDashboardSummary(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/admin/dashboard?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Admin purchase dashboard summary fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.message || "Failed to fetch admin purchase dashboard summary",
+        data: {
+          totalPurchases: 0,
+          totalAmount: 0,
+          activeCompanies: 0,
+          recentActivity: [],
+          statusBreakdown: {},
+          monthlyStats: [],
+          topPerformers: [],
+          paymentSummary: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get overdue purchases for admin (across all companies)
+   */
+  async getOverduePurchasesForAdmin(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        status: "overdue",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/admin/overdue?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Overdue purchases fetched successfully for admin",
+      };
+    } catch (error) {
+      // Fallback to local calculation
+      try {
+        const allPurchasesResponse = await this.getAllPurchasesForAdmin(
+          filters
+        );
+
+        if (!allPurchasesResponse.success) {
+          throw new Error("Failed to fetch purchases for overdue calculation");
+        }
+
+        const allPurchases = allPurchasesResponse.data.purchases || [];
+        const today = new Date();
+
+        const overduePurchases = allPurchases.filter((purchase) => {
+          const pendingAmount = purchase.payment?.pendingAmount || 0;
+          const dueDate = purchase.payment?.dueDate;
+
+          if (!dueDate || pendingAmount <= 0) return false;
+
+          const due = new Date(dueDate);
+          return due < today;
+        });
+
+        return {
+          success: true,
+          data: {
+            purchases: overduePurchases,
+            count: overduePurchases.length,
+          },
+          message: `Found ${overduePurchases.length} overdue purchases (client-side filtered)`,
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          message:
+            error.message || "Failed to fetch overdue purchases for admin",
+          data: {
+            purchases: [],
+            count: 0,
+          },
+        };
+      }
+    }
+  }
+
+  /**
+   * ✅ NEW: Get purchases due today for admin (across all companies)
+   */
+  async getPurchasesDueTodayForAdmin(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        dueDate: new Date().toISOString().split("T")[0],
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/api/admin/purchases/due-today?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Purchases due today fetched successfully for admin",
+      };
+    } catch (error) {
+      // Fallback to local calculation
+      try {
+        const allPurchasesResponse = await this.getAllPurchasesForAdmin(
+          filters
+        );
+
+        if (!allPurchasesResponse.success) {
+          throw new Error(
+            "Failed to fetch purchases for due today calculation"
+          );
+        }
+
+        const allPurchases = allPurchasesResponse.data.purchases || [];
+        const today = new Date();
+        const todayString = today.toDateString();
+
+        const purchasesDueToday = allPurchases.filter((purchase) => {
+          const pendingAmount = purchase.payment?.pendingAmount || 0;
+          const dueDate = purchase.payment?.dueDate;
+
+          if (!dueDate || pendingAmount <= 0) return false;
+
+          const due = new Date(dueDate);
+          return due.toDateString() === todayString;
+        });
+
+        return {
+          success: true,
+          data: {
+            purchases: purchasesDueToday,
+            count: purchasesDueToday.length,
+          },
+          message: `Found ${purchasesDueToday.length} purchases due today (client-side filtered)`,
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          message:
+            error.message || "Failed to fetch purchases due today for admin",
+          data: {
+            purchases: [],
+            count: 0,
+          },
+        };
+      }
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin bidirectional purchase analytics
+   */
+  async getAdminBidirectionalPurchaseAnalytics(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/api/purchases/admin/purchases/bidirectional-analytics?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Admin bidirectional purchase analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.message ||
+          "Failed to fetch admin bidirectional purchase analytics",
+        data: {
+          totalBidirectionalPurchases: 0,
+          bidirectionalValue: 0,
+          companiesUsingBidirectional: 0,
+          sourceTypeBreakdown: {},
+          crossCompanyMapping: [],
+          conversionRates: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin purchase payment analytics
+   */
+  async getAdminPurchasePaymentAnalytics(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/api/purchases/admin/purchases/payment-analytics?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Admin purchase payment analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.message || "Failed to fetch admin purchase payment analytics",
+        data: {
+          totalPaidAmount: 0,
+          totalPendingAmount: 0,
+          totalOverdueAmount: 0,
+          paymentMethodBreakdown: {},
+          paymentStatusBreakdown: {},
+          overdueAnalysis: {},
+          paymentTrends: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin supplier analytics
+   */
+  async getAdminSupplierAnalytics(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        isAdmin: "true",
+        includeAllCompanies: "true",
+        ...filters,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/admin/due-today?${queryParams}`
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Admin supplier analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Failed to fetch admin supplier analytics",
+        data: {
+          totalSuppliers: 0,
+          activeSuppliers: 0,
+          topSuppliers: [],
+          supplierGrowth: [],
+          supplierSegmentation: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get purchase bill for printing
+   */
+  async getPurchaseBillForPrint(purchaseId, format = "a4") {
+    try {
+      // ✅ Use consistent API call method
+      const response = await this.apiCall(`/purchases/${purchaseId}/print`, {
+        method: "GET",
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Purchase bill data retrieved for printing",
+      };
+    } catch (error) {
+      console.error("❌ Error getting purchase bill for print:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to get purchase bill for printing",
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * ✅ FIXED: Print purchase bill
+   */
+  async printPurchaseBill(purchaseId, printOptions = {}) {
+    try {
+      const billData = await this.getPurchaseBillForPrint(purchaseId);
+
+      if (billData.success) {
+        // Trigger print dialog or generate PDF
+        if (printOptions.asPDF) {
+          return this.generatePurchaseBillPDF(purchaseId);
+        } else {
+          // Return the data for printing - don't call window.print() here
+          // The component will handle the actual printing
+          return billData;
+        }
+      }
+
+      throw new Error(billData.message);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Failed to print purchase bill",
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Generate purchase bill PDF
+   */
+  async generatePurchaseBillPDF(purchaseId) {
+    try {
+      const response = await this.apiCall(`/purchases/${purchaseId}/pdf`, {
+        method: "GET",
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Purchase bill PDF generated successfully",
+      };
+    } catch (error) {
+      console.error("❌ Error generating purchase bill PDF:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to generate purchase bill PDF",
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Download purchase bill as PDF
+   */
+  async downloadPurchaseBillPDF(purchaseId) {
+    try {
+      const response = await fetch(
+        `${this.baseURL}/purchases/${purchaseId}/download`,
+        {
+          method: "GET",
+          headers: this.getAuthHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to download PDF: ${response.status}`);
+      }
+
+      // Get the blob
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `purchase-bill-${purchaseId}.pdf`;
+
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up
+      window.URL.revokeObjectURL(url);
+
+      return {
+        success: true,
+        message: "Purchase bill PDF downloaded successfully",
+      };
+    } catch (error) {
+      console.error("❌ Error downloading purchase bill PDF:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to download purchase bill PDF",
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if print endpoint is available
+   */
+  async checkPrintEndpointAvailability() {
+    try {
+      const response = await this.apiCall("/purchases/print-available", {
+        method: "GET",
+      });
+
+      return {
+        success: true,
+        available: response.available !== false,
+        message: "Print endpoint availability checked",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        available: false,
+        message: "Print endpoint not available",
       };
     }
   }

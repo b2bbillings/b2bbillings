@@ -248,7 +248,6 @@ const addUserValidation = [
 // ROUTES CONFIGURATION
 // =============================================================================
 
-// 🔧 Health check route - NO AUTH REQUIRED (must be first)
 router.get("/health", healthCheck);
 
 // In your routes/companies.js file

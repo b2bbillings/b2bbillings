@@ -87,7 +87,7 @@ function PurchaseBillsFilter({
         </Row>
       </Card.Body>
 
-      <style jsx>{`
+      <style>{`
         .purple-theme {
           border-left: 3px solid #6366f1;
           background: rgba(99, 102, 241, 0.02);

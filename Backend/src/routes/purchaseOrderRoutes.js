@@ -42,6 +42,83 @@ const validateOrderType = (req, res, next) => {
   next();
 };
 
+// Admin validation middleware
+const validateAdmin = (req, res, next) => {
+  const userRole = req.user?.role || req.headers["x-user-role"];
+
+  if (!userRole || userRole !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+      code: "ADMIN_ACCESS_REQUIRED",
+    });
+  }
+
+  next();
+};
+
+// ==================== ADMIN ROUTES (MUST BE FIRST) ====================
+
+/**
+ * @route   GET /api/purchase-orders/admin/all
+ * @desc    Get all purchase orders for admin (across all companies)
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/all",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  purchaseOrderController.getAllPurchaseOrdersForAdmin
+);
+
+/**
+ * @route   GET /api/purchase-orders/admin/stats
+ * @desc    Get purchase order statistics for admin dashboard
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/stats",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  purchaseOrderController.getPurchaseOrderStatsForAdmin
+);
+
+/**
+ * @route   GET /api/purchase-orders/admin/conversion-analysis
+ * @desc    Get conversion rate analysis for admin
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/conversion-analysis",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  purchaseOrderController.getConversionRateAnalysisForAdmin
+);
+
+/**
+ * @route   GET /api/purchase-orders/admin/bidirectional-analytics
+ * @desc    Get comprehensive bidirectional analytics for admin
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/bidirectional-analytics",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  purchaseOrderController.getAdminBidirectionalAnalytics
+);
+
+/**
+ * @route   GET /api/purchase-orders/admin/bidirectional-dashboard
+ * @desc    Get bidirectional dashboard summary for admin
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/bidirectional-dashboard",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  purchaseOrderController.getAdminBidirectionalDashboard
+);
+
 // ==================== UTILITY ROUTES (MUST BE FIRST) ====================
 
 /**
@@ -81,6 +158,183 @@ router.get(
   purchaseOrderController.generateOrderNumber
 );
 
+/**
+ * @route   GET /api/purchase-orders/check-number
+ * @desc    Check if order number exists
+ * @access  Private
+ */
+router.get("/check-number", authenticate, validateCompany, async (req, res) => {
+  try {
+    const {companyId, orderNumber} = req.query;
+
+    if (!companyId || !orderNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Company ID and order number are required",
+      });
+    }
+
+    const PurchaseOrder = require("../models/PurchaseOrder");
+    const existingOrder = await PurchaseOrder.findOne({
+      companyId,
+      orderNumber: orderNumber.trim(),
+    }).lean();
+
+    res.status(200).json({
+      success: true,
+      exists: !!existingOrder,
+      found: !!existingOrder,
+      data: existingOrder
+        ? {
+            id: existingOrder._id,
+            orderNumber: existingOrder.orderNumber,
+            createdAt: existingOrder.createdAt,
+          }
+        : null,
+      message: existingOrder
+        ? "Order number already exists"
+        : "Order number is available",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to check order number",
+      error: error.message,
+      exists: false,
+      found: false,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/purchase-orders/exists
+ * @desc    Check if order number exists (alternative endpoint)
+ * @access  Private
+ */
+router.get("/exists", authenticate, validateCompany, async (req, res) => {
+  try {
+    const {companyId, orderNumber} = req.query;
+
+    if (!companyId || !orderNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Company ID and order number are required",
+      });
+    }
+
+    const PurchaseOrder = require("../models/PurchaseOrder");
+    const existingOrder = await PurchaseOrder.findOne({
+      companyId,
+      orderNumber: orderNumber.trim(),
+    }).lean();
+
+    res.status(200).json({
+      success: true,
+      exists: !!existingOrder,
+      found: !!existingOrder,
+      data: existingOrder
+        ? {
+            id: existingOrder._id,
+            orderNumber: existingOrder.orderNumber,
+            createdAt: existingOrder.createdAt,
+          }
+        : null,
+      message: existingOrder
+        ? "Order number already exists"
+        : "Order number is available",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to check order number existence",
+      error: error.message,
+      exists: false,
+      found: false,
+    });
+  }
+});
+
+/**
+ * @route   GET /api/purchase-orders/verify-unique
+ * @desc    Verify if order number is unique
+ * @access  Private
+ */
+router.get(
+  "/verify-unique",
+  authenticate,
+  validateCompany,
+  async (req, res) => {
+    try {
+      const {companyId, orderNumber} = req.query;
+
+      if (!companyId || !orderNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and order number are required",
+        });
+      }
+
+      const PurchaseOrder = require("../models/PurchaseOrder");
+      const existingOrder = await PurchaseOrder.findOne({
+        companyId,
+        orderNumber: orderNumber.trim(),
+      }).lean();
+
+      const isUnique = !existingOrder;
+
+      res.status(200).json({
+        success: true,
+        isUnique,
+        exists: !!existingOrder,
+        found: !!existingOrder,
+        data: existingOrder
+          ? {
+              id: existingOrder._id,
+              orderNumber: existingOrder.orderNumber,
+              createdAt: existingOrder.createdAt,
+            }
+          : null,
+        message: isUnique
+          ? "Order number is unique"
+          : "Order number already exists",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to verify order number uniqueness",
+        error: error.message,
+        isUnique: false,
+        exists: false,
+        found: false,
+      });
+    }
+  }
+);
+
+/**
+ * @route   GET /api/purchase-orders/next-invoice-number
+ * @desc    Get next purchase invoice number
+ * @access  Private
+ */
+router.get(
+  "/next-invoice-number",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getNextInvoiceNumber
+);
+
+/**
+ * @route   GET /api/purchase-orders/stats
+ * @desc    Get purchase order statistics (company-specific)
+ * @access  Private
+ */
+router.get(
+  "/stats",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getDashboardSummary
+);
+
 // ==================== BIDIRECTIONAL FUNCTIONALITY ROUTES ====================
 
 /**
@@ -93,6 +347,18 @@ router.post(
   authenticate,
   validateRequest,
   purchaseOrderController.generatePurchaseOrder
+);
+
+/**
+ * @route   POST /api/purchase-orders/:id/generate-sales-order
+ * @desc    Generate sales order from purchase order (BIDIRECTIONAL)
+ * @access  Private
+ */
+router.post(
+  "/:id/generate-sales-order",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.generateSalesOrderFromPurchaseOrder
 );
 
 /**
@@ -129,31 +395,39 @@ router.post(
 
       for (const salesOrderId of salesOrderIds) {
         try {
-          // Simulate individual generation call
-          req.params.id = salesOrderId;
-          req.body = {targetCompanyId, convertedBy, notes};
+          const mockReq = {
+            params: {id: salesOrderId},
+            body: {targetCompanyId, convertedBy, notes},
+            user: {id: convertedBy},
+          };
 
-          const result = await purchaseOrderController.generatePurchaseOrder(
-            req,
-            {
-              status: (code) => ({
-                json: (data) => {
-                  if (code === 201) {
-                    results.push({
-                      salesOrderId,
-                      purchaseOrder: data.data.purchaseOrder,
-                      success: true,
-                    });
-                  } else {
-                    errors.push({
-                      salesOrderId,
-                      error: data.message || "Generation failed",
-                    });
-                  }
-                },
-              }),
-            }
-          );
+          let mockRes = {
+            statusCode: null,
+            jsonData: null,
+            status: function (code) {
+              this.statusCode = code;
+              return this;
+            },
+            json: function (data) {
+              this.jsonData = data;
+              return this;
+            },
+          };
+
+          await purchaseOrderController.generatePurchaseOrder(mockReq, mockRes);
+
+          if (mockRes.statusCode === 201 && mockRes.jsonData.success) {
+            results.push({
+              salesOrderId,
+              purchaseOrder: mockRes.jsonData.data.purchaseOrder,
+              success: true,
+            });
+          } else {
+            errors.push({
+              salesOrderId,
+              error: mockRes.jsonData?.message || "Generation failed",
+            });
+          }
         } catch (error) {
           errors.push({
             salesOrderId,
@@ -183,6 +457,112 @@ router.post(
 );
 
 /**
+ * @route   POST /api/purchase-orders/bulk/generate-sales-orders
+ * @desc    Bulk generate sales orders from multiple purchase orders
+ * @access  Private
+ */
+router.post(
+  "/bulk/generate-sales-orders",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {
+        purchaseOrderIds,
+        targetCompanyId,
+        targetCustomerId,
+        targetCustomerName,
+        targetCustomerMobile,
+        generatedBy,
+      } = req.body;
+
+      if (
+        !purchaseOrderIds ||
+        !Array.isArray(purchaseOrderIds) ||
+        purchaseOrderIds.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Purchase order IDs array is required",
+        });
+      }
+
+      const results = [];
+      const errors = [];
+
+      for (const purchaseOrderId of purchaseOrderIds) {
+        try {
+          const mockReq = {
+            params: {id: purchaseOrderId},
+            body: {
+              targetCompanyId,
+              targetCustomerId,
+              targetCustomerName,
+              targetCustomerMobile,
+              convertedBy: generatedBy,
+            },
+            user: {id: generatedBy},
+          };
+
+          let mockRes = {
+            statusCode: null,
+            jsonData: null,
+            status: function (code) {
+              this.statusCode = code;
+              return this;
+            },
+            json: function (data) {
+              this.jsonData = data;
+              return this;
+            },
+          };
+
+          await purchaseOrderController.generateSalesOrderFromPurchaseOrder(
+            mockReq,
+            mockRes
+          );
+
+          if (mockRes.statusCode === 201 && mockRes.jsonData.success) {
+            results.push({
+              purchaseOrderId,
+              salesOrder: mockRes.jsonData.data.salesOrder,
+              success: true,
+            });
+          } else {
+            errors.push({
+              purchaseOrderId,
+              error: mockRes.jsonData?.message || "Generation failed",
+            });
+          }
+        } catch (error) {
+          errors.push({
+            purchaseOrderId,
+            error: error.message,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          generated: results,
+          errors,
+          successCount: results.length,
+          errorCount: errors.length,
+        },
+        message: `${results.length} sales orders generated successfully, ${errors.length} failed`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to bulk generate sales orders",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
  * @route   GET /api/purchase-orders/analytics/bidirectional
  * @desc    Get bidirectional analytics for company
  * @access  Private
@@ -192,6 +572,46 @@ router.get(
   authenticate,
   validateCompany,
   purchaseOrderController.getBidirectionalAnalytics
+);
+
+/**
+ * @route   GET /api/purchase-orders/analytics/bidirectional-purchase
+ * @desc    Get bidirectional purchase analytics
+ * @access  Private
+ */
+router.get(
+  "/analytics/bidirectional-purchase",
+  authenticate,
+  validateCompany,
+  async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const PurchaseOrder = require("../models/PurchaseOrder");
+      const analytics = await PurchaseOrder.getBidirectionalAnalytics(
+        companyId
+      );
+
+      res.status(200).json({
+        success: true,
+        data: analytics,
+        message: "Bidirectional purchase analytics retrieved successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bidirectional purchase analytics",
+        error: error.message,
+      });
+    }
+  }
 );
 
 /**
@@ -252,6 +672,116 @@ router.get(
   authenticate,
   validateRequest,
   purchaseOrderController.getOrdersFromSalesOrder
+);
+
+/**
+ * @route   GET /api/purchase-orders/generation-status
+ * @desc    Get sales order generation status for a purchase order
+ * @access  Private
+ */
+router.get(
+  "/generation-status",
+  authenticate,
+  validateCompany,
+  async (req, res) => {
+    try {
+      const {companyId, purchaseOrderId} = req.query;
+
+      if (!companyId || !purchaseOrderId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Purchase Order ID are required",
+        });
+      }
+
+      const PurchaseOrder = require("../models/PurchaseOrder");
+      const purchaseOrder = await PurchaseOrder.findOne({
+        _id: purchaseOrderId,
+        companyId,
+      }).populate("supplier", "name mobile phoneNumber email");
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      const generationStatus = {
+        purchaseOrder: {
+          id: purchaseOrder._id,
+          orderNumber: purchaseOrder.orderNumber,
+          orderDate: purchaseOrder.orderDate,
+          supplier: purchaseOrder.supplier,
+          totalAmount: purchaseOrder.totals.finalTotal,
+          status: purchaseOrder.status,
+        },
+        salesOrderGeneration: {
+          hasGenerated: purchaseOrder.autoGeneratedSalesOrder,
+          canGenerate:
+            !purchaseOrder.autoGeneratedSalesOrder &&
+            !["cancelled"].includes(purchaseOrder.status),
+        },
+      };
+
+      res.status(200).json({
+        success: true,
+        data: generationStatus,
+        message: "Sales order generation status retrieved successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales order generation status",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ==================== TRACKING ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/source-tracking/:purchaseOrderId
+ * @desc    Get purchase order source tracking information
+ * @access  Private
+ */
+router.get(
+  "/source-tracking/:purchaseOrderId",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {purchaseOrderId} = req.params;
+      const PurchaseOrder = require("../models/PurchaseOrder");
+
+      const sourceInfo = await PurchaseOrder.getSourceTracking(purchaseOrderId);
+
+      res.status(200).json({
+        success: true,
+        data: sourceInfo,
+        message: "Purchase order source tracking retrieved successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase order source tracking",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/tracking-chain
+ * @desc    Get complete tracking chain for a purchase order
+ * @access  Private
+ */
+router.get(
+  "/:id/tracking-chain",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getTrackingChain
 );
 
 // ==================== REPORTING ROUTES ====================
@@ -616,6 +1146,12 @@ router.get(
                 100,
               ],
             },
+            salesOrderGenerationRate: {
+              $multiply: [
+                {$divide: ["$ordersWithGeneratedSO", "$totalOrders"]},
+                100,
+              ],
+            },
           },
         },
       ]);
@@ -636,6 +1172,7 @@ router.get(
           autoGenerationRate: 0,
           bidirectionalCoverage: 0,
           conversionRate: 0,
+          salesOrderGenerationRate: 0,
         },
         message: "Bidirectional summary report retrieved successfully",
       });
@@ -649,7 +1186,23 @@ router.get(
   }
 );
 
-// ==================== FILTERING ROUTES ====================
+// ==================== FILTERING ROUTES (BEFORE PARAMETER ROUTES) ====================
+
+/**
+ * @route   GET /api/purchase-orders/by-type/:orderType
+ * @desc    Get orders by type (purchase_order, purchase_quotation, proforma_purchase)
+ * @access  Private
+ */
+router.get(
+  "/by-type/:orderType",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    req.query.orderType = req.params.orderType;
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
 
 /**
  * @route   GET /api/purchase-orders/quotations
@@ -668,6 +1221,22 @@ router.get(
 );
 
 /**
+ * @route   GET /api/purchase-orders/orders
+ * @desc    Get all purchase orders
+ * @access  Private
+ */
+router.get(
+  "/orders",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    req.query.orderType = "purchase_order";
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
+
+/**
  * @route   GET /api/purchase-orders/proforma
  * @desc    Get all proforma purchases
  * @access  Private
@@ -678,6 +1247,22 @@ router.get(
   validateCompany,
   (req, res, next) => {
     req.query.orderType = "proforma_purchase";
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
+
+/**
+ * @route   GET /api/purchase-orders/by-status/:status
+ * @desc    Get orders by status
+ * @access  Private
+ */
+router.get(
+  "/by-status/:status",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    req.query.status = req.params.status;
     next();
   },
   purchaseOrderController.getAllPurchaseOrders
@@ -716,6 +1301,22 @@ router.get(
 );
 
 /**
+ * @route   GET /api/purchase-orders/active
+ * @desc    Get active orders (not cancelled or completed)
+ * @access  Private
+ */
+router.get(
+  "/active",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    req.query.status = "draft,sent,confirmed,received";
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
+
+/**
  * @route   GET /api/purchase-orders/confirmed
  * @desc    Get confirmed orders
  * @access  Private
@@ -726,6 +1327,56 @@ router.get(
   validateCompany,
   (req, res, next) => {
     req.query.status = "confirmed";
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
+
+/**
+ * @route   GET /api/purchase-orders/received
+ * @desc    Get received orders
+ * @access  Private
+ */
+router.get(
+  "/received",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    req.query.status = "received";
+    next();
+  },
+  purchaseOrderController.getAllPurchaseOrders
+);
+
+/**
+ * @route   GET /api/purchase-orders/expired
+ * @desc    Get expired purchase orders/quotations
+ * @access  Private
+ */
+router.get(
+  "/expired",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getExpiredOrders
+);
+
+/**
+ * @route   GET /api/purchase-orders/expiring-soon
+ * @desc    Get orders expiring within next 7 days
+ * @access  Private
+ */
+router.get(
+  "/expiring-soon",
+  authenticate,
+  validateCompany,
+  (req, res, next) => {
+    const today = new Date();
+    const weekFromNow = new Date();
+    weekFromNow.setDate(today.getDate() + 7);
+
+    req.query.validFrom = today.toISOString();
+    req.query.validTo = weekFromNow.toISOString();
+    req.query.status = "draft,sent,confirmed";
     next();
   },
   purchaseOrderController.getAllPurchaseOrders
@@ -744,15 +1395,27 @@ router.get(
 );
 
 /**
- * @route   GET /api/purchase-orders/expired
- * @desc    Get expired purchase orders/quotations
+ * @route   GET /api/purchase-orders/pending-approval
+ * @desc    Get orders awaiting approval
  * @access  Private
  */
 router.get(
-  "/expired",
+  "/pending-approval",
   authenticate,
   validateCompany,
-  purchaseOrderController.getExpiredOrders
+  purchaseOrderController.getOrdersAwaitingApproval
+);
+
+/**
+ * @route   GET /api/purchase-orders/required-by-date
+ * @desc    Get orders required by specific date
+ * @access  Private
+ */
+router.get(
+  "/required-by-date",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getOrdersRequiredByDate
 );
 
 /**
@@ -769,6 +1432,32 @@ router.get(
     next();
   },
   purchaseOrderController.getAllPurchaseOrders
+);
+
+// ==================== SUPPLIER-SPECIFIC ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/supplier/:supplierId/pending-documents
+ * @desc    Get supplier's pending documents (orders + invoices) for payment allocation
+ * @access  Private
+ */
+router.get(
+  "/supplier/:supplierId/pending-documents",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getSupplierPendingDocuments
+);
+
+/**
+ * @route   GET /api/purchase-orders/supplier/pending-documents
+ * @desc    Get supplier's pending documents (orders + invoices) for payment allocation
+ * @access  Private
+ */
+router.get(
+  "/supplier/pending-documents",
+  authenticate,
+  validateCompany,
+  purchaseOrderController.getSupplierPendingDocuments
 );
 
 // ==================== EXPORT ROUTES ====================
@@ -833,7 +1522,7 @@ router.get("/export/csv", authenticate, validateCompany, async (req, res) => {
       "Source Order Number",
       "Source Company",
       "Target Company",
-      "Has Corresponding SO",
+      "Has Generated SO",
       "Generated SO Number",
       "Created At",
     ];
@@ -862,7 +1551,7 @@ router.get("/export/csv", authenticate, validateCompany, async (req, res) => {
       order.sourceOrderNumber || "",
       order.sourceCompanyId?.businessName || "",
       order.targetCompanyId?.businessName || "",
-      order.correspondingSalesOrderNumber ? "Yes" : "No",
+      order.autoGeneratedSalesOrder ? "Yes" : "No",
       order.salesOrderNumber || "",
       order.createdAt.toISOString().split("T")[0],
     ]);
@@ -1081,6 +1770,54 @@ router.patch(
   }
 );
 
+/**
+ * @route   PATCH /api/purchase-orders/bulk/send
+ * @desc    Bulk send multiple orders to suppliers
+ * @access  Private
+ */
+router.patch("/bulk/send", authenticate, validateRequest, async (req, res) => {
+  try {
+    const {orderIds, sendMethod = "email"} = req.body;
+
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Order IDs array is required",
+      });
+    }
+
+    const PurchaseOrder = require("../models/PurchaseOrder");
+    const updateResult = await PurchaseOrder.updateMany(
+      {
+        _id: {$in: orderIds},
+        status: "draft",
+      },
+      {
+        status: "sent",
+        lastModifiedBy: req.user?.id || "system",
+        $push: {
+          notes: `Bulk sent via ${sendMethod}`,
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        modifiedCount: updateResult.modifiedCount,
+        matchedCount: updateResult.matchedCount,
+      },
+      message: `${updateResult.modifiedCount} orders sent successfully`,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to bulk send orders",
+      error: error.message,
+    });
+  }
+});
+
 // ==================== 🔥 MAIN CRUD ROUTES ====================
 
 /**
@@ -1099,30 +1836,51 @@ router.post(
 /**
  * 🔥 MAIN ROUTE: Get all purchase orders with advanced filtering
  * @route   GET /api/purchase-orders
- * @desc    Get all purchase orders with pagination and filters
+ * @desc    Get all purchase orders with pagination and filters (WITH ADMIN SUPPORT)
  * @access  Private
  * @query   companyId, orderType, status, search, dateFrom, dateTo, etc.
  */
-router.get(
-  "/",
-  authenticate,
-  validateCompany,
-  purchaseOrderController.getAllPurchaseOrders
-);
+router.get("/", authenticate, async (req, res) => {
+  try {
+    const isAdminRequest =
+      req.query.isAdmin === "true" ||
+      req.query.includeAllCompanies === "true" ||
+      req.query.adminAccess === "true" ||
+      req.headers["x-admin-access"] === "true";
+
+    if (isAdminRequest) {
+      return await purchaseOrderController.getAllPurchaseOrdersForAdmin(
+        req,
+        res
+      );
+    } else {
+      const companyId = req.query.companyId || req.body.companyId;
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required for regular users",
+          code: "COMPANY_ID_REQUIRED",
+        });
+      }
+
+      return await purchaseOrderController.getAllPurchaseOrders(req, res);
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+      data: {
+        purchaseOrders: [],
+        orders: [],
+        data: [],
+        count: 0,
+      },
+    });
+  }
+});
 
 // ==================== PARAMETERIZED ROUTES (MUST BE LAST) ====================
-
-/**
- * @route   GET /api/purchase-orders/:id/tracking-chain
- * @desc    Get complete tracking chain for a purchase order
- * @access  Private
- */
-router.get(
-  "/:id/tracking-chain",
-  authenticate,
-  validateRequest,
-  purchaseOrderController.getTrackingChain
-);
 
 /**
  * @route   POST /api/purchase-orders/:id/create-corresponding-so
@@ -1173,6 +1931,74 @@ router.patch(
 );
 
 /**
+ * @route   PATCH /api/purchase-orders/:id/confirm
+ * @desc    Mark purchase order as confirmed
+ * @access  Private
+ */
+router.patch(
+  "/:id/confirm",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.body.status = "confirmed";
+    next();
+  },
+  purchaseOrderController.updateStatus
+);
+
+// ✅ ADD to purchaseOrderRoutes.js
+router.post(
+  "/:id/confirm",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.confirmPurchaseOrder
+);
+
+/**
+ * @route   PATCH /api/purchase-orders/:id/receive
+ * @desc    Mark purchase order as received
+ * @access  Private
+ */
+router.patch(
+  "/:id/receive",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.body.status = "received";
+    next();
+  },
+  purchaseOrderController.updateStatus
+);
+
+/**
+ * @route   PATCH /api/purchase-orders/:id/send
+ * @desc    Mark purchase order as sent
+ * @access  Private
+ */
+router.patch(
+  "/:id/send",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.body.status = "sent";
+    next();
+  },
+  purchaseOrderController.updateStatus
+);
+
+/**
+ * @route   PATCH /api/purchase-orders/:id/cancel
+ * @desc    Cancel a purchase order
+ * @access  Private
+ */
+router.patch(
+  "/:id/cancel",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.deletePurchaseOrder
+);
+
+/**
  * @route   POST /api/purchase-orders/:id/payment
  * @desc    Add payment to a purchase order
  * @access  Private
@@ -1181,6 +2007,34 @@ router.post(
   "/:id/payment",
   authenticate,
   validateRequest,
+  purchaseOrderController.addPayment
+);
+
+/**
+ * @route   POST /api/purchase-orders/:id/payments
+ * @desc    Add payment to a purchase order (alternative endpoint)
+ * @access  Private
+ */
+router.post(
+  "/:id/payments",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.addPayment
+);
+
+/**
+ * @route   POST /api/purchase-orders/:id/advance-payment
+ * @desc    Add advance payment to a purchase order
+ * @access  Private
+ */
+router.post(
+  "/:id/advance-payment",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.body.isAdvancePayment = true;
+    next();
+  },
   purchaseOrderController.addPayment
 );
 
@@ -1219,5 +2073,601 @@ router.delete(
   validateRequest,
   purchaseOrderController.deletePurchaseOrder
 );
+
+// ==================== 🖨️ PRINT & EXPORT ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/print
+ * @desc    Get purchase order data for printing
+ * @access  Private
+ */
+router.get(
+  "/:id/print",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/email
+ * @desc    Get purchase order data for email/PDF generation
+ * @access  Private
+ */
+router.get(
+  "/:id/email",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForEmail
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/download-pdf
+ * @desc    Download purchase order as PDF
+ * @access  Private
+ */
+router.get(
+  "/:id/download-pdf",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.downloadPurchaseOrderPDF
+);
+
+/**
+ * @route   POST /api/purchase-orders/bulk/print
+ * @desc    Get multiple purchase orders for bulk printing
+ * @access  Private
+ */
+router.post(
+  "/bulk/print",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getBulkPurchaseOrdersForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/qr-confirmation
+ * @desc    Get purchase order QR confirmation data
+ * @access  Private
+ */
+router.get(
+  "/:id/qr-confirmation",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForQRConfirmation
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/summary
+ * @desc    Get purchase order summary for quick view
+ * @access  Private
+ */
+router.get(
+  "/:id/summary",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderSummary
+);
+
+/**
+ * @route   GET /api/purchase-orders/quotations/:id/print
+ * @desc    Get purchase quotation for printing
+ * @access  Private
+ */
+router.get(
+  "/quotations/:id/print",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseQuotationForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/proforma/:id/print
+ * @desc    Get proforma purchase order for printing
+ * @access  Private
+ */
+router.get(
+  "/proforma/:id/print",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getProformaPurchaseForPrint
+);
+
+// ==================== 📄 DOCUMENT TYPE SPECIFIC PRINT ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/print/quotation/:id
+ * @desc    Get purchase quotation for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/print/quotation/:id",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseQuotationForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/print/proforma/:id
+ * @desc    Get proforma purchase for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/print/proforma/:id",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getProformaPurchaseForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/print/order/:id
+ * @desc    Get purchase order for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/print/order/:id",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForPrint
+);
+
+// ==================== 📧 EMAIL & SHARING ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/email-data
+ * @desc    Get purchase order email data (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/email-data",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForEmail
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/sharing-data
+ * @desc    Get purchase order data for sharing
+ * @access  Private
+ */
+router.get(
+  "/:id/sharing-data",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForEmail
+);
+
+// ==================== 🔗 QR CODE & CONFIRMATION ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/qr-code
+ * @desc    Get purchase order QR code data (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/qr-code",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForQRConfirmation
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/confirmation-qr
+ * @desc    Get purchase order confirmation QR (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/confirmation-qr",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderForQRConfirmation
+);
+
+// ==================== 📊 QUICK VIEW & PREVIEW ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/preview
+ * @desc    Get purchase order preview data (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/preview",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderSummary
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/quick-view
+ * @desc    Get purchase order quick view data (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/quick-view",
+  authenticate,
+  validateRequest,
+  purchaseOrderController.getPurchaseOrderSummary
+);
+
+// ==================== 📁 BULK OPERATIONS FOR PRINTING ====================
+
+/**
+ * @route   POST /api/purchase-orders/bulk/email-data
+ * @desc    Get multiple purchase orders for bulk email
+ * @access  Private
+ */
+router.post(
+  "/bulk/email-data",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {ids} = req.body;
+      const {template = "professional"} = req.query;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Order IDs array is required",
+        });
+      }
+
+      const results = [];
+      const errors = [];
+
+      for (const id of ids) {
+        try {
+          const mockReq = {
+            params: {id},
+            query: {template},
+            user: req.user,
+          };
+
+          let mockRes = {
+            statusCode: null,
+            jsonData: null,
+            status: function (code) {
+              this.statusCode = code;
+              return this;
+            },
+            json: function (data) {
+              this.jsonData = data;
+              return this;
+            },
+          };
+
+          await purchaseOrderController.getPurchaseOrderForEmail(
+            mockReq,
+            mockRes
+          );
+
+          if (mockRes.statusCode === 200 && mockRes.jsonData.success) {
+            results.push({
+              orderId: id,
+              emailData: mockRes.jsonData.data,
+              success: true,
+            });
+          } else {
+            errors.push({
+              orderId: id,
+              error: mockRes.jsonData?.message || "Failed to get email data",
+            });
+          }
+        } catch (error) {
+          errors.push({
+            orderId: id,
+            error: error.message,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          emailData: results,
+          errors,
+          successCount: results.length,
+          errorCount: errors.length,
+        },
+        message: `${results.length} purchase orders prepared for bulk email`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bulk email data",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @route   POST /api/purchase-orders/bulk/download-pdf
+ * @desc    Download multiple purchase orders as PDFs
+ * @access  Private
+ */
+router.post(
+  "/bulk/download-pdf",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {ids} = req.body;
+      const {template = "standard", format = "a4"} = req.query;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Order IDs array is required",
+        });
+      }
+
+      const validIds = ids.filter((id) =>
+        require("mongoose").Types.ObjectId.isValid(id)
+      );
+
+      if (validIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid order IDs provided",
+        });
+      }
+
+      const PurchaseOrder = require("../models/PurchaseOrder");
+      const orders = await PurchaseOrder.find({_id: {$in: validIds}})
+        .select("orderNumber orderType totals.finalTotal")
+        .lean();
+
+      const downloadData = {
+        requestId: `bulk-pdf-${Date.now()}`,
+        orderIds: validIds,
+        orderCount: orders.length,
+        totalAmount: orders.reduce(
+          (sum, order) => sum + (order.totals?.finalTotal || 0),
+          0
+        ),
+        downloadUrl: `/api/purchase-orders/bulk/print?format=pdf&template=${template}`,
+        format,
+        template,
+        generatedAt: new Date(),
+      };
+
+      res.json({
+        success: true,
+        data: downloadData,
+        message: `${orders.length} purchase orders prepared for bulk PDF download`,
+        action: "bulk_pdf_download",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to prepare bulk PDF download",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ==================== 📱 MOBILE & APP SPECIFIC ROUTES ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/mobile-print
+ * @desc    Get purchase order data optimized for mobile printing
+ * @access  Private
+ */
+router.get(
+  "/:id/mobile-print",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.format = "mobile";
+    req.query.template = "compact";
+    next();
+  },
+  purchaseOrderController.getPurchaseOrderForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/thermal-print
+ * @desc    Get purchase order data optimized for thermal printer
+ * @access  Private
+ */
+router.get(
+  "/:id/thermal-print",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.format = "thermal";
+    req.query.template = "minimal";
+    next();
+  },
+  purchaseOrderController.getPurchaseOrderForPrint
+);
+
+/**
+ * @route   GET /api/purchase-orders/:id/whatsapp-share
+ * @desc    Get purchase order data optimized for WhatsApp sharing
+ * @access  Private
+ */
+router.get(
+  "/:id/whatsapp-share",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.template = "whatsapp";
+    req.query.includePaymentLink = "true";
+    next();
+  },
+  purchaseOrderController.getPurchaseOrderForEmail
+);
+
+// ==================== 🔍 DOCUMENT VALIDATION & PREVIEW ====================
+
+/**
+ * @route   GET /api/purchase-orders/:id/validate-print
+ * @desc    Validate purchase order data before printing
+ * @access  Private
+ */
+router.get(
+  "/:id/validate-print",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!require("mongoose").Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      const PurchaseOrder = require("../models/PurchaseOrder");
+      const order = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile email")
+        .populate("companyId", "businessName gstin")
+        .lean();
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      const validationResults = {
+        isValid: true,
+        warnings: [],
+        errors: [],
+        recommendations: [],
+      };
+
+      // Validate required fields
+      if (!order.supplier) {
+        validationResults.errors.push("Supplier information is missing");
+        validationResults.isValid = false;
+      }
+
+      if (!order.companyId) {
+        validationResults.errors.push("Company information is missing");
+        validationResults.isValid = false;
+      }
+
+      if (!order.items || order.items.length === 0) {
+        validationResults.errors.push("No items found in the order");
+        validationResults.isValid = false;
+      }
+
+      // Check for warnings
+      if (!order.companyId?.gstin) {
+        validationResults.warnings.push("Company GST number is not set");
+      }
+
+      if (!order.supplier?.mobile && !order.supplier?.email) {
+        validationResults.warnings.push(
+          "Supplier contact information is incomplete"
+        );
+      }
+
+      if (order.status === "cancelled") {
+        validationResults.warnings.push("Order is cancelled");
+      }
+
+      // Add recommendations
+      if (order.status === "draft") {
+        validationResults.recommendations.push(
+          "Consider sending the order before printing"
+        );
+      }
+
+      if (!order.notes && !order.termsAndConditions) {
+        validationResults.recommendations.push(
+          "Add terms and conditions for better clarity"
+        );
+      }
+
+      res.json({
+        success: true,
+        data: {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          validation: validationResults,
+          printReady: validationResults.isValid,
+        },
+        message: validationResults.isValid
+          ? "Order is ready for printing"
+          : "Order has validation issues",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to validate order for printing",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @route   GET /api/purchase-orders/print-templates
+ * @desc    Get available print templates
+ * @access  Private
+ */
+router.get("/print-templates", authenticate, (req, res) => {
+  const templates = {
+    standard: {
+      name: "Standard",
+      description: "Default purchase order template",
+      features: ["Company logo", "Full item details", "Tax breakdown"],
+      formats: ["a4", "letter"],
+    },
+    compact: {
+      name: "Compact",
+      description: "Space-saving template for mobile",
+      features: ["Essential details only", "Mobile optimized"],
+      formats: ["a4", "mobile"],
+    },
+    professional: {
+      name: "Professional",
+      description: "Business-oriented template with enhanced formatting",
+      features: ["Professional layout", "Enhanced branding", "Detailed terms"],
+      formats: ["a4", "letter"],
+    },
+    quotation: {
+      name: "Quotation",
+      description: "Template specifically for purchase quotations",
+      features: ["Validity information", "Approval workflow", "Quote terms"],
+      formats: ["a4", "letter"],
+    },
+    proforma: {
+      name: "Proforma",
+      description: "Template for proforma purchase orders",
+      features: ["Advance payment terms", "Delivery conditions"],
+      formats: ["a4", "letter"],
+    },
+    minimal: {
+      name: "Minimal",
+      description: "Basic template for thermal printers",
+      features: ["Essential info only", "Thermal printer friendly"],
+      formats: ["thermal", "receipt"],
+    },
+    whatsapp: {
+      name: "WhatsApp",
+      description: "Template optimized for WhatsApp sharing",
+      features: ["Mobile friendly", "Quick summary", "Contact links"],
+      formats: ["mobile", "image"],
+    },
+  };
+
+  res.json({
+    success: true,
+    data: {
+      templates,
+      defaultTemplate: "standard",
+      defaultFormat: "a4",
+    },
+    message: "Print templates retrieved successfully",
+  });
+});
 
 module.exports = router;

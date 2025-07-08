@@ -16,13 +16,6 @@ const findOrCreateCustomer = async (
   userId
 ) => {
   try {
-    console.log("🔍 Starting customer search:", {
-      customerName,
-      customerMobile,
-      customerId,
-      companyId,
-    });
-
     // 1. If customer ID is provided, use it directly
     if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
       const customerRecord = await Party.findById(customerId);
@@ -30,15 +23,12 @@ const findOrCreateCustomer = async (
         customerRecord &&
         customerRecord.companyId.toString() === companyId.toString()
       ) {
-        console.log("✅ Found customer by ID:", customerRecord._id);
         return customerRecord;
       }
     }
 
     // 2. ✅ ENHANCED: More comprehensive mobile search with exact matching
     if (customerMobile) {
-      console.log("🔍 Searching by mobile:", customerMobile);
-
       // Clean mobile number - remove spaces, dashes, and standardize
       const cleanMobile = customerMobile.toString().replace(/[\s\-\(\)]/g, "");
 
@@ -48,8 +38,6 @@ const findOrCreateCustomer = async (
         customerMobile,
         customerMobile.toString(),
       ];
-
-      console.log("🔍 Trying mobile variations:", mobileVariations);
 
       // ✅ IMPROVED: Use aggregation pipeline for better search
       const customerByMobile = await Party.aggregate([
@@ -74,16 +62,11 @@ const findOrCreateCustomer = async (
 
       if (customerByMobile && customerByMobile.length > 0) {
         const foundCustomer = await Party.findById(customerByMobile[0]._id);
-        console.log(
-          "✅ Found customer by mobile using aggregation:",
-          foundCustomer._id
-        );
 
         // Update name if provided and different
         if (customerName && customerName.trim() !== foundCustomer.name) {
           foundCustomer.name = customerName.trim();
           await foundCustomer.save();
-          console.log("📝 Updated customer name");
         }
 
         return foundCustomer;
@@ -106,13 +89,11 @@ const findOrCreateCustomer = async (
 
         if (rawCustomer) {
           const foundCustomer = await Party.findById(rawCustomer._id);
-          console.log("✅ Found customer by raw query:", foundCustomer._id);
 
           // Update name if provided and different
           if (customerName && customerName.trim() !== foundCustomer.name) {
             foundCustomer.name = customerName.trim();
             await foundCustomer.save();
-            console.log("📝 Updated customer name via raw query");
           }
 
           return foundCustomer;
@@ -124,8 +105,6 @@ const findOrCreateCustomer = async (
 
     // 3. ✅ ENHANCED: Search by name with better regex
     if (customerName) {
-      console.log("🔍 Searching by name:", customerName);
-
       const nameVariations = [
         customerName.trim(),
         customerName.trim().toLowerCase(),
@@ -150,8 +129,6 @@ const findOrCreateCustomer = async (
       });
 
       if (customerByName) {
-        console.log("✅ Found customer by name:", customerByName._id);
-
         // Update mobile if provided
         if (
           customerMobile &&
@@ -161,7 +138,6 @@ const findOrCreateCustomer = async (
           customerByName.mobile = customerMobile;
           customerByName.phoneNumber = customerMobile;
           await customerByName.save();
-          console.log("📝 Added mobile to existing customer");
         }
 
         return customerByName;
@@ -172,8 +148,6 @@ const findOrCreateCustomer = async (
     if (!customerName || !customerName.trim()) {
       throw new Error("Customer name is required to create new customer");
     }
-
-    console.log("🆕 No existing customer found, creating new customer");
 
     // ✅ IMPORTANT: Clean and prepare data before creation
     const cleanCustomerData = {
@@ -200,7 +174,6 @@ const findOrCreateCustomer = async (
     const newCustomer = new Party(cleanCustomerData);
     await newCustomer.save();
 
-    console.log("✅ Created new customer:", newCustomer._id);
     return newCustomer;
   } catch (error) {
     console.error("❌ Error in findOrCreateCustomer:", error);
@@ -211,10 +184,6 @@ const findOrCreateCustomer = async (
       error.message.includes("E11000") ||
       error.message.includes("duplicate key")
     ) {
-      console.log(
-        "🔄 Duplicate error detected, attempting comprehensive recovery..."
-      );
-
       try {
         // ✅ COMPREHENSIVE RECOVERY: Try all possible search methods
         const recoverySearches = [];
@@ -273,11 +242,6 @@ const findOrCreateCustomer = async (
         // Find the first successful result
         for (const result of searchResults) {
           if (result.status === "fulfilled" && result.value) {
-            console.log(
-              "✅ Recovery successful! Found customer:",
-              result.value._id
-            );
-
             // Update any missing fields
             let needsUpdate = false;
 
@@ -304,7 +268,6 @@ const findOrCreateCustomer = async (
             if (needsUpdate) {
               try {
                 await result.value.save();
-                console.log("📝 Updated recovered customer data");
               } catch (updateError) {
                 console.warn(
                   "⚠️ Could not update recovered customer:",
@@ -316,9 +279,6 @@ const findOrCreateCustomer = async (
             return result.value;
           }
         }
-
-        // ✅ LAST RESORT: Use raw MongoDB aggregation
-        console.log("🔄 Trying raw aggregation as last resort...");
 
         const db = mongoose.connection.db;
         const collection = db.collection("parties");
@@ -346,10 +306,6 @@ const findOrCreateCustomer = async (
 
         if (rawResult) {
           const recoveredCustomer = await Party.findById(rawResult._id);
-          console.log(
-            "✅ Raw aggregation recovery successful:",
-            recoveredCustomer._id
-          );
           return recoveredCustomer;
         }
 
@@ -551,9 +507,6 @@ const findLinkedCompany = async (supplier) => {
     if (supplier.linkedCompanyId) {
       const company = await Company.findById(supplier.linkedCompanyId);
       if (company) {
-        console.log(
-          `🔗 Found linked company via linkedCompanyId: ${company.businessName}`
-        );
         return company._id;
       }
     }
@@ -565,9 +518,6 @@ const findLinkedCompany = async (supplier) => {
         isActive: true,
       });
       if (company) {
-        console.log(
-          `🔗 Found linked company via GST number: ${company.businessName}`
-        );
         return company._id;
       }
     }
@@ -587,9 +537,6 @@ const findLinkedCompany = async (supplier) => {
           isActive: true,
         });
         if (company) {
-          console.log(
-            `🔗 Found linked company via phone: ${company.businessName}`
-          );
           return company._id;
         }
       }
@@ -602,9 +549,6 @@ const findLinkedCompany = async (supplier) => {
         isActive: true,
       });
       if (company) {
-        console.log(
-          `🔗 Found linked company via email: ${company.businessName}`
-        );
         return company._id;
       }
     }
@@ -617,14 +561,10 @@ const findLinkedCompany = async (supplier) => {
         isActive: true,
       });
       if (company) {
-        console.log(
-          `🔗 Found linked company via name: ${company.businessName}`
-        );
         return company._id;
       }
     }
 
-    console.log("⚠️ No linked company found for supplier");
     return null;
   } catch (error) {
     console.error("❌ Error in findLinkedCompany:", error);
@@ -639,10 +579,6 @@ const autoCreateCustomerFromCompany = async (
   convertedBy
 ) => {
   try {
-    console.log(
-      `🆕 Auto-creating customer from company: ${sourceCompany.businessName}`
-    );
-
     // Look for existing customer record first
     const existingCustomer = await Party.findOne({
       $or: [
@@ -655,7 +591,6 @@ const autoCreateCustomerFromCompany = async (
     });
 
     if (existingCustomer) {
-      console.log(`✅ Found existing customer: ${existingCustomer.name}`);
       return existingCustomer;
     }
 
@@ -696,9 +631,6 @@ const autoCreateCustomerFromCompany = async (
     const newCustomer = new Party(customerData);
     await newCustomer.save();
 
-    console.log(
-      `✅ Auto-created customer: ${newCustomer.name} for company: ${targetCompanyId}`
-    );
     return newCustomer;
   } catch (error) {
     console.error("❌ Error auto-creating customer:", error);
@@ -717,11 +649,6 @@ const salesOrderController = {
           message: "Company ID is required",
         });
       }
-
-      console.log(
-        "🔢 Generating preview sales order number for company:",
-        companyId
-      );
 
       // ✅ Get company details
       const Company = require("../models/Company");
@@ -792,15 +719,6 @@ const salesOrderController = {
       // ✅ Generate actual preview number (same format as model)
       const previewOrderNumber = `${companyPrefix}-${orderTypePrefix}-${dateStr}-${sequenceStr}`;
 
-      console.log("✅ Preview order number generated:", {
-        companyId,
-        companyPrefix,
-        orderTypePrefix,
-        dateStr,
-        nextSequence,
-        previewOrderNumber,
-      });
-
       res.status(200).json({
         success: true,
         data: {
@@ -846,7 +764,6 @@ const salesOrderController = {
         customerName,
         customerMobile,
         customer,
-        // ❌ REMOVED: orderNumber, // Don't accept manual order numbers
         orderDate,
         orderType = "quotation",
         validUntil,
@@ -883,25 +800,6 @@ const salesOrderController = {
         autoDetectSourceCompany = true,
       } = req.body;
 
-      console.log(
-        "📥 Creating sales order with model-based automatic numbering:",
-        {
-          orderType,
-          gstType,
-          gstEnabled,
-          taxMode,
-          priceIncludesTax,
-          itemCount: items?.length || 0,
-          isAutoGenerated,
-          sourceOrderType,
-          sourceCompanyId,
-          autoDetectSourceCompany,
-          customerName,
-          customerMobile,
-          modelHandlesNumbering: true,
-        }
-      );
-
       // ✅ Get company details for response only (not for numbering)
       const Company = require("../models/Company");
       const currentCompany = await Company.findById(companyId).select(
@@ -912,18 +810,9 @@ const salesOrderController = {
         return res.status(400).json({
           success: false,
           message: "Company not found",
+          code: "COMPANY_NOT_FOUND",
         });
       }
-
-      console.log(
-        "🏢 Company details (model will handle numbering automatically):",
-        {
-          companyId,
-          businessName: currentCompany.businessName,
-          code: currentCompany.code,
-          modelHandlesOrderNumberGeneration: true,
-        }
-      );
 
       // ✅ Enhanced validation
       if (!companyId) {
@@ -998,19 +887,9 @@ const salesOrderController = {
         });
       }
 
-      // ❌ REMOVED: Manual order number generation logic
-      // ✅ Model's pre-validate middleware will auto-generate order numbers
-
       // ✅ STEP 1: Enhanced customer resolution with proper population
       let customerRecord;
       try {
-        console.log("🔍 ENHANCED: Starting customer resolution...", {
-          customerName,
-          customerMobile,
-          customerId: customer,
-          companyId: companyId.toString(),
-        });
-
         customerRecord = await findOrCreateCustomer(
           customerName,
           customerMobile,
@@ -1023,31 +902,11 @@ const salesOrderController = {
           throw new Error("Failed to find or create customer");
         }
 
-        console.log("🔍 Customer after findOrCreate:", {
-          customerId: customerRecord._id,
-          customerName: customerRecord.name,
-          hasLinkedCompanyId: !!customerRecord.linkedCompanyId,
-          linkedCompanyIdValue: customerRecord.linkedCompanyId,
-        });
-
         // ✅ CRITICAL: Re-fetch customer with population
         customerRecord = await Party.findById(customerRecord._id).populate(
           "linkedCompanyId",
           "businessName email phoneNumber gstin isActive"
         );
-
-        console.log("🔍 Customer after population:", {
-          customerId: customerRecord._id,
-          customerName: customerRecord.name,
-          hasLinkedCompanyId: !!customerRecord.linkedCompanyId,
-          linkedCompanyIdType: typeof customerRecord.linkedCompanyId,
-          linkedCompanyId:
-            customerRecord.linkedCompanyId?._id ||
-            customerRecord.linkedCompanyId,
-          linkedCompanyName: customerRecord.linkedCompanyId?.businessName,
-          isLinkedCustomer: customerRecord.isLinkedCustomer,
-          enableBidirectionalOrders: customerRecord.enableBidirectionalOrders,
-        });
       } catch (customerError) {
         console.error("❌ Customer resolution failed:", customerError);
         return res.status(400).json({
@@ -1065,21 +924,7 @@ const salesOrderController = {
 
       const shouldAutoDetect = autoDetectSourceCompany !== false;
 
-      console.log("🔍 ENHANCED: Auto-detection analysis:", {
-        shouldAutoDetect,
-        autoDetectSourceCompany,
-        hasCustomerRecord: !!customerRecord,
-        customerLinkedCompanyId:
-          customerRecord.linkedCompanyId?._id || customerRecord.linkedCompanyId,
-        currentCompanyId: companyId.toString(),
-        hasExistingSourceCompanyId: !!finalSourceCompanyId,
-      });
-
       if (shouldAutoDetect && !finalSourceCompanyId && customerRecord) {
-        console.log(
-          "🔍 ENHANCED: Starting auto-detection of sourceCompanyId..."
-        );
-
         try {
           // ✅ METHOD 1: Use customer's linkedCompanyId (most reliable)
           if (customerRecord.linkedCompanyId) {
@@ -1112,15 +957,6 @@ const salesOrderController = {
               }
             }
 
-            console.log("🔍 LinkedCompanyId analysis:", {
-              linkedCompanyId: linkedCompanyId?.toString(),
-              currentCompanyId: companyId.toString(),
-              areDifferent:
-                linkedCompanyId?.toString() !== companyId.toString(),
-              linkedCompanyName: linkedCompany?.businessName,
-              linkedCompanyActive: linkedCompany?.isActive,
-            });
-
             // ✅ CRITICAL: Ensure it's different from current company
             if (
               linkedCompanyId &&
@@ -1130,30 +966,7 @@ const salesOrderController = {
                 finalSourceCompanyId = linkedCompanyId;
                 sourceCompanyDetectionMethod = "customer_linked_company";
                 sourceCompanyDetails = linkedCompany;
-
-                console.log(
-                  "✅ ENHANCED: Auto-detection SUCCESSFUL via linkedCompanyId:",
-                  {
-                    sourceCompanyId: finalSourceCompanyId.toString(),
-                    sourceCompanyName: linkedCompany.businessName,
-                    detectionMethod: sourceCompanyDetectionMethod,
-                    customerName: customerRecord.name,
-                  }
-                );
-              } else {
-                console.log(
-                  "⚠️ Customer's linked company is inactive or not found:",
-                  {
-                    linkedCompanyId: linkedCompanyId.toString(),
-                    isActive: linkedCompany?.isActive,
-                    exists: !!linkedCompany,
-                  }
-                );
               }
-            } else {
-              console.log(
-                "⚠️ Customer's linked company is same as current company - skipping to avoid circular reference"
-              );
             }
           }
 
@@ -1163,11 +976,6 @@ const salesOrderController = {
             customerRecord.autoLinkByGST &&
             customerRecord.gstNumber
           ) {
-            console.log(
-              "🔍 Attempting auto-detection by GST number:",
-              customerRecord.gstNumber
-            );
-
             try {
               const companyByGST = await Company.findOne({
                 gstin: customerRecord.gstNumber,
@@ -1179,10 +987,6 @@ const salesOrderController = {
                 finalSourceCompanyId = companyByGST._id;
                 sourceCompanyDetectionMethod = "customer_gst_matching";
                 sourceCompanyDetails = companyByGST;
-                console.log(
-                  "✅ Auto-detection successful via GST:",
-                  companyByGST.businessName
-                );
               }
             } catch (gstError) {
               console.warn(
@@ -1198,11 +1002,6 @@ const salesOrderController = {
             customerRecord.autoLinkByPhone &&
             customerRecord.phoneNumber
           ) {
-            console.log(
-              "🔍 Attempting auto-detection by phone number:",
-              customerRecord.phoneNumber
-            );
-
             try {
               const phoneVariations = [
                 customerRecord.phoneNumber,
@@ -1220,10 +1019,6 @@ const salesOrderController = {
                   finalSourceCompanyId = companyByPhone._id;
                   sourceCompanyDetectionMethod = "customer_phone_matching";
                   sourceCompanyDetails = companyByPhone;
-                  console.log(
-                    "✅ Auto-detection successful via phone:",
-                    companyByPhone.businessName
-                  );
                   break;
                 }
               }
@@ -1241,11 +1036,6 @@ const salesOrderController = {
             customerRecord.autoLinkByEmail &&
             customerRecord.email
           ) {
-            console.log(
-              "🔍 Attempting auto-detection by email:",
-              customerRecord.email
-            );
-
             try {
               const companyByEmail = await Company.findOne({
                 email: customerRecord.email,
@@ -1257,10 +1047,6 @@ const salesOrderController = {
                 finalSourceCompanyId = companyByEmail._id;
                 sourceCompanyDetectionMethod = "customer_email_matching";
                 sourceCompanyDetails = companyByEmail;
-                console.log(
-                  "✅ Auto-detection successful via email:",
-                  companyByEmail.businessName
-                );
               }
             } catch (emailError) {
               console.warn(
@@ -1276,21 +1062,6 @@ const salesOrderController = {
           );
         }
       }
-
-      console.log("🔍 FINAL sourceCompanyId detection result:", {
-        finalSourceCompanyId: finalSourceCompanyId?.toString(),
-        sourceCompanyDetectionMethod,
-        sourceCompanyDetails: sourceCompanyDetails
-          ? {
-              id: sourceCompanyDetails._id?.toString(),
-              name: sourceCompanyDetails.businessName,
-            }
-          : null,
-        willBeIncludedInSalesOrder: !!(
-          finalSourceCompanyId &&
-          mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
-        ),
-      });
 
       // ✅ ENHANCED: Validate final sourceCompanyId if provided
       if (
@@ -1314,25 +1085,13 @@ const salesOrderController = {
         finalTaxMode === "with-tax" || finalTaxMode === "inclusive";
       const finalGstEnabled = finalGstType === "gst";
 
-      console.log("🔄 Tax settings synchronized:", {
-        originalGstType: gstType,
-        originalGstEnabled: gstEnabled,
-        originalTaxMode: taxMode,
-        originalPriceIncludesTax: priceIncludesTax,
-        finalGstType,
-        finalGstEnabled,
-        finalTaxMode,
-        finalPriceIncludesTax,
-      });
-
-      // ✅ Process items (keeping existing logic)
+      // ✅ Process items (FIXED GST CALCULATION)
       const processedItems = [];
       let subtotal = 0;
       let totalDiscount = 0;
       let totalTax = 0;
       let totalTaxableAmount = 0;
       let totalQuantity = 0;
-
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
 
@@ -1346,6 +1105,35 @@ const salesOrderController = {
         const unit = item.unit === "pcs" ? "PCS" : item.unit || "PCS";
         const hsnNumber = item.hsnNumber || item.hsnCode || "0000";
 
+        // ✅ CRITICAL FIX: Properly map GST mode to both gstMode and taxMode fields
+        const itemGstMode = item.gstMode || "exclude"; // Frontend sends: "include" or "exclude"
+
+        // Map gstMode to taxMode for schema compatibility
+        let itemTaxMode;
+        if (itemGstMode === "include") {
+          itemTaxMode = "with-tax"; // GST included in price
+        } else {
+          itemTaxMode = "without-tax"; // GST excluded from price (added on top)
+        }
+
+        // Also check if taxMode was sent directly from frontend
+        if (item.taxMode) {
+          itemTaxMode = item.taxMode;
+          // Reverse map taxMode to gstMode for consistency
+          if (item.taxMode === "with-tax" || item.taxMode === "inclusive") {
+            itemGstMode = "include";
+          } else {
+            itemGstMode = "exclude";
+          }
+        }
+
+        // Set priceIncludesTax based on both modes
+        const itemPriceIncludesTax =
+          itemGstMode === "include" ||
+          itemTaxMode === "with-tax" ||
+          itemTaxMode === "inclusive";
+
+        // Validation checks...
         if (!itemName || itemName.trim() === "") {
           return res.status(400).json({
             success: false,
@@ -1370,13 +1158,7 @@ const salesOrderController = {
           });
         }
 
-        const itemGstMode = item.gstMode || item.taxMode || finalTaxMode;
-        const itemPriceIncludesTax =
-          itemGstMode === "include" ||
-          itemGstMode === "with-tax" ||
-          itemGstMode === "inclusive" ||
-          item.priceIncludesTax === true;
-
+        // Calculate base amount
         const baseAmount = quantity * pricePerUnit;
         const discountPercent = parseFloat(
           item.discountPercent || item.discount || 0
@@ -1388,6 +1170,7 @@ const salesOrderController = {
         }
         const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
+        // Set up GST rates
         let itemCgstRate = 0;
         let itemSgstRate = 0;
         let itemIgstRate = 0;
@@ -1404,37 +1187,44 @@ const salesOrderController = {
         let itemAmount = 0;
         let itemTaxableAmount = 0;
 
+        // ✅ CRITICAL FIX: Correct GST calculation based on itemPriceIncludesTax
         if (
           finalGstEnabled &&
           (itemCgstRate > 0 || itemSgstRate > 0 || itemIgstRate > 0)
         ) {
           if (itemPriceIncludesTax) {
-            const taxMultiplier =
-              1 + (itemCgstRate + itemSgstRate + itemIgstRate) / 100;
-            itemTaxableAmount = amountAfterDiscount / taxMultiplier;
+            // ✅ GST Include mode: GST is already included in the price
+            itemAmount = amountAfterDiscount; // Total stays the same as entered
+            // Calculate taxable amount by removing GST from total
+            const totalGstRate = itemCgstRate + itemSgstRate + itemIgstRate;
+            itemTaxableAmount = amountAfterDiscount / (1 + totalGstRate / 100);
+            // Calculate individual GST components
             cgst = (itemTaxableAmount * itemCgstRate) / 100;
             sgst = (itemTaxableAmount * itemSgstRate) / 100;
             igst = (itemTaxableAmount * itemIgstRate) / 100;
-            itemAmount = amountAfterDiscount;
           } else {
-            itemTaxableAmount = amountAfterDiscount;
+            // ✅ GST Exclude mode: Add GST on top of the price
+            itemTaxableAmount = amountAfterDiscount; // Price is the taxable amount
             cgst = (itemTaxableAmount * itemCgstRate) / 100;
             sgst = (itemTaxableAmount * itemSgstRate) / 100;
             igst = (itemTaxableAmount * itemIgstRate) / 100;
-            itemAmount = itemTaxableAmount + cgst + sgst + igst;
+            itemAmount = itemTaxableAmount + cgst + sgst + igst; // Total = Price + GST
           }
         } else {
+          // No GST
           itemTaxableAmount = amountAfterDiscount;
           itemAmount = amountAfterDiscount;
         }
 
-        subtotal += baseAmount;
+        // Update running totals
+        subtotal += baseAmount; // ✅ This should be quantity × price (before GST calculation)
         totalDiscount += itemDiscountAmount;
         totalTaxableAmount += itemTaxableAmount;
         totalQuantity += quantity;
         const itemTotalTax = cgst + sgst + igst;
         totalTax += itemTotalTax;
 
+        // ✅ FIXED: Create processed item with BOTH gstMode and taxMode fields
         const processedItem = {
           itemRef:
             item.selectedProduct &&
@@ -1461,13 +1251,12 @@ const salesOrderController = {
           pricePerUnit: pricePerUnit,
           price: pricePerUnit,
           rate: pricePerUnit,
-          sellingPrice: pricePerUnit,
           taxRate: itemCgstRate + itemSgstRate + itemIgstRate,
           gstRate: itemCgstRate + itemSgstRate + itemIgstRate,
 
-          // Tax modes - dual field mapping
-          taxMode: itemPriceIncludesTax ? "with-tax" : "without-tax",
-          gstMode: itemPriceIncludesTax ? "include" : "exclude",
+          // ✅ CRITICAL FIX: Store BOTH modes correctly to match schema
+          taxMode: itemTaxMode, // "with-tax" or "without-tax" (schema enum)
+          gstMode: itemGstMode, // "include" or "exclude" (schema enum)
           priceIncludesTax: itemPriceIncludesTax,
 
           // Stock info
@@ -1488,7 +1277,7 @@ const salesOrderController = {
           igstAmount: Math.round(igst * 100) / 100,
 
           // Calculated amounts - dual field mapping
-          subtotal: Math.round((baseAmount - itemDiscountAmount) * 100) / 100,
+          subtotal: Math.round(baseAmount * 100) / 100, // ✅ Original quantity × price
           taxableAmount: Math.round(itemTaxableAmount * 100) / 100,
           totalTaxAmount: Math.round(itemTotalTax * 100) / 100,
           gstAmount: Math.round(itemTotalTax * 100) / 100,
@@ -1505,7 +1294,7 @@ const salesOrderController = {
         processedItems.push(processedItem);
       }
 
-      // ✅ Calculate totals
+      // ✅ FIXED: Calculate final totals correctly
       const baseTotal = processedItems.reduce(
         (sum, item) => sum + item.amount,
         0
@@ -1518,8 +1307,9 @@ const salesOrderController = {
         adjustedFinalTotal = baseTotal + appliedRoundOff;
       }
 
+      // ✅ FIXED: Totals calculation to match your data structure
       const totals = {
-        subtotal: Math.round(subtotal * 100) / 100,
+        subtotal: Math.round(subtotal * 100) / 100, // Original subtotal (qty × price before discounts)
         totalQuantity: totalQuantity,
         totalDiscount: Math.round(totalDiscount * 100) / 100,
         totalDiscountAmount: Math.round(totalDiscount * 100) / 100,
@@ -1539,14 +1329,8 @@ const salesOrderController = {
         totalTaxableAmount: Math.round(totalTaxableAmount * 100) / 100,
         finalTotal: Math.round(adjustedFinalTotal * 100) / 100,
         roundOff: Math.round(appliedRoundOff * 100) / 100,
-        withTaxTotal: finalPriceIncludesTax
-          ? Math.round(adjustedFinalTotal * 100) / 100
-          : Math.round(
-              (totalTaxableAmount + totalTax + appliedRoundOff) * 100
-            ) / 100,
-        withoutTaxTotal: finalPriceIncludesTax
-          ? Math.round(totalTaxableAmount * 100) / 100
-          : Math.round(adjustedFinalTotal * 100) / 100,
+        withTaxTotal: Math.round(adjustedFinalTotal * 100) / 100,
+        withoutTaxTotal: Math.round(totalTaxableAmount * 100) / 100,
       };
 
       // ✅ Calculate payment details
@@ -1653,11 +1437,6 @@ const salesOrderController = {
             default:
               finalSourceOrderType = "manual"; // Safe fallback
           }
-
-          console.log("✅ Set sourceOrderType based on detection method:", {
-            detectionMethod: sourceCompanyDetectionMethod,
-            finalSourceOrderType: finalSourceOrderType,
-          });
         }
       }
 
@@ -1681,20 +1460,24 @@ const salesOrderController = {
         companyId, // ✅ Required for model's automatic numbering
 
         // Enhanced bidirectional tracking
-        correspondingPurchaseOrderId: null,
-        correspondingPurchaseOrderNumber: null,
-
-        items: processedItems,
-        totals,
-        payment: paymentDetails,
-        paymentHistory: paymentHistory,
-        notes: notes || "",
-        termsAndConditions: termsAndConditions || "",
-        customerNotes: customerNotes || "",
-        status,
-        priority,
-        roundOff: appliedRoundOff,
-        roundOffEnabled: roundOffEnabled,
+        sourceOrderId:
+          sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)
+            ? sourceOrderId
+            : null,
+        sourceOrderNumber:
+          sourceOrderNumber && sourceOrderNumber.trim()
+            ? sourceOrderNumber.trim()
+            : null,
+        sourceOrderType: finalSourceOrderType,
+        sourceCompanyId:
+          finalSourceCompanyId &&
+          mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
+            ? finalSourceCompanyId
+            : null,
+        targetCompanyId:
+          targetCompanyId && mongoose.Types.ObjectId.isValid(targetCompanyId)
+            ? targetCompanyId
+            : null,
 
         isAutoGenerated: isAutoGenerated || false,
         generatedFrom:
@@ -1704,6 +1487,13 @@ const salesOrderController = {
           )
             ? generatedFrom
             : "manual",
+        generatedBy:
+          generatedBy && mongoose.Types.ObjectId.isValid(generatedBy)
+            ? generatedBy
+            : req.user?.id && mongoose.Types.ObjectId.isValid(req.user.id)
+            ? req.user.id
+            : null,
+        generatedAt: isAutoGenerated ? new Date() : null,
 
         // Purchase order generation tracking
         autoGeneratedPurchaseOrder: false,
@@ -1711,9 +1501,54 @@ const salesOrderController = {
         purchaseOrderNumber: null,
         purchaseOrderGeneratedAt: null,
         purchaseOrderGeneratedBy: null,
+        hasGeneratedPurchaseOrder: false,
+        correspondingPurchaseOrderId: null,
+        correspondingPurchaseOrderNumber: null,
+        linkedSupplierId: null,
 
-        sourceOrderType: finalSourceOrderType,
+        // Items and totals
+        items: processedItems,
+        totals,
 
+        // Payment information
+        payment: paymentDetails,
+        paymentHistory: paymentHistory,
+
+        // Order details
+        status,
+        priority,
+        convertedToInvoice: false,
+        invoiceRef: null,
+        invoiceNumber: null,
+        convertedAt: null,
+        convertedBy: null,
+
+        // Additional fields
+        requiredBy: null,
+        departmentRef: null,
+        approvedBy: null,
+        approvedAt: null,
+
+        // Notes and terms
+        notes: notes || "",
+        termsAndConditions: termsAndConditions || "",
+        customerNotes: customerNotes || "",
+        internalNotes: "",
+
+        // Address information
+        shippingAddress: {
+          street: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          country: "India",
+        },
+
+        // Rounding
+        roundOff: appliedRoundOff,
+        roundOffEnabled: roundOffEnabled,
+
+        // Metadata
         createdBy: createdBy || employeeName || req.user?.id || "system",
         lastModifiedBy:
           lastModifiedBy ||
@@ -1722,56 +1557,6 @@ const salesOrderController = {
           req.user?.id ||
           "system",
       };
-
-      // ✅ Conditionally add optional fields only if they have valid values
-      if (sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)) {
-        salesOrderData.sourceOrderId = sourceOrderId;
-      }
-
-      if (sourceOrderNumber && sourceOrderNumber.trim()) {
-        salesOrderData.sourceOrderNumber = sourceOrderNumber.trim();
-      }
-
-      if (
-        finalSourceCompanyId &&
-        mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
-      ) {
-        salesOrderData.sourceCompanyId = finalSourceCompanyId;
-        console.log("✅ ADDED sourceCompanyId to sales order data:", {
-          sourceCompanyId: finalSourceCompanyId.toString(),
-          detectionMethod: sourceCompanyDetectionMethod,
-          sourceOrderType: salesOrderData.sourceOrderType,
-        });
-      } else {
-        salesOrderData.sourceCompanyId = null;
-        console.log("⚠️ NO sourceCompanyId added - reasons:", {
-          finalSourceCompanyId: finalSourceCompanyId?.toString(),
-          isValid: finalSourceCompanyId
-            ? mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
-            : false,
-          detectionMethod: sourceCompanyDetectionMethod,
-          reason: !finalSourceCompanyId ? "not_detected" : "invalid_format",
-        });
-      }
-
-      // Only add generatedBy if valid
-      if (generatedBy && mongoose.Types.ObjectId.isValid(generatedBy)) {
-        salesOrderData.generatedBy = generatedBy;
-      } else if (req.user?.id) {
-        salesOrderData.generatedBy = req.user.id;
-      } else if (employeeId && mongoose.Types.ObjectId.isValid(employeeId)) {
-        salesOrderData.generatedBy = employeeId;
-      }
-
-      // Set generatedAt only if auto-generated
-      if (isAutoGenerated) {
-        salesOrderData.generatedAt = new Date();
-      }
-
-      // Only add targetCompanyId if valid
-      if (targetCompanyId && mongoose.Types.ObjectId.isValid(targetCompanyId)) {
-        salesOrderData.targetCompanyId = targetCompanyId;
-      }
 
       // ✅ FINAL CLEANUP: Remove any undefined values
       Object.keys(salesOrderData).forEach((key) => {
@@ -1805,19 +1590,6 @@ const salesOrderController = {
         throw new Error("No valid items found for sales order creation");
       }
 
-      console.log(
-        "💾 Creating sales order - model will auto-generate order number:",
-        {
-          companyId: salesOrderData.companyId,
-          companyName: currentCompany.businessName,
-          companyCode: currentCompany.code,
-          customer: customerRecord.name,
-          itemCount: salesOrderData.items.length,
-          finalTotal: salesOrderData.totals.finalTotal,
-          modelHandlesNumbering: true,
-        }
-      );
-
       // ✅ Create the sales order - order number will be auto-generated by model's pre-validate middleware
       const salesOrder = new SalesOrder(salesOrderData);
       await salesOrder.save(); // ✅ Model's pre-validate middleware generates orderNumber automatically
@@ -1826,8 +1598,8 @@ const salesOrderController = {
       let correspondingPurchaseOrder = null;
       if (autoCreateCorrespondingPO && targetCompanyId) {
         try {
-          console.log("🔄 Auto-creating corresponding purchase order...");
-          // Implementation would depend on your specific requirements
+          // Implementation for auto-creating corresponding PO would go here
+          console.log("📋 Auto-creating corresponding purchase order...");
         } catch (correspondingOrderError) {
           console.warn(
             "⚠️ Failed to create corresponding purchase order:",
@@ -1851,19 +1623,6 @@ const salesOrderController = {
       if (salesOrder.targetCompanyId) {
         await salesOrder.populate("targetCompanyId", "businessName email");
       }
-
-      console.log(
-        "✅ Sales order created successfully with model-generated sequential numbering:",
-        {
-          id: salesOrder._id,
-          orderNumber: salesOrder.orderNumber, // ✅ Generated by model's pre-validate middleware
-          companyId: salesOrder.companyId.toString(),
-          companyName: currentCompany.businessName,
-          customer: customerRecord.name,
-          finalTotal: salesOrder.totals.finalTotal,
-          numberingSource: "model_pre_validate_middleware",
-        }
-      );
 
       // ✅ Enhanced response
       res.status(201).json({
@@ -2023,8 +1782,168 @@ const salesOrderController = {
       });
     }
   },
+  confirmGeneratedSalesOrder: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {confirmedBy, notes = "", modifications = null} = req.body;
 
-  // Add payment to sales order - ENHANCED WITH PAYMENT MODEL INTEGRATION
+      const salesOrder = await SalesOrder.findById(id);
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      // Verify this is an auto-generated order
+      if (
+        !salesOrder.isAutoGenerated ||
+        salesOrder.generatedFrom !== "purchase_order"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "This sales order was not generated from a purchase order",
+        });
+      }
+
+      // ✅ Use unified model method
+      await salesOrder.confirmOrder(confirmedBy);
+
+      // ✅ CRITICAL: Update corresponding purchase order status
+      if (
+        salesOrder.sourceOrderId &&
+        salesOrder.sourceOrderType === "purchase_order"
+      ) {
+        const correspondingPurchaseOrder = await PurchaseOrder.findById(
+          salesOrder.sourceOrderId
+        );
+        if (correspondingPurchaseOrder) {
+          correspondingPurchaseOrder.status = "confirmed";
+          correspondingPurchaseOrder.lastModifiedBy = confirmedBy;
+          await correspondingPurchaseOrder.save();
+          console.log(
+            `✅ Updated purchase order ${correspondingPurchaseOrder.orderNumber} status to confirmed`
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Generated sales order confirmed successfully and purchase order updated",
+        data: {
+          salesOrder,
+          correspondingPurchaseOrderUpdated: !!salesOrder.sourceOrderId,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error confirming generated sales order:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to confirm generated sales order",
+        error: error.message,
+      });
+    }
+  },
+
+  getOrdersNeedingConfirmation: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      // Get sales orders generated from purchase orders that need confirmation
+      const salesOrdersNeedingConfirmation = await SalesOrder.find({
+        companyId,
+        isAutoGenerated: true,
+        generatedFrom: "purchase_order",
+        status: "sent", // Generated but not yet confirmed
+      })
+        .populate("customer", "name mobile email")
+        .populate("sourceCompanyId", "businessName")
+        .sort({createdAt: -1});
+
+      res.status(200).json({
+        success: true,
+        data: salesOrdersNeedingConfirmation,
+        message: `Found ${salesOrdersNeedingConfirmation.length} sales orders needing confirmation`,
+      });
+    } catch (error) {
+      console.error("Error getting orders needing confirmation:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get orders needing confirmation",
+        error: error.message,
+      });
+    }
+  },
+
+  bulkConfirmOrders: async (req, res) => {
+    try {
+      const {orderIds, confirmedBy} = req.body;
+
+      if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Order IDs array is required",
+        });
+      }
+
+      const results = {
+        successful: [],
+        failed: [],
+      };
+
+      for (const orderId of orderIds) {
+        try {
+          const salesOrder = await SalesOrder.findById(orderId);
+          if (salesOrder && salesOrder.status === "sent") {
+            await salesOrder.confirmOrder(confirmedBy);
+
+            // Update corresponding purchase order if exists
+            if (salesOrder.sourceOrderId) {
+              const purchaseOrder = await PurchaseOrder.findById(
+                salesOrder.sourceOrderId
+              );
+              if (purchaseOrder) {
+                purchaseOrder.status = "confirmed";
+                await purchaseOrder.save();
+              }
+            }
+
+            results.successful.push({
+              orderId,
+              orderNumber: salesOrder.orderNumber,
+            });
+          }
+        } catch (error) {
+          results.failed.push({
+            orderId,
+            error: error.message,
+          });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `Bulk confirmation completed: ${results.successful.length} successful, ${results.failed.length} failed`,
+        data: results,
+      });
+    } catch (error) {
+      console.error("❌ Error in bulk confirm orders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to perform bulk confirmation",
+        error: error.message,
+      });
+    }
+  },
+
   addPayment: async (req, res) => {
     try {
       const {id} = req.params;
@@ -2119,19 +2038,6 @@ const salesOrderController = {
         await salesOrder.save();
       }
 
-      console.log(
-        "✅ Payment added to sales order and Payment record created:",
-        {
-          orderId: salesOrder._id,
-          orderNumber: salesOrder.orderNumber,
-          paymentId: paymentRecord._id,
-          paymentNumber: paymentRecord.paymentNumber,
-          amount: parseFloat(amount),
-          method,
-          isAdvance: isAdvancePayment,
-        }
-      );
-
       res.status(200).json({
         success: true,
         message: "Payment added successfully",
@@ -2213,13 +2119,6 @@ const salesOrderController = {
           amount: item.amount || item.itemAmount || 0,
         })),
       };
-
-      console.log("📤 Sending sales order data with tax mode compatibility:", {
-        id: salesOrder._id,
-        orderType: compatibleSalesOrder.orderType,
-        taxMode: compatibleSalesOrder.taxMode,
-        priceIncludesTax: compatibleSalesOrder.priceIncludesTax,
-      });
 
       res.json({
         success: true,
@@ -2455,24 +2354,10 @@ const salesOrderController = {
 
           await payment.save();
         }
-
-        console.log(
-          `✅ Transferred ${advancePayments.length} advance payments to invoice`
-        );
       }
 
       await salesOrder.populate("customer", "name mobile email");
       await invoice.populate("customer", "name mobile email");
-
-      console.log("✅ Sales order converted to invoice:", {
-        orderId: salesOrder._id,
-        orderNumber: salesOrder.orderNumber,
-        invoiceId: invoice._id,
-        invoiceNumber: invoice.invoiceNumber,
-        advanceTransferred: transferAdvancePayment
-          ? salesOrder.payment.advanceAmount
-          : 0,
-      });
 
       res.status(200).json({
         success: true,
@@ -2502,15 +2387,76 @@ const salesOrderController = {
 
   updateStatus: async (req, res) => {
     try {
+      // ✅ CRITICAL DEBUG: Log all incoming request data
+      console.log("🔍 UPDATE STATUS DEBUG:", {
+        method: req.method,
+        url: req.url,
+        params: req.params,
+        body: req.body,
+        query: req.query,
+        headers: {
+          "content-type": req.headers["content-type"],
+          "user-agent": req.headers["user-agent"]?.substring(0, 50),
+        },
+      });
+
       const {id} = req.params;
       const {status, reason = ""} = req.body;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      // ✅ CRITICAL DEBUG: Check ID parameter
+      console.log("🔍 ORDER ID VALIDATION:", {
+        id,
+        idType: typeof id,
+        idLength: id?.length,
+        isValidObjectId: id ? mongoose.Types.ObjectId.isValid(id) : false,
+        rawParams: req.params,
+      });
+
+      if (!id || id === "undefined" || id === "null") {
+        console.error("❌ INVALID ID RECEIVED:", {
+          id,
+          params: req.params,
+          url: req.url,
+          method: req.method,
+        });
         return res.status(400).json({
           success: false,
-          message: "Invalid sales order ID",
+          message: "Order ID is required and cannot be undefined",
+          error: "MISSING_ORDER_ID",
+          debug: {
+            receivedId: id,
+            idType: typeof id,
+            params: req.params,
+            url: req.url,
+          },
         });
       }
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        console.error("❌ INVALID MONGODB ID FORMAT:", {
+          id,
+          idType: typeof id,
+          idLength: id?.length,
+        });
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+          error: "INVALID_ID_FORMAT",
+          debug: {
+            receivedId: id,
+            idType: typeof id,
+            expectedFormat: "24-character hex string",
+          },
+        });
+      }
+
+      // ✅ CRITICAL DEBUG: Log status validation
+      console.log("🔍 STATUS VALIDATION:", {
+        status,
+        statusType: typeof status,
+        reason,
+        bodyKeys: Object.keys(req.body),
+      });
 
       const validStatuses = [
         "draft",
@@ -2520,32 +2466,98 @@ const salesOrderController = {
         "expired",
         "converted",
         "cancelled",
+        "confirmed", // ✅ ADD: confirmed status
       ];
+
+      if (!status) {
+        console.error("❌ MISSING STATUS:", {
+          body: req.body,
+          status,
+          validStatuses,
+        });
+        return res.status(400).json({
+          success: false,
+          message: "Status is required",
+          error: "MISSING_STATUS",
+          validStatuses,
+        });
+      }
+
       if (!validStatuses.includes(status)) {
+        console.error("❌ INVALID STATUS:", {
+          status,
+          validStatuses,
+          body: req.body,
+        });
         return res.status(400).json({
           success: false,
           message:
             "Invalid status. Must be one of: " + validStatuses.join(", "),
+          error: "INVALID_STATUS",
+          provided: status,
+          validStatuses,
         });
       }
 
+      // ✅ CRITICAL DEBUG: Log database query
+      console.log("🔍 FINDING SALES ORDER:", {
+        searchId: id,
+        query: {_id: id},
+      });
+
       const salesOrder = await SalesOrder.findById(id);
+
+      console.log("🔍 SALES ORDER FOUND:", {
+        found: !!salesOrder,
+        orderId: salesOrder?._id,
+        orderNumber: salesOrder?.orderNumber,
+        currentStatus: salesOrder?.status,
+        targetStatus: status,
+      });
+
       if (!salesOrder) {
+        console.error("❌ SALES ORDER NOT FOUND:", {
+          searchId: id,
+          isValidId: mongoose.Types.ObjectId.isValid(id),
+        });
         return res.status(404).json({
           success: false,
           message: "Sales order not found",
+          error: "ORDER_NOT_FOUND",
+          searchId: id,
         });
       }
 
       // Check if status change is allowed
       if (salesOrder.convertedToInvoice && status !== "converted") {
+        console.warn("⚠️ STATUS CHANGE BLOCKED:", {
+          orderNumber: salesOrder.orderNumber,
+          currentStatus: salesOrder.status,
+          targetStatus: status,
+          convertedToInvoice: salesOrder.convertedToInvoice,
+          reason: "Cannot change status of converted orders",
+        });
         return res.status(400).json({
           success: false,
           message: "Cannot change status of converted orders",
+          error: "STATUS_CHANGE_BLOCKED",
+          currentStatus: salesOrder.status,
+          targetStatus: status,
         });
       }
 
       const previousStatus = salesOrder.status;
+
+      // ✅ CRITICAL DEBUG: Log status update
+      console.log("🔄 UPDATING STATUS:", {
+        orderId: salesOrder._id,
+        orderNumber: salesOrder.orderNumber,
+        previousStatus,
+        newStatus: status,
+        reason,
+        userId: req.user?.id,
+      });
+
       salesOrder.status = status;
       salesOrder.lastModifiedBy = req.user?.id || "system";
 
@@ -2555,35 +2567,58 @@ const salesOrderController = {
         salesOrder.notes = salesOrder.notes
           ? `${salesOrder.notes}\n${statusNote}`
           : statusNote;
+
+        console.log("📝 ADDED STATUS NOTE:", {
+          orderNumber: salesOrder.orderNumber,
+          note: statusNote,
+        });
       }
+
+      // ✅ CRITICAL DEBUG: Log save operation
+      console.log("💾 SAVING SALES ORDER:", {
+        orderId: salesOrder._id,
+        orderNumber: salesOrder.orderNumber,
+        status: salesOrder.status,
+        lastModifiedBy: salesOrder.lastModifiedBy,
+      });
 
       await salesOrder.save();
 
-      console.log("✅ Sales order status updated:", {
+      console.log("✅ STATUS UPDATE SUCCESSFUL:", {
         orderId: salesOrder._id,
         orderNumber: salesOrder.orderNumber,
         previousStatus,
-        newStatus: status,
-        reason,
+        newStatus: salesOrder.status,
+        updatedAt: salesOrder.updatedAt,
       });
 
       res.status(200).json({
         success: true,
         message: `Sales order status updated to ${status}`,
         data: {
+          orderId: salesOrder._id,
           orderNumber: salesOrder.orderNumber,
           previousStatus,
           currentStatus: salesOrder.status,
           reason,
           updatedAt: salesOrder.updatedAt,
+          lastModifiedBy: salesOrder.lastModifiedBy,
         },
       });
     } catch (error) {
-      console.error("Error updating sales order status:", error);
+      console.error("❌ ERROR IN UPDATE STATUS:", {
+        error: error.message,
+        stack: error.stack,
+        params: req.params,
+        body: req.body,
+        url: req.url,
+      });
+
       res.status(500).json({
         success: false,
         message: "Failed to update sales order status",
         error: error.message,
+        code: "UPDATE_STATUS_FAILED",
       });
     }
   },
@@ -2630,12 +2665,6 @@ const salesOrderController = {
         {new: true, runValidators: true}
       ).populate("customer", "name mobile email address");
 
-      console.log("✅ Sales order updated:", {
-        orderId: updatedSalesOrder._id,
-        orderNumber: updatedSalesOrder.orderNumber,
-        updatedFields: Object.keys(updateData),
-      });
-
       res.status(200).json({
         success: true,
         message: "Sales order updated successfully",
@@ -2681,11 +2710,6 @@ const salesOrderController = {
       salesOrder.lastModifiedBy = req.user?.id || "system";
       await salesOrder.save();
 
-      console.log("✅ Sales order cancelled:", {
-        orderId: salesOrder._id,
-        orderNumber: salesOrder.orderNumber,
-      });
-
       res.status(200).json({
         success: true,
         message: "Sales order cancelled successfully",
@@ -2727,8 +2751,6 @@ const salesOrderController = {
           "orderNumber orderDate orderType totals payment customer status"
         )
         .sort({orderDate: -1});
-
-      console.log(`Found ${pendingOrders.length} pending orders for payment`);
 
       res.status(200).json({
         success: true,
@@ -2799,11 +2821,6 @@ const salesOrderController = {
 
       // Sort by date descending
       documents.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      console.log(
-        `Found ${documents.length} pending documents for customer ${customerId}`
-      );
-
       res.status(200).json({
         success: true,
         data: documents,
@@ -2839,10 +2856,6 @@ const salesOrderController = {
       })
         .populate("customer", "name mobile email")
         .sort({validUntil: 1});
-
-      console.log(
-        `Found ${expiredOrders.length} expired orders for company ${companyId}`
-      );
 
       res.status(200).json({
         success: true,
@@ -3024,7 +3037,6 @@ const salesOrderController = {
       } else {
         // ✅ FALLBACK: Create a system default user ID
         validUserId = new mongoose.Types.ObjectId("676e5a123456789012345678");
-        console.log("⚠️ Using fallback system user ID:", validUserId);
       }
 
       // ✅ FIXED: Handle targetCompanyId object format
@@ -3037,19 +3049,6 @@ const salesOrderController = {
           targetCompanyId = null;
         }
       }
-
-      console.log(
-        "🔄 Starting ENHANCED bidirectional sales order generation:",
-        {
-          purchaseOrderId: id,
-          targetCompanyId,
-          targetCompanyIdType: typeof targetCompanyId,
-          autoLinkCustomer,
-          validateBidirectionalSetup,
-          validUserId: validUserId?.toString(),
-          logic: "Generate sales order in SUPPLIER's company selling to BUYER",
-        }
-      );
 
       // ✅ ENHANCED: Validate purchase order ID
       if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -3119,42 +3118,14 @@ const salesOrderController = {
       const buyerCompanyId = purchaseOrder.companyId._id.toString();
       const supplierData = purchaseOrder.supplier;
 
-      console.log("🔍 ENHANCED SUPPLIER ANALYSIS:", {
-        supplier: {
-          id: supplierData._id,
-          name: supplierData.name,
-          linkedCompanyId: supplierData.linkedCompanyId?.toString(),
-          isLinkedSupplier: supplierData.isLinkedSupplier,
-          enableBidirectionalOrders: supplierData.enableBidirectionalOrders,
-          autoLinkByGST: supplierData.autoLinkByGST,
-          autoLinkByPhone: supplierData.autoLinkByPhone,
-          autoLinkByEmail: supplierData.autoLinkByEmail,
-          gstNumber: supplierData.gstNumber,
-          phoneNumber: supplierData.phoneNumber,
-          email: supplierData.email,
-        },
-        buyerCompany: {
-          id: buyerCompanyId,
-          name: purchaseOrder.companyId.businessName,
-        },
-      });
-
       // ✅ ENHANCED: Auto-detect SUPPLIER's company with improved logic
       if (!targetCompanyId) {
-        console.log("🔍 ENHANCED auto-detection of SUPPLIER's company...");
-
         try {
           let detectionMethod = null;
 
           // Method 1: Use linkedCompanyId (most reliable)
           if (supplierData.linkedCompanyId) {
             const linkedCompanyId = supplierData.linkedCompanyId.toString();
-
-            console.log("🔍 LinkedCompanyId check:", {
-              linkedCompanyId,
-              buyerCompanyId,
-              areSame: linkedCompanyId === buyerCompanyId,
-            });
 
             if (linkedCompanyId !== buyerCompanyId) {
               const supplierCompany = await Company.findById(
@@ -3163,14 +3134,7 @@ const salesOrderController = {
               if (supplierCompany && supplierCompany.isActive !== false) {
                 targetCompanyId = supplierCompany._id;
                 detectionMethod = "supplier_linked_company";
-                console.log(
-                  `🔗 Found SUPPLIER's company via linkedCompanyId: ${supplierCompany.businessName}`
-                );
               }
-            } else {
-              console.log(
-                "⚠️ WARNING: Supplier's linkedCompanyId points to buyer's company - EXCLUDING"
-              );
             }
           }
 
@@ -3189,9 +3153,6 @@ const salesOrderController = {
             if (supplierCompany) {
               targetCompanyId = supplierCompany._id;
               detectionMethod = "gst_auto_link";
-              console.log(
-                `🔗 Found SUPPLIER's company via GST auto-link: ${supplierCompany.businessName}`
-              );
             }
           }
 
@@ -3216,9 +3177,6 @@ const salesOrderController = {
               if (supplierCompany) {
                 targetCompanyId = supplierCompany._id;
                 detectionMethod = "phone_auto_link";
-                console.log(
-                  `🔗 Found SUPPLIER's company via phone auto-link: ${supplierCompany.businessName}`
-                );
                 break;
               }
             }
@@ -3239,9 +3197,6 @@ const salesOrderController = {
             if (supplierCompany) {
               targetCompanyId = supplierCompany._id;
               detectionMethod = "email_auto_link";
-              console.log(
-                `🔗 Found SUPPLIER's company via email auto-link: ${supplierCompany.businessName}`
-              );
             }
           }
 
@@ -3262,17 +3217,8 @@ const salesOrderController = {
             if (supplierCompany) {
               targetCompanyId = supplierCompany._id;
               detectionMethod = "name_fuzzy_match";
-              console.log(
-                `🔗 Found SUPPLIER's company via name matching: ${supplierCompany.businessName}`
-              );
             }
           }
-
-          console.log("🔍 Auto-detection result:", {
-            targetCompanyId: targetCompanyId?.toString(),
-            detectionMethod,
-            success: !!targetCompanyId,
-          });
         } catch (autoDetectError) {
           console.error(
             "❌ Error in enhanced auto-detection:",
@@ -3300,10 +3246,6 @@ const salesOrderController = {
         }
 
         if (validationErrors.length > 0) {
-          console.log(
-            "⚠️ Bidirectional validation failed, but continuing with manual company selection..."
-          );
-          // Don't return error, just log warning
         }
       }
 
@@ -3415,33 +3357,9 @@ const salesOrderController = {
         });
       }
 
-      console.log("✅ VALIDATION PASSED - Enhanced validation successful:", {
-        buyerCompany: {
-          id: buyerCompanyId,
-          name: purchaseOrder.companyId.businessName,
-        },
-        supplierCompany: {
-          id: targetCompanyId.toString(),
-          name: targetCompany.businessName,
-        },
-        areDifferent: targetCompanyId.toString() !== buyerCompanyId,
-      });
-
       // ✅ SIMPLIFIED: Find customer (representing the BUYER company) in SUPPLIER's system
       let customer = null;
       const buyerCompany = purchaseOrder.companyId;
-
-      console.log(
-        "👤 SEARCHING for existing customer representing BUYER company in SUPPLIER's system:",
-        {
-          buyerCompanyName: buyerCompany.businessName,
-          buyerGST: buyerCompany.gstin,
-          buyerPhone: buyerCompany.phoneNumber,
-          buyerEmail: buyerCompany.email,
-          supplierCompanyId: targetCompanyId.toString(),
-          searchScope: "existing_customers_only",
-        }
-      );
 
       try {
         // Search by specific customer ID first if provided
@@ -3458,10 +3376,6 @@ const salesOrderController = {
               {type: "customer"},
             ],
           });
-
-          if (customer) {
-            console.log(`✅ Found customer by ID: ${customer.name}`);
-          }
         }
 
         // Search by mobile number if not found by ID
@@ -3478,10 +3392,6 @@ const salesOrderController = {
               {type: "customer"},
             ],
           });
-
-          if (customer) {
-            console.log(`✅ Found customer by mobile: ${customer.name}`);
-          }
         }
 
         // Search by name if not found by ID or mobile
@@ -3495,18 +3405,10 @@ const salesOrderController = {
               {type: "customer"},
             ],
           });
-
-          if (customer) {
-            console.log(`✅ Found customer by name: ${customer.name}`);
-          }
         }
 
         // ✅ NEW: Search for customer representing the buyer company
         if (!customer) {
-          console.log(
-            "🔍 Searching for customer representing buyer company..."
-          );
-
           // Search by multiple criteria for buyer company
           const buyerCustomerSearchCriteria = {
             companyId: targetCompanyId,
@@ -3565,27 +3467,18 @@ const salesOrderController = {
           customer = await Party.findOne(buyerCustomerSearchCriteria);
 
           if (customer) {
-            console.log(
-              `✅ Found customer representing buyer company: ${customer.name}`
-            );
-
             // ✅ OPTIONAL: Update linking if auto-link is enabled and not already linked
             if (autoLinkCustomer && !customer.linkedCompanyId) {
               customer.linkedCompanyId = buyerCompany._id;
               customer.isLinkedCustomer = true;
               customer.enableBidirectionalOrders = true;
               await customer.save();
-              console.log("🔗 Updated customer with bidirectional linking");
             }
           }
         }
 
         // ✅ FALLBACK: Search by any available identifier
         if (!customer) {
-          console.log(
-            "🔍 Fallback search: Looking for any customer with buyer company details..."
-          );
-
           const fallbackSearches = [];
 
           if (buyerCompany.phoneNumber) {
@@ -3624,9 +3517,7 @@ const salesOrderController = {
           for (const result of fallbackResults) {
             if (result.status === "fulfilled" && result.value) {
               customer = result.value;
-              console.log(
-                `✅ Found customer via fallback search: ${customer.name}`
-              );
+
               break;
             }
           }
@@ -3694,16 +3585,6 @@ const salesOrderController = {
           },
         });
       }
-
-      console.log("👤 Using existing customer for sales order:", {
-        customerId: customer._id,
-        customerName: customer.name,
-        customerRepresents: "Buyer Company",
-        inSupplierSystem: targetCompanyId.toString(),
-        hasLinking: !!customer.linkedCompanyId,
-        bidirectionalReady: customer.enableBidirectionalOrders,
-        searchMethod: "database_lookup_only",
-      });
 
       // ✅ ENHANCED: Generate unique sales order number with retry logic
       let orderNumber;
@@ -3795,12 +3676,6 @@ const salesOrderController = {
         });
       }
 
-      console.log("✅ Generated unique sales order number:", {
-        orderNumber,
-        attempts: generationAttempts + 1,
-        wasUnique: generationAttempts === 0,
-      });
-
       // ✅ ENHANCED: Set validity and delivery dates
       let orderValidUntil = validUntil ? new Date(validUntil) : null;
       if (!orderValidUntil) {
@@ -3814,77 +3689,200 @@ const salesOrderController = {
         }
       }
 
-      // ✅ ENHANCED: Create sales order with comprehensive data
       const salesOrderData = {
-        orderNumber,
-        orderDate: new Date(),
-        orderType,
-        customer: customer._id,
-        customerMobile: customer.phoneNumber || customer.mobile,
-        companyId: targetCompanyId,
+        // Core Order Information
+        orderDate: Date, // Order creation date
+        orderType: String, // "quotation", "sales_order", "proforma_invoice"
+        validUntil: Date, // Order validity date
+        expectedDeliveryDate: Date, // Expected delivery date
+        deliveryDate: Date, // Actual delivery date (null initially)
 
-        // ✅ ENHANCED: Bidirectional tracking fields
-        isAutoGenerated: true,
-        sourceOrderId: purchaseOrder._id,
-        sourceOrderNumber: purchaseOrder.orderNumber,
-        sourceOrderType: "purchase_order",
-        sourceCompanyId: purchaseOrder.companyId._id, // ✅ This is the buyer company ID
-        generatedFrom: "purchase_order",
-        generatedAt: new Date(),
-        generatedBy: validUserId,
+        // Customer Information
+        customer: ObjectId, // Reference to customer/party
+        customerMobile: String, // Customer mobile number
 
-        // ✅ ENHANCED: Linking metadata
-        linkedOrderType: "bidirectional",
-        linkedOrderDirection: "purchase_to_sales",
-        autoLinkingEnabled: autoLinkCustomer,
-        bidirectionalSetupValidated: validateBidirectionalSetup,
+        // GST and Tax Configuration
+        gstEnabled: Boolean, // Whether GST is enabled
+        gstType: String, // "gst" or "non-gst"
+        taxMode: String, // "with-tax" or "without-tax"
+        priceIncludesTax: Boolean, // Whether prices include tax
 
-        // Copy items and totals from purchase order
-        items: purchaseOrder.items.map((item) => ({
-          ...item.toObject(),
-          _id: undefined, // Remove _id to create new ones
-        })),
-        totals: purchaseOrder.totals || {
-          subtotal: 0,
-          totalQuantity: 0,
-          totalDiscount: 0,
-          totalTax: 0,
-          finalTotal: 0,
+        // Company Information
+        companyId: ObjectId, // Reference to company
+
+        // Bidirectional Tracking
+        sourceOrderId: ObjectId, // Source order reference
+        sourceOrderNumber: String, // Source order number
+        sourceOrderType: String, // Type of source order
+        sourceCompanyId: ObjectId, // Source company reference
+        targetCompanyId: ObjectId, // Target company reference
+
+        // Auto-generation Flags
+        isAutoGenerated: Boolean, // Whether order was auto-generated
+        generatedFrom: String, // Source of generation
+        generatedBy: ObjectId, // User who generated
+        generatedAt: Date, // Generation timestamp
+
+        // Purchase Order Generation Tracking
+        autoGeneratedPurchaseOrder: Boolean,
+        purchaseOrderRef: ObjectId,
+        purchaseOrderNumber: String,
+        purchaseOrderGeneratedAt: Date,
+        purchaseOrderGeneratedBy: ObjectId,
+        hasGeneratedPurchaseOrder: Boolean,
+        correspondingPurchaseOrderId: ObjectId,
+        correspondingPurchaseOrderNumber: String,
+        linkedSupplierId: ObjectId,
+
+        // Items Array
+        items: [
+          {
+            // Item References
+            itemRef: ObjectId,
+            selectedProduct: String,
+
+            // Item Details
+            itemName: String,
+            productName: String,
+            itemCode: String,
+            productCode: String,
+            description: String,
+            hsnCode: String,
+            hsnNumber: String,
+            category: String,
+
+            // Quantity and Units
+            quantity: Number,
+            unit: String,
+
+            // Pricing
+            pricePerUnit: Number,
+            price: Number,
+            rate: Number,
+
+            // Tax Configuration
+            taxRate: Number,
+            gstRate: Number,
+            taxMode: String,
+            gstMode: String, // "include" or "exclude"
+            priceIncludesTax: Boolean,
+
+            // Stock Information
+            availableStock: Number,
+
+            // Discounts
+            discountPercent: Number,
+            discountAmount: Number,
+            discount: Number,
+            discountType: String,
+
+            // Tax Amounts
+            cgst: Number,
+            sgst: Number,
+            igst: Number,
+            cgstAmount: Number,
+            sgstAmount: Number,
+            igstAmount: Number,
+
+            // Calculated Amounts
+            subtotal: Number, // Quantity × Price
+            taxableAmount: Number, // Amount subject to tax
+            totalTaxAmount: Number, // Total tax amount
+            gstAmount: Number, // GST amount
+
+            // Final Amounts
+            amount: Number, // Final item amount
+            itemAmount: Number, // Same as amount
+            totalAmount: Number, // Same as amount
+
+            // Line Information
+            lineNumber: Number,
+          },
+        ],
+
+        // Totals Object
+        totals: {
+          subtotal: Number, // Sum of all item subtotals
+          totalQuantity: Number, // Total quantity of all items
+          totalDiscount: Number, // Total discount amount
+          totalDiscountAmount: Number, // Same as totalDiscount
+          totalTax: Number, // Total tax amount
+          totalCGST: Number, // Total CGST
+          totalSGST: Number, // Total SGST
+          totalIGST: Number, // Total IGST
+          totalTaxableAmount: Number, // Total taxable amount
+          finalTotal: Number, // Final total after all calculations
+          roundOff: Number, // Round off amount
+          withTaxTotal: Number, // Total with tax
+          withoutTaxTotal: Number, // Total without tax
         },
 
-        validUntil: orderValidUntil,
-        expectedDeliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-
-        // Tax settings
-        gstEnabled: purchaseOrder.gstEnabled ?? true,
-        gstType: purchaseOrder.gstType || "gst",
-        taxMode: purchaseOrder.taxMode || "without-tax",
-        priceIncludesTax: purchaseOrder.priceIncludesTax ?? false,
-
-        // Payment settings
+        // Payment Information
         payment: {
-          method: "credit",
-          creditDays: 30,
-          paidAmount: 0,
-          pendingAmount: purchaseOrder.totals?.finalTotal || 0,
-          status: "pending",
-          paymentDate: new Date(),
-          dueDate: null,
-          reference: "",
-          notes: "",
+          method: String, // Payment method
+          status: String, // Payment status
+          paidAmount: Number, // Amount paid
+          advanceAmount: Number, // Advance amount
+          pendingAmount: Number, // Pending amount
+          paymentDate: Date, // Payment date
+          dueDate: Date, // Due date
+          creditDays: Number, // Credit days
+          reference: String, // Payment reference
+          notes: String, // Payment notes
         },
 
-        status: "draft",
-        notes: conversionNotes
-          ? `Generated from PO: ${purchaseOrder.orderNumber}. ${conversionNotes}`
-          : `Auto-generated from Purchase Order: ${purchaseOrder.orderNumber}`,
-        termsAndConditions: purchaseOrder.termsAndConditions || "",
-        priority: purchaseOrder.priority || "normal",
-        roundOff: purchaseOrder.roundOff || 0,
-        roundOffEnabled: purchaseOrder.roundOffEnabled || false,
+        // Payment History
+        paymentHistory: [
+          {
+            amount: Number,
+            method: String,
+            reference: String,
+            paymentDate: Date,
+            notes: String,
+            createdAt: Date,
+            createdBy: ObjectId,
+          },
+        ],
 
-        createdBy: validUserId,
-        lastModifiedBy: validUserId,
+        // Order Status and Priority
+        status: String, // Order status
+        priority: String, // Order priority
+
+        // Conversion Tracking
+        convertedToInvoice: Boolean,
+        invoiceRef: ObjectId,
+        invoiceNumber: String,
+        convertedAt: Date,
+        convertedBy: ObjectId,
+
+        // Additional Fields
+        requiredBy: Date,
+        departmentRef: ObjectId,
+        approvedBy: ObjectId,
+        approvedAt: Date,
+
+        // Notes and Terms
+        notes: String,
+        termsAndConditions: String,
+        customerNotes: String,
+        internalNotes: String,
+
+        // Address Information
+        shippingAddress: {
+          street: String,
+          city: String,
+          state: String,
+          zipCode: String,
+          country: String,
+        },
+
+        // Rounding Configuration
+        roundOff: Number,
+        roundOffEnabled: Boolean,
+
+        // Metadata
+        createdBy: String, // Creator reference
+        lastModifiedBy: String, // Last modifier reference
       };
 
       // Clean up undefined fields
@@ -3892,19 +3890,6 @@ const salesOrderController = {
         if (salesOrderData[key] === undefined) {
           delete salesOrderData[key];
         }
-      });
-
-      console.log("💾 Creating ENHANCED sales order:", {
-        salesOrderNumber: salesOrderData.orderNumber,
-        inSupplierCompany: targetCompanyId.toString(),
-        forCustomer: customer.name,
-        customerRepresents: "Buyer Company",
-        sourceCompanyId: salesOrderData.sourceCompanyId.toString(),
-        buyerCompanyId,
-        totalAmount: salesOrderData.totals?.finalTotal,
-        hasLinking: salesOrderData.autoLinkingEnabled,
-        validated: salesOrderData.bidirectionalSetupValidated,
-        createdBy: validUserId?.toString(),
       });
 
       // ✅ Create sales order
@@ -3939,21 +3924,6 @@ const salesOrderController = {
       await salesOrder.populate(
         "customer",
         "name mobile email address type linkedCompanyId enableBidirectionalOrders"
-      );
-
-      console.log(
-        "✅ ENHANCED bidirectional sales order generated successfully:",
-        {
-          purchaseOrderId: purchaseOrder._id,
-          purchaseOrderNumber: purchaseOrder.orderNumber,
-          buyerCompany: purchaseOrder.companyId?.businessName,
-          supplierCompany: targetCompany.businessName,
-          salesOrderId: salesOrder._id,
-          salesOrderNumber: salesOrder.orderNumber,
-          customer: customer.name,
-          customerLinked: !!customer.linkedCompanyId,
-          bidirectionalReady: customer.enableBidirectionalOrders,
-        }
       );
 
       // ✅ ENHANCED: Comprehensive response
@@ -4103,7 +4073,6 @@ const salesOrderController = {
     }
   },
 
-  // ✅ FIXED: Generate purchase order from sales order (bidirectional functionality)
   generatePurchaseOrder: async (req, res) => {
     try {
       const {id} = req.params; // Sales Order ID
@@ -4120,18 +4089,6 @@ const salesOrderController = {
         autoLinkSupplier = true, // ✅ NEW: Auto-link supplier back to sales company
         validateBidirectionalSetup = true, // ✅ NEW: Validate bidirectional readiness
       } = req.body;
-
-      console.log(
-        "🔄 Starting ENHANCED bidirectional purchase order generation:",
-        {
-          salesOrderId: id,
-          targetCompanyId,
-          autoLinkSupplier,
-          validateBidirectionalSetup,
-          logic:
-            "Generate purchase order in CUSTOMER's company buying from SUPPLIER",
-        }
-      );
 
       // ✅ ENHANCED: Validate sales order ID
       if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -4201,26 +4158,6 @@ const salesOrderController = {
       const sellerCompanyId = salesOrder.companyId._id.toString();
       const customerData = salesOrder.customer;
 
-      console.log("🔍 ENHANCED CUSTOMER ANALYSIS:", {
-        customer: {
-          id: customerData._id,
-          name: customerData.name,
-          linkedCompanyId: customerData.linkedCompanyId?.toString(),
-          isLinkedCustomer: customerData.isLinkedCustomer,
-          enableBidirectionalOrders: customerData.enableBidirectionalOrders,
-          autoLinkByGST: customerData.autoLinkByGST,
-          autoLinkByPhone: customerData.autoLinkByPhone,
-          autoLinkByEmail: customerData.autoLinkByEmail,
-          gstNumber: customerData.gstNumber,
-          phoneNumber: customerData.phoneNumber,
-          email: customerData.email,
-        },
-        sellerCompany: {
-          id: sellerCompanyId,
-          name: salesOrder.companyId.businessName,
-        },
-      });
-
       // ✅ ENHANCED: Validate bidirectional setup if requested
       if (validateBidirectionalSetup) {
         const validationErrors = [];
@@ -4264,20 +4201,12 @@ const salesOrderController = {
 
       // ✅ ENHANCED: Auto-detect CUSTOMER's company with improved logic
       if (!targetCompanyId) {
-        console.log("🔍 ENHANCED auto-detection of CUSTOMER's company...");
-
         try {
           let detectionMethod = null;
 
           // Method 1: Use linkedCompanyId (most reliable)
           if (customerData.linkedCompanyId) {
             const linkedCompanyId = customerData.linkedCompanyId.toString();
-
-            console.log("🔍 LinkedCompanyId check:", {
-              linkedCompanyId,
-              sellerCompanyId,
-              areSame: linkedCompanyId === sellerCompanyId,
-            });
 
             if (linkedCompanyId !== sellerCompanyId) {
               const customerCompany = await Company.findById(
@@ -4286,14 +4215,7 @@ const salesOrderController = {
               if (customerCompany && customerCompany.isActive !== false) {
                 targetCompanyId = customerCompany._id;
                 detectionMethod = "linkedCompanyId";
-                console.log(
-                  `🔗 Found CUSTOMER's company via linkedCompanyId: ${customerCompany.businessName}`
-                );
               }
-            } else {
-              console.log(
-                "⚠️ WARNING: Customer's linkedCompanyId points to seller's company - EXCLUDING"
-              );
             }
           }
 
@@ -4312,9 +4234,6 @@ const salesOrderController = {
             if (customerCompany) {
               targetCompanyId = customerCompany._id;
               detectionMethod = "gst_auto_link";
-              console.log(
-                `🔗 Found CUSTOMER's company via GST auto-link: ${customerCompany.businessName}`
-              );
             }
           }
 
@@ -4339,9 +4258,7 @@ const salesOrderController = {
               if (customerCompany) {
                 targetCompanyId = customerCompany._id;
                 detectionMethod = "phone_auto_link";
-                console.log(
-                  `🔗 Found CUSTOMER's company via phone auto-link: ${customerCompany.businessName}`
-                );
+
                 break;
               }
             }
@@ -4362,9 +4279,6 @@ const salesOrderController = {
             if (customerCompany) {
               targetCompanyId = customerCompany._id;
               detectionMethod = "email_auto_link";
-              console.log(
-                `🔗 Found CUSTOMER's company via email auto-link: ${customerCompany.businessName}`
-              );
             }
           }
 
@@ -4385,17 +4299,8 @@ const salesOrderController = {
             if (customerCompany) {
               targetCompanyId = customerCompany._id;
               detectionMethod = "name_fuzzy_match";
-              console.log(
-                `🔗 Found CUSTOMER's company via name matching: ${customerCompany.businessName}`
-              );
             }
           }
-
-          console.log("🔍 Auto-detection result:", {
-            targetCompanyId: targetCompanyId?.toString(),
-            detectionMethod,
-            success: !!targetCompanyId,
-          });
         } catch (autoDetectError) {
           console.error(
             "❌ Error in enhanced auto-detection:",
@@ -4555,33 +4460,9 @@ const salesOrderController = {
         });
       }
 
-      console.log("✅ VALIDATION PASSED - Enhanced validation successful:", {
-        sellerCompany: {
-          id: sellerCompanyId,
-          name: salesOrder.companyId.businessName,
-        },
-        customerCompany: {
-          id: targetCompanyId.toString(),
-          name: targetCompany.businessName,
-        },
-        areDifferent: targetCompanyId.toString() !== sellerCompanyId,
-        customerBidirectionalReady: customerData.enableBidirectionalOrders,
-      });
-
       // ✅ ENHANCED: Create/find supplier with auto-linking
       let supplier = null;
       const sellerCompany = salesOrder.companyId;
-
-      console.log(
-        "👤 ENHANCED supplier creation for SELLER company in CUSTOMER's system:",
-        {
-          sellerCompanyName: sellerCompany.businessName,
-          sellerGST: sellerCompany.gstin,
-          sellerPhone: sellerCompany.phoneNumber,
-          customerCompanyId: targetCompanyId.toString(),
-          autoLinkSupplier,
-        }
-      );
 
       // Try to find existing supplier
       if (
@@ -4619,10 +4500,6 @@ const salesOrderController = {
 
       // ✅ ENHANCED: Auto-create supplier with linking
       if (!supplier) {
-        console.log(
-          "👤 Creating ENHANCED supplier record for SELLER company..."
-        );
-
         try {
           // Look for existing supplier with seller company details
           const existingSupplier = await Party.findOne({
@@ -4646,7 +4523,6 @@ const salesOrderController = {
 
           if (existingSupplier) {
             supplier = existingSupplier;
-            console.log(`✅ Found existing supplier: ${supplier.name}`);
 
             // ✅ ENHANCED: Update linking if not present
             if (autoLinkSupplier && !existingSupplier.linkedCompanyId) {
@@ -4654,7 +4530,6 @@ const salesOrderController = {
               existingSupplier.isLinkedSupplier = true;
               existingSupplier.enableBidirectionalOrders = true;
               await existingSupplier.save();
-              console.log("🔗 Enhanced supplier with bidirectional linking");
             }
           } else {
             // ✅ ENHANCED: Create new supplier with advanced features
@@ -4707,10 +4582,6 @@ const salesOrderController = {
 
             supplier = new Party(supplierData);
             await supplier.save();
-
-            console.log(
-              `✅ Auto-created ENHANCED supplier: ${supplier.name} with bidirectional linking`
-            );
           }
         } catch (supplierCreationError) {
           console.error(
@@ -4736,15 +4607,6 @@ const salesOrderController = {
           code: "OPERATION_FAILED",
         });
       }
-
-      console.log("👤 Using ENHANCED supplier for purchase order:", {
-        supplierId: supplier._id,
-        supplierName: supplier.name,
-        supplierRepresents: "Seller Company",
-        inCustomerSystem: targetCompanyId.toString(),
-        hasLinking: !!supplier.linkedCompanyId,
-        bidirectionalReady: supplier.enableBidirectionalOrders,
-      });
 
       // ✅ ENHANCED: Generate unique purchase order number with retry logic
       let orderNumber;
@@ -4830,12 +4692,6 @@ const salesOrderController = {
           code: "OPERATION_FAILED",
         });
       }
-
-      console.log("✅ Generated unique purchase order number:", {
-        orderNumber,
-        attempts: generationAttempts + 1,
-        wasUnique: generationAttempts === 0,
-      });
 
       // ✅ ENHANCED: Set validity and delivery dates
       let validUserId = null;
@@ -4943,18 +4799,6 @@ const salesOrderController = {
         }
       });
 
-      console.log("💾 Creating ENHANCED purchase order:", {
-        purchaseOrderNumber: purchaseOrderData.orderNumber,
-        inCustomerCompany: targetCompanyId.toString(),
-        forSupplier: supplier.name,
-        supplierRepresents: "Seller Company",
-        sourceCompanyId: purchaseOrderData.sourceCompanyId.toString(),
-        sellerCompanyId,
-        totalAmount: purchaseOrderData.totals?.finalTotal,
-        hasLinking: purchaseOrderData.autoLinkingEnabled,
-        validated: purchaseOrderData.bidirectionalSetupValidated,
-      });
-
       // ✅ Create purchase order
       const purchaseOrder = new PurchaseOrder(purchaseOrderData);
       await purchaseOrder.save();
@@ -4987,21 +4831,6 @@ const salesOrderController = {
       await purchaseOrder.populate(
         "supplier",
         "name mobile email address type linkedCompanyId enableBidirectionalOrders"
-      );
-
-      console.log(
-        "✅ ENHANCED bidirectional purchase order generated successfully:",
-        {
-          salesOrderId: salesOrder._id,
-          salesOrderNumber: salesOrder.orderNumber,
-          sellerCompany: salesOrder.companyId?.businessName,
-          customerCompany: targetCompany.businessName,
-          purchaseOrderId: purchaseOrder._id,
-          purchaseOrderNumber: purchaseOrder.orderNumber,
-          supplier: supplier.name,
-          supplierLinked: !!supplier.linkedCompanyId,
-          bidirectionalReady: supplier.enableBidirectionalOrders,
-        }
       );
 
       // ✅ ENHANCED: Comprehensive response
@@ -5155,7 +4984,6 @@ const salesOrderController = {
     }
   },
 
-  // ✅ NEW: Get sales orders that have generated purchase orders
   getSalesOrdersWithGeneratedPO: async (req, res) => {
     try {
       const {companyId, page = 1, limit = 10} = req.query;
@@ -5418,8 +5246,6 @@ const salesOrderController = {
         failed: results.failed.length,
         skipped: results.skipped.length,
       };
-
-      console.log("📊 Bulk purchase order generation summary:", summary);
 
       res.status(200).json({
         success: true,
@@ -5960,9 +5786,6 @@ const salesOrderController = {
         failed: results.failed.length,
         skipped: results.skipped.length,
       };
-
-      console.log("📊 Bulk sales order generation summary:", summary);
-
       res.status(200).json({
         success: true,
         message: `Bulk generation completed: ${summary.successful} successful, ${summary.failed} failed, ${summary.skipped} skipped`,
@@ -6135,6 +5958,1461 @@ const salesOrderController = {
       res.status(500).json({
         success: false,
         message: "Failed to get purchase order source tracking",
+        error: error.message,
+      });
+    }
+  },
+
+  // ==================== ADMIN FUNCTIONS - FIXED ====================
+
+  /**
+   * ✅ Get all sales orders for admin (across all companies)
+   */
+  getAllSalesOrdersForAdmin: async (req, res) => {
+    try {
+      const {
+        page = 1,
+        limit = 100,
+        status,
+        orderType,
+        dateFrom,
+        dateTo,
+        companyId: filterCompanyId, // Optional filter for specific company
+        customerId,
+        search,
+        sortBy = "orderDate",
+        sortOrder = "desc",
+        populate,
+        statsOnly,
+      } = req.query;
+
+      // ✅ Build admin filter - NO automatic companyId restriction
+      const filter = {};
+
+      // ✅ ONLY apply companyId filter if explicitly requested AND valid
+      if (filterCompanyId && mongoose.Types.ObjectId.isValid(filterCompanyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
+      }
+
+      if (status) {
+        if (status.includes(",")) {
+          filter.status = {$in: status.split(",")};
+        } else {
+          filter.status = status;
+        }
+      }
+
+      if (orderType) {
+        if (orderType.includes(",")) {
+          filter.orderType = {$in: orderType.split(",")};
+        } else {
+          filter.orderType = orderType;
+        }
+      }
+
+      if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+        filter.customer = new mongoose.Types.ObjectId(customerId);
+      }
+
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      if (search) {
+        filter.$or = [
+          {orderNumber: {$regex: search, $options: "i"}},
+          {customerNotes: {$regex: search, $options: "i"}},
+          {notes: {$regex: search, $options: "i"}},
+          {sourceOrderNumber: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      const sortOptions = {};
+      const validSortFields = [
+        "orderDate",
+        "orderNumber",
+        "status",
+        "totals.finalTotal",
+        "createdAt",
+        "updatedAt",
+        "companyId",
+      ];
+
+      if (validSortFields.includes(sortBy)) {
+        sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+      } else {
+        sortOptions.orderDate = -1;
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Build population based on query parameter
+      let populateFields = [];
+      if (populate) {
+        const fieldsToPopulate = populate.split(",");
+        fieldsToPopulate.forEach((field) => {
+          if (field === "customer") {
+            populateFields.push({
+              path: "customer",
+              select: "name mobile phoneNumber email",
+            });
+          }
+          if (field === "companyId") {
+            populateFields.push({
+              path: "companyId",
+              select: "businessName email phoneNumber",
+            });
+          }
+        });
+      } else {
+        // Default population for admin
+        populateFields = [
+          {path: "customer", select: "name mobile phoneNumber email"},
+          {path: "companyId", select: "businessName email phoneNumber"},
+        ];
+      }
+
+      // ✅ If statsOnly, just return statistics
+      if (statsOnly === "true") {
+        const [totalOrders, totalRevenue, ordersByStatus, activeCompanies] =
+          await Promise.all([
+            SalesOrder.countDocuments(filter),
+            SalesOrder.aggregate([
+              {$match: filter},
+              {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+            ]),
+            SalesOrder.aggregate([
+              {$match: filter},
+              {
+                $group: {
+                  _id: "$status",
+                  count: {$sum: 1},
+                  value: {$sum: "$totals.finalTotal"},
+                },
+              },
+            ]),
+            SalesOrder.distinct("companyId", filter),
+          ]);
+
+        const adminStatsData = {
+          totalOrders,
+          totalAmount: totalRevenue[0]?.total || 0,
+          totalRevenue: totalRevenue[0]?.total || 0,
+          activeCompanies: activeCompanies.length,
+          ordersByStatus: ordersByStatus.reduce((acc, item) => {
+            acc[item._id] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          isAdminStats: true,
+        };
+        return res.status(200).json({
+          success: true,
+          data: adminStatsData,
+          message: "Admin statistics fetched successfully (no auth required)",
+        });
+      }
+
+      const [orders, total] = await Promise.all([
+        SalesOrder.find(filter)
+          .populate(populateFields)
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        SalesOrder.countDocuments(filter),
+      ]);
+
+      // ✅ Build comprehensive admin response
+      const responseData = {
+        success: true,
+        data: {
+          // ✅ Multiple data keys for frontend compatibility
+          salesOrders: orders,
+          orders: orders,
+          data: orders,
+          count: orders.length,
+
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalOrders: total,
+            limit: parseInt(limit),
+            hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrev: parseInt(page) > 1,
+          },
+
+          summary: {
+            totalOrders: total,
+            totalValue: orders.reduce(
+              (sum, order) => sum + (order.totals?.finalTotal || 0),
+              0
+            ),
+          },
+
+          // ✅ Clear admin metadata
+          adminInfo: {
+            isAdminAccess: true,
+            crossAllCompanies: !filterCompanyId,
+            filteredByCompany: !!filterCompanyId,
+            filterCompanyId: filterCompanyId || null,
+          },
+        },
+        message: filterCompanyId
+          ? `Found ${orders.length} sales orders for company ${filterCompanyId}`
+          : `Found ${orders.length} sales orders across all companies`,
+      };
+
+      return res.status(200).json(responseData);
+    } catch (error) {
+      console.error("❌ Error in getAllSalesOrdersForAdmin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch sales orders",
+        error: error.message,
+        data: {
+          salesOrders: [],
+          orders: [],
+          data: [],
+          count: 0,
+          pagination: {},
+          summary: {},
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ Get sales order statistics for admin dashboard
+   */
+  getSalesOrderStatsForAdmin: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId: filterCompanyId} = req.query;
+
+      // ✅ Build admin filter - NO automatic companyId restriction
+      const filter = {};
+
+      // ✅ ONLY apply companyId filter if explicitly requested
+      if (filterCompanyId && mongoose.Types.ObjectId.isValid(filterCompanyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
+      }
+
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        totalStats,
+        statusBreakdown,
+        orderTypeBreakdown,
+        activeCompanies,
+        recentOrders,
+      ] = await Promise.all([
+        // Basic stats
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalOrders: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              avgOrderValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Status breakdown
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Order type breakdown
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$orderType",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Active companies
+        SalesOrder.distinct("companyId", filter),
+
+        // Recent orders
+        SalesOrder.find(filter)
+          .populate("customer", "name mobile")
+          .populate("companyId", "businessName")
+          .sort({createdAt: -1})
+          .limit(10),
+      ]);
+
+      const baseStats = totalStats[0] || {
+        totalOrders: 0,
+        totalValue: 0,
+        avgOrderValue: 0,
+      };
+
+      const adminStats = {
+        ...baseStats,
+        totalCompanies: activeCompanies.length,
+        activeCompanies: activeCompanies.length,
+
+        statusBreakdown: statusBreakdown.reduce((acc, item) => {
+          acc[item._id] = {count: item.count, value: item.value};
+          return acc;
+        }, {}),
+
+        orderTypeBreakdown: orderTypeBreakdown.reduce((acc, item) => {
+          acc[item._id] = {count: item.count, value: item.value};
+          return acc;
+        }, {}),
+
+        recentOrders: recentOrders.slice(0, 5),
+      };
+
+      res.status(200).json({
+        success: true,
+        data: adminStats,
+        message: "Admin statistics calculated successfully (no auth required)",
+      });
+    } catch (error) {
+      console.error("❌ Error in getSalesOrderStatsForAdmin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin statistics",
+        error: error.message,
+        data: {
+          totalOrders: 0,
+          totalRevenue: 0,
+          activeCompanies: 0,
+          statusBreakdown: {},
+          orderTypeBreakdown: {},
+          recentOrders: [],
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get conversion rate analysis for admin - NO companyId restriction
+   */
+  getConversionRateAnalysisForAdmin: async (req, res) => {
+    try {
+      const {companyId: filterCompanyId, dateFrom, dateTo} = req.query;
+
+      // ✅ FIXED: Build admin filter - NO automatic companyId restriction
+      const filter = {};
+
+      // ✅ ONLY apply companyId filter if explicitly requested AND valid (not "admin")
+      if (
+        filterCompanyId &&
+        filterCompanyId !== "admin" &&
+        mongoose.Types.ObjectId.isValid(filterCompanyId)
+      ) {
+        filter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
+      }
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        statusDistribution,
+        typeDistribution,
+        monthlyTrends,
+        topCustomers,
+        topCompanies,
+        conversionFunnel,
+      ] = await Promise.all([
+        // Status distribution
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+        ]),
+
+        // Order type distribution
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$orderType",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+        ]),
+
+        // Monthly trends (last 6 months)
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$orderDate"},
+                month: {$month: "$orderDate"},
+              },
+              totalOrders: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              quotations: {
+                $sum: {$cond: [{$eq: ["$orderType", "quotation"]}, 1, 0]},
+              },
+              salesOrders: {
+                $sum: {$cond: [{$eq: ["$orderType", "sales_order"]}, 1, 0]},
+              },
+              confirmed: {
+                $sum: {
+                  $cond: [
+                    {$in: ["$status", ["accepted", "confirmed", "completed"]]},
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 6},
+        ]),
+
+        // Top customers
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$customer",
+              orders: {$sum: 1},
+              amount: {$sum: "$totals.finalTotal"},
+              confirmedOrders: {
+                $sum: {
+                  $cond: [
+                    {$in: ["$status", ["accepted", "confirmed", "completed"]]},
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          {$sort: {amount: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "customer",
+            },
+          },
+        ]),
+
+        // Top companies (if admin view - not filtering by specific company)
+        !filterCompanyId || filterCompanyId === "admin"
+          ? SalesOrder.aggregate([
+              {$match: filter},
+              {
+                $group: {
+                  _id: "$companyId",
+                  orders: {$sum: 1},
+                  amount: {$sum: "$totals.finalTotal"},
+                  confirmedOrders: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $in: [
+                            "$status",
+                            ["accepted", "confirmed", "completed"],
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+              {$sort: {amount: -1}},
+              {$limit: 10},
+              {
+                $lookup: {
+                  from: "companies",
+                  localField: "_id",
+                  foreignField: "_id",
+                  as: "company",
+                },
+              },
+            ])
+          : Promise.resolve([]),
+
+        // Conversion funnel analysis
+        SalesOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$orderType",
+              total: {$sum: 1},
+              sent: {
+                $sum: {$cond: [{$eq: ["$status", "sent"]}, 1, 0]},
+              },
+              accepted: {
+                $sum: {$cond: [{$eq: ["$status", "accepted"]}, 1, 0]},
+              },
+              converted: {
+                $sum: {$cond: [{$eq: ["$status", "converted"]}, 1, 0]},
+              },
+              completed: {
+                $sum: {$cond: [{$eq: ["$status", "completed"]}, 1, 0]},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const analysisData = {
+        statusDistribution: statusDistribution.reduce((acc, item) => {
+          acc[item._id] = {
+            count: item.count,
+            value: item.value,
+            percentage: 0, // Will be calculated below
+          };
+          return acc;
+        }, {}),
+
+        typeDistribution: typeDistribution.reduce((acc, item) => {
+          acc[item._id] = {
+            count: item.count,
+            value: item.value,
+            percentage: 0, // Will be calculated below
+          };
+          return acc;
+        }, {}),
+
+        monthlyTrends: monthlyTrends.map((item) => ({
+          year: item._id.year,
+          month: item._id.month,
+          monthName: new Date(item._id.year, item._id.month - 1).toLocaleString(
+            "default",
+            {month: "short"}
+          ),
+          totalOrders: item.totalOrders,
+          totalAmount: item.totalAmount,
+          quotations: item.quotations,
+          salesOrders: item.salesOrders,
+          confirmed: item.confirmed,
+          conversionRate:
+            item.totalOrders > 0
+              ? ((item.confirmed / item.totalOrders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        topCustomers: topCustomers.map((item) => ({
+          customerId: item._id,
+          customerName: item.customer[0]?.name || "Unknown",
+          orders: item.orders,
+          amount: item.amount,
+          confirmedOrders: item.confirmedOrders,
+          conversionRate:
+            item.orders > 0
+              ? ((item.confirmedOrders / item.orders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        topCompanies: topCompanies.map((item) => ({
+          companyId: item._id,
+          companyName: item.company[0]?.businessName || "Unknown",
+          orders: item.orders,
+          amount: item.amount,
+          confirmedOrders: item.confirmedOrders,
+          conversionRate:
+            item.orders > 0
+              ? ((item.confirmedOrders / item.orders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        conversionFunnel: conversionFunnel.map((item) => ({
+          orderType: item._id,
+          total: item.total,
+          sent: item.sent,
+          accepted: item.accepted,
+          converted: item.converted,
+          completed: item.completed,
+          sendRate:
+            item.total > 0 ? ((item.sent / item.total) * 100).toFixed(2) : 0,
+          acceptanceRate:
+            item.sent > 0 ? ((item.accepted / item.sent) * 100).toFixed(2) : 0,
+          conversionRate:
+            item.accepted > 0
+              ? ((item.converted / item.accepted) * 100).toFixed(2)
+              : 0,
+        })),
+
+        performanceMetrics: {
+          totalOrders: statusDistribution.reduce(
+            (sum, item) => sum + item.count,
+            0
+          ),
+          totalValue: statusDistribution.reduce(
+            (sum, item) => sum + item.value,
+            0
+          ),
+          avgOrderValue: 0, // Will be calculated below
+          overallConversionRate: 0, // Will be calculated below
+        },
+      };
+
+      // Calculate percentages and averages
+      const totalOrders = analysisData.performanceMetrics.totalOrders;
+      const totalValue = analysisData.performanceMetrics.totalValue;
+
+      if (totalOrders > 0) {
+        analysisData.performanceMetrics.avgOrderValue = (
+          totalValue / totalOrders
+        ).toFixed(2);
+
+        // Calculate percentages for status distribution
+        Object.keys(analysisData.statusDistribution).forEach((status) => {
+          analysisData.statusDistribution[status].percentage = (
+            (analysisData.statusDistribution[status].count / totalOrders) *
+            100
+          ).toFixed(2);
+        });
+
+        // Calculate percentages for type distribution
+        Object.keys(analysisData.typeDistribution).forEach((type) => {
+          analysisData.typeDistribution[type].percentage = (
+            (analysisData.typeDistribution[type].count / totalOrders) *
+            100
+          ).toFixed(2);
+        });
+
+        // Calculate overall conversion rate
+        const confirmedStatuses = [
+          "accepted",
+          "confirmed",
+          "completed",
+          "converted",
+        ];
+        const confirmedCount = Object.keys(analysisData.statusDistribution)
+          .filter((status) => confirmedStatuses.includes(status))
+          .reduce(
+            (sum, status) =>
+              sum + analysisData.statusDistribution[status].count,
+            0
+          );
+
+        analysisData.performanceMetrics.overallConversionRate = (
+          (confirmedCount / totalOrders) *
+          100
+        ).toFixed(2);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: analysisData,
+        message:
+          filterCompanyId && filterCompanyId !== "admin"
+            ? `Conversion rate analysis completed for company ${filterCompanyId}`
+            : "Conversion rate analysis completed across all companies (no auth required)",
+        source: "calculated_from_orders",
+      });
+    } catch (error) {
+      console.error("❌ Error in admin conversion rate analysis:", error);
+
+      // Return fallback data
+      res.status(200).json({
+        success: true,
+        data: {
+          statusDistribution: {},
+          typeDistribution: {},
+          monthlyTrends: [],
+          topCustomers: [],
+          topCompanies: [],
+          conversionFunnel: [],
+          performanceMetrics: {
+            totalOrders: 0,
+            totalValue: 0,
+            avgOrderValue: 0,
+            overallConversionRate: 0,
+          },
+        },
+        message: "Using fallback analysis data (admin endpoint error occurred)",
+        source: "fallback",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales order for printing - Enhanced version
+   */
+  getSalesOrderForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      // Get sales order with populated data
+      const salesOrder = await SalesOrder.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      // Transform data for printing
+      const orderData = {
+        company: {
+          name: salesOrder.companyId?.businessName || "Your Company",
+          gstin: salesOrder.companyId?.gstin || "",
+          address: salesOrder.companyId?.address || "",
+          phone: salesOrder.companyId?.phoneNumber || "",
+          email: salesOrder.companyId?.email || "",
+          // ✅ Handle logo safely
+          logo:
+            salesOrder.companyId?.logo?.base64 &&
+            salesOrder.companyId.logo.base64.trim() !== ""
+              ? salesOrder.companyId.logo.base64
+              : null,
+        },
+        customer: {
+          name:
+            salesOrder.customer?.name ||
+            salesOrder.customerName ||
+            "Unknown Customer",
+          address:
+            salesOrder.customer?.address || salesOrder.customerAddress || "",
+          mobile:
+            salesOrder.customer?.mobile || salesOrder.customerMobile || "",
+          email: salesOrder.customer?.email || salesOrder.customerEmail || "",
+          gstin:
+            salesOrder.customer?.gstNumber ||
+            salesOrder.customerGstNumber ||
+            "",
+        },
+        order: {
+          id: salesOrder._id,
+          orderNumber: salesOrder.orderNumber,
+          orderDate: salesOrder.orderDate,
+          orderType: salesOrder.orderType,
+          validUntil: salesOrder.validUntil,
+          expectedDeliveryDate: salesOrder.expectedDeliveryDate,
+          status: salesOrder.status,
+          priority: salesOrder.priority,
+          notes: salesOrder.notes || "",
+          customerNotes: salesOrder.customerNotes || "",
+          termsAndConditions: salesOrder.termsAndConditions || "",
+        },
+        items: (salesOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || item.productName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || item.hsnNumber || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || item.rate || 0,
+          taxRate: item.taxRate || item.gstRate || 0,
+          cgst: item.cgstAmount || item.cgst || 0,
+          sgst: item.sgstAmount || item.sgst || 0,
+          igst: item.igstAmount || item.igst || 0,
+          amount: item.amount || item.totalAmount || 0,
+        })),
+        totals: {
+          subtotal: salesOrder.totals?.subtotal || 0,
+          totalTax: salesOrder.totals?.totalTax || 0,
+          totalCGST: salesOrder.totals?.totalCGST || 0,
+          totalSGST: salesOrder.totals?.totalSGST || 0,
+          totalIGST: salesOrder.totals?.totalIGST || 0,
+          totalDiscount: salesOrder.totals?.totalDiscount || 0,
+          roundOff: salesOrder.totals?.roundOff || 0,
+          finalTotal: salesOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: salesOrder.payment?.method || "credit",
+          paidAmount: salesOrder.payment?.paidAmount || 0,
+          pendingAmount: salesOrder.payment?.pendingAmount || 0,
+          status: salesOrder.payment?.status || "pending",
+          terms: salesOrder.termsAndConditions || "",
+          creditDays: salesOrder.payment?.creditDays || 0,
+          dueDate: salesOrder.payment?.dueDate,
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isSalesOrder: true,
+          isQuotation: salesOrder.orderType === "quotation",
+          isProformaInvoice: salesOrder.orderType === "proforma_invoice",
+          isGSTEnabled: salesOrder.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: orderData,
+        message: "Sales order data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales order for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales order for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales order for email/PDF generation
+   */
+  getSalesOrderForEmail: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {includePaymentLink = false, template = "professional"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      const salesOrder = await SalesOrder.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo website"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      // Enhanced data for email template
+      const emailData = {
+        company: {
+          name: salesOrder.companyId?.businessName || "Your Company",
+          gstin: salesOrder.companyId?.gstin || "",
+          address: salesOrder.companyId?.address || "",
+          phone: salesOrder.companyId?.phoneNumber || "",
+          email: salesOrder.companyId?.email || "",
+          website: salesOrder.companyId?.website || "",
+          logo: salesOrder.companyId?.logo?.base64 || null,
+        },
+        customer: {
+          name: salesOrder.customer?.name || "Customer",
+          email: salesOrder.customer?.email || "",
+          mobile:
+            salesOrder.customer?.mobile || salesOrder.customerMobile || "",
+          address: salesOrder.customer?.address || "",
+          gstin: salesOrder.customer?.gstNumber || "",
+        },
+        order: {
+          id: salesOrder._id,
+          orderNumber: salesOrder.orderNumber,
+          orderDate: salesOrder.orderDate,
+          orderType: salesOrder.orderType,
+          validUntil: salesOrder.validUntil,
+          expectedDeliveryDate: salesOrder.expectedDeliveryDate,
+          status: salesOrder.status,
+          priority: salesOrder.priority,
+          notes: salesOrder.notes || "",
+          customerNotes: salesOrder.customerNotes || "",
+          termsAndConditions: salesOrder.termsAndConditions || "",
+        },
+        items: (salesOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxableAmount: item.taxableAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          totalTax: item.totalTaxAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: salesOrder.totals?.subtotal || 0,
+          totalDiscount: salesOrder.totals?.totalDiscount || 0,
+          taxableAmount: salesOrder.totals?.totalTaxableAmount || 0,
+          totalCGST: salesOrder.totals?.totalCGST || 0,
+          totalSGST: salesOrder.totals?.totalSGST || 0,
+          totalIGST: salesOrder.totals?.totalIGST || 0,
+          totalTax: salesOrder.totals?.totalTax || 0,
+          roundOff: salesOrder.totals?.roundOff || 0,
+          finalTotal: salesOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: salesOrder.payment?.method || "credit",
+          paidAmount: salesOrder.payment?.paidAmount || 0,
+          pendingAmount: salesOrder.payment?.pendingAmount || 0,
+          status: salesOrder.payment?.status || "pending",
+          dueDate: salesOrder.payment?.dueDate,
+          creditDays: salesOrder.payment?.creditDays || 0,
+        },
+        acceptanceLink:
+          includePaymentLink === "true" && salesOrder.status === "sent"
+            ? `${process.env.FRONTEND_URL}/order/accept/${salesOrder._id}`
+            : null,
+        meta: {
+          template,
+          generatedDate: new Date(),
+          isEmailVersion: true,
+          isQuotation: salesOrder.orderType === "quotation",
+          isProformaInvoice: salesOrder.orderType === "proforma_invoice",
+          isGSTEnabled: salesOrder.gstEnabled,
+          hasLogo: !!salesOrder.companyId?.logo?.base64,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: emailData,
+        message: "Sales order data prepared for email",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales order for email:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales order for email",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Generate and download sales order PDF
+   */
+  downloadSalesOrderPDF: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {template = "standard", format = "a4"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      const salesOrder = await SalesOrder.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .lean();
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      // Set appropriate headers for PDF download
+      const filename = `${salesOrder.orderType}-${
+        salesOrder.orderNumber || salesOrder._id
+      }.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+
+      // Return order data with PDF metadata
+      res.json({
+        success: true,
+        data: {
+          filename,
+          orderNumber: salesOrder.orderNumber,
+          orderType: salesOrder.orderType,
+          customerName: salesOrder.customer?.name || "Customer",
+          amount: salesOrder.totals?.finalTotal || 0,
+          downloadUrl: `/api/sales-orders/${id}/print?template=${template}&format=pdf`,
+        },
+        message: "PDF download initiated",
+        action: "download_pdf",
+      });
+    } catch (error) {
+      console.error("❌ Error generating PDF:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate PDF",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get multiple sales orders for bulk printing
+   */
+  getBulkSalesOrdersForPrint: async (req, res) => {
+    try {
+      const {ids} = req.body; // Array of order IDs
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Order IDs array is required",
+        });
+      }
+
+      // Validate all IDs
+      const invalidIds = ids.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid order ID format",
+          invalidIds,
+        });
+      }
+
+      // Get all sales orders
+      const orders = await SalesOrder.find({_id: {$in: ids}})
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (orders.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No sales orders found",
+        });
+      }
+
+      // Transform each order for printing
+      const bulkOrderData = orders.map((salesOrder) => ({
+        company: {
+          name: salesOrder.companyId?.businessName || "Your Company",
+          gstin: salesOrder.companyId?.gstin || "",
+          address: salesOrder.companyId?.address || "",
+          phone: salesOrder.companyId?.phoneNumber || "",
+          email: salesOrder.companyId?.email || "",
+          logo: salesOrder.companyId?.logo?.base64 || null,
+        },
+        customer: {
+          name: salesOrder.customer?.name || "Customer",
+          address: salesOrder.customer?.address || "",
+          mobile:
+            salesOrder.customer?.mobile || salesOrder.customerMobile || "",
+          email: salesOrder.customer?.email || "",
+          gstin: salesOrder.customer?.gstNumber || "",
+        },
+        order: {
+          id: salesOrder._id,
+          orderNumber: salesOrder.orderNumber,
+          orderDate: salesOrder.orderDate,
+          orderType: salesOrder.orderType,
+          validUntil: salesOrder.validUntil,
+          expectedDeliveryDate: salesOrder.expectedDeliveryDate,
+          status: salesOrder.status,
+          priority: salesOrder.priority,
+          notes: salesOrder.notes || "",
+          customerNotes: salesOrder.customerNotes || "",
+          termsAndConditions: salesOrder.termsAndConditions || "",
+        },
+        items: (salesOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: salesOrder.totals?.subtotal || 0,
+          totalTax: salesOrder.totals?.totalTax || 0,
+          totalCGST: salesOrder.totals?.totalCGST || 0,
+          totalSGST: salesOrder.totals?.totalSGST || 0,
+          totalIGST: salesOrder.totals?.totalIGST || 0,
+          totalDiscount: salesOrder.totals?.totalDiscount || 0,
+          roundOff: salesOrder.totals?.roundOff || 0,
+          finalTotal: salesOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: salesOrder.payment?.method || "credit",
+          paidAmount: salesOrder.payment?.paidAmount || 0,
+          pendingAmount: salesOrder.payment?.pendingAmount || 0,
+          status: salesOrder.payment?.status || "pending",
+        },
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          orders: bulkOrderData,
+          count: bulkOrderData.length,
+          requestedCount: ids.length,
+          notFound: ids.length - bulkOrderData.length,
+          meta: {
+            format,
+            template,
+            printDate: new Date(),
+            isBulkPrint: true,
+          },
+        },
+        message: `${bulkOrderData.length} sales orders prepared for bulk printing`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting bulk sales orders for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bulk sales orders for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales order for QR code acceptance
+   */
+  getSalesOrderForQRAcceptance: async (req, res) => {
+    try {
+      const {id} = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      const salesOrder = await SalesOrder.findById(id)
+        .populate("customer", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      if (
+        salesOrder.status === "accepted" ||
+        salesOrder.status === "converted"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Order is already accepted",
+        });
+      }
+
+      // Generate acceptance data for QR code
+      const acceptanceData = {
+        orderId: salesOrder._id,
+        orderNumber: salesOrder.orderNumber,
+        orderType: salesOrder.orderType,
+        companyName: salesOrder.companyId?.businessName || "Company",
+        customerName: salesOrder.customer?.name || "Customer",
+        amount: salesOrder.totals?.finalTotal || 0,
+        validUntil: salesOrder.validUntil,
+        acceptanceUrl: `${process.env.FRONTEND_URL}/order/accept/${salesOrder._id}`,
+        qrSize: 256,
+        meta: {
+          generatedAt: new Date(),
+          expiresAt:
+            salesOrder.validUntil ||
+            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        },
+      };
+
+      res.json({
+        success: true,
+        data: acceptanceData,
+        message: "Order acceptance QR data generated successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales order for QR acceptance:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales order for QR acceptance",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales order summary for quick view
+   */
+  getSalesOrderSummary: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      const salesOrder = await SalesOrder.findById(id)
+        .populate("customer", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      // Generate summary data
+      const summaryData = {
+        basic: {
+          orderId: salesOrder._id,
+          orderNumber: salesOrder.orderNumber,
+          orderDate: salesOrder.orderDate,
+          orderType: salesOrder.orderType,
+          status: salesOrder.status,
+          priority: salesOrder.priority,
+          companyName: salesOrder.companyId?.businessName || "Company",
+          customerName: salesOrder.customer?.name || "Customer",
+          customerMobile:
+            salesOrder.customer?.mobile || salesOrder.customerMobile || "",
+        },
+        financial: {
+          subtotal: salesOrder.totals?.subtotal || 0,
+          totalTax: salesOrder.totals?.totalTax || 0,
+          totalDiscount: salesOrder.totals?.totalDiscount || 0,
+          finalTotal: salesOrder.totals?.finalTotal || 0,
+          paidAmount: salesOrder.payment?.paidAmount || 0,
+          pendingAmount: salesOrder.payment?.pendingAmount || 0,
+          paymentStatus: salesOrder.payment?.status || "pending",
+          paymentMethod: salesOrder.payment?.method || "credit",
+        },
+        items: {
+          totalItems: salesOrder.items?.length || 0,
+          totalQuantity: salesOrder.totals?.totalQuantity || 0,
+          topItem:
+            salesOrder.items && salesOrder.items.length > 0
+              ? {
+                  name: salesOrder.items[0].itemName,
+                  quantity: salesOrder.items[0].quantity,
+                  amount: salesOrder.items[0].amount,
+                }
+              : null,
+        },
+        timeline: {
+          createdAt: salesOrder.createdAt,
+          lastModified: salesOrder.updatedAt,
+          validUntil: salesOrder.validUntil,
+          expectedDeliveryDate: salesOrder.expectedDeliveryDate,
+          isExpired: salesOrder.validUntil
+            ? new Date() > new Date(salesOrder.validUntil)
+            : false,
+          isOverdue: salesOrder.expectedDeliveryDate
+            ? new Date() > new Date(salesOrder.expectedDeliveryDate)
+            : false,
+        },
+        conversion: {
+          convertedToInvoice: salesOrder.convertedToInvoice || false,
+          invoiceNumber: salesOrder.invoiceNumber || null,
+          invoiceRef: salesOrder.invoiceRef || null,
+          convertedAt: salesOrder.convertedAt || null,
+        },
+        actions: {
+          canEdit: ["draft", "sent"].includes(salesOrder.status),
+          canCancel: !["accepted", "converted", "cancelled"].includes(
+            salesOrder.status
+          ),
+          canAccept: salesOrder.status === "sent",
+          canConvert:
+            ["accepted", "confirmed"].includes(salesOrder.status) &&
+            !salesOrder.convertedToInvoice,
+          canPrint: true,
+          canEmail: !!salesOrder.customer?.email,
+          canAddPayment: salesOrder.payment?.pendingAmount > 0,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: summaryData,
+        message: "Sales order summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales order summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales order summary",
+        error: error.message,
+      });
+    }
+  },
+  /**
+   * ✅ NEW: Get proforma invoice for printing
+   */
+  getProformaInvoiceForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "proforma"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid proforma invoice ID format",
+        });
+      }
+
+      const proforma = await SalesOrder.findOne({
+        _id: id,
+        orderType: "proforma_invoice",
+      })
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!proforma) {
+        return res.status(404).json({
+          success: false,
+          message: "Proforma invoice not found",
+        });
+      }
+
+      // Transform data for proforma invoice printing
+      const proformaData = {
+        company: {
+          name: proforma.companyId?.businessName || "Your Company",
+          gstin: proforma.companyId?.gstin || "",
+          address: proforma.companyId?.address || "",
+          phone: proforma.companyId?.phoneNumber || "",
+          email: proforma.companyId?.email || "",
+          logo: proforma.companyId?.logo?.base64 || null,
+        },
+        customer: {
+          name: proforma.customer?.name || "Customer",
+          address: proforma.customer?.address || "",
+          mobile: proforma.customer?.mobile || proforma.customerMobile || "",
+          email: proforma.customer?.email || "",
+          gstin: proforma.customer?.gstNumber || "",
+        },
+        proforma: {
+          id: proforma._id,
+          proformaNumber: proforma.orderNumber,
+          proformaDate: proforma.orderDate,
+          validUntil: proforma.validUntil,
+          expectedDeliveryDate: proforma.expectedDeliveryDate,
+          status: proforma.status,
+          priority: proforma.priority,
+          notes: proforma.notes || "",
+          customerNotes: proforma.customerNotes || "",
+          termsAndConditions: proforma.termsAndConditions || "",
+        },
+        items: (proforma.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: proforma.totals?.subtotal || 0,
+          totalTax: proforma.totals?.totalTax || 0,
+          totalCGST: proforma.totals?.totalCGST || 0,
+          totalSGST: proforma.totals?.totalSGST || 0,
+          totalIGST: proforma.totals?.totalIGST || 0,
+          totalDiscount: proforma.totals?.totalDiscount || 0,
+          roundOff: proforma.totals?.roundOff || 0,
+          finalTotal: proforma.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: proforma.payment?.method || "advance",
+          advanceRequired: proforma.payment?.advanceAmount || 0,
+          creditDays: proforma.payment?.creditDays || 0,
+          paymentTerms:
+            proforma.payment?.notes || "50% advance, balance on delivery",
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isProformaInvoice: true,
+          requiresAdvance: (proforma.payment?.advanceAmount || 0) > 0,
+          isGSTEnabled: proforma.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: proformaData,
+        message: "Proforma invoice data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting proforma invoice for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get proforma invoice for printing",
         error: error.message,
       });
     }

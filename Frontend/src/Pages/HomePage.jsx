@@ -160,12 +160,6 @@ function HomePage({
   // Update view when URL changes
   useEffect(() => {
     const newView = getViewFromPath();
-    console.log(
-      "🔄 URL changed, new view:",
-      newView,
-      "from path:",
-      location.pathname
-    );
     setCurrentView(newView);
   }, [location.pathname]);
 

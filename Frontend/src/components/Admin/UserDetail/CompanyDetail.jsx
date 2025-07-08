@@ -1057,7 +1057,7 @@ function CompanyDetail({userId, companyId, section, userData, addToast}) {
         </Card>
       </Tab.Container>
 
-      <style jsx>{`
+      <style>{`
         .bg-gradient-primary {
           background: linear-gradient(135deg, #0d6efd 0%, #0056b3 100%);
         }

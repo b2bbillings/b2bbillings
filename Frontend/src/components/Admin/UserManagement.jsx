@@ -1265,7 +1265,7 @@ function UserManagement({adminData, currentUser, addToast}) {
         </Modal.Footer>
       </Modal>
 
-      <style jsx>{`
+      <style>{`
         /* Modern Professional Styles */
         .user-management {
           font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;

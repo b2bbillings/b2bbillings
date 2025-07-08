@@ -255,7 +255,7 @@ function SearchBar({
       )}
 
       {/* Custom styles for hover effects */}
-      <style jsx>{`
+      <style>{`
         .hover-bg-light:hover {
           background-color: #f8f9fa !important;
         }

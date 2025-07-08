@@ -149,7 +149,7 @@ function PurchaseOrderFilter({
         </Row>
       </Card.Body>
 
-      <style jsx>{`
+      <style>{`
         .purple-theme {
           border-left: 3px solid #8b5cf6;
           background: rgba(139, 92, 246, 0.02);

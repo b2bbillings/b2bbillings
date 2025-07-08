@@ -170,7 +170,7 @@ function FilterTabs({
 
       {/* Active tab indicator line (for tabs variant) */}
       {variant === "tabs" && (
-        <style jsx>{`
+        <style>{`
           .nav-tabs .nav-link.active {
             border-bottom: 3px solid var(--bs-primary);
             background-color: transparent;

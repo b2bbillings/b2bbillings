@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo} from "react";
+import React, {useState, useCallback, useMemo, useRef} from "react";
 import {Button, Table, Badge, Form} from "react-bootstrap";
 import {useNavigate, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
@@ -27,6 +27,8 @@ import {
 import {Menu, MenuItem, MenuButton} from "@szhsin/react-menu";
 import "@szhsin/react-menu/dist/index.css";
 import "@szhsin/react-menu/dist/transitions/slide.css";
+import SalesInvoice from "../../../PrintComponents/SalesInvoice";
+import {useReactToPrint} from "react-to-print";
 import salesService from "../../../../services/salesService";
 
 function SalesInvoicesTable({
@@ -75,7 +77,147 @@ function SalesInvoicesTable({
   const [localSortBy, setLocalSortBy] = useState(sortBy);
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
   const [localFilterStatus, setLocalFilterStatus] = useState(filterStatus);
+  const [printingInvoices, setPrintingInvoices] = useState(new Set());
+  const [currentPrintData, setCurrentPrintData] = useState(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const printComponentRef = useRef();
 
+  const handlePrintTransaction = useCallback(
+    async (transaction) => {
+      const transactionId = transaction._id || transaction.id;
+
+      if (!transactionId) {
+        addToast?.("Invalid transaction ID", "error");
+        return;
+      }
+
+      if (printingInvoices.has(transactionId)) {
+        return; // Already printing
+      }
+
+      try {
+        setPrintingInvoices((prev) => new Set(prev).add(transactionId));
+        addToast?.("Preparing invoice for printing...", "info");
+
+        // Get invoice data for printing
+        const printResponse = await salesService.getSalesInvoiceForPrint(
+          transactionId,
+          {
+            format: "a4",
+            template: "standard",
+          }
+        );
+
+        if (printResponse.success && printResponse.data) {
+          // Set the print data and show preview
+          setCurrentPrintData(printResponse.data);
+          setShowPrintPreview(true);
+          addToast?.("Print preview ready", "success");
+        } else {
+          throw new Error(
+            printResponse.message || "Failed to get invoice data for printing"
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error printing invoice:", error);
+        addToast?.(`Failed to print invoice: ${error.message}`, "error");
+      } finally {
+        setPrintingInvoices((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(transactionId);
+          return newSet;
+        });
+      }
+    },
+    [printingInvoices, addToast]
+  );
+
+  const handlePrint = useReactToPrint({
+    contentRef: printComponentRef, // Changed from 'content' to 'contentRef'
+    documentTitle: currentPrintData?.invoice?.invoiceNumber || "Sales Invoice",
+    onAfterPrint: () => {
+      setShowPrintPreview(false);
+      setCurrentPrintData(null);
+      addToast?.("Invoice printed successfully!", "success");
+    },
+    onPrintError: (error) => {
+      console.error("Print error:", error);
+      addToast?.("Failed to print invoice", "error");
+      setShowPrintPreview(false);
+      setCurrentPrintData(null);
+    },
+  });
+  // Add bulk print handler (optional)
+  const handleBulkPrint = useCallback(
+    async (selectedTransactions) => {
+      if (!selectedTransactions || selectedTransactions.length === 0) {
+        addToast?.("No invoices selected for printing", "warning");
+        return;
+      }
+
+      if (selectedTransactions.length > 10) {
+        addToast?.("Maximum 10 invoices can be printed at once", "warning");
+        return;
+      }
+
+      try {
+        addToast?.("Preparing invoices for bulk printing...", "info");
+
+        const bulkPrintResponse =
+          await salesService.getBulkSalesInvoicesForPrint(
+            selectedTransactions.map((t) => t._id || t.id),
+            {
+              format: "a4",
+              template: "standard",
+            }
+          );
+
+        if (bulkPrintResponse.success && bulkPrintResponse.data?.invoices) {
+          // For bulk printing, you could open each in a new tab or create a combined view
+          bulkPrintResponse.data.invoices.forEach((invoiceData, index) => {
+            setTimeout(() => {
+              const printWindow = window.open("", "_blank");
+              printWindow.document.write(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Invoice ${
+                    invoiceData.invoice?.invoiceNumber || index + 1
+                  }</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                    @media print { body { margin: 0; padding: 10px; } }
+                  </style>
+                </head>
+                <body>
+                  <div id="invoice-container"></div>
+                  <script>
+                    window.onload = function() {
+                      window.print();
+                      setTimeout(() => window.close(), 1000);
+                    }
+                  </script>
+                </body>
+              </html>
+            `);
+              printWindow.document.close();
+            }, index * 500); // Stagger the print jobs
+          });
+
+          addToast?.(
+            `${selectedTransactions.length} invoices sent to printer`,
+            "success"
+          );
+        } else {
+          throw new Error("Failed to prepare invoices for bulk printing");
+        }
+      } catch (error) {
+        console.error("❌ Error bulk printing:", error);
+        addToast?.(`Failed to bulk print invoices: ${error.message}`, "error");
+      }
+    },
+    [addToast]
+  );
   const isQuotationMode = useMemo(() => {
     return (
       isQuotationsMode || mode === "quotations" || documentType === "quotation"
@@ -671,6 +813,7 @@ function SalesInvoicesTable({
     const transactionId = transaction._id || transaction.id;
     const isDeleting = deletingTransactions.has(transactionId);
     const isConverting = convertingTransactions.has(transactionId);
+    const isPrinting = printingInvoices.has(transactionId);
     const isCancelled =
       transaction.status === "cancelled" ||
       transaction.status === "deleted" ||
@@ -687,8 +830,12 @@ function SalesInvoicesTable({
 
     const handleDelete = useCallback(
       async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
 
         if (isDeleting || isCancelled) {
           return;
@@ -701,8 +848,12 @@ function SalesInvoicesTable({
 
     const handleEdit = useCallback(
       (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
 
         if (isCancelled) {
           addToast?.(
@@ -727,9 +878,11 @@ function SalesInvoicesTable({
 
     const handleConvertToPurchase = useCallback(
       (e) => {
-        // Check if event exists before calling preventDefault
+        // Safe event handling
         if (e && typeof e.preventDefault === "function") {
           e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
           e.stopPropagation();
         }
         handleConvertToPurchaseInvoice(transaction);
@@ -737,17 +890,82 @@ function SalesInvoicesTable({
       [transaction, handleConvertToPurchaseInvoice]
     );
 
+    const handlePrint = useCallback(
+      (e) => {
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
+        handlePrintTransaction(transaction);
+      },
+      [transaction, handlePrintTransaction]
+    );
+
+    const handleShare = useCallback(
+      (e) => {
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
+        onShareTransaction?.(transaction);
+      },
+      [transaction, onShareTransaction]
+    );
+
+    const handleDownload = useCallback(
+      (e) => {
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
+        onDownloadTransaction?.(transaction);
+      },
+      [transaction, onDownloadTransaction]
+    );
+
+    const handleViewClick = useCallback(
+      (e) => {
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
+        handleViewTransaction(transaction);
+      },
+      [transaction, handleViewTransaction]
+    );
+
+    const handleConvertToInvoice = useCallback(
+      (e) => {
+        if (e && typeof e.preventDefault === "function") {
+          e.preventDefault();
+        }
+        if (e && typeof e.stopPropagation === "function") {
+          e.stopPropagation();
+        }
+        handleConvertTransaction(transaction);
+      },
+      [transaction, handleConvertTransaction]
+    );
+
     return (
       <Menu
         menuButton={
           <MenuButton
             className="action-menu-button"
-            disabled={isDeleting || isConverting}
+            disabled={isDeleting || isConverting || isPrinting}
             style={{borderRadius: 0}}
           >
             <FontAwesomeIcon
-              icon={isConverting ? faSpinner : faEllipsisV}
-              className={isConverting ? "fa-spin" : ""}
+              icon={isConverting || isPrinting ? faSpinner : faEllipsisV}
+              className={isConverting || isPrinting ? "fa-spin" : ""}
             />
           </MenuButton>
         }
@@ -757,80 +975,92 @@ function SalesInvoicesTable({
         position="auto"
         overflow="auto"
       >
-        <MenuItem onClick={() => handleViewTransaction(transaction)}>
+        {/* View Details */}
+        <MenuItem onClick={handleViewClick}>
           <FontAwesomeIcon icon={faEye} className="me-2" />
           View Details
         </MenuItem>
 
+        {/* Edit - Only for non-cancelled items */}
         {enableActions && !isCancelled && (
-          <>
-            <MenuItem
-              onClick={handleEdit}
-              disabled={isDeleting || isConverting}
-            >
-              <FontAwesomeIcon icon={faEdit} className="me-2" />
-              Edit {isQuotationMode ? "Quotation" : "Invoice"}
-            </MenuItem>
-
-            {/* Quotation to Invoice Conversion */}
-            {statusInfo.canConvert && (
-              <MenuItem
-                onClick={() => handleConvertTransaction(transaction)}
-                disabled={isDeleting || isConverting}
-              >
-                <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                Convert to Invoice
-              </MenuItem>
-            )}
-
-            {/* NEW: Sales Invoice to Purchase Invoice Conversion */}
-            {canConvertToPurchase && (
-              <MenuItem
-                onClick={handleConvertToPurchase}
-                disabled={isDeleting || isConverting}
-                style={{
-                  color: transaction.autoGeneratedPurchaseInvoice
-                    ? "#28a745"
-                    : "#6f42c1",
-                  fontWeight: transaction.autoGeneratedPurchaseInvoice
-                    ? "600"
-                    : "normal",
-                }}
-              >
-                <FontAwesomeIcon
-                  icon={isConverting ? faSpinner : faExchangeAlt}
-                  className={`me-2 ${isConverting ? "fa-spin" : ""}`}
-                />
-                {isConverting
-                  ? "Converting..."
-                  : transaction.autoGeneratedPurchaseInvoice
-                  ? "✅ Converted to Purchase"
-                  : "🔄 Convert to Purchase Invoice"}
-              </MenuItem>
-            )}
-          </>
+          <MenuItem
+            onClick={handleEdit}
+            disabled={isDeleting || isConverting || isPrinting}
+          >
+            <FontAwesomeIcon icon={faEdit} className="me-2" />
+            Edit {isQuotationMode ? "Quotation" : "Invoice"}
+          </MenuItem>
         )}
 
-        <MenuItem onClick={() => onPrintTransaction?.(transaction)}>
-          <FontAwesomeIcon icon={faPrint} className="me-2" />
-          Print
-        </MenuItem>
+        {/* Print - Available for all non-cancelled items */}
+        {!isCancelled && (
+          <MenuItem
+            onClick={handlePrint}
+            disabled={isDeleting || isConverting || isPrinting}
+          >
+            <FontAwesomeIcon
+              icon={isPrinting ? faSpinner : faPrint}
+              className={`me-2 ${isPrinting ? "fa-spin" : ""}`}
+            />
+            {isPrinting ? "Preparing..." : "Print"}
+          </MenuItem>
+        )}
 
-        <MenuItem onClick={() => onShareTransaction?.(transaction)}>
+        {/* Share */}
+        <MenuItem onClick={handleShare}>
           <FontAwesomeIcon icon={faShare} className="me-2" />
           Share
         </MenuItem>
 
-        <MenuItem onClick={() => onDownloadTransaction?.(transaction)}>
+        {/* Download */}
+        <MenuItem onClick={handleDownload}>
           <FontAwesomeIcon icon={faDownload} className="me-2" />
           Download
         </MenuItem>
 
+        {/* Quotation to Invoice Conversion */}
+        {statusInfo.canConvert && (
+          <MenuItem
+            onClick={handleConvertToInvoice}
+            disabled={isDeleting || isConverting || isPrinting}
+          >
+            <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+            Convert to Invoice
+          </MenuItem>
+        )}
+
+        {/* Sales Invoice to Purchase Invoice Conversion */}
+        {canConvertToPurchase && (
+          <MenuItem
+            onClick={handleConvertToPurchase}
+            disabled={isDeleting || isConverting || isPrinting}
+            style={{
+              color: transaction.autoGeneratedPurchaseInvoice
+                ? "#28a745"
+                : "#6f42c1",
+              fontWeight: transaction.autoGeneratedPurchaseInvoice
+                ? "600"
+                : "normal",
+            }}
+          >
+            <FontAwesomeIcon
+              icon={isConverting ? faSpinner : faExchangeAlt}
+              className={`me-2 ${isConverting ? "fa-spin" : ""}`}
+            />
+            {isConverting
+              ? "Converting..."
+              : transaction.autoGeneratedPurchaseInvoice
+              ? "✅ Converted to Purchase"
+              : "🔄 Convert to Purchase Invoice"}
+          </MenuItem>
+        )}
+
+        {/* Delete - Only for non-cancelled items */}
         {enableActions && !isCancelled && (
           <MenuItem
             onClick={handleDelete}
             className="text-danger"
-            disabled={isDeleting || isConverting}
+            disabled={isDeleting || isConverting || isPrinting}
           >
             <FontAwesomeIcon
               icon={isDeleting ? faSpinner : faTrash}
@@ -895,7 +1125,7 @@ function SalesInvoicesTable({
 
   return (
     <>
-      <style jsx>{`
+      <style>{`
         .purple-table-header {
           background: linear-gradient(
             135deg,
@@ -997,7 +1227,7 @@ function SalesInvoicesTable({
           border-radius: 0 !important;
         }
 
-        /* NEW: Conversion menu item styles */
+        /* Conversion menu item styles */
         .szh-menu__item[style*="color: #6f42c1"] {
           color: #6f42c1 !important;
         }
@@ -1012,6 +1242,114 @@ function SalesInvoicesTable({
           color: #6f42c1 !important;
         }
 
+        /* Print Preview Modal Styles */
+        .print-preview-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.8);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .print-preview-content {
+          background-color: white;
+          border-radius: 8px;
+          padding: 20px;
+          max-width: 90vw;
+          max-height: 90vh;
+          overflow: auto;
+          position: relative;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .print-preview-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          padding-bottom: 15px;
+          border-bottom: 2px solid #e5e7eb;
+        }
+
+        .print-preview-title {
+          margin: 0;
+          color: #374151;
+          font-size: 1.25rem;
+          font-weight: 600;
+        }
+
+        .print-preview-actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        .print-preview-btn {
+          padding: 8px 16px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.2s ease;
+        }
+
+        .print-preview-btn.btn-primary {
+          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          color: white;
+        }
+
+        .print-preview-btn.btn-primary:hover {
+          background: linear-gradient(135deg, #5752d1 0%, #7c3aed 100%);
+        }
+
+        .print-preview-btn.btn-secondary {
+          background: #6b7280;
+          color: white;
+        }
+
+        .print-preview-btn.btn-secondary:hover {
+          background: #4b5563;
+        }
+
+        .print-preview-btn.btn-danger {
+          background: #dc2626;
+          color: white;
+        }
+
+        .print-preview-btn.btn-danger:hover {
+          background: #b91c1c;
+        }
+
+        @media print {
+          .print-preview-modal {
+            position: static;
+            background: none;
+            padding: 0;
+          }
+
+          .print-preview-content {
+            max-width: none;
+            max-height: none;
+            padding: 0;
+            box-shadow: none;
+            border-radius: 0;
+          }
+
+          .print-preview-header {
+            display: none;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+        }
+
         @media (max-width: 768px) {
           .table-responsive {
             font-size: 0.875rem;
@@ -1024,6 +1362,22 @@ function SalesInvoicesTable({
 
           .purple-table-header th {
             padding: 12px 8px !important;
+          }
+
+          .print-preview-content {
+            max-width: 95vw;
+            max-height: 95vh;
+            padding: 15px;
+          }
+
+          .print-preview-header {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+          }
+
+          .print-preview-actions {
+            justify-content: space-between;
           }
         }
       `}</style>
@@ -1109,10 +1463,10 @@ function SalesInvoicesTable({
                   <tr
                     key={transactionId || index}
                     className={`
-                      ${isSelected ? "table-active" : ""} 
-                      ${isReturned ? "table-danger" : ""} 
-                      ${isCancelled ? "table-secondary" : ""}
-                    `}
+                    ${isSelected ? "table-active" : ""} 
+                    ${isReturned ? "table-danger" : ""} 
+                    ${isCancelled ? "table-secondary" : ""}
+                  `}
                     style={{cursor: "pointer"}}
                     onClick={() => handleViewTransaction(transaction)}
                   >
@@ -1478,6 +1832,48 @@ function SalesInvoicesTable({
           </Table>
         </div>
       </div>
+
+      {/* Print Preview Modal */}
+      {showPrintPreview && currentPrintData && (
+        <div className="print-preview-modal no-print">
+          <div className="print-preview-content">
+            {/* Modal Header */}
+            <div className="print-preview-header no-print">
+              <h3 className="print-preview-title">
+                📄 Print Preview -{" "}
+                {currentPrintData.invoice?.invoiceNumber || "Sales Invoice"}
+              </h3>
+              <div className="print-preview-actions">
+                <button
+                  onClick={handlePrint}
+                  className="print-preview-btn btn-primary"
+                >
+                  <FontAwesomeIcon icon={faPrint} className="me-2" />
+                  Print
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPrintPreview(false);
+                    setCurrentPrintData(null);
+                  }}
+                  className="print-preview-btn btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            {/* Print Component */}
+            <div className="print-preview-body">
+              <SalesInvoice
+                ref={printComponentRef}
+                invoiceData={currentPrintData}
+                onPrint={handlePrint}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

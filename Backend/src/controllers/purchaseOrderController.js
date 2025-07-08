@@ -666,16 +666,6 @@ const purchaseOrderController = {
               "businessName email phoneNumber gstin isActive"
             )
             .lean();
-
-          console.log("🔍 Supplier details after population:", {
-            supplierId: supplierRecord._id,
-            supplierName: supplierRecord.name,
-            hasLinkedCompanyId: !!supplierRecord.linkedCompanyId,
-            linkedCompanyId:
-              supplierRecord.linkedCompanyId?._id ||
-              supplierRecord.linkedCompanyId,
-            linkedCompanyName: supplierRecord.linkedCompanyId?.businessName,
-          });
         }
       } catch (supplierError) {
         return res.status(400).json({
@@ -703,25 +693,9 @@ const purchaseOrderController = {
       if (sourceCompanyId && mongoose.Types.ObjectId.isValid(sourceCompanyId)) {
         finalSourceCompanyId = sourceCompanyId;
         sourceCompanyDetectionMethod = "manual";
-        console.log(
-          "✅ Using manually provided sourceCompanyId:",
-          sourceCompanyId
-        );
       }
       // ✅ STEP 2: Auto-detect from supplier's linkedCompanyId
       else if (autoDetectSourceCompany && supplierRecord.linkedCompanyId) {
-        console.log(
-          "🔍 Auto-detecting sourceCompanyId from supplier's linkedCompanyId:",
-          {
-            supplierId: supplierRecord._id,
-            supplierName: supplierRecord.name,
-            linkedCompanyId:
-              supplierRecord.linkedCompanyId._id ||
-              supplierRecord.linkedCompanyId,
-            currentCompanyId: companyId,
-          }
-        );
-
         const linkedCompanyId =
           supplierRecord.linkedCompanyId._id || supplierRecord.linkedCompanyId;
 
@@ -740,12 +714,6 @@ const purchaseOrderController = {
                 phone: linkedCompany.phoneNumber,
                 gstin: linkedCompany.gstin,
               };
-
-              console.log("✅ Auto-detected sourceCompanyId:", {
-                sourceCompanyId: finalSourceCompanyId.toString(),
-                sourceCompanyName: linkedCompany.businessName,
-                detectionMethod: sourceCompanyDetectionMethod,
-              });
             } else {
               console.log(
                 "⚠️ Linked company not found or inactive:",
@@ -763,10 +731,6 @@ const purchaseOrderController = {
       }
       // ✅ STEP 3: Try to auto-detect by supplier details (GST, phone, email, name)
       else if (autoDetectSourceCompany) {
-        console.log(
-          "🔍 Attempting to auto-detect sourceCompanyId by supplier details..."
-        );
-
         try {
           const companiesResponse = await Company.find({
             _id: {$ne: companyId}, // Exclude current company
@@ -812,23 +776,6 @@ const purchaseOrderController = {
               phone: matchedCompany.phoneNumber,
               gstin: matchedCompany.gstin,
             };
-
-            console.log(
-              "✅ Auto-detected sourceCompanyId by supplier details:",
-              {
-                sourceCompanyId: finalSourceCompanyId.toString(),
-                sourceCompanyName: matchedCompany.businessName,
-                detectionMethod: sourceCompanyDetectionMethod,
-                matchedBy:
-                  supplierRecord.gstNumber === matchedCompany.gstin
-                    ? "GST"
-                    : supplierRecord.phoneNumber === matchedCompany.phoneNumber
-                    ? "Phone"
-                    : supplierRecord.email === matchedCompany.email
-                    ? "Email"
-                    : "Name",
-              }
-            );
           } else {
             console.log("ℹ️ No matching company found for supplier details");
           }
@@ -853,15 +800,6 @@ const purchaseOrderController = {
           detectionMethod: sourceCompanyDetectionMethod,
         });
       }
-
-      // ✅ Log final result
-      console.log("🎯 Final sourceCompanyId detection result:", {
-        finalSourceCompanyId: finalSourceCompanyId?.toString() || null,
-        sourceCompanyDetectionMethod,
-        sourceCompanyDetails: sourceCompanyDetails?.businessName || null,
-        wasDetected: !!finalSourceCompanyId,
-        autoDetectionEnabled: autoDetectSourceCompany,
-      });
 
       // ✅ Continue with existing logic for GST, tax calculations, etc.
       const finalGstType = gstType || (gstEnabled ? "gst" : "non-gst");
@@ -1144,7 +1082,7 @@ const purchaseOrderController = {
         orderValidUntil.setDate(orderValidUntil.getDate() + 30);
       }
 
-      // ✅ CRITICAL: Create purchase order data WITHOUT orderNumber (let model generate it)
+      // ✅ FIXED: Replace the incorrect purchaseOrderData section (around line 1080-1120)
       const purchaseOrderData = {
         orderDate: orderDate ? new Date(orderDate) : new Date(),
         orderType,
@@ -1164,44 +1102,48 @@ const purchaseOrderController = {
         companyId,
         correspondingSalesOrderId: null,
         correspondingSalesOrderNumber: null,
-        sourceOrderId:
-          sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)
-            ? sourceOrderId
-            : null,
-        sourceOrderNumber: sourceOrderNumber || null,
-        sourceOrderType:
-          sourceOrderType &&
-          ["sales-order", "quotation", "proforma-invoice"].includes(
-            sourceOrderType
-          )
-            ? sourceOrderType
-            : null,
+
+        // ✅ CRITICAL FIX: Only set sourceOrderType if it's a valid enum value
+        ...(sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)
+          ? {sourceOrderId: sourceOrderId}
+          : {}),
+        ...(sourceOrderNumber ? {sourceOrderNumber: sourceOrderNumber} : {}),
+        ...(sourceOrderType &&
+        ["sales-order", "quotation", "proforma-invoice"].includes(
+          sourceOrderType
+        )
+          ? {sourceOrderType: sourceOrderType}
+          : {}),
+
         // ✅ CRITICAL: Use the auto-detected or provided sourceCompanyId
-        sourceCompanyId:
-          finalSourceCompanyId &&
-          mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
-            ? finalSourceCompanyId
-            : null,
+        ...(finalSourceCompanyId &&
+        mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
+          ? {sourceCompanyId: finalSourceCompanyId}
+          : {}),
+
         // ✅ CRITICAL: Set targetCompanyId to the detected sourceCompanyId for bidirectional flow
-        targetCompanyId:
-          finalSourceCompanyId &&
-          mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
-            ? finalSourceCompanyId
-            : targetCompanyId &&
-              mongoose.Types.ObjectId.isValid(targetCompanyId)
-            ? targetCompanyId
-            : null,
+        ...(finalSourceCompanyId &&
+        mongoose.Types.ObjectId.isValid(finalSourceCompanyId)
+          ? {targetCompanyId: finalSourceCompanyId}
+          : targetCompanyId && mongoose.Types.ObjectId.isValid(targetCompanyId)
+          ? {targetCompanyId: targetCompanyId}
+          : {}),
+
         isAutoGenerated: isAutoGenerated || false,
-        generatedFrom:
-          generatedFrom &&
-          ["sales_order", "manual", "import", "api"].includes(generatedFrom)
-            ? generatedFrom
-            : "manual",
-        generatedBy:
-          generatedBy && mongoose.Types.ObjectId.isValid(generatedBy)
-            ? generatedBy
-            : req.user?.id || employeeId || null,
-        generatedAt: isAutoGenerated ? new Date() : null,
+
+        // ✅ CRITICAL FIX: Only set generatedFrom if it's a valid enum value
+        ...(generatedFrom &&
+        ["sales_order", "manual", "import", "api"].includes(generatedFrom)
+          ? {generatedFrom: generatedFrom}
+          : {generatedFrom: "manual"}),
+
+        ...(generatedBy && mongoose.Types.ObjectId.isValid(generatedBy)
+          ? {generatedBy: generatedBy}
+          : req.user?.id || employeeId
+          ? {generatedBy: req.user?.id || employeeId}
+          : {}),
+        ...(isAutoGenerated ? {generatedAt: new Date()} : {}),
+
         autoGeneratedSalesOrder: false,
         salesOrderRef: null,
         salesOrderNumber: null,
@@ -1241,33 +1183,31 @@ const purchaseOrderController = {
           "system",
       };
 
-      // Clean up undefined values
+      // ✅ ENHANCED: Clean up undefined and null values that cause enum validation errors
       Object.keys(purchaseOrderData).forEach((key) => {
-        if (purchaseOrderData[key] === undefined) {
-          delete purchaseOrderData[key];
+        if (
+          purchaseOrderData[key] === undefined ||
+          purchaseOrderData[key] === null ||
+          purchaseOrderData[key] === ""
+        ) {
+          // Only delete if it's not a required field or has enum constraints
+          const enumFields = [
+            "sourceOrderType",
+            "generatedFrom",
+            "orderType",
+            "status",
+            "priority",
+          ];
+          if (enumFields.includes(key)) {
+            // Don't include null/undefined enum fields
+            delete purchaseOrderData[key];
+          }
         }
-      });
-
-      console.log("💾 Creating purchase order with auto-generated number:", {
-        supplierId: supplierRecord._id,
-        supplierName: supplierRecord.name,
-        companyId: purchaseOrderData.companyId,
-        sourceCompanyId: purchaseOrderData.sourceCompanyId?.toString(),
-        targetCompanyId: purchaseOrderData.targetCompanyId?.toString(),
-        willAutoGenerateNumber: true,
       });
 
       // ✅ Create purchase order (model will auto-generate orderNumber)
       const purchaseOrder = new PurchaseOrder(purchaseOrderData);
       await purchaseOrder.save();
-
-      console.log("✅ Purchase order created with auto-generated number:", {
-        orderId: purchaseOrder._id,
-        orderNumber: purchaseOrder.orderNumber,
-        numberingInfo: purchaseOrder.numberingInfo,
-        sourceCompanyId: purchaseOrder.sourceCompanyId?.toString(),
-        targetCompanyId: purchaseOrder.targetCompanyId?.toString(),
-      });
 
       // ✅ Auto-create corresponding sales order if enabled
       let correspondingSalesOrder = null;
@@ -1448,6 +1388,57 @@ const purchaseOrderController = {
       });
     }
   },
+  confirmPurchaseOrder: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {confirmedBy, notes = "", acceptedItems = null} = req.body;
+
+      const purchaseOrder = await PurchaseOrder.findById(id);
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      // ✅ Use unified model method
+      await purchaseOrder.confirmOrder(confirmedBy);
+
+      // ✅ CRITICAL: Auto-confirm corresponding sales order
+      if (
+        purchaseOrder.sourceOrderId &&
+        purchaseOrder.sourceOrderType === "sales_order"
+      ) {
+        const correspondingSalesOrder = await SalesOrder.findById(
+          purchaseOrder.sourceOrderId
+        );
+        if (correspondingSalesOrder) {
+          await correspondingSalesOrder.confirmOrder(confirmedBy);
+          console.log(
+            `✅ Auto-confirmed sales order ${correspondingSalesOrder.orderNumber}`
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Purchase order confirmed successfully and corresponding sales order updated",
+        data: {
+          purchaseOrder,
+          correspondingSalesOrderConfirmed: !!purchaseOrder.sourceOrderId,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error confirming purchase order:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to confirm purchase order",
+        error: error.message,
+      });
+    }
+  },
+
   generateOrderNumber: async (req, res) => {
     try {
       const {
@@ -1910,7 +1901,6 @@ const purchaseOrderController = {
       });
     }
   },
-  // Retrieve single purchase order by ID with compatibility mapping
   getPurchaseOrderById: async (req, res) => {
     try {
       const {id} = req.params;
@@ -2002,18 +1992,6 @@ const purchaseOrderController = {
           orderId: id,
         });
       }
-
-      console.log("✅ Purchase order fetched:", {
-        id: order._id,
-        orderNumber: order.orderNumber,
-        supplier: order.supplier,
-        companyId: order.companyId,
-        hasSourceCompany: !!order.sourceCompanyId,
-        hasTargetCompany: !!order.targetCompanyId,
-        isAutoGenerated: order.isAutoGenerated,
-        hasCorrespondingSO: order.hasCorrespondingSalesOrder,
-        hasGeneratedSO: order.hasGeneratedSalesOrder,
-      });
 
       // ✅ FIXED: Safe handling of populated vs non-populated fields
       const compatibleOrder = {
@@ -2841,13 +2819,6 @@ const purchaseOrderController = {
         orderType = "purchase_order",
       } = req.body;
 
-      console.log("🔄 Starting bidirectional purchase order generation:", {
-        salesOrderId: id,
-        targetCompanyId,
-        targetSupplierId,
-        autoDetectionMode: !targetCompanyId,
-      });
-
       // Validate sales order ID
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -2874,14 +2845,6 @@ const purchaseOrderController = {
         });
       }
 
-      console.log("📋 Sales order details:", {
-        orderNumber: salesOrder.orderNumber,
-        customer: salesOrder.customer?.name,
-        customerGST: salesOrder.customer?.gstNumber,
-        customerPhone: salesOrder.customer?.phoneNumber,
-        sourceCompany: salesOrder.companyId?.businessName,
-      });
-
       // Check if purchase order already generated
       if (salesOrder.autoGeneratedPurchaseOrder) {
         return res.status(400).json({
@@ -2896,7 +2859,6 @@ const purchaseOrderController = {
 
       // 🔥 AUTO-DETECT TARGET COMPANY if not provided
       if (!targetCompanyId) {
-        console.log("🔍 Auto-detecting target company...");
         targetCompanyId = await findLinkedCompanyForSupplier(
           salesOrder.customer
         );
@@ -2922,8 +2884,6 @@ const purchaseOrderController = {
             ],
           });
         }
-
-        console.log(`🎯 Auto-detected target company: ${targetCompanyId}`);
       }
 
       // 🔥 FIND OR AUTO-CREATE SUPPLIER
@@ -2935,12 +2895,7 @@ const purchaseOrderController = {
       ) {
         // Method 1: Find by provided supplier ID
         supplierRecord = await Party.findById(targetSupplierId);
-        console.log(`🔍 Looking for supplier by ID: ${targetSupplierId}`);
       } else if (targetSupplierMobile) {
-        // Method 2: Find by mobile number
-        console.log(
-          `🔍 Looking for supplier by mobile: ${targetSupplierMobile}`
-        );
         supplierRecord = await Party.findOne({
           phoneNumber: targetSupplierMobile,
           companyId: targetCompanyId,
@@ -2951,8 +2906,6 @@ const purchaseOrderController = {
           ],
         });
       } else if (targetSupplierName) {
-        // Method 3: Find by name
-        console.log(`🔍 Looking for supplier by name: ${targetSupplierName}`);
         supplierRecord = await Party.findOne({
           name: {$regex: new RegExp(`^${targetSupplierName.trim()}$`, "i")},
           companyId: targetCompanyId,
@@ -2964,10 +2917,7 @@ const purchaseOrderController = {
         });
       }
 
-      // 🔥 AUTO-CREATE SUPPLIER if not found and source company exists
       if (!supplierRecord) {
-        console.log("👤 Supplier not found, attempting auto-creation...");
-
         try {
           // Get source company details for supplier creation
           const sourceCompany = salesOrder.companyId;
@@ -3009,15 +2959,6 @@ const purchaseOrderController = {
           availableSuppliers: `Use GET /api/parties?isSupplier=true&companyId=${targetCompanyId} to see available suppliers`,
         });
       }
-
-      console.log("👤 Using supplier for purchase order:", {
-        supplierId: supplierRecord._id,
-        supplierName: supplierRecord.name,
-        supplierMobile: supplierRecord.phoneNumber || supplierRecord.mobile,
-        wasAutoCreated:
-          !targetSupplierId && !targetSupplierMobile && !targetSupplierName,
-      });
-
       // ✅ ADDED: Final validation before proceeding
       if (!supplierRecord || !supplierRecord._id || !supplierRecord.name) {
         return res.status(400).json({
@@ -3104,27 +3045,9 @@ const purchaseOrderController = {
         }
       });
 
-      console.log(
-        "💾 Creating purchase order - model will auto-generate order number:",
-        {
-          targetCompany: targetCompanyId,
-          supplier: supplierRecord.name,
-          totalAmount: purchaseOrderData.totals?.finalTotal,
-          isAutoGenerated: true,
-          hasSupplier: !!supplierRecord,
-          supplierId: supplierRecord?._id,
-        }
-      );
-
       // ✅ Create purchase order (model will auto-generate orderNumber)
       const purchaseOrder = new PurchaseOrder(purchaseOrderData);
       await purchaseOrder.save();
-
-      console.log("✅ Purchase order created with auto-generated number:", {
-        orderId: purchaseOrder._id,
-        orderNumber: purchaseOrder.orderNumber, // Generated by model
-        numberingInfo: purchaseOrder.numberingInfo,
-      });
 
       // 🔥 UPDATE SALES ORDER WITH BIDIRECTIONAL LINKS
       salesOrder.autoGeneratedPurchaseOrder = true;
@@ -3141,19 +3064,6 @@ const purchaseOrderController = {
       }
 
       await salesOrder.save();
-
-      console.log("✅ Bidirectional purchase order generated successfully:", {
-        salesOrderId: salesOrder._id,
-        salesOrderNumber: salesOrder.orderNumber,
-        purchaseOrderId: purchaseOrder._id,
-        purchaseOrderNumber: purchaseOrder.orderNumber,
-        targetCompany: targetCompanyId,
-        supplier: supplierRecord.name,
-        autoDetectedCompany: !req.body.targetCompanyId,
-        autoCreatedSupplier:
-          !targetSupplierId && !targetSupplierMobile && !targetSupplierName,
-      });
-
       res.status(201).json({
         success: true,
         message: "Purchase order generated successfully from sales order",
@@ -3682,18 +3592,6 @@ const purchaseOrderController = {
         generationNotes = "",
       } = req.body;
 
-      console.log(
-        "🔄 Starting ENHANCED bidirectional sales order generation:",
-        {
-          purchaseOrderId: id,
-          targetCompanyId,
-          targetCompanyIdType: typeof targetCompanyId,
-          autoLinkCustomer,
-          validateBidirectionalSetup,
-          logic: "Generate sales order in SUPPLIER's company selling to BUYER",
-        }
-      );
-
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
           success: false,
@@ -3752,11 +3650,6 @@ const purchaseOrderController = {
         if (mongoose.Types.ObjectId.isValid(companyIdValue)) {
           finalTargetCompanyId = companyIdValue;
           detectionMethod = "manual";
-          console.log("✅ Using manually provided targetCompanyId:", {
-            original: targetCompanyId,
-            extracted: finalTargetCompanyId,
-            type: typeof targetCompanyId,
-          });
         } else {
           console.log("❌ Invalid targetCompanyId format:", {
             original: targetCompanyId,
@@ -3771,10 +3664,6 @@ const purchaseOrderController = {
         finalTargetCompanyId =
           purchaseOrder.sourceCompanyId._id || purchaseOrder.sourceCompanyId;
         detectionMethod = "purchase_order_source_company";
-        console.log(
-          "✅ Using sourceCompanyId from purchase order:",
-          finalTargetCompanyId
-        );
       }
 
       // ✅ PRIORITY 3: Use targetCompanyId from purchase order
@@ -3782,10 +3671,6 @@ const purchaseOrderController = {
         finalTargetCompanyId =
           purchaseOrder.targetCompanyId._id || purchaseOrder.targetCompanyId;
         detectionMethod = "purchase_order_target_company";
-        console.log(
-          "✅ Using targetCompanyId from purchase order:",
-          finalTargetCompanyId
-        );
       }
 
       // ✅ FALLBACK: Try supplier's linkedCompanyId (if exists)
@@ -3794,10 +3679,6 @@ const purchaseOrderController = {
           purchaseOrder.supplier.linkedCompanyId._id ||
           purchaseOrder.supplier.linkedCompanyId;
         detectionMethod = "supplier_linked_company";
-        console.log(
-          "✅ Using supplier's linkedCompanyId:",
-          finalTargetCompanyId
-        );
       }
 
       if (!finalTargetCompanyId) {
@@ -3822,26 +3703,6 @@ const purchaseOrderController = {
           ],
         });
       }
-
-      // ✅ Enhanced supplier analysis
-      console.log("🔍 ENHANCED SUPPLIER ANALYSIS:", {
-        supplier: {
-          id: purchaseOrder.supplier._id,
-          name: purchaseOrder.supplier.name,
-          linkedCompanyId: purchaseOrder.supplier.linkedCompanyId,
-          isLinkedSupplier: !!purchaseOrder.supplier.linkedCompanyId,
-          gstNumber: purchaseOrder.supplier.gstNumber,
-          phoneNumber:
-            purchaseOrder.supplier.phoneNumber || purchaseOrder.supplier.mobile,
-          email: purchaseOrder.supplier.email,
-        },
-        buyerCompany: {
-          id: purchaseOrder.companyId._id || purchaseOrder.companyId,
-          name: purchaseOrder.companyId?.businessName || "Unknown",
-        },
-        finalTargetCompanyId: finalTargetCompanyId.toString(),
-        detectionMethod,
-      });
 
       // ✅ Validate target company exists and is active
       const targetCompany = await Company.findById(finalTargetCompanyId);
@@ -3932,10 +3793,6 @@ const purchaseOrderController = {
 
         // Create customer if not found
         if (!customerRecord) {
-          console.log(
-            "👤 Auto-creating customer from buyer company details..."
-          );
-
           customerRecord = new Party({
             name: buyerCompany.businessName,
             companyName: buyerCompany.businessName,
@@ -3960,7 +3817,6 @@ const purchaseOrderController = {
           });
 
           await customerRecord.save();
-          console.log("✅ Customer created:", customerRecord.name);
         }
       } else {
         return res.status(400).json({
@@ -4040,18 +3896,6 @@ const purchaseOrderController = {
       purchaseOrder.targetCompanyId = finalTargetCompanyId;
 
       await purchaseOrder.save();
-
-      console.log("✅ ENHANCED: Sales order generated successfully:", {
-        purchaseOrderId: purchaseOrder._id,
-        purchaseOrderNumber: purchaseOrder.orderNumber,
-        salesOrderId: salesOrder._id,
-        salesOrderNumber: salesOrder.orderNumber,
-        targetCompany: targetCompany.businessName,
-        customer: customerRecord.name,
-        detectionMethod,
-        usedSourceCompanyId:
-          detectionMethod === "purchase_order_source_company",
-      });
 
       res.status(201).json({
         success: true,
@@ -4374,14 +4218,6 @@ const purchaseOrderController = {
         });
       }
 
-      console.log("🔄 Creating corresponding sales order for PO:", {
-        purchaseOrderNumber: purchaseOrder.orderNumber,
-        supplier: purchaseOrder.supplier?.name,
-        supplierLinkedCompany: purchaseOrder.supplier?.linkedCompanyId,
-        currentCompany: purchaseOrder.companyId?.businessName,
-        targetCompanyId,
-      });
-
       // ✅ ENHANCED: Determine target company for sales order
       let finalTargetCompanyId = targetCompanyId;
 
@@ -4462,10 +4298,6 @@ const purchaseOrderController = {
 
           // Auto-create customer if not found
           if (!customerRecord) {
-            console.log(
-              "👤 Auto-creating customer from buyer company details..."
-            );
-
             customerRecord = new Party({
               name: buyerCompany.businessName,
               companyName: buyerCompany.businessName,
@@ -4498,10 +4330,6 @@ const purchaseOrderController = {
             }
 
             await customerRecord.save();
-            console.log(
-              "✅ Customer created successfully:",
-              customerRecord.name
-            );
           }
         } catch (customerError) {
           console.error("❌ Error creating customer:", customerError);
@@ -4596,15 +4424,6 @@ const purchaseOrderController = {
 
       await purchaseOrder.save();
 
-      console.log("✅ Corresponding sales order created successfully:", {
-        purchaseOrderId: purchaseOrder._id,
-        purchaseOrderNumber: purchaseOrder.orderNumber,
-        salesOrderId: salesOrder._id,
-        salesOrderNumber: salesOrder.orderNumber,
-        targetCompany: finalTargetCompanyId,
-        customer: customerRecord.name,
-      });
-
       res.status(201).json({
         success: true,
         message: "Corresponding sales order created successfully",
@@ -4651,6 +4470,1948 @@ const purchaseOrderController = {
         message: "Failed to create corresponding sales order",
         error: error.message,
         code: "CORRESPONDING_SO_CREATION_FAILED",
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get all purchase orders for admin (across all companies)
+   */
+  getAllPurchaseOrdersForAdmin: async (req, res) => {
+    try {
+      const {
+        page = 1,
+        limit = 100,
+        status,
+        orderType,
+        dateFrom,
+        dateTo,
+        companyId: filterCompanyId,
+        supplierId,
+        search,
+        sortBy = "orderDate",
+        sortOrder = "desc",
+      } = req.query;
+
+      // Build filter for admin (across all companies)
+      const filter = {};
+
+      if (status) {
+        if (status.includes(",")) {
+          filter.status = {$in: status.split(",")};
+        } else {
+          filter.status = status;
+        }
+      }
+
+      if (orderType) {
+        if (orderType.includes(",")) {
+          filter.orderType = {$in: orderType.split(",")};
+        } else {
+          filter.orderType = orderType;
+        }
+      }
+
+      if (filterCompanyId && mongoose.Types.ObjectId.isValid(filterCompanyId)) {
+        filter.companyId = filterCompanyId;
+      }
+
+      if (supplierId && mongoose.Types.ObjectId.isValid(supplierId)) {
+        filter.supplier = supplierId;
+      }
+
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      if (search) {
+        filter.$or = [
+          {orderNumber: {$regex: search, $options: "i"}},
+          {"items.itemName": {$regex: search, $options: "i"}},
+          {notes: {$regex: search, $options: "i"}},
+          {sourceOrderNumber: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      const sortOptions = {};
+      const validSortFields = [
+        "orderDate",
+        "orderNumber",
+        "status",
+        "totals.finalTotal",
+        "createdAt",
+        "updatedAt",
+      ];
+
+      if (validSortFields.includes(sortBy)) {
+        sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+      } else {
+        sortOptions.orderDate = -1;
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const [orders, total] = await Promise.all([
+        PurchaseOrder.find(filter)
+          .populate("supplier", "name mobile phoneNumber email")
+          .populate("companyId", "businessName email phoneNumber")
+          .populate("sourceCompanyId", "businessName email")
+          .populate("targetCompanyId", "businessName email")
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        PurchaseOrder.countDocuments(filter),
+      ]);
+
+      // Calculate admin statistics
+      const adminStats = {
+        totalOrders: total,
+        totalValue: orders.reduce(
+          (sum, order) => sum + (order.totals?.finalTotal || 0),
+          0
+        ),
+        ordersByStatus: await PurchaseOrder.aggregate([
+          {$match: filter},
+          {$group: {_id: "$status", count: {$sum: 1}}},
+        ]),
+        ordersByCompany: await PurchaseOrder.aggregate([
+          {$match: filter},
+          {$group: {_id: "$companyId", count: {$sum: 1}}},
+          {$limit: 10},
+        ]),
+        companiesWithOrders: await PurchaseOrder.distinct("companyId", filter),
+        autoGeneratedCount: await PurchaseOrder.countDocuments({
+          ...filter,
+          isAutoGenerated: true,
+        }),
+        bidirectionalCount: await PurchaseOrder.countDocuments({
+          ...filter,
+          $or: [
+            {sourceOrderId: {$exists: true, $ne: null}},
+            {correspondingSalesOrderId: {$exists: true, $ne: null}},
+            {salesOrderRef: {$exists: true, $ne: null}},
+          ],
+        }),
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchaseOrders: orders,
+          orders: orders,
+          data: orders,
+          count: orders.length,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalOrders: total,
+            limit: parseInt(limit),
+            hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrev: parseInt(page) > 1,
+          },
+          adminStats,
+          summary: {
+            totalOrders: total,
+            totalValue: adminStats.totalValue,
+            activeCompanies: adminStats.companiesWithOrders.length,
+            autoGenerated: adminStats.autoGeneratedCount,
+            bidirectional: adminStats.bidirectionalCount,
+          },
+        },
+        message: `Found ${orders.length} purchase orders for admin`,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin purchase orders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch all purchase orders for admin",
+        error: error.message,
+      });
+    }
+  },
+  /**
+   * ✅ NEW: Get purchase order statistics for admin dashboard
+   */
+  getPurchaseOrderStatsForAdmin: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        totalOrders,
+        totalAmount,
+        ordersByStatus,
+        ordersByCompany,
+        ordersByMonth,
+        topSuppliers,
+        recentOrders,
+        pendingOrders,
+        completedOrders,
+      ] = await Promise.all([
+        PurchaseOrder.countDocuments(filter),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "company",
+            },
+          },
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$orderDate"},
+                month: {$month: "$orderDate"},
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+        ]),
+
+        PurchaseOrder.find(filter)
+          .populate("supplier", "name")
+          .populate("companyId", "businessName")
+          .sort({createdAt: -1})
+          .limit(10)
+          .select("orderNumber orderDate status totals.finalTotal"),
+
+        PurchaseOrder.countDocuments({
+          ...filter,
+          status: {$in: ["draft", "sent", "pending"]},
+        }),
+        PurchaseOrder.countDocuments({...filter, status: "completed"}),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalOrders,
+          totalAmount: totalAmount[0]?.total || 0,
+          ordersByStatus: ordersByStatus.reduce((acc, item) => {
+            acc[item._id] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          ordersByCompany: ordersByCompany.map((item) => ({
+            companyId: item._id,
+            companyName: item.company[0]?.businessName || "Unknown",
+            count: item.count,
+            value: item.value,
+          })),
+          ordersByMonth: ordersByMonth.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            count: item.count,
+            value: item.value,
+          })),
+          topSuppliers: topSuppliers.map((item) => ({
+            supplierId: item._id,
+            supplierName: item.supplier[0]?.name || "Unknown",
+            count: item.count,
+            value: item.value,
+          })),
+          recentOrders,
+          pendingOrders,
+          completedOrders,
+        },
+        message: "Purchase order statistics fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching purchase order stats for admin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch purchase order statistics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get comprehensive bidirectional analytics for admin
+   */
+  getAdminBidirectionalAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      // Get bidirectional orders (orders with source tracking)
+      const bidirectionalFilter = {
+        ...filter,
+        $or: [
+          {sourceOrderId: {$exists: true, $ne: null}},
+          {correspondingSalesOrderId: {$exists: true, $ne: null}},
+          {salesOrderRef: {$exists: true, $ne: null}},
+          {isAutoGenerated: true},
+        ],
+      };
+
+      const [
+        totalBidirectionalOrders,
+        totalBidirectionalValue,
+        companiesUsingBidirectional,
+        detectionMethodStats,
+        sourceCompanyBreakdown,
+        topCompanyPairs,
+        monthlyTrends,
+      ] = await Promise.all([
+        PurchaseOrder.countDocuments(bidirectionalFilter),
+
+        PurchaseOrder.aggregate([
+          {$match: bidirectionalFilter},
+          {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+        ]),
+
+        PurchaseOrder.distinct("companyId", bidirectionalFilter),
+
+        PurchaseOrder.aggregate([
+          {$match: bidirectionalFilter},
+          {
+            $group: {
+              _id: "$generatedFrom",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        PurchaseOrder.aggregate([
+          {
+            $match: {
+              ...bidirectionalFilter,
+              sourceCompanyId: {$exists: true, $ne: null},
+            },
+          },
+          {
+            $group: {
+              _id: "$sourceCompanyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "sourceCompany",
+            },
+          },
+        ]),
+
+        PurchaseOrder.aggregate([
+          {
+            $match: {
+              ...bidirectionalFilter,
+              sourceCompanyId: {$exists: true, $ne: null},
+            },
+          },
+          {
+            $group: {
+              _id: {
+                sourceCompany: "$sourceCompanyId",
+                targetCompany: "$companyId",
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: bidirectionalFilter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$orderDate"},
+                month: {$month: "$orderDate"},
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+              autoGenerated: {
+                $sum: {$cond: [{$eq: ["$isAutoGenerated", true]}, 1, 0]},
+              },
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalBidirectionalOrders,
+          totalBidirectionalValue: totalBidirectionalValue[0]?.total || 0,
+          companiesUsingBidirectional: companiesUsingBidirectional.length,
+          bidirectionalRevenue: totalBidirectionalValue[0]?.total || 0,
+          detectionMethodStats: detectionMethodStats.reduce((acc, item) => {
+            acc[item._id || "manual"] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          sourceCompanyBreakdown: sourceCompanyBreakdown.map((item) => ({
+            companyId: item._id,
+            companyName: item.sourceCompany[0]?.businessName || "Unknown",
+            count: item.count,
+            value: item.value,
+          })),
+          topCompanyPairs: topCompanyPairs.map((item) => ({
+            sourceCompanyId: item._id.sourceCompany,
+            targetCompanyId: item._id.targetCompany,
+            count: item.count,
+            value: item.value,
+          })),
+          monthlyTrends: monthlyTrends.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            count: item.count,
+            value: item.value,
+            autoGenerated: item.autoGenerated,
+          })),
+          conversionRates: {
+            salesToPurchase:
+              totalBidirectionalOrders > 0
+                ? (
+                    ((detectionMethodStats.find((d) => d._id === "sales_order")
+                      ?.count || 0) /
+                      totalBidirectionalOrders) *
+                    100
+                  ).toFixed(2)
+                : 0,
+          },
+        },
+        message: "Admin bidirectional analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin bidirectional analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin bidirectional analytics",
+        error: error.message,
+      });
+    }
+  },
+  /**
+   * ✅ NEW: Get bidirectional dashboard summary for admin
+   */
+  getAdminBidirectionalDashboard: async (req, res) => {
+    try {
+      const {dateFrom, dateTo} = req.query;
+
+      const filter = {};
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      const bidirectionalFilter = {
+        ...filter,
+        $or: [
+          {sourceOrderId: {$exists: true, $ne: null}},
+          {correspondingSalesOrderId: {$exists: true, $ne: null}},
+          {salesOrderRef: {$exists: true, $ne: null}},
+          {isAutoGenerated: true},
+        ],
+      };
+
+      const [
+        totalBidirectionalOrders,
+        totalRevenue,
+        activeConnections,
+        recentActivity,
+        topPerformers,
+        keyMetrics,
+      ] = await Promise.all([
+        PurchaseOrder.countDocuments(bidirectionalFilter),
+
+        PurchaseOrder.aggregate([
+          {$match: bidirectionalFilter},
+          {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+        ]),
+
+        PurchaseOrder.aggregate([
+          {
+            $match: {
+              ...bidirectionalFilter,
+              sourceCompanyId: {$exists: true, $ne: null},
+            },
+          },
+          {
+            $group: {
+              _id: {
+                sourceCompany: "$sourceCompanyId",
+                targetCompany: "$companyId",
+              },
+            },
+          },
+          {$count: "connections"},
+        ]),
+
+        PurchaseOrder.find(bidirectionalFilter)
+          .populate("supplier", "name")
+          .populate("companyId", "businessName")
+          .populate("sourceCompanyId", "businessName")
+          .sort({createdAt: -1})
+          .limit(10)
+          .select(
+            "orderNumber orderDate isAutoGenerated generatedFrom totals.finalTotal"
+          ),
+
+        PurchaseOrder.aggregate([
+          {$match: bidirectionalFilter},
+          {
+            $group: {
+              _id: "$companyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {value: -1}},
+          {$limit: 5},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "company",
+            },
+          },
+        ]),
+
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalOrders: {$sum: 1},
+              bidirectionalOrders: {
+                $sum: {
+                  $cond: [
+                    {
+                      $or: [
+                        {$ne: ["$sourceOrderId", null]},
+                        {$ne: ["$correspondingSalesOrderId", null]},
+                        {$ne: ["$salesOrderRef", null]},
+                        {$eq: ["$isAutoGenerated", true]},
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              autoGenerated: {
+                $sum: {$cond: [{$eq: ["$isAutoGenerated", true]}, 1, 0]},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const metrics = keyMetrics[0] || {
+        totalOrders: 0,
+        bidirectionalOrders: 0,
+        autoGenerated: 0,
+      };
+      const bidirectionalPercentage =
+        metrics.totalOrders > 0
+          ? ((metrics.bidirectionalOrders / metrics.totalOrders) * 100).toFixed(
+              2
+            )
+          : 0;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalBidirectionalOrders,
+          totalRevenue: totalRevenue[0]?.total || 0,
+          activeConnections: activeConnections[0]?.connections || 0,
+          recentActivity,
+          topPerformers: topPerformers.map((item) => ({
+            companyId: item._id,
+            companyName: item.company[0]?.businessName || "Unknown",
+            orderCount: item.count,
+            totalValue: item.value,
+          })),
+          keyMetrics: {
+            ...metrics,
+            bidirectionalPercentage: parseFloat(bidirectionalPercentage),
+          },
+          alerts: [],
+          recommendations: [
+            "Monitor top performing company relationships",
+            "Analyze bidirectional order patterns for optimization",
+            "Review auto-generation success rates",
+          ],
+        },
+        message: "Admin bidirectional dashboard fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin bidirectional dashboard:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin bidirectional dashboard",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get conversion rate analysis for admin - NO AUTH
+   */
+  getConversionRateAnalysisForAdmin: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      const filter = {};
+      if (
+        companyId &&
+        companyId !== "admin" &&
+        mongoose.Types.ObjectId.isValid(companyId)
+      ) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.orderDate = {};
+        if (dateFrom) filter.orderDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.orderDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        statusDistribution,
+        typeDistribution,
+        monthlyTrends,
+        topSuppliers,
+        topCompanies,
+        conversionFunnel,
+      ] = await Promise.all([
+        // Status distribution
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+        ]),
+
+        // Order type distribution
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$orderType",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+        ]),
+
+        // Monthly trends (last 6 months)
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$orderDate"},
+                month: {$month: "$orderDate"},
+              },
+              totalOrders: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              quotations: {
+                $sum: {
+                  $cond: [{$eq: ["$orderType", "purchase_quotation"]}, 1, 0],
+                },
+              },
+              purchaseOrders: {
+                $sum: {$cond: [{$eq: ["$orderType", "purchase_order"]}, 1, 0]},
+              },
+              confirmed: {
+                $sum: {
+                  $cond: [
+                    {$in: ["$status", ["confirmed", "received", "completed"]]},
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 6},
+        ]),
+
+        // Top suppliers
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              orders: {$sum: 1},
+              amount: {$sum: "$totals.finalTotal"},
+              confirmedOrders: {
+                $sum: {
+                  $cond: [
+                    {$in: ["$status", ["confirmed", "received", "completed"]]},
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          {$sort: {amount: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+        ]),
+
+        // Top companies (if admin view)
+        companyId === "admin"
+          ? PurchaseOrder.aggregate([
+              {$match: filter},
+              {
+                $group: {
+                  _id: "$companyId",
+                  orders: {$sum: 1},
+                  amount: {$sum: "$totals.finalTotal"},
+                  confirmedOrders: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $in: [
+                            "$status",
+                            ["confirmed", "received", "completed"],
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+              {$sort: {amount: -1}},
+              {$limit: 10},
+              {
+                $lookup: {
+                  from: "companies",
+                  localField: "_id",
+                  foreignField: "_id",
+                  as: "company",
+                },
+              },
+            ])
+          : Promise.resolve([]),
+
+        // Conversion funnel analysis
+        PurchaseOrder.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$orderType",
+              total: {$sum: 1},
+              sent: {
+                $sum: {$cond: [{$eq: ["$status", "sent"]}, 1, 0]},
+              },
+              confirmed: {
+                $sum: {$cond: [{$eq: ["$status", "confirmed"]}, 1, 0]},
+              },
+              received: {
+                $sum: {$cond: [{$eq: ["$status", "received"]}, 1, 0]},
+              },
+              completed: {
+                $sum: {$cond: [{$eq: ["$status", "completed"]}, 1, 0]},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const analysisData = {
+        statusDistribution: statusDistribution.reduce((acc, item) => {
+          acc[item._id] = {
+            count: item.count,
+            value: item.value,
+            percentage: 0, // Will be calculated below
+          };
+          return acc;
+        }, {}),
+
+        typeDistribution: typeDistribution.reduce((acc, item) => {
+          acc[item._id] = {
+            count: item.count,
+            value: item.value,
+            percentage: 0, // Will be calculated below
+          };
+          return acc;
+        }, {}),
+
+        monthlyTrends: monthlyTrends.map((item) => ({
+          year: item._id.year,
+          month: item._id.month,
+          monthName: new Date(item._id.year, item._id.month - 1).toLocaleString(
+            "default",
+            {month: "short"}
+          ),
+          totalOrders: item.totalOrders,
+          totalAmount: item.totalAmount,
+          quotations: item.quotations,
+          purchaseOrders: item.purchaseOrders,
+          confirmed: item.confirmed,
+          conversionRate:
+            item.totalOrders > 0
+              ? ((item.confirmed / item.totalOrders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        topSuppliers: topSuppliers.map((item) => ({
+          supplierId: item._id,
+          supplierName: item.supplier[0]?.name || "Unknown",
+          orders: item.orders,
+          amount: item.amount,
+          confirmedOrders: item.confirmedOrders,
+          conversionRate:
+            item.orders > 0
+              ? ((item.confirmedOrders / item.orders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        topCompanies: topCompanies.map((item) => ({
+          companyId: item._id,
+          companyName: item.company[0]?.businessName || "Unknown",
+          orders: item.orders,
+          amount: item.amount,
+          confirmedOrders: item.confirmedOrders,
+          conversionRate:
+            item.orders > 0
+              ? ((item.confirmedOrders / item.orders) * 100).toFixed(2)
+              : 0,
+        })),
+
+        conversionFunnel: conversionFunnel.map((item) => ({
+          orderType: item._id,
+          total: item.total,
+          sent: item.sent,
+          confirmed: item.confirmed,
+          received: item.received,
+          completed: item.completed,
+          sendRate:
+            item.total > 0 ? ((item.sent / item.total) * 100).toFixed(2) : 0,
+          confirmationRate:
+            item.sent > 0 ? ((item.confirmed / item.sent) * 100).toFixed(2) : 0,
+          fulfillmentRate:
+            item.confirmed > 0
+              ? ((item.received / item.confirmed) * 100).toFixed(2)
+              : 0,
+          completionRate:
+            item.received > 0
+              ? ((item.completed / item.received) * 100).toFixed(2)
+              : 0,
+        })),
+
+        performanceMetrics: {
+          totalOrders: statusDistribution.reduce(
+            (sum, item) => sum + item.count,
+            0
+          ),
+          totalValue: statusDistribution.reduce(
+            (sum, item) => sum + item.value,
+            0
+          ),
+          avgOrderValue: 0, // Will be calculated below
+          overallConversionRate: 0, // Will be calculated below
+        },
+      };
+
+      // Calculate percentages and averages
+      const totalOrders = analysisData.performanceMetrics.totalOrders;
+      const totalValue = analysisData.performanceMetrics.totalValue;
+
+      if (totalOrders > 0) {
+        analysisData.performanceMetrics.avgOrderValue = (
+          totalValue / totalOrders
+        ).toFixed(2);
+
+        // Calculate percentages for status distribution
+        Object.keys(analysisData.statusDistribution).forEach((status) => {
+          analysisData.statusDistribution[status].percentage = (
+            (analysisData.statusDistribution[status].count / totalOrders) *
+            100
+          ).toFixed(2);
+        });
+
+        // Calculate percentages for type distribution
+        Object.keys(analysisData.typeDistribution).forEach((type) => {
+          analysisData.typeDistribution[type].percentage = (
+            (analysisData.typeDistribution[type].count / totalOrders) *
+            100
+          ).toFixed(2);
+        });
+
+        // Calculate overall conversion rate (confirmed, received, completed orders)
+        const confirmedStatuses = ["confirmed", "received", "completed"];
+        const confirmedCount = Object.keys(analysisData.statusDistribution)
+          .filter((status) => confirmedStatuses.includes(status))
+          .reduce(
+            (sum, status) =>
+              sum + analysisData.statusDistribution[status].count,
+            0
+          );
+
+        analysisData.performanceMetrics.overallConversionRate = (
+          (confirmedCount / totalOrders) *
+          100
+        ).toFixed(2);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: analysisData,
+        message:
+          "Purchase order conversion rate analysis completed successfully (no auth required)",
+        source: "calculated_from_orders",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error in admin purchase order conversion rate analysis:",
+        error
+      );
+
+      // Return fallback data
+      res.status(200).json({
+        success: true,
+        data: {
+          statusDistribution: {},
+          typeDistribution: {},
+          monthlyTrends: [],
+          topSuppliers: [],
+          topCompanies: [],
+          conversionFunnel: [],
+          performanceMetrics: {
+            totalOrders: 0,
+            totalValue: 0,
+            avgOrderValue: 0,
+            overallConversionRate: 0,
+          },
+        },
+        message: "Using fallback analysis data (admin endpoint error occurred)",
+        source: "fallback",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase order for printing - Enhanced version
+   */
+  getPurchaseOrderForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      // Get purchase order with populated data
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      // Transform data for printing
+      const orderData = {
+        company: {
+          name: purchaseOrder.companyId?.businessName || "Your Company",
+          gstin: purchaseOrder.companyId?.gstin || "",
+          address: purchaseOrder.companyId?.address || "",
+          phone: purchaseOrder.companyId?.phoneNumber || "",
+          email: purchaseOrder.companyId?.email || "",
+          // ✅ Handle logo safely
+          logo:
+            purchaseOrder.companyId?.logo?.base64 &&
+            purchaseOrder.companyId.logo.base64.trim() !== ""
+              ? purchaseOrder.companyId.logo.base64
+              : null,
+        },
+        supplier: {
+          name:
+            purchaseOrder.supplier?.name ||
+            purchaseOrder.supplierName ||
+            "Unknown Supplier",
+          address:
+            purchaseOrder.supplier?.address ||
+            purchaseOrder.supplierAddress ||
+            "",
+          mobile:
+            purchaseOrder.supplier?.mobile ||
+            purchaseOrder.supplierMobile ||
+            "",
+          email:
+            purchaseOrder.supplier?.email || purchaseOrder.supplierEmail || "",
+          gstin:
+            purchaseOrder.supplier?.gstNumber ||
+            purchaseOrder.supplierGstNumber ||
+            "",
+        },
+        order: {
+          id: purchaseOrder._id,
+          orderNumber: purchaseOrder.orderNumber,
+          orderDate: purchaseOrder.orderDate,
+          orderType: purchaseOrder.orderType,
+          validUntil: purchaseOrder.validUntil,
+          expectedDeliveryDate: purchaseOrder.expectedDeliveryDate,
+          requiredBy: purchaseOrder.requiredBy,
+          status: purchaseOrder.status,
+          priority: purchaseOrder.priority,
+          notes: purchaseOrder.notes || "",
+          supplierNotes: purchaseOrder.supplierNotes || "",
+          internalNotes: purchaseOrder.internalNotes || "",
+          termsAndConditions: purchaseOrder.termsAndConditions || "",
+        },
+        items: (purchaseOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || item.productName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || item.hsnNumber || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || item.rate || 0,
+          taxRate: item.taxRate || item.gstRate || 0,
+          cgst: item.cgstAmount || item.cgst || 0,
+          sgst: item.sgstAmount || item.sgst || 0,
+          igst: item.igstAmount || item.igst || 0,
+          amount: item.amount || item.totalAmount || 0,
+        })),
+        totals: {
+          subtotal: purchaseOrder.totals?.subtotal || 0,
+          totalTax: purchaseOrder.totals?.totalTax || 0,
+          totalCGST: purchaseOrder.totals?.totalCGST || 0,
+          totalSGST: purchaseOrder.totals?.totalSGST || 0,
+          totalIGST: purchaseOrder.totals?.totalIGST || 0,
+          totalDiscount: purchaseOrder.totals?.totalDiscount || 0,
+          roundOff: purchaseOrder.totals?.roundOff || 0,
+          finalTotal: purchaseOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: purchaseOrder.payment?.method || "credit",
+          paidAmount: purchaseOrder.payment?.paidAmount || 0,
+          pendingAmount: purchaseOrder.payment?.pendingAmount || 0,
+          status: purchaseOrder.payment?.status || "pending",
+          terms: purchaseOrder.termsAndConditions || "",
+          creditDays: purchaseOrder.payment?.creditDays || 0,
+          dueDate: purchaseOrder.payment?.dueDate,
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isPurchaseOrder: true,
+          isQuotation: purchaseOrder.orderType === "purchase_quotation",
+          isProformaPurchase: purchaseOrder.orderType === "proforma_purchase",
+          isGSTEnabled: purchaseOrder.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: orderData,
+        message: "Purchase order data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchase order for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase order for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase order for email/PDF generation
+   */
+  getPurchaseOrderForEmail: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {includePaymentLink = false, template = "professional"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo website"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      // Enhanced data for email template
+      const emailData = {
+        company: {
+          name: purchaseOrder.companyId?.businessName || "Your Company",
+          gstin: purchaseOrder.companyId?.gstin || "",
+          address: purchaseOrder.companyId?.address || "",
+          phone: purchaseOrder.companyId?.phoneNumber || "",
+          email: purchaseOrder.companyId?.email || "",
+          website: purchaseOrder.companyId?.website || "",
+          logo: purchaseOrder.companyId?.logo?.base64 || null,
+        },
+        supplier: {
+          name: purchaseOrder.supplier?.name || "Supplier",
+          email: purchaseOrder.supplier?.email || "",
+          mobile:
+            purchaseOrder.supplier?.mobile ||
+            purchaseOrder.supplierMobile ||
+            "",
+          address: purchaseOrder.supplier?.address || "",
+          gstin: purchaseOrder.supplier?.gstNumber || "",
+        },
+        order: {
+          id: purchaseOrder._id,
+          orderNumber: purchaseOrder.orderNumber,
+          orderDate: purchaseOrder.orderDate,
+          orderType: purchaseOrder.orderType,
+          validUntil: purchaseOrder.validUntil,
+          expectedDeliveryDate: purchaseOrder.expectedDeliveryDate,
+          requiredBy: purchaseOrder.requiredBy,
+          status: purchaseOrder.status,
+          priority: purchaseOrder.priority,
+          notes: purchaseOrder.notes || "",
+          supplierNotes: purchaseOrder.supplierNotes || "",
+          internalNotes: purchaseOrder.internalNotes || "",
+          termsAndConditions: purchaseOrder.termsAndConditions || "",
+        },
+        items: (purchaseOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxableAmount: item.taxableAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          totalTax: item.totalTaxAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: purchaseOrder.totals?.subtotal || 0,
+          totalDiscount: purchaseOrder.totals?.totalDiscount || 0,
+          taxableAmount: purchaseOrder.totals?.totalTaxableAmount || 0,
+          totalCGST: purchaseOrder.totals?.totalCGST || 0,
+          totalSGST: purchaseOrder.totals?.totalSGST || 0,
+          totalIGST: purchaseOrder.totals?.totalIGST || 0,
+          totalTax: purchaseOrder.totals?.totalTax || 0,
+          roundOff: purchaseOrder.totals?.roundOff || 0,
+          finalTotal: purchaseOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: purchaseOrder.payment?.method || "credit",
+          paidAmount: purchaseOrder.payment?.paidAmount || 0,
+          pendingAmount: purchaseOrder.payment?.pendingAmount || 0,
+          status: purchaseOrder.payment?.status || "pending",
+          dueDate: purchaseOrder.payment?.dueDate,
+          creditDays: purchaseOrder.payment?.creditDays || 0,
+        },
+        confirmationLink:
+          includePaymentLink === "true" && purchaseOrder.status === "sent"
+            ? `${process.env.FRONTEND_URL}/purchase-order/confirm/${purchaseOrder._id}`
+            : null,
+        meta: {
+          template,
+          generatedDate: new Date(),
+          isEmailVersion: true,
+          isQuotation: purchaseOrder.orderType === "purchase_quotation",
+          isProformaPurchase: purchaseOrder.orderType === "proforma_purchase",
+          isGSTEnabled: purchaseOrder.gstEnabled,
+          hasLogo: !!purchaseOrder.companyId?.logo?.base64,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: emailData,
+        message: "Purchase order data prepared for email",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchase order for email:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase order for email",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Generate and download purchase order PDF
+   */
+  downloadPurchaseOrderPDF: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {template = "standard", format = "a4"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .lean();
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      // Set appropriate headers for PDF download
+      const filename = `${purchaseOrder.orderType}-${
+        purchaseOrder.orderNumber || purchaseOrder._id
+      }.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+
+      // Return order data with PDF metadata
+      res.json({
+        success: true,
+        data: {
+          filename,
+          orderNumber: purchaseOrder.orderNumber,
+          orderType: purchaseOrder.orderType,
+          supplierName: purchaseOrder.supplier?.name || "Supplier",
+          amount: purchaseOrder.totals?.finalTotal || 0,
+          downloadUrl: `/api/purchase-orders/${id}/print?template=${template}&format=pdf`,
+        },
+        message: "PDF download initiated",
+        action: "download_pdf",
+      });
+    } catch (error) {
+      console.error("❌ Error generating PDF:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate PDF",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get multiple purchase orders for bulk printing
+   */
+  getBulkPurchaseOrdersForPrint: async (req, res) => {
+    try {
+      const {ids} = req.body; // Array of order IDs
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Order IDs array is required",
+        });
+      }
+
+      // Validate all IDs
+      const invalidIds = ids.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid order ID format",
+          invalidIds,
+        });
+      }
+
+      // Get all purchase orders
+      const orders = await PurchaseOrder.find({_id: {$in: ids}})
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (orders.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No purchase orders found",
+        });
+      }
+
+      // Transform each order for printing
+      const bulkOrderData = orders.map((purchaseOrder) => ({
+        company: {
+          name: purchaseOrder.companyId?.businessName || "Your Company",
+          gstin: purchaseOrder.companyId?.gstin || "",
+          address: purchaseOrder.companyId?.address || "",
+          phone: purchaseOrder.companyId?.phoneNumber || "",
+          email: purchaseOrder.companyId?.email || "",
+          logo: purchaseOrder.companyId?.logo?.base64 || null,
+        },
+        supplier: {
+          name: purchaseOrder.supplier?.name || "Supplier",
+          address: purchaseOrder.supplier?.address || "",
+          mobile:
+            purchaseOrder.supplier?.mobile ||
+            purchaseOrder.supplierMobile ||
+            "",
+          email: purchaseOrder.supplier?.email || "",
+          gstin: purchaseOrder.supplier?.gstNumber || "",
+        },
+        order: {
+          id: purchaseOrder._id,
+          orderNumber: purchaseOrder.orderNumber,
+          orderDate: purchaseOrder.orderDate,
+          orderType: purchaseOrder.orderType,
+          validUntil: purchaseOrder.validUntil,
+          expectedDeliveryDate: purchaseOrder.expectedDeliveryDate,
+          requiredBy: purchaseOrder.requiredBy,
+          status: purchaseOrder.status,
+          priority: purchaseOrder.priority,
+          notes: purchaseOrder.notes || "",
+          supplierNotes: purchaseOrder.supplierNotes || "",
+          internalNotes: purchaseOrder.internalNotes || "",
+          termsAndConditions: purchaseOrder.termsAndConditions || "",
+        },
+        items: (purchaseOrder.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: purchaseOrder.totals?.subtotal || 0,
+          totalTax: purchaseOrder.totals?.totalTax || 0,
+          totalCGST: purchaseOrder.totals?.totalCGST || 0,
+          totalSGST: purchaseOrder.totals?.totalSGST || 0,
+          totalIGST: purchaseOrder.totals?.totalIGST || 0,
+          totalDiscount: purchaseOrder.totals?.totalDiscount || 0,
+          roundOff: purchaseOrder.totals?.roundOff || 0,
+          finalTotal: purchaseOrder.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: purchaseOrder.payment?.method || "credit",
+          paidAmount: purchaseOrder.payment?.paidAmount || 0,
+          pendingAmount: purchaseOrder.payment?.pendingAmount || 0,
+          status: purchaseOrder.payment?.status || "pending",
+        },
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          orders: bulkOrderData,
+          count: bulkOrderData.length,
+          requestedCount: ids.length,
+          notFound: ids.length - bulkOrderData.length,
+          meta: {
+            format,
+            template,
+            printDate: new Date(),
+            isBulkPrint: true,
+          },
+        },
+        message: `${bulkOrderData.length} purchase orders prepared for bulk printing`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting bulk purchase orders for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bulk purchase orders for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase order for QR code confirmation
+   */
+  getPurchaseOrderForQRConfirmation: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      if (
+        purchaseOrder.status === "confirmed" ||
+        purchaseOrder.status === "completed"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Order is already confirmed",
+        });
+      }
+
+      // Generate confirmation data for QR code
+      const confirmationData = {
+        orderId: purchaseOrder._id,
+        orderNumber: purchaseOrder.orderNumber,
+        orderType: purchaseOrder.orderType,
+        companyName: purchaseOrder.companyId?.businessName || "Company",
+        supplierName: purchaseOrder.supplier?.name || "Supplier",
+        amount: purchaseOrder.totals?.finalTotal || 0,
+        validUntil: purchaseOrder.validUntil,
+        confirmationUrl: `${process.env.FRONTEND_URL}/purchase-order/confirm/${purchaseOrder._id}`,
+        qrSize: 256,
+        meta: {
+          generatedAt: new Date(),
+          expiresAt:
+            purchaseOrder.validUntil ||
+            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        },
+      };
+
+      res.json({
+        success: true,
+        data: confirmationData,
+        message: "Order confirmation QR data generated successfully",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error getting purchase order for QR confirmation:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase order for QR confirmation",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase order summary for quick view
+   */
+  getPurchaseOrderSummary: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase order ID format",
+        });
+      }
+
+      const purchaseOrder = await PurchaseOrder.findById(id)
+        .populate("supplier", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!purchaseOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase order not found",
+        });
+      }
+
+      // Generate summary data
+      const summaryData = {
+        basic: {
+          orderId: purchaseOrder._id,
+          orderNumber: purchaseOrder.orderNumber,
+          orderDate: purchaseOrder.orderDate,
+          orderType: purchaseOrder.orderType,
+          status: purchaseOrder.status,
+          priority: purchaseOrder.priority,
+          companyName: purchaseOrder.companyId?.businessName || "Company",
+          supplierName: purchaseOrder.supplier?.name || "Supplier",
+          supplierMobile:
+            purchaseOrder.supplier?.mobile ||
+            purchaseOrder.supplierMobile ||
+            "",
+        },
+        financial: {
+          subtotal: purchaseOrder.totals?.subtotal || 0,
+          totalTax: purchaseOrder.totals?.totalTax || 0,
+          totalDiscount: purchaseOrder.totals?.totalDiscount || 0,
+          finalTotal: purchaseOrder.totals?.finalTotal || 0,
+          paidAmount: purchaseOrder.payment?.paidAmount || 0,
+          pendingAmount: purchaseOrder.payment?.pendingAmount || 0,
+          paymentStatus: purchaseOrder.payment?.status || "pending",
+          paymentMethod: purchaseOrder.payment?.method || "credit",
+        },
+        items: {
+          totalItems: purchaseOrder.items?.length || 0,
+          totalQuantity: purchaseOrder.totals?.totalQuantity || 0,
+          topItem:
+            purchaseOrder.items && purchaseOrder.items.length > 0
+              ? {
+                  name: purchaseOrder.items[0].itemName,
+                  quantity: purchaseOrder.items[0].quantity,
+                  amount: purchaseOrder.items[0].amount,
+                }
+              : null,
+        },
+        timeline: {
+          createdAt: purchaseOrder.createdAt,
+          lastModified: purchaseOrder.updatedAt,
+          validUntil: purchaseOrder.validUntil,
+          expectedDeliveryDate: purchaseOrder.expectedDeliveryDate,
+          requiredBy: purchaseOrder.requiredBy,
+          isExpired: purchaseOrder.validUntil
+            ? new Date() > new Date(purchaseOrder.validUntil)
+            : false,
+          isOverdue: purchaseOrder.expectedDeliveryDate
+            ? new Date() > new Date(purchaseOrder.expectedDeliveryDate)
+            : false,
+          isRequiredDatePassed: purchaseOrder.requiredBy
+            ? new Date() > new Date(purchaseOrder.requiredBy)
+            : false,
+        },
+        conversion: {
+          convertedToPurchaseInvoice:
+            purchaseOrder.convertedToPurchaseInvoice || false,
+          purchaseInvoiceNumber: purchaseOrder.purchaseInvoiceNumber || null,
+          purchaseInvoiceRef: purchaseOrder.purchaseInvoiceRef || null,
+          convertedAt: purchaseOrder.convertedAt || null,
+        },
+        bidirectional: {
+          isAutoGenerated: purchaseOrder.isAutoGenerated || false,
+          sourceOrderNumber: purchaseOrder.sourceOrderNumber || null,
+          sourceOrderType: purchaseOrder.sourceOrderType || null,
+          hasGeneratedSalesOrder:
+            purchaseOrder.autoGeneratedSalesOrder || false,
+          salesOrderNumber: purchaseOrder.salesOrderNumber || null,
+          correspondingSalesOrderNumber:
+            purchaseOrder.correspondingSalesOrderNumber || null,
+        },
+        actions: {
+          canEdit: ["draft", "sent"].includes(purchaseOrder.status),
+          canCancel: ![
+            "confirmed",
+            "received",
+            "completed",
+            "cancelled",
+          ].includes(purchaseOrder.status),
+          canConfirm: purchaseOrder.status === "sent",
+          canReceive: ["confirmed"].includes(purchaseOrder.status),
+          canConvert:
+            ["confirmed", "received"].includes(purchaseOrder.status) &&
+            !purchaseOrder.convertedToPurchaseInvoice,
+          canPrint: true,
+          canEmail: !!purchaseOrder.supplier?.email,
+          canAddPayment: purchaseOrder.payment?.pendingAmount > 0,
+          canGenerateSalesOrder:
+            !purchaseOrder.autoGeneratedSalesOrder &&
+            !["cancelled"].includes(purchaseOrder.status),
+        },
+      };
+
+      res.json({
+        success: true,
+        data: summaryData,
+        message: "Purchase order summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchase order summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase order summary",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase quotation for printing
+   */
+  getPurchaseQuotationForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "quotation"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase quotation ID format",
+        });
+      }
+
+      const quotation = await PurchaseOrder.findOne({
+        _id: id,
+        orderType: "purchase_quotation",
+      })
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!quotation) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase quotation not found",
+        });
+      }
+
+      // Transform data for quotation printing
+      const quotationData = {
+        company: {
+          name: quotation.companyId?.businessName || "Your Company",
+          gstin: quotation.companyId?.gstin || "",
+          address: quotation.companyId?.address || "",
+          phone: quotation.companyId?.phoneNumber || "",
+          email: quotation.companyId?.email || "",
+          logo: quotation.companyId?.logo?.base64 || null,
+        },
+        supplier: {
+          name: quotation.supplier?.name || "Supplier",
+          address: quotation.supplier?.address || "",
+          mobile: quotation.supplier?.mobile || quotation.supplierMobile || "",
+          email: quotation.supplier?.email || "",
+          gstin: quotation.supplier?.gstNumber || "",
+        },
+        quotation: {
+          id: quotation._id,
+          quotationNumber: quotation.orderNumber,
+          quotationDate: quotation.orderDate,
+          validUntil: quotation.validUntil,
+          expectedDeliveryDate: quotation.expectedDeliveryDate,
+          requiredBy: quotation.requiredBy,
+          status: quotation.status,
+          priority: quotation.priority,
+          notes: quotation.notes || "",
+          supplierNotes: quotation.supplierNotes || "",
+          internalNotes: quotation.internalNotes || "",
+          termsAndConditions: quotation.termsAndConditions || "",
+        },
+        items: (quotation.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: quotation.totals?.subtotal || 0,
+          totalTax: quotation.totals?.totalTax || 0,
+          totalCGST: quotation.totals?.totalCGST || 0,
+          totalSGST: quotation.totals?.totalSGST || 0,
+          totalIGST: quotation.totals?.totalIGST || 0,
+          totalDiscount: quotation.totals?.totalDiscount || 0,
+          roundOff: quotation.totals?.roundOff || 0,
+          finalTotal: quotation.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: quotation.payment?.method || "credit",
+          creditDays: quotation.payment?.creditDays || 0,
+          paymentTerms: quotation.payment?.notes || "Net 30 days",
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isPurchaseQuotation: true,
+          requiresApproval: quotation.status === "draft",
+          isGSTEnabled: quotation.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: quotationData,
+        message: "Purchase quotation data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchase quotation for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase quotation for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get proforma purchase order for printing
+   */
+  getProformaPurchaseForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "proforma"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid proforma purchase order ID format",
+        });
+      }
+
+      const proforma = await PurchaseOrder.findOne({
+        _id: id,
+        orderType: "proforma_purchase",
+      })
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!proforma) {
+        return res.status(404).json({
+          success: false,
+          message: "Proforma purchase order not found",
+        });
+      }
+
+      // Transform data for proforma printing
+      const proformaData = {
+        company: {
+          name: proforma.companyId?.businessName || "Your Company",
+          gstin: proforma.companyId?.gstin || "",
+          address: proforma.companyId?.address || "",
+          phone: proforma.companyId?.phoneNumber || "",
+          email: proforma.companyId?.email || "",
+          logo: proforma.companyId?.logo?.base64 || null,
+        },
+        supplier: {
+          name: proforma.supplier?.name || "Supplier",
+          address: proforma.supplier?.address || "",
+          mobile: proforma.supplier?.mobile || proforma.supplierMobile || "",
+          email: proforma.supplier?.email || "",
+          gstin: proforma.supplier?.gstNumber || "",
+        },
+        proforma: {
+          id: proforma._id,
+          proformaNumber: proforma.orderNumber,
+          proformaDate: proforma.orderDate,
+          validUntil: proforma.validUntil,
+          expectedDeliveryDate: proforma.expectedDeliveryDate,
+          requiredBy: proforma.requiredBy,
+          status: proforma.status,
+          priority: proforma.priority,
+          notes: proforma.notes || "",
+          supplierNotes: proforma.supplierNotes || "",
+          internalNotes: proforma.internalNotes || "",
+          termsAndConditions: proforma.termsAndConditions || "",
+        },
+        items: (proforma.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: proforma.totals?.subtotal || 0,
+          totalTax: proforma.totals?.totalTax || 0,
+          totalCGST: proforma.totals?.totalCGST || 0,
+          totalSGST: proforma.totals?.totalSGST || 0,
+          totalIGST: proforma.totals?.totalIGST || 0,
+          totalDiscount: proforma.totals?.totalDiscount || 0,
+          roundOff: proforma.totals?.roundOff || 0,
+          finalTotal: proforma.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: proforma.payment?.method || "advance",
+          advanceRequired: proforma.payment?.advanceAmount || 0,
+          creditDays: proforma.payment?.creditDays || 0,
+          paymentTerms:
+            proforma.payment?.notes || "50% advance, balance on delivery",
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isProformaPurchase: true,
+          requiresAdvance: (proforma.payment?.advanceAmount || 0) > 0,
+          isGSTEnabled: proforma.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: proformaData,
+        message: "Proforma purchase order data prepared for printing",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error getting proforma purchase order for print:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to get proforma purchase order for printing",
+        error: error.message,
       });
     }
   },

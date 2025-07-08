@@ -107,7 +107,7 @@ function SalesOrderHeader({
         </Card.Body>
       </Card>
 
-      <style jsx>{`
+      <style>{`
         .quotation-header {
           background: linear-gradient(
             135deg,

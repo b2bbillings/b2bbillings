@@ -1131,7 +1131,7 @@ function CompanyInvoices({companyId, companyData, userRole, addToast}) {
       </Modal>
 
       {/* Styles - Same as CompanyParties */}
-      <style jsx>{`
+      <style>{`
         /* Neutral header styles */
         .neutral-header {
           background: linear-gradient(

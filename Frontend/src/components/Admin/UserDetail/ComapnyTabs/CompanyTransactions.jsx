@@ -1133,7 +1133,7 @@ function CompanyTransactions({companyId, companyData, userRole, addToast}) {
       </Modal>
 
       {/* Styles */}
-      <style jsx>{`
+      <style>{`
         /* Neutral header styles */
         .neutral-header {
           background: linear-gradient(

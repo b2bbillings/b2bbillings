@@ -1437,7 +1437,7 @@ function CompanyOrders({companyId, companyData, userRole, addToast}) {
         </Modal.Footer>
       </Modal>
 
-      <style jsx>{`
+      <style>{`
         /* Neutral header styles */
         .neutral-header {
           background: linear-gradient(

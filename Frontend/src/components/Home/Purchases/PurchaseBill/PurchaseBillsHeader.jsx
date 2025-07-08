@@ -201,7 +201,7 @@ function PurchaseBillsHeader({
         </Container>
       </Navbar>
 
-      <style jsx>{`
+      <style>{`
         .p-3 {
           margin: 0.75rem 0;
         }

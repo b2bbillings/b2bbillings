@@ -28,7 +28,7 @@ import {
   faHome,
   faChevronDown,
   faEllipsisV,
-  faUserShield, // ✅ Added for admin panel
+  faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 import CreateCompany from "../components/Company/CreateCompany";
@@ -288,7 +288,7 @@ function Navbar({
     }
   };
 
-  // ✅ NEW: Handle admin panel navigation
+  // Handle admin panel navigation
   const handleAdminPanel = () => {
     console.log("🚀 Navigating to admin panel");
     setShowUserDropdown(false);
@@ -314,7 +314,7 @@ function Navbar({
     )}&background=5e60ce&color=fff&size=36`;
   };
 
-  // ✅ FIXED: Handle logout function
+  // Handle logout function
   const handleLogout = () => {
     try {
       console.log("🚪 Logout initiated");
@@ -343,7 +343,7 @@ function Navbar({
     }
   };
 
-  // ✅ UPDATED: Handle profile menu interactions with admin panel
+  // Handle profile menu interactions with admin panel
   const handleProfileAction = (action) => {
     setShowUserDropdown(false);
 
@@ -679,7 +679,7 @@ function Navbar({
 
             {/* Right section - Admin panel button, Notifications and profile */}
             <div className="ms-auto d-flex align-items-center navbar-right">
-              {/* ✅ NEW: Admin Panel Button for Development */}
+              {/* Admin Panel Button for Development */}
               <Nav.Item className="me-2">
                 <Button
                   variant="outline-danger"
@@ -799,7 +799,7 @@ function Navbar({
                 )}
               </Nav.Item>
 
-              {/* ✅ UPDATED: User profile dropdown with admin panel option */}
+              {/* User profile dropdown with admin panel option */}
               <Nav.Item className="user-dropdown">
                 <Dropdown
                   show={showUserDropdown}
@@ -874,7 +874,7 @@ function Navbar({
 
                     <Dropdown.Divider />
 
-                    {/* ✅ NEW: Admin Panel Option - First in the list */}
+                    {/* Admin Panel Option - First in the list */}
                     <Dropdown.Item
                       onClick={() => handleProfileAction("admin")}
                       className="d-flex align-items-center py-2 admin-menu-item"
@@ -975,252 +975,254 @@ function Navbar({
         currentUser={currentUser}
       />
 
-      {/* ✅ UPDATED: Additional CSS for admin panel button and styling */}
-      <style jsx>{`
-        .admin-panel-btn {
-          border: 2px solid #dc3545 !important;
-          color: #dc3545 !important;
-          background: transparent !important;
-          transition: all 0.2s ease;
-          font-weight: 600;
-          border-radius: 8px;
-          padding: 6px 12px;
-        }
-
-        .admin-panel-btn:hover {
-          background: #dc3545 !important;
-          color: white !important;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-        }
-
-        .admin-panel-btn:focus {
-          box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25) !important;
-        }
-
-        .admin-menu-item {
-          background: linear-gradient(
-            135deg,
-            rgba(220, 53, 69, 0.05),
-            rgba(220, 53, 69, 0.1)
-          );
-          border-radius: 6px;
-          margin: 2px 8px;
-          border: 1px solid rgba(220, 53, 69, 0.1);
-        }
-
-        .admin-menu-item:hover {
-          background: linear-gradient(
-            135deg,
-            rgba(220, 53, 69, 0.1),
-            rgba(220, 53, 69, 0.15)
-          );
-          border-color: rgba(220, 53, 69, 0.2);
-          transform: translateX(2px);
-        }
-
-        .user-dropdown-toggle {
-          border: none !important;
-          background: none !important;
-          box-shadow: none !important;
-          outline: none !important;
-        }
-
-        .user-dropdown-toggle:hover {
-          transform: scale(1.02);
-          transition: transform 0.2s ease;
-        }
-
-        .user-dropdown-toggle:focus {
-          box-shadow: 0 0 0 2px rgba(94, 96, 206, 0.25) !important;
-        }
-
-        .img-profile {
-          border: 2px solid #f8f9fa;
-          transition: all 0.2s ease;
-        }
-
-        .img-profile:hover {
-          border-color: #5e60ce;
-          box-shadow: 0 2px 8px rgba(94, 96, 206, 0.3);
-        }
-
-        .dropdown-item {
-          border-radius: 6px;
-          margin: 2px 8px;
-          transition: all 0.2s ease;
-        }
-
-        .dropdown-item:hover {
-          background: linear-gradient(
-            135deg,
-            rgba(94, 96, 206, 0.1),
-            rgba(128, 96, 255, 0.1)
-          );
-          transform: translateX(2px);
-        }
-
-        .dropdown-header {
-          border-radius: 8px 8px 0 0;
-          margin: -8px -8px 8px -8px;
-          padding: 16px !important;
-        }
-
-        .notification-badge {
-          position: absolute;
-          top: -8px;
-          right: -8px;
-          background: #dc3545;
-          color: white;
-          border-radius: 10px;
-          padding: 2px 6px;
-          font-size: 10px;
-          font-weight: bold;
-          min-width: 18px;
-          text-align: center;
-          line-height: 1;
-          border: 2px solid white;
-          animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-          0% {
-            transform: scale(1);
-          }
-          50% {
-            transform: scale(1.1);
-          }
-          100% {
-            transform: scale(1);
-          }
-        }
-
-        .icon-link {
-          padding: 8px;
-          border-radius: 6px;
-          color: #6c757d;
-          transition: all 0.2s ease;
-          text-decoration: none;
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .icon-link:hover {
-          color: #5e60ce;
-          background: rgba(94, 96, 206, 0.1);
-          transform: translateY(-1px);
-        }
-
-        .dropdown-menu {
-          border: none;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-          border-radius: 12px;
-          padding: 8px;
-          margin-top: 8px;
-          animation: fadeInDown 0.3s ease;
-        }
-
-        @keyframes fadeInDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .business-dropdown-menu {
-          min-width: 320px;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .notifications-dropdown {
-          min-width: 360px;
-          max-height: 450px;
-          overflow-y: auto;
-        }
-
-        .business-avatar,
-        .business-dropdown-avatar {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: bold;
-          font-size: 12px;
-          flex-shrink: 0;
-        }
-
-        .business-dropdown-avatar {
-          width: 28px;
-          height: 28px;
-          font-size: 11px;
-        }
-
-        .business-name {
-          font-weight: 600;
-          font-size: 14px;
-          color: #333;
-          line-height: 1.2;
-        }
-
-        .add-business {
-          font-size: 11px;
-          color: #6c757d;
-          line-height: 1.2;
-        }
-
-        .business-dropdown-toggle:hover {
-          background: rgba(94, 96, 206, 0.05);
-          border-radius: 8px;
-          padding: 4px 8px;
-          margin: -4px -8px;
-          transition: all 0.2s ease;
-        }
-
-        .user-name {
-          font-weight: 500;
-          color: #333;
-          max-width: 120px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        @media (max-width: 768px) {
-          .business-name-container {
-            display: none !important;
+      {/* CSS Styles - Fixed JSX error by removing jsx attribute */}
+      <style>
+        {`
+          .admin-panel-btn {
+            border: 2px solid #dc3545 !important;
+            color: #dc3545 !important;
+            background: transparent !important;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 6px 12px;
           }
 
-          .user-name {
-            display: none !important;
+          .admin-panel-btn:hover {
+            background: #dc3545 !important;
+            color: white !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
           }
 
-          .current-page-name {
-            display: none !important;
+          .admin-panel-btn:focus {
+            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25) !important;
+          }
+
+          .admin-menu-item {
+            background: linear-gradient(
+              135deg,
+              rgba(220, 53, 69, 0.05),
+              rgba(220, 53, 69, 0.1)
+            );
+            border-radius: 6px;
+            margin: 2px 8px;
+            border: 1px solid rgba(220, 53, 69, 0.1);
+          }
+
+          .admin-menu-item:hover {
+            background: linear-gradient(
+              135deg,
+              rgba(220, 53, 69, 0.1),
+              rgba(220, 53, 69, 0.15)
+            );
+            border-color: rgba(220, 53, 69, 0.2);
+            transform: translateX(2px);
+          }
+
+          .user-dropdown-toggle {
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+          }
+
+          .user-dropdown-toggle:hover {
+            transform: scale(1.02);
+            transition: transform 0.2s ease;
+          }
+
+          .user-dropdown-toggle:focus {
+            box-shadow: 0 0 0 2px rgba(94, 96, 206, 0.25) !important;
+          }
+
+          .img-profile {
+            border: 2px solid #f8f9fa;
+            transition: all 0.2s ease;
+          }
+
+          .img-profile:hover {
+            border-color: #5e60ce;
+            box-shadow: 0 2px 8px rgba(94, 96, 206, 0.3);
+          }
+
+          .dropdown-item {
+            border-radius: 6px;
+            margin: 2px 8px;
+            transition: all 0.2s ease;
+          }
+
+          .dropdown-item:hover {
+            background: linear-gradient(
+              135deg,
+              rgba(94, 96, 206, 0.1),
+              rgba(128, 96, 255, 0.1)
+            );
+            transform: translateX(2px);
+          }
+
+          .dropdown-header {
+            border-radius: 8px 8px 0 0;
+            margin: -8px -8px 8px -8px;
+            padding: 16px !important;
+          }
+
+          .notification-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            min-width: 18px;
+            text-align: center;
+            line-height: 1;
+            border: 2px solid white;
+            animation: pulse 2s infinite;
+          }
+
+          @keyframes pulse {
+            0% {
+              transform: scale(1);
+            }
+            50% {
+              transform: scale(1.1);
+            }
+            100% {
+              transform: scale(1);
+            }
+          }
+
+          .icon-link {
+            padding: 8px;
+            border-radius: 6px;
+            color: #6c757d;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .icon-link:hover {
+            color: #5e60ce;
+            background: rgba(94, 96, 206, 0.1);
+            transform: translateY(-1px);
           }
 
           .dropdown-menu {
-            min-width: 280px !important;
+            border: none;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            padding: 8px;
+            margin-top: 8px;
+            animation: fadeInDown 0.3s ease;
           }
 
-          .admin-panel-btn span {
-            display: none !important;
+          @keyframes fadeInDown {
+            from {
+              opacity: 0;
+              transform: translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
           }
 
-          .admin-panel-btn {
-            padding: 6px 8px !important;
+          .business-dropdown-menu {
+            min-width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
           }
-        }
-      `}</style>
+
+          .notifications-dropdown {
+            min-width: 360px;
+            max-height: 450px;
+            overflow-y: auto;
+          }
+
+          .business-avatar,
+          .business-dropdown-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            flex-shrink: 0;
+          }
+
+          .business-dropdown-avatar {
+            width: 28px;
+            height: 28px;
+            font-size: 11px;
+          }
+
+          .business-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.2;
+          }
+
+          .add-business {
+            font-size: 11px;
+            color: #6c757d;
+            line-height: 1.2;
+          }
+
+          .business-dropdown-toggle:hover {
+            background: rgba(94, 96, 206, 0.05);
+            border-radius: 8px;
+            padding: 4px 8px;
+            margin: -4px -8px;
+            transition: all 0.2s ease;
+          }
+
+          .user-name {
+            font-weight: 500;
+            color: #333;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          @media (max-width: 768px) {
+            .business-name-container {
+              display: none !important;
+            }
+
+            .user-name {
+              display: none !important;
+            }
+
+            .current-page-name {
+              display: none !important;
+            }
+
+            .dropdown-menu {
+              min-width: 280px !important;
+            }
+
+            .admin-panel-btn span {
+              display: none !important;
+            }
+
+            .admin-panel-btn {
+              padding: 6px 8px !important;
+            }
+          }
+        `}
+      </style>
     </>
   );
 }

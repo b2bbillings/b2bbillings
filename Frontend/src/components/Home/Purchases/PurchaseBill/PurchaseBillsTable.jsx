@@ -1,4 +1,7 @@
 import React, {useState, useCallback, useMemo, useEffect, useRef} from "react";
+import {useReactToPrint} from "react-to-print";
+import PurchaseInvoice from "../../../PrintComponents/PurchaseInvoice";
+
 import {createPortal} from "react-dom";
 import {
   Container,
@@ -11,6 +14,8 @@ import {
   Form,
   Spinner,
   Alert,
+  Modal,
+  ButtonGroup,
 } from "react-bootstrap";
 import {useNavigate, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
@@ -47,7 +52,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import purchaseOrderService from "../../../../services/purchaseOrderService";
 import purchaseService from "../../../../services/purchaseService";
-// ✅ ADD: Import UniversalViewModal
 import UniversalViewModal from "../../../Common/UniversalViewModal";
 
 const PortalDropdown = ({
@@ -71,7 +75,7 @@ const PortalDropdown = ({
 
       setPosition({
         top: triggerRect.bottom + scrollTop + 4,
-        left: triggerRect.right + scrollLeft - 200, // Align to right
+        left: triggerRect.right + scrollLeft - 200,
       });
     }
   }, [isOpen, triggerRef]);
@@ -134,7 +138,6 @@ const PortalDropdown = ({
   );
 };
 
-// Custom Dropdown Item Component
 const DropdownItem = ({
   children,
   onClick,
@@ -194,12 +197,10 @@ const DropdownItem = ({
   );
 };
 
-// Custom Dropdown Divider Component
 const DropdownDivider = () => (
   <div className="dropdown-divider my-1" style={{margin: "4px 0"}} />
 );
 
-// Custom Dropdown Header Component
 const DropdownHeader = ({children}) => (
   <div className="dropdown-header text-muted small fw-bold py-1 px-3">
     {children}
@@ -221,14 +222,14 @@ const PurchaseSourceFilter = ({
       description: "All purchase invoices from any source",
     },
     {
-      key: "self_generated", // ✅ CHANGED: Created by your company
+      key: "self_generated",
       label: "Self Generated",
       icon: faExchangeAlt,
       color: "info",
       description: "Created by your company from your sales invoices",
     },
     {
-      key: "from_suppliers", // ✅ CHANGED: Created by suppliers
+      key: "from_suppliers",
       label: "From Suppliers",
       icon: faTruck,
       color: "success",
@@ -238,7 +239,7 @@ const PurchaseSourceFilter = ({
 
   return (
     <div className="purchase-source-filter mb-3">
-      <div className="d-flex flex-wrap gap-2">
+      <div className="d-flex flex-nowrap gap-2 align-items-center">
         {filterOptions.map((option) => {
           const count = purchaseCounts[option.key] || 0;
           const isActive = activeFilter === option.key;
@@ -249,18 +250,33 @@ const PurchaseSourceFilter = ({
               type="button"
               className={`btn ${
                 isActive ? `btn-${option.color}` : `btn-outline-${option.color}`
-              } d-flex align-items-center position-relative`}
+              } btn-sm d-flex align-items-center position-relative flex-shrink-0`}
               onClick={() => onFilterChange(option.key)}
               disabled={isLoading}
-              style={{borderRadius: 0}}
+              style={{
+                borderRadius: 0,
+                whiteSpace: "nowrap",
+                minWidth: "fit-content",
+              }}
               title={option.description}
             >
               <FontAwesomeIcon icon={option.icon} className="me-2" />
-              {option.label}
+              <span className="d-none d-md-inline">{option.label}</span>
+              <span className="d-md-none">
+                {option.key === "all"
+                  ? "All"
+                  : option.key === "self_generated"
+                  ? "Self"
+                  : "Suppliers"}
+              </span>
               <Badge
                 bg={isActive ? "light" : option.color}
                 text={isActive ? "dark" : "white"}
                 className="ms-2"
+                style={{
+                  fontSize: "10px",
+                  minWidth: "18px",
+                }}
               >
                 {count}
               </Badge>
@@ -309,6 +325,29 @@ function PurchaseBillsTable({
   const navigate = useNavigate();
   const location = useLocation();
 
+  const isPurchaseOrdersMode = useMemo(() => {
+    return (
+      isPurchaseOrderView ||
+      location.pathname.includes("/purchase-orders") ||
+      title?.toLowerCase().includes("order")
+    );
+  }, [isPurchaseOrderView, location.pathname, title]);
+
+  const printRef = useRef();
+  const [printData, setPrintData] = useState(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+
+  const [printModalShow, setPrintModalShow] = useState(false);
+  const [selectedPurchaseForPrint, setSelectedPurchaseForPrint] =
+    useState(null);
+  const [bulkPrintMode, setBulkPrintMode] = useState(false);
+  const [selectedPurchasesForBulkPrint, setSelectedPurchasesForBulkPrint] =
+    useState([]);
+  const [printTemplate, setPrintTemplate] = useState("standard");
+  const [printFormat, setPrintFormat] = useState("a4");
+  const printComponentRef = useRef();
+
   const [viewModalShow, setViewModalShow] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -321,21 +360,509 @@ function PurchaseBillsTable({
   const [localSortOrder, setLocalSortOrder] = useState(sortOrder);
   const [localFilterStatus, setLocalFilterStatus] = useState(filterStatus);
 
-  // ✅ UPDATED: Source filter state with new default
   const [sourceFilter, setSourceFilter] = useState("all");
   const [filteredPurchases, setFilteredPurchases] = useState(purchases);
 
-  // Portal dropdown state
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const dropdownRefs = useRef({});
 
-  const isPurchaseOrdersMode = useMemo(() => {
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `Purchase-Invoice-${
+      printData?.purchase?.billNumber || "DRAFT"
+    }`,
+    onBeforeGetContent: () => {
+      return Promise.resolve();
+    },
+    onAfterPrint: () => {
+      setShowPrintPreview(false);
+      setPrintData(null);
+      setPrintLoading(false);
+    },
+    onPrintError: (error) => {
+      addToast?.("Print failed. Please try again.", "error");
+      setPrintLoading(false);
+    },
+    removeAfterPrint: true,
+  });
+
+  const transformPurchaseDataForPrint = useCallback(
+    (purchase) => {
+      const items = purchase.items || [];
+      const subtotal = items.reduce(
+        (sum, item) => sum + (item.amount || item.totalAmount || 0),
+        0
+      );
+      const totalTax = items.reduce((sum, item) => {
+        const cgst = parseFloat(item.cgstAmount || item.cgst || 0);
+        const sgst = parseFloat(item.sgstAmount || item.sgst || 0);
+        const igst = parseFloat(item.igst || 0);
+        return sum + cgst + sgst + igst;
+      }, 0);
+
+      return {
+        company: {
+          name: currentCompany?.businessName || "Your Company",
+          gstin: currentCompany?.gstin || "",
+          address: currentCompany?.address || "",
+          phone: currentCompany?.phoneNumber || "",
+          email: currentCompany?.email || "",
+          logo:
+            currentCompany?.logo?.base64 &&
+            currentCompany.logo.base64.trim() !== ""
+              ? currentCompany.logo.base64
+              : null,
+        },
+        supplier: {
+          name:
+            purchase.supplierName ||
+            purchase.supplier?.name ||
+            "Unknown Supplier",
+          address: purchase.supplierAddress || purchase.supplier?.address || "",
+          mobile: purchase.supplierMobile || purchase.supplier?.mobile || "",
+          email: purchase.supplierEmail || purchase.supplier?.email || "",
+          gstin:
+            purchase.supplierGstNumber || purchase.supplier?.gstNumber || "",
+        },
+        purchase: {
+          billNumber: purchase.purchaseNumber || purchase.billNumber || "N/A",
+          billDate: purchase.purchaseDate || purchase.billDate || purchase.date,
+          dueDate: purchase.dueDate || purchase.payment?.dueDate,
+          status: purchase.status || "draft",
+        },
+        items: items.map((item, index) => ({
+          name: item.itemName || item.productName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || item.hsnNumber || "",
+          quantity: item.quantity || item.qty || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || item.rate || item.price || 0,
+          taxRate: item.taxRate || item.gstRate || 0,
+          amount: item.amount || item.totalAmount || 0,
+        })),
+        totals: {
+          subtotal: subtotal,
+          totalTax: totalTax,
+          totalCGST: purchase.cgst || 0,
+          totalSGST: purchase.sgst || 0,
+          totalIGST: purchase.igst || 0,
+          totalDiscount: purchase.discount || purchase.discountAmount || 0,
+          roundOff: purchase.roundOff || 0,
+          finalTotal:
+            purchase.amount ||
+            purchase.total ||
+            purchase.totals?.finalTotal ||
+            subtotal + totalTax,
+        },
+        payment: {
+          method: purchase.paymentMethod || purchase.payment?.method || "cash",
+          paidAmount: purchase.paidAmount || purchase.payment?.paidAmount || 0,
+          pendingAmount:
+            purchase.balance ||
+            purchase.balanceAmount ||
+            purchase.payment?.pendingAmount ||
+            0,
+          status:
+            purchase.paymentStatus || purchase.payment?.status || "pending",
+          terms: purchase.terms || purchase.termsAndConditions || "",
+        },
+      };
+    },
+    [currentCompany]
+  );
+
+  const fetchPurchaseForPrint = useCallback(
+    async (purchase) => {
+      try {
+        setPrintLoading(true);
+
+        const purchaseId = purchase._id || purchase.id;
+        const isPurchaseOrder =
+          isPurchaseOrdersMode ||
+          purchase.documentType === "purchase-order" ||
+          purchase.orderType === "purchase_order";
+
+        let response;
+
+        if (isPurchaseOrder) {
+          response = {
+            success: true,
+            data: transformPurchaseDataForPrint(purchase),
+          };
+        } else {
+          if (purchaseService.getPurchaseBillForPrint) {
+            response = await purchaseService.getPurchaseBillForPrint(
+              purchaseId
+            );
+          } else {
+            response = {
+              success: true,
+              data: transformPurchaseDataForPrint(purchase),
+            };
+          }
+        }
+
+        if (response.success && response.data) {
+          return response.data;
+        } else {
+          throw new Error(response.message || "Failed to fetch purchase data");
+        }
+      } catch (error) {
+        return transformPurchaseDataForPrint(purchase);
+      } finally {
+        setPrintLoading(false);
+      }
+    },
+    [isPurchaseOrdersMode, transformPurchaseDataForPrint]
+  );
+
+  const PrintModal = () => {
+    if (!printModalShow) return null;
+
+    const handleClose = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setPrintModalShow(false);
+      setSelectedPurchaseForPrint(null);
+      setPrintData(null);
+      setBulkPrintMode(false);
+    };
+
+    const handlePrintClick = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      handleComponentPrint();
+    };
+
+    const handleDownloadClick = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      addToast?.("PDF download feature coming soon", "info");
+    };
+
     return (
-      isPurchaseOrderView ||
-      location.pathname.includes("/purchase-orders") ||
-      title?.toLowerCase().includes("order")
+      <Modal
+        show={printModalShow}
+        onHide={handleClose}
+        size="xl"
+        centered
+        backdrop={false}
+        keyboard={true}
+        enforceFocus={false}
+      >
+        <Modal.Header closeButton className="bg-info text-white">
+          <Modal.Title>
+            <FontAwesomeIcon icon={faPrint} className="me-2" />
+            {bulkPrintMode
+              ? `Print ${selectedPurchasesForBulkPrint.length} Invoices`
+              : `Print Purchase Invoice`}
+            {selectedPurchaseForPrint && (
+              <Badge bg="light" text="dark" className="ms-2">
+                {selectedPurchaseForPrint.purchaseNumber ||
+                  selectedPurchaseForPrint.billNumber ||
+                  selectedPurchaseForPrint._id}
+              </Badge>
+            )}
+          </Modal.Title>
+        </Modal.Header>
+
+        <Modal.Body className="p-0">
+          {printLoading ? (
+            <div className="text-center py-5">
+              <Spinner animation="border" variant="primary" size="lg" />
+              <h5 className="mt-3 text-muted">Preparing print data...</h5>
+              <p className="text-muted">
+                {bulkPrintMode
+                  ? `Processing ${selectedPurchasesForBulkPrint.length} invoices...`
+                  : `Loading ${
+                      selectedPurchaseForPrint?.purchaseNumber ||
+                      selectedPurchaseForPrint?.billNumber ||
+                      "invoice"
+                    }...`}
+              </p>
+            </div>
+          ) : printData ? (
+            <div
+              className="print-preview-container"
+              style={{maxHeight: "70vh", overflow: "auto"}}
+            >
+              {bulkPrintMode ? (
+                <div ref={printComponentRef}>
+                  {printData.purchases?.map((purchaseData, index) => (
+                    <div key={index} className="mb-4 page-break">
+                      <PurchaseInvoice invoiceData={purchaseData} />
+                      {index < printData.purchases.length - 1 && (
+                        <div style={{pageBreakAfter: "always"}} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div ref={printComponentRef}>
+                  <PurchaseInvoice invoiceData={printData} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-5">
+              <FontAwesomeIcon
+                icon={faExclamationTriangle}
+                size="3x"
+                className="text-warning mb-3"
+              />
+              <h5>No Print Data Available</h5>
+              <p className="text-muted">
+                Unable to load print data for the selected purchase(s).
+              </p>
+              <Button variant="outline-primary" onClick={handleClose}>
+                Close
+              </Button>
+            </div>
+          )}
+        </Modal.Body>
+
+        <Modal.Footer className="d-flex justify-content-between">
+          <div className="d-flex gap-2">
+            <Button
+              variant="primary"
+              onClick={handlePrintClick}
+              disabled={printLoading || !printData}
+            >
+              <FontAwesomeIcon icon={faPrint} className="me-1" />
+              Print Now
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={handleDownloadClick}
+              disabled={printLoading || !printData}
+            >
+              <FontAwesomeIcon icon={faDownload} className="me-1" />
+              Download PDF
+            </Button>
+
+            <Button variant="outline-secondary" onClick={handleClose}>
+              Close
+            </Button>
+          </div>
+        </Modal.Footer>
+      </Modal>
     );
-  }, [isPurchaseOrderView, location.pathname, title]);
+  };
+
+  const handleComponentPrint = useReactToPrint({
+    contentRef: printComponentRef,
+    documentTitle: selectedPurchaseForPrint
+      ? `Purchase-Invoice-${
+          selectedPurchaseForPrint.purchaseNumber ||
+          selectedPurchaseForPrint.billNumber ||
+          selectedPurchaseForPrint._id
+        }`
+      : "Purchase Invoice",
+    onAfterPrint: () => {
+      setPrintModalShow(false);
+      setSelectedPurchaseForPrint(null);
+      setPrintData(null);
+      setBulkPrintMode(false);
+    },
+    onPrintError: (errorLocation, error) => {
+      addToast?.("Printing failed", "error");
+    },
+    pageStyle: "@page { margin: 0.5in; }",
+    suppressErrors: true,
+  });
+
+  const handlePrintPurchase = useCallback(
+    async (purchase, options = {}) => {
+      try {
+        if (options.event) {
+          options.event.preventDefault();
+          options.event.stopPropagation();
+        }
+
+        setPrintLoading(true);
+        setSelectedPurchaseForPrint(purchase);
+
+        const printOptions = {
+          template: options.template || printTemplate,
+          format: options.format || printFormat,
+          ...options,
+        };
+
+        const printInvoiceData = await fetchPurchaseForPrint(purchase);
+        setPrintData(printInvoiceData);
+        setPrintModalShow(true);
+        addToast?.("Print data loaded successfully", "success");
+
+        if (onPrintPurchase) {
+          onPrintPurchase(purchase);
+        }
+      } catch (error) {
+        addToast?.("Error preparing invoice for printing", "error");
+        setPrintModalShow(false);
+        setSelectedPurchaseForPrint(null);
+        setPrintData(null);
+      } finally {
+        setPrintLoading(false);
+      }
+    },
+    [
+      fetchPurchaseForPrint,
+      printTemplate,
+      printFormat,
+      onPrintPurchase,
+      addToast,
+    ]
+  );
+
+  const handlePrintFromModal = useCallback(() => {
+    if (selectedPurchase) {
+      handlePrintPurchase(selectedPurchase);
+    }
+  }, [selectedPurchase, handlePrintPurchase]);
+
+  const PrintControls = () => (
+    <div className="d-flex gap-2 align-items-center">
+      <Button
+        variant="outline-secondary"
+        size="sm"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.reload();
+        }}
+        disabled={isLoading}
+        title="Refresh purchases list"
+      >
+        <FontAwesomeIcon
+          icon={isLoading ? faSpinner : faUndo}
+          className={`me-1 ${isLoading ? "fa-spin" : ""}`}
+        />
+        {isLoading ? "Loading..." : "Refresh"}
+      </Button>
+
+      <Button
+        variant="outline-info"
+        size="sm"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (filteredPurchases.length === 1) {
+            handlePrintPurchase(filteredPurchases[0], {event: e});
+          } else if (filteredPurchases.length > 1) {
+            handlePrintPurchase(filteredPurchases[0], {event: e});
+          }
+        }}
+        disabled={filteredPurchases.length === 0 || printLoading}
+        title="Print purchase"
+      >
+        <FontAwesomeIcon
+          icon={printLoading ? faSpinner : faPrint}
+          className={`me-1 ${printLoading ? "fa-spin" : ""}`}
+        />
+        {printLoading ? "Processing..." : "Print"}
+      </Button>
+
+      {printLoading && (
+        <div className="d-flex align-items-center text-info">
+          <FontAwesomeIcon icon={faSpinner} className="fa-spin me-2" />
+          <small>
+            <strong>Preparing print...</strong>
+          </small>
+        </div>
+      )}
+
+      {filteredPurchases.length > 0 && (
+        <div className="d-flex align-items-center">
+          <small className="text-muted">
+            <strong>{filteredPurchases.length}</strong> purchase
+            {filteredPurchases.length !== 1 ? "s" : ""}
+            {selectedPurchases.length > 0 && enableBulkActions && (
+              <span className="ms-2">
+                (<strong>{selectedPurchases.length}</strong> selected)
+              </span>
+            )}
+          </small>
+        </div>
+      )}
+    </div>
+  );
+
+  const handleBulkPrint = useCallback(
+    async (purchases, options = {}) => {
+      try {
+        setPrintLoading(true);
+        setBulkPrintMode(true);
+
+        const printOptions = {
+          template: options.template || printTemplate,
+          format: options.format || printFormat,
+          ...options,
+        };
+
+        const bulkPrintData = {
+          purchases: [],
+          template: printOptions.template,
+          format: printOptions.format,
+        };
+
+        for (const purchase of purchases) {
+          try {
+            const purchaseData = await fetchPurchaseForPrint(purchase);
+            bulkPrintData.purchases.push(purchaseData);
+          } catch (error) {
+            console.error("Error processing purchase for bulk print:", error);
+          }
+        }
+
+        if (bulkPrintData.purchases.length > 0) {
+          setSelectedPurchasesForBulkPrint(purchases);
+          setPrintData(bulkPrintData);
+          setPrintModalShow(true);
+          addToast?.(
+            `${purchases.length} purchases prepared for bulk printing`,
+            "success"
+          );
+        } else {
+          throw new Error("No purchases could be prepared for printing");
+        }
+      } catch (error) {
+        addToast?.(`Failed to prepare bulk print: ${error.message}`, "error");
+      } finally {
+        setPrintLoading(false);
+      }
+    },
+    [fetchPurchaseForPrint, printTemplate, printFormat, addToast]
+  );
+
+  const handlePrintPreview = useCallback(
+    async (purchase, options = {}) => {
+      try {
+        setPrintLoading(true);
+
+        const previewOptions = {
+          ...options,
+          template: "preview",
+          format: "html",
+        };
+
+        const printInvoiceData = await fetchPurchaseForPrint(purchase);
+        setPrintData(printInvoiceData);
+        setPrintModalShow(true);
+        addToast?.("Print preview loaded successfully", "success");
+      } catch (error) {
+        addToast?.(`Failed to load print preview: ${error.message}`, "error");
+      } finally {
+        setPrintLoading(false);
+      }
+    },
+    [fetchPurchaseForPrint, addToast]
+  );
 
   const purchaseCounts = useMemo(() => {
     const counts = {
@@ -345,36 +872,24 @@ function PurchaseBillsTable({
     };
 
     purchases.forEach((purchase) => {
-      // ✅ CORRECTED: Check if this purchase was created by YOUR company
       const isCreatedByYourCompany =
-        // Manual creation by your company (no external source)
         (purchase.companyId?.toString() === companyId?.toString() &&
           !purchase.sourceCompanyId &&
           !purchase.isAutoGenerated) ||
-        // Auto-generated from YOUR sales invoice (you sold to someone else)
         (purchase.isAutoGenerated === true &&
           purchase.generatedFrom === "sales_invoice" &&
-          purchase.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
+          purchase.sourceCompanyId?.toString() === companyId?.toString());
 
       if (isCreatedByYourCompany) {
         counts.self_generated++;
       } else {
-        // Created by suppliers or auto-generated from supplier's sales
         counts.from_suppliers++;
       }
-    });
-
-    console.log("🔢 Purchase counts by creator:", {
-      all: counts.all,
-      selfGenerated: counts.self_generated,
-      fromSuppliers: counts.from_suppliers,
-      companyId: companyId,
     });
 
     return counts;
   }, [purchases, companyId]);
 
-  // ✅ FIXED: Filter purchases based on WHO created them
   const filterPurchasesBySource = useCallback(
     (purchases, filter) => {
       if (filter === "all") {
@@ -382,30 +897,13 @@ function PurchaseBillsTable({
       }
 
       return purchases.filter((purchase) => {
-        // ✅ CORRECTED: Check if this purchase was created by YOUR company
         const isCreatedByYourCompany =
-          // Manual creation by your company (no external source)
           (purchase.companyId?.toString() === companyId?.toString() &&
             !purchase.sourceCompanyId &&
             !purchase.isAutoGenerated) ||
-          // Auto-generated from YOUR sales invoice (you sold to someone else)
           (purchase.isAutoGenerated === true &&
             purchase.generatedFrom === "sales_invoice" &&
-            purchase.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
-
-        console.log(`🔍 Purchase ${purchase.purchaseNumber || purchase._id}:`, {
-          isAutoGenerated: purchase.isAutoGenerated,
-          generatedFrom: purchase.generatedFrom,
-          targetCompanyId: purchase.targetCompanyId,
-          sourceCompanyId: purchase.sourceCompanyId,
-          companyId: purchase.companyId,
-          currentCompanyId: companyId,
-          isCreatedByYourCompany: isCreatedByYourCompany,
-          filterMatch:
-            filter === "self_generated"
-              ? isCreatedByYourCompany
-              : !isCreatedByYourCompany,
-        });
+            purchase.sourceCompanyId?.toString() === companyId?.toString());
 
         if (filter === "self_generated") {
           return isCreatedByYourCompany;
@@ -419,16 +917,13 @@ function PurchaseBillsTable({
     [companyId]
   );
 
-  // ✅ NEW: Update filtered purchases when source filter changes
   useEffect(() => {
     const filtered = filterPurchasesBySource(purchases, sourceFilter);
     setFilteredPurchases(filtered);
   }, [purchases, sourceFilter, filterPurchasesBySource]);
 
-  // ✅ NEW: Handle source filter change
   const handleSourceFilterChange = (newFilter) => {
     setSourceFilter(newFilter);
-    console.log(`🔍 Source filter changed to: ${newFilter}`);
   };
 
   const getDocumentType = useCallback(
@@ -496,8 +991,6 @@ function PurchaseBillsTable({
 
   const transformPurchaseForEdit = useCallback(
     (purchase) => {
-      console.log("🔧 Transforming purchase for edit:", purchase);
-
       const transformedItems = (purchase.items || []).map((item, index) => {
         const quantity = parseFloat(item.quantity || item.qty || 1);
         const pricePerUnit = parseFloat(
@@ -762,15 +1255,6 @@ function PurchaseBillsTable({
         transformedAt: new Date().toISOString(),
       };
 
-      console.log("✅ Transformed purchase for edit:", {
-        originalItemsCount: (purchase.items || []).length,
-        transformedItemsCount: transformedItems.length,
-        firstItem: transformedItems[0],
-        paymentMethod: transformedPurchase.paymentMethod,
-        totalAmount: transformedPurchase.amount,
-        supplierName: transformedPurchase.supplierName,
-      });
-
       return transformedPurchase;
     },
     [isPurchaseOrdersMode, companyId]
@@ -778,17 +1262,12 @@ function PurchaseBillsTable({
 
   const handleEditPurchase = useCallback(
     (purchase) => {
-      console.log("📝 Edit purchase clicked:", purchase);
-
       try {
         const transformedPurchase = transformPurchaseForEdit(purchase);
 
         const editPath = `/companies/${companyId}/${labels.editPath}/${
           purchase._id || purchase.id
         }/edit`;
-
-        console.log("🚀 Navigating to edit path:", editPath);
-        console.log("📋 Passing purchase data:", transformedPurchase);
 
         navigate(editPath, {
           state: {
@@ -812,7 +1291,6 @@ function PurchaseBillsTable({
           onEditPurchase(purchase);
         }
       } catch (error) {
-        console.error("❌ Error handling edit purchase:", error);
         addToast?.("Error opening purchase for editing", "error");
       }
     },
@@ -831,8 +1309,6 @@ function PurchaseBillsTable({
 
   const handleViewPurchase = useCallback(
     async (purchase) => {
-      console.log("👁️ View purchase clicked:", purchase);
-
       try {
         setModalLoading(true);
         setModalError(null);
@@ -865,7 +1341,6 @@ function PurchaseBillsTable({
           onViewPurchase(purchase);
         }
       } catch (error) {
-        console.error("❌ Error handling view purchase:", error);
         setModalError("Failed to load purchase details");
         addToast?.("Error loading purchase details", "error");
       } finally {
@@ -885,7 +1360,6 @@ function PurchaseBillsTable({
       }
 
       if (deletingPurchases.has(purchaseId)) {
-        console.warn("⚠️ Delete already in progress for:", purchaseId);
         return;
       }
 
@@ -903,7 +1377,6 @@ function PurchaseBillsTable({
         );
 
         if (!confirmed) {
-          console.log("❌ Delete cancelled by user");
           return;
         }
 
@@ -925,8 +1398,6 @@ function PurchaseBillsTable({
             deleteOptions.hard = true;
           }
         }
-
-        console.log("🗑️ Deleting purchase:", purchaseId, deleteOptions);
 
         const deleteResponse = isPurchaseOrdersMode
           ? await purchaseOrderService.deletePurchaseOrder(
@@ -998,8 +1469,6 @@ function PurchaseBillsTable({
           if (onDeletePurchase) {
             setTimeout(() => onDeletePurchase(purchase), 100);
           }
-
-          console.log("✅ Purchase deletion completed:", purchaseId);
         } else {
           throw new Error(
             deleteResponse.message ||
@@ -1007,8 +1476,6 @@ function PurchaseBillsTable({
           );
         }
       } catch (error) {
-        console.error("❌ Delete error:", error);
-
         let errorMessage = `Failed to delete ${
           isPurchaseOrdersMode ? "order" : "purchase"
         }`;
@@ -1064,8 +1531,6 @@ function PurchaseBillsTable({
 
   const handleDuplicatePurchase = useCallback(
     (purchase) => {
-      console.log("📋 Duplicate purchase clicked:", purchase);
-
       try {
         const transformedPurchase = transformPurchaseForEdit(purchase);
 
@@ -1107,7 +1572,6 @@ function PurchaseBillsTable({
           onDuplicatePurchase(purchase);
         }
       } catch (error) {
-        console.error("❌ Error duplicating purchase:", error);
         addToast?.("Error duplicating purchase", "error");
       }
     },
@@ -1123,7 +1587,6 @@ function PurchaseBillsTable({
     ]
   );
 
-  // ✅ Updated: Separate active and cancelled purchases using filtered purchases
   const separatedPurchases = useMemo(() => {
     const active = [];
     const cancelled = [];
@@ -1165,16 +1628,13 @@ function PurchaseBillsTable({
 
     const statusInfo = getStatusInfo();
 
-    // ✅ FIXED: Check if created by your company (self-generated)
     const isSelfGenerated =
-      // Manual creation by your company (no external source)
       (purchase?.companyId?.toString() === companyId?.toString() &&
         !purchase?.sourceCompanyId &&
         !purchase?.isAutoGenerated) ||
-      // Auto-generated from YOUR sales invoice (you sold to someone else)
       (purchase?.isAutoGenerated === true &&
         purchase?.generatedFrom === "sales_invoice" &&
-        purchase?.sourceCompanyId?.toString() === companyId?.toString()); // ✅ FIXED: YOUR company is the SOURCE
+        purchase?.sourceCompanyId?.toString() === companyId?.toString());
 
     return (
       <div className="d-flex flex-column gap-1">
@@ -1206,7 +1666,6 @@ function PurchaseBillsTable({
     );
   };
 
-  // Action button component with Portal dropdown
   const ActionButton = ({purchase}) => {
     const purchaseId = purchase._id || purchase.id;
     const isDeleting = deletingPurchases.has(purchaseId);
@@ -1218,15 +1677,7 @@ function PurchaseBillsTable({
     const isOrder = docType === "purchase-order";
     const docLabels = getDocumentLabels(docType);
 
-    // Set up ref for this dropdown
-    useEffect(() => {
-      if (!dropdownRefs.current[purchaseId]) {
-        dropdownRefs.current[purchaseId] = React.createRef();
-      }
-    }, [purchaseId]);
-
     const handleToggleDropdown = (e) => {
-      e.preventDefault();
       e.stopPropagation();
       setOpenDropdownId(isOpen ? null : purchaseId);
     };
@@ -1235,23 +1686,19 @@ function PurchaseBillsTable({
       setOpenDropdownId(null);
     };
 
-    const handleDelete = async () => {
-      if (isDeleting || isCancelled) {
-        console.warn(
-          "⚠️ Cannot delete - purchase is cancelled or being deleted"
-        );
-        return;
-      }
-      await handleDeletePurchase(purchase);
-    };
-
     const handleEdit = () => {
-      if (isCancelled) {
-        addToast?.("Cannot edit cancelled purchase", "warning");
-        return;
-      }
       handleEditPurchase(purchase);
     };
+
+    const handleActionClick = (actionFn, ...args) => {
+      actionFn(...args);
+      setOpenDropdownId(null);
+    };
+
+    // Initialize dropdown ref
+    if (!dropdownRefs.current[purchaseId]) {
+      dropdownRefs.current[purchaseId] = React.createRef();
+    }
 
     return (
       <>
@@ -1260,7 +1707,7 @@ function PurchaseBillsTable({
           type="button"
           className="btn btn-sm btn-outline-secondary border-0 p-2"
           onClick={handleToggleDropdown}
-          disabled={isDeleting || modalLoading}
+          disabled={isDeleting || modalLoading || printLoading}
           style={{
             borderRadius: 0,
             background: "transparent",
@@ -1279,13 +1726,17 @@ function PurchaseBillsTable({
           onClose={handleCloseDropdown}
           triggerRef={dropdownRefs.current[purchaseId]}
         >
-          <DropdownItem onClick={() => handleViewPurchase(purchase)}>
+          {/* View Details */}
+          <DropdownItem
+            onClick={() => handleActionClick(handleViewPurchase, purchase)}
+          >
             <FontAwesomeIcon icon={faEye} className="me-2 text-primary" />
             View Details
           </DropdownItem>
 
           {enableActions && !isCancelled && (
             <>
+              {/* Edit Purchase */}
               <DropdownItem
                 onClick={handleEdit}
                 disabled={isDeleting || modalLoading}
@@ -1294,8 +1745,11 @@ function PurchaseBillsTable({
                 Edit {docLabels.documentName}
               </DropdownItem>
 
+              {/* Duplicate Purchase */}
               <DropdownItem
-                onClick={() => handleDuplicatePurchase(purchase)}
+                onClick={() =>
+                  handleActionClick(handleDuplicatePurchase, purchase)
+                }
                 disabled={isDeleting || modalLoading}
               >
                 <FontAwesomeIcon icon={faCopy} className="me-2 text-success" />
@@ -1306,76 +1760,181 @@ function PurchaseBillsTable({
             </>
           )}
 
-          <DropdownItem onClick={() => onPrintPurchase?.(purchase)}>
-            <FontAwesomeIcon icon={faPrint} className="me-2 text-secondary" />
-            Print
-          </DropdownItem>
+          {/* ✅ Enhanced Print & Share Section */}
+          <DropdownHeader>Print & Share</DropdownHeader>
 
-          <DropdownItem onClick={() => onSharePurchase?.(purchase)}>
+          {/* Enhanced Print Options */}
+          <div className="d-flex">
+            <DropdownItem
+              onClick={() => handleActionClick(handlePrintPurchase, purchase)}
+              disabled={printLoading}
+              className="flex-fill text-center"
+            >
+              <FontAwesomeIcon
+                icon={printLoading ? faSpinner : faPrint}
+                className={`me-1 ${printLoading ? "fa-spin" : ""}`}
+              />
+              {printLoading ? "Preparing..." : "Print"}
+            </DropdownItem>
+
+            <DropdownItem
+              onClick={() => handleActionClick(handlePrintPreview, purchase)}
+              disabled={printLoading}
+              className="flex-fill text-center"
+            >
+              <FontAwesomeIcon icon={faEye} className="me-1" />
+              Preview
+            </DropdownItem>
+          </div>
+
+          {/* Share Invoice */}
+          <DropdownItem
+            onClick={() => handleActionClick(onSharePurchase, purchase)}
+          >
             <FontAwesomeIcon icon={faShare} className="me-2 text-warning" />
-            Share
+            Share Invoice
           </DropdownItem>
 
-          <DropdownItem onClick={() => onDownloadPurchase?.(purchase)}>
-            <FontAwesomeIcon icon={faDownload} className="me-2 text-info" />
-            Download
-          </DropdownItem>
+          {/* Download Options */}
+          <div className="d-flex">
+            <DropdownItem
+              onClick={() => handleActionClick(onDownloadPurchase, purchase)}
+              className="flex-fill text-center"
+            >
+              <FontAwesomeIcon icon={faDownload} className="me-1 text-info" />
+              Excel
+            </DropdownItem>
 
-          {isOrder && !isCancelled && (
-            <>
-              <DropdownDivider />
-              <DropdownHeader>Order Actions</DropdownHeader>
-              <DropdownItem onClick={() => onMarkAsOrdered?.(purchase)}>
-                <FontAwesomeIcon
-                  icon={faShoppingCart}
-                  className="me-2 text-primary"
-                />
-                Mark as Ordered
-              </DropdownItem>
-              <DropdownItem onClick={() => onMarkAsReceived?.(purchase)}>
-                <FontAwesomeIcon icon={faTruck} className="me-2 text-success" />
-                Mark as Received
-              </DropdownItem>
-              <DropdownItem onClick={() => onConvertPurchase?.(purchase)}>
-                <FontAwesomeIcon
-                  icon={faExchangeAlt}
-                  className="me-2 text-warning"
-                />
-                Convert to Invoice
-              </DropdownItem>
-            </>
-          )}
-
-          {!isOrder && !isCancelled && (
-            <>
-              <DropdownDivider />
-              <DropdownHeader>Invoice Actions</DropdownHeader>
-              <DropdownItem onClick={() => onConvertPurchase?.(purchase)}>
-                <FontAwesomeIcon
-                  icon={faExchangeAlt}
-                  className="me-2 text-info"
-                />
-                Convert to Order
-              </DropdownItem>
-            </>
-          )}
+            <DropdownItem
+              onClick={() => {
+                // Add PDF download logic
+                addToast?.("PDF download feature coming soon", "info");
+                setOpenDropdownId(null);
+              }}
+              className="flex-fill text-center"
+            >
+              <FontAwesomeIcon icon={faDownload} className="me-1 text-danger" />
+              PDF
+            </DropdownItem>
+          </div>
 
           {enableActions && !isCancelled && (
             <>
               <DropdownDivider />
+
+              {/* Status Actions Section */}
+              <DropdownHeader>Status Actions</DropdownHeader>
+
+              {/* Convert Order to Invoice */}
+              {isOrder && (
+                <DropdownItem
+                  onClick={() => handleActionClick(onConvertPurchase, purchase)}
+                >
+                  <FontAwesomeIcon
+                    icon={faExchangeAlt}
+                    className="me-2 text-success"
+                  />
+                  Convert to Invoice
+                </DropdownItem>
+              )}
+
+              {/* Mark as Ordered */}
+              {purchase.status === "pending" && (
+                <DropdownItem
+                  onClick={() => handleActionClick(onMarkAsOrdered, purchase)}
+                >
+                  <FontAwesomeIcon
+                    icon={faShoppingCart}
+                    className="me-2 text-info"
+                  />
+                  Mark as Ordered
+                </DropdownItem>
+              )}
+
+              {/* Mark as Received */}
+              {purchase.status === "ordered" && (
+                <DropdownItem
+                  onClick={() => handleActionClick(onMarkAsReceived, purchase)}
+                >
+                  <FontAwesomeIcon
+                    icon={faTruck}
+                    className="me-2 text-success"
+                  />
+                  Mark as Received
+                </DropdownItem>
+              )}
+
+              {/* Complete Order */}
+              {purchase.status === "received" && (
+                <DropdownItem
+                  onClick={() =>
+                    handleActionClick(onCompletePurchase, purchase)
+                  }
+                >
+                  <FontAwesomeIcon
+                    icon={faCheck}
+                    className="me-2 text-success"
+                  />
+                  Complete Order
+                </DropdownItem>
+              )}
+
+              <DropdownDivider />
+
+              {/* Delete Purchase */}
               <DropdownItem
-                onClick={handleDelete}
+                onClick={() =>
+                  handleActionClick(handleDeletePurchase, purchase)
+                }
                 disabled={isDeleting || modalLoading}
                 variant="danger"
               >
-                <FontAwesomeIcon
-                  icon={isDeleting ? faSpinner : faTrash}
-                  className={`me-2 ${isDeleting ? "fa-spin" : ""}`}
-                />
-                {isDeleting ? "Deleting..." : "Delete"}
+                <FontAwesomeIcon icon={faTrash} className="me-2" />
+                {isDeleting ? (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  `Delete ${docLabels.documentName}`
+                )}
               </DropdownItem>
             </>
           )}
+
+          {/* ✅ Print Status Information */}
+          {printLoading && (
+            <>
+              <DropdownDivider />
+              <div className="px-3 py-2">
+                <div className="d-flex align-items-center text-info">
+                  <FontAwesomeIcon icon={faSpinner} className="fa-spin me-2" />
+                  <small>
+                    <strong>Preparing print data...</strong>
+                    <br />
+                    <span className="text-muted">
+                      Loading {purchase.purchaseNumber || purchase.billNumber}
+                    </span>
+                  </small>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ✅ Purchase Information */}
+          <DropdownDivider />
+          <div className="px-3 py-2">
+            <small className="text-muted">
+              <strong>Template:</strong> {printTemplate}
+              <br />
+              <strong>Format:</strong> {printFormat.toUpperCase()}
+              <br />
+              <strong>Items:</strong> {(purchase.items || []).length}
+              <br />
+              <strong>Amount:</strong> ₹
+              {(purchase.amount || 0).toLocaleString("en-IN")}
+            </small>
+          </div>
         </PortalDropdown>
       </>
     );
@@ -1478,265 +2037,419 @@ function PurchaseBillsTable({
   }
   return (
     <>
+      {showHeader && (
+        <div className="purchase-bills-filter-section mb-4">
+          <Container fluid className="px-0">
+            {/* ✅ FIXED: Title and Search Controls Row */}
+            <Row className="align-items-center mb-3">
+              <Col>
+                <h5 className="mb-0 text-purple">
+                  <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+                  {title ||
+                    (isPurchaseOrdersMode
+                      ? "Purchase Orders"
+                      : "Purchase Invoices")}
+                  <Badge bg="light" text="dark" className="ms-2">
+                    {filteredPurchases.length}
+                  </Badge>
+                </h5>
+              </Col>
+
+              <Col xs="auto">
+                {/* ✅ Search and controls section at top */}
+                <div className="d-flex gap-2 align-items-center flex-nowrap">
+                  {/* ✅ Action buttons FIRST */}
+                  <div className="d-flex gap-2 align-items-center flex-shrink-0">
+                    <PrintControls />
+                  </div>
+
+                  <InputGroup
+                    size="sm"
+                    style={{width: "250px", minWidth: "200px"}}
+                  >
+                    <InputGroup.Text>
+                      <FontAwesomeIcon icon={faSearch} />
+                    </InputGroup.Text>
+                    <Form.Control
+                      type="text"
+                      placeholder={searchPlaceholder || "Search purchases..."}
+                      value={localSearchTerm}
+                      onChange={(e) => {
+                        setLocalSearchTerm(e.target.value);
+                        onSearchChange?.(e.target.value);
+                      }}
+                    />
+                  </InputGroup>
+
+                  <Form.Select
+                    size="sm"
+                    value={localFilterStatus}
+                    onChange={(e) => {
+                      setLocalFilterStatus(e.target.value);
+                      onFilterChange?.(e.target.value);
+                    }}
+                    style={{width: "150px", minWidth: "120px"}}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="draft">Draft</option>
+                    <option value="pending">Pending</option>
+                    <option value="ordered">Ordered</option>
+                    <option value="received">Received</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </Form.Select>
+
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    style={{flexShrink: 0}}
+                  >
+                    <FontAwesomeIcon icon={faFileExcel} className="me-1" />
+                    Export
+                  </Button>
+                </div>
+              </Col>
+            </Row>
+          </Container>
+        </div>
+      )}
+
+      {/* ✅ MOVED: Source filter buttons attached to table */}
+      <div className="source-filter-attached-to-table mb-0">
+        <PurchaseSourceFilter
+          activeFilter={sourceFilter}
+          onFilterChange={handleSourceFilterChange}
+          purchaseCounts={purchaseCounts}
+          isLoading={isLoading}
+        />
+      </div>
+
+      {/* ✅ UPDATED: Enhanced styling for new layout */}
       <style>
         {`
-        /* Purple gradient header styling */
-        .purchase-table-header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-          background-attachment: fixed;
+      /* Purple gradient header styling */
+      .purchase-table-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        background-attachment: fixed;
+      }
+      
+      .purchase-table-header th {
+        background: transparent !important;
+        border: none !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        padding: 15px 8px !important;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+      }
+      
+      .purchase-table-header th:first-child {
+        border-top-left-radius: 0 !important;
+      }
+      
+      .purchase-table-header th:last-child {
+        border-top-right-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Remove ALL border radius with more specific selectors */
+      .card,
+      .card *,
+      .table,
+      .table *,
+      .table th,
+      .table td,
+      .btn,
+      .btn *,
+      .badge,
+      .badge *,
+      .dropdown-menu,
+      .dropdown-menu *,
+      .dropdown-toggle,
+      .dropdown-toggle *,
+      .purchase-source-filter .btn,
+      .purchase-source-filter .btn *,
+      .purchase-source-filter .badge,
+      .purchase-source-filter .badge *,
+      button,
+      button *,
+      .form-check-input,
+      .form-control,
+      .input-group,
+      .input-group * {
+        border-radius: 0 !important;
+        -webkit-border-radius: 0 !important;
+        -moz-border-radius: 0 !important;
+        -ms-border-radius: 0 !important;
+      }
+      
+      /* ✅ SPECIFIC: Target Bootstrap button variants */
+      .btn-primary,
+      .btn-secondary,
+      .btn-success,
+      .btn-danger,
+      .btn-warning,
+      .btn-info,
+      .btn-light,
+      .btn-dark,
+      .btn-outline-primary,
+      .btn-outline-secondary,
+      .btn-outline-success,
+      .btn-outline-danger,
+      .btn-outline-warning,
+      .btn-outline-info,
+      .btn-outline-light,
+      .btn-outline-dark,
+      .btn-sm,
+      .btn-lg {
+        border-radius: 0 !important;
+        -webkit-border-radius: 0 !important;
+        -moz-border-radius: 0 !important;
+        -ms-border-radius: 0 !important;
+      }
+      
+      /* ✅ SPECIFIC: Target Bootstrap badges */
+      .badge,
+      .badge-primary,
+      .badge-secondary,
+      .badge-success,
+      .badge-danger,
+      .badge-warning,
+      .badge-info,
+      .badge-light,
+      .badge-dark {
+        border-radius: 0 !important;
+        -webkit-border-radius: 0 !important;
+        -moz-border-radius: 0 !important;
+        -ms-border-radius: 0 !important;
+      }
+      
+      /* Custom table styling */
+      .table tbody tr {
+        border-bottom: 1px solid #e9ecef;
+        transition: all 0.2s ease;
+      }
+      
+      .table tbody tr:hover {
+        background-color: #f8f9ff !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      
+      /* Action button styling */
+      .action-dropdown-toggle {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 6px 8px !important;
+        border-radius: 0 !important;
+      }
+      
+      .action-dropdown-toggle:focus {
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25) !important;
+        border-radius: 0 !important;
+      }
+      
+      /* Dropdown menu styling */
+      .dropdown-menu {
+        border: 1px solid #e9ecef !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        border-radius: 0 !important;
+      }
+      
+      .dropdown-item {
+        transition: all 0.2s ease;
+        border-radius: 0 !important;
+      }
+      
+      .dropdown-item:hover {
+        background-color: #f8f9ff !important;
+        color: #495057 !important;
+        border-radius: 0 !important;
+      }
+      
+      /* Badge styling */
+      .badge {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 0 !important;
+      }
+      
+      /* Cancelled section styling */
+      .cancelled-section {
+        background: linear-gradient(90deg, #fff3cd 0%, #ffeaa7 100%);
+        border-left: 4px solid #ffc107;
+      }
+      
+      /* ✅ NEW: Source filter attached to table styling */
+      .source-filter-attached-to-table {
+        border: 1px solid #e9ecef;
+        border-bottom: none; /* Connect to table */
+        background: #f8f9fa;
+        padding: 0;
+        margin: 0;
+      }
+      
+      .source-filter-attached-to-table .purchase-source-filter {
+        background: transparent !important;
+        padding: 15px !important;
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+
+      .source-filter-attached-to-table .purchase-source-filter .btn {
+        transition: all 0.3s ease;
+        font-weight: 500;
+        font-size: 13px;
+        border-radius: 0 !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        margin-right: 8px !important;
+      }
+
+      .source-filter-attached-to-table .purchase-source-filter .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 0 !important;
+      }
+
+      .source-filter-attached-to-table .purchase-source-filter .badge {
+        font-size: 10px;
+        min-width: 18px;
+        border-radius: 0 !important;
+      }
+
+      /* ✅ ENHANCED: Table connection styling */
+      .card {
+        border-radius: 0 !important;
+        border-top: none !important; /* Connect to filter */
+      }
+      
+      .card-header,
+      .card-body,
+      .card-footer {
+        border-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Table specific styling */
+      .table {
+        border-radius: 0 !important;
+      }
+      
+      .table thead th:first-child {
+        border-top-left-radius: 0 !important;
+      }
+      
+      .table thead th:last-child {
+        border-top-right-radius: 0 !important;
+      }
+      
+      .table tbody tr:last-child td:first-child {
+        border-bottom-left-radius: 0 !important;
+      }
+      
+      .table tbody tr:last-child td:last-child {
+        border-bottom-right-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Form controls */
+      .form-check-input[type="checkbox"] {
+        border-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Override any remaining Bootstrap defaults */
+      * {
+        --bs-border-radius: 0 !important;
+        --bs-border-radius-sm: 0 !important;
+        --bs-border-radius-lg: 0 !important;
+        --bs-border-radius-xl: 0 !important;
+        --bs-border-radius-2xl: 0 !important;
+        --bs-border-radius-pill: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Target any remaining curved elements */
+      [class*="btn"],
+      [class*="badge"],
+      [class*="card"],
+      [class*="dropdown"],
+      [class*="form"] {
+        border-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Modal styling to remove border radius */
+      .modal-content,
+      .modal-header,
+      .modal-body,
+      .modal-footer {
+        border-radius: 0 !important;
+      }
+      
+      /* ✅ NEW: Print loading overlay styling */
+      .print-loading-overlay {
+        background: rgba(0, 0, 0, 0.8) !important;
+        backdrop-filter: blur(5px);
+        border-radius: 0 !important;
+      }
+      
+      .print-loading-content {
+        background: #fff;
+        padding: 30px;
+        border-radius: 0 !important;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      }
+      
+      /* ✅ NEW: Print preview styling */
+      .print-preview-container {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0 !important;
+      }
+      
+      /* ✅ ENHANCED: Page break for printing */
+      .page-break {
+        page-break-after: always !important;
+      }
+      
+      /* ✅ ENHANCED: Responsive layout */
+      @media (max-width: 768px) {
+        .source-filter-attached-to-table .purchase-source-filter .btn {
+          font-size: 12px;
+          padding: 0.25rem 0.5rem;
+          margin-right: 4px !important;
         }
         
-        .purchase-table-header th {
-          background: transparent !important;
+        .source-filter-attached-to-table .purchase-source-filter .badge {
+          font-size: 9px;
+          min-width: 16px;
+        }
+      }
+
+      @media (max-width: 576px) {
+        .source-filter-attached-to-table .purchase-source-filter .btn .d-md-none {
+          display: inline !important;
+        }
+        
+        .source-filter-attached-to-table .purchase-source-filter .btn .d-none.d-md-inline {
+          display: none !important;
+        }
+      }
+      
+      @media print {
+        .page-break {
+          page-break-after: always !important;
+        }
+        
+        .print-preview-container {
+          background: white !important;
           border: none !important;
-          color: #ffffff !important;
-          font-weight: 600 !important;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.2);
-          padding: 15px 8px !important;
-          font-size: 13px;
-          letter-spacing: 0.5px;
         }
-        
-        .purchase-table-header th:first-child {
-          border-top-left-radius: 0 !important;
-        }
-        
-        .purchase-table-header th:last-child {
-          border-top-right-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Remove ALL border radius with more specific selectors */
-        .card,
-        .card *,
-        .table,
-        .table *,
-        .table th,
-        .table td,
-        .btn,
-        .btn *,
-        .badge,
-        .badge *,
-        .dropdown-menu,
-        .dropdown-menu *,
-        .dropdown-toggle,
-        .dropdown-toggle *,
-        .purchase-source-filter .btn,
-        .purchase-source-filter .btn *,
-        .purchase-source-filter .badge,
-        .purchase-source-filter .badge *,
-        button,
-        button *,
-        .form-check-input,
-        .form-control,
-        .input-group,
-        .input-group * {
-          border-radius: 0 !important;
-          -webkit-border-radius: 0 !important;
-          -moz-border-radius: 0 !important;
-          -ms-border-radius: 0 !important;
-        }
-        
-        /* ✅ SPECIFIC: Target Bootstrap button variants */
-        .btn-primary,
-        .btn-secondary,
-        .btn-success,
-        .btn-danger,
-        .btn-warning,
-        .btn-info,
-        .btn-light,
-        .btn-dark,
-        .btn-outline-primary,
-        .btn-outline-secondary,
-        .btn-outline-success,
-        .btn-outline-danger,
-        .btn-outline-warning,
-        .btn-outline-info,
-        .btn-outline-light,
-        .btn-outline-dark,
-        .btn-sm,
-        .btn-lg {
-          border-radius: 0 !important;
-          -webkit-border-radius: 0 !important;
-          -moz-border-radius: 0 !important;
-          -ms-border-radius: 0 !important;
-        }
-        
-        /* ✅ SPECIFIC: Target Bootstrap badges */
-        .badge,
-        .badge-primary,
-        .badge-secondary,
-        .badge-success,
-        .badge-danger,
-        .badge-warning,
-        .badge-info,
-        .badge-light,
-        .badge-dark {
-          border-radius: 0 !important;
-          -webkit-border-radius: 0 !important;
-          -moz-border-radius: 0 !important;
-          -ms-border-radius: 0 !important;
-        }
-        
-        /* Custom table styling */
-        .table tbody tr {
-          border-bottom: 1px solid #e9ecef;
-          transition: all 0.2s ease;
-        }
-        
-        .table tbody tr:hover {
-          background-color: #f8f9ff !important;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        /* Action button styling */
-        .action-dropdown-toggle {
-          border: none !important;
-          background: transparent !important;
-          box-shadow: none !important;
-          padding: 6px 8px !important;
-          border-radius: 0 !important;
-        }
-        
-        .action-dropdown-toggle:focus {
-          box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25) !important;
-          border-radius: 0 !important;
-        }
-        
-        /* Dropdown menu styling */
-        .dropdown-menu {
-          border: 1px solid #e9ecef !important;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-          border-radius: 0 !important;
-        }
-        
-        .dropdown-item {
-          transition: all 0.2s ease;
-          border-radius: 0 !important;
-        }
-        
-        .dropdown-item:hover {
-          background-color: #f8f9ff !important;
-          color: #495057 !important;
-          border-radius: 0 !important;
-        }
-        
-        /* Badge styling */
-        .badge {
-          font-size: 11px;
-          font-weight: 500;
-          padding: 4px 8px;
-          border-radius: 0 !important;
-        }
-        
-        /* Cancelled section styling */
-        .cancelled-section {
-          background: linear-gradient(90deg, #fff3cd 0%, #ffeaa7 100%);
-          border-left: 4px solid #ffc107;
-        }
-        
-        /* ✅ ENHANCED: Source filter styling with no border radius */
-        .purchase-source-filter {
-          background: #f8f9fa;
-          padding: 15px;
-          border: 1px solid #e9ecef;
-          margin-bottom: 0;
-          border-radius: 0 !important;
-        }
-        
-        .purchase-source-filter .btn {
-          transition: all 0.3s ease;
-          font-weight: 500;
-          font-size: 14px;
-          border-radius: 0 !important;
-        }
-        
-        .purchase-source-filter .btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          border-radius: 0 !important;
-        }
-        
-        .purchase-source-filter .badge {
-          font-size: 11px;
-          min-width: 20px;
-          border-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Ensure card components have no border radius */
-        .card {
-          border-radius: 0 !important;
-        }
-        
-        .card-header,
-        .card-body,
-        .card-footer {
-          border-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Table specific styling */
-        .table {
-          border-radius: 0 !important;
-        }
-        
-        .table thead th:first-child {
-          border-top-left-radius: 0 !important;
-        }
-        
-        .table thead th:last-child {
-          border-top-right-radius: 0 !important;
-        }
-        
-        .table tbody tr:last-child td:first-child {
-          border-bottom-left-radius: 0 !important;
-        }
-        
-        .table tbody tr:last-child td:last-child {
-          border-bottom-right-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Form controls */
-        .form-check-input[type="checkbox"] {
-          border-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Override any remaining Bootstrap defaults */
-        * {
-          --bs-border-radius: 0 !important;
-          --bs-border-radius-sm: 0 !important;
-          --bs-border-radius-lg: 0 !important;
-          --bs-border-radius-xl: 0 !important;
-          --bs-border-radius-2xl: 0 !important;
-          --bs-border-radius-pill: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Target any remaining curved elements */
-        [class*="btn"],
-        [class*="badge"],
-        [class*="card"],
-        [class*="dropdown"],
-        [class*="form"] {
-          border-radius: 0 !important;
-        }
-        
-        /* ✅ ENHANCED: Modal styling to remove border radius */
-        .modal-content,
-        .modal-header,
-        .modal-body,
-        .modal-footer {
-          border-radius: 0 !important;
-        }
+      }
       `}
       </style>
 
-      {/* ✅ NEW: Add source filter above the card */}
-      <PurchaseSourceFilter
-        activeFilter={sourceFilter}
-        onFilterChange={handleSourceFilterChange}
-        purchaseCounts={purchaseCounts}
-        isLoading={isLoading}
-      />
-
+      {/* ✅ Table with connected styling */}
       <div className="card shadow-sm border-0" style={{borderRadius: 0}}>
         <div className="table-responsive" style={{borderRadius: 0}}>
           <Table hover className="mb-0" style={{borderRadius: 0}}>
@@ -1812,6 +2525,7 @@ function PurchaseBillsTable({
               </tr>
             </thead>
             <tbody>
+              {/* All the existing table body content remains the same */}
               {/* Active Purchases */}
               {separatedPurchases.active.map((purchase) => {
                 const amount = parseFloat(
@@ -1887,7 +2601,7 @@ function PurchaseBillsTable({
                             purchase.invoiceNumber ||
                             "N/A"}
                         </strong>
-                        {/* ✅ ENHANCED: Show source indicator for auto-generated invoices */}
+                        {/* Source indicators */}
                         {((purchase.companyId?.toString() !==
                           companyId?.toString() &&
                           !purchase.sourceCompanyId &&
@@ -1907,7 +2621,6 @@ function PurchaseBillsTable({
                               "Sales Invoice"}
                           </small>
                         )}
-                        {/* ✅ ENHANCED: Show self-generated indicator */}
                         {((purchase.companyId?.toString() ===
                           companyId?.toString() &&
                           !purchase.sourceCompanyId &&
@@ -2003,7 +2716,7 @@ function PurchaseBillsTable({
                 );
               })}
 
-              {/* Cancelled Purchases Section */}
+              {/* Cancelled Purchases Section - keeps all existing code */}
               {separatedPurchases.cancelled.length > 0 && (
                 <>
                   <tr className="cancelled-section">
@@ -2099,26 +2812,6 @@ function PurchaseBillsTable({
                                   Cancelled
                                 </small>
                               </div>
-                              {/* ✅ ENHANCED: Show source indicator for cancelled auto-generated invoices */}
-                              {((purchase.companyId?.toString() !==
-                                companyId?.toString() &&
-                                !purchase.sourceCompanyId &&
-                                !purchase.isAutoGenerated) ||
-                                (purchase.isAutoGenerated === true &&
-                                  purchase.generatedFrom === "sales_invoice" &&
-                                  purchase.sourceCompanyId?.toString() !==
-                                    companyId?.toString())) && (
-                                <small className="text-muted">
-                                  <FontAwesomeIcon
-                                    icon={faExchangeAlt}
-                                    className="me-1"
-                                  />
-                                  From:{" "}
-                                  {purchase.correspondingSalesInvoiceNumber ||
-                                    purchase.sourceInvoiceNumber ||
-                                    "Sales Invoice"}
-                                </small>
-                              )}
                             </div>
                           </td>
                           <td>
@@ -2230,7 +2923,80 @@ function PurchaseBillsTable({
         </div>
       </div>
 
-      {/* ✅ NEW: Universal View Modal */}
+      {/* All the existing modals and components remain exactly the same */}
+      {/* ✅ Print Modal */}
+      <PrintModal />
+
+      {/* ✅ Hidden Print Component */}
+      {printModalShow && printData && (
+        <div style={{display: "none"}}>
+          {bulkPrintMode ? (
+            <div ref={printComponentRef}>
+              {printData.purchases?.map((purchaseData, index) => (
+                <div key={index} className="mb-4 page-break">
+                  <PurchaseInvoice invoiceData={purchaseData} />
+                  {index < printData.purchases.length - 1 && (
+                    <div style={{pageBreakAfter: "always"}} />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div ref={printComponentRef}>
+              <PurchaseInvoice invoiceData={printData} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ✅ FIXED: Hidden Print Preview Component with proper data structure */}
+      {showPrintPreview && printData && (
+        <div style={{display: "none"}}>
+          <PurchaseInvoice
+            ref={printRef}
+            invoiceData={printData}
+            onPrint={() => {
+              console.log("🖨️ Print button clicked from component");
+              handlePrint();
+            }}
+          />
+        </div>
+      )}
+
+      {/* ✅ Print Loading Overlay */}
+      {printLoading && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center print-loading-overlay"
+          style={{zIndex: 9999}}
+        >
+          <div className="text-center print-loading-content">
+            <Spinner
+              animation="border"
+              variant="primary"
+              size="lg"
+              className="mb-3"
+            />
+            <h5 className="text-dark">Preparing Invoice for Print...</h5>
+            <p className="text-muted">
+              Please wait while we format the invoice
+            </p>
+            <div className="mt-3">
+              <div
+                className="progress"
+                style={{height: "4px", borderRadius: 0}}
+              >
+                <div
+                  className="progress-bar progress-bar-striped progress-bar-animated"
+                  role="progressbar"
+                  style={{width: "75%", borderRadius: 0}}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Universal View Modal with print support */}
       {selectedPurchase && (
         <UniversalViewModal
           show={viewModalShow}
@@ -2244,11 +3010,20 @@ function PurchaseBillsTable({
             isPurchaseOrdersMode ? "purchase-order" : "purchase-invoice"
           }
           onEdit={handleEditPurchase}
-          onPrint={onPrintPurchase}
+          onPrint={handlePrintFromModal}
           onDownload={onDownloadPurchase}
           onShare={onSharePurchase}
           onConvert={onConvertPurchase}
-          onGenerateSalesOrder={onMarkAsOrdered} // For purchase orders
+          onGenerateSalesOrder={onMarkAsOrdered}
+          onDuplicate={handleDuplicatePurchase}
+          onDelete={handleDeletePurchase}
+          loading={modalLoading}
+          error={modalError}
+          currentUser={currentUser}
+          currentCompany={currentCompany}
+          companyId={companyId}
+          addToast={addToast}
+          enableActions={enableActions}
         />
       )}
 

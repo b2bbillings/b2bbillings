@@ -278,10 +278,6 @@ class SalesService {
           invoiceData.totals?.uiCalculatedTotal ||
           0
       );
-      console.log(
-        "💰 Using preserved final total for payment calculation:",
-        finalTotal
-      );
     } else {
       finalTotal = parseFloat(
         invoiceData.totals?.finalTotalWithRoundOff ||
@@ -334,7 +330,6 @@ class SalesService {
 
     return paymentInfo;
   }
-  // Add this method after getInvoiceNumberPatternInfo method (around line 1150)
 
   // ✅ NEW: Get next invoice number preview (for SalesFormHeader)
   async getNextInvoiceNumber(params = {}) {
@@ -342,8 +337,6 @@ class SalesService {
       if (!params.companyId) {
         throw new Error("Company ID is required");
       }
-
-      console.log("🔢 Getting next invoice number preview:", params);
 
       const response = await api.get("/sales/next-invoice-number", {
         params: {
@@ -414,16 +407,12 @@ class SalesService {
       };
     }
   }
-  ß;
 
-  // ✅ NEW: Get single invoice by ID (enhanced for edit functionality)
   async getInvoiceById(id) {
     try {
       if (!id) {
         throw new Error("Invoice ID is required");
       }
-
-      console.log("🔍 Fetching invoice by ID:", id);
 
       const response = await api.get(`/sales/${id}`);
 
@@ -482,7 +471,6 @@ class SalesService {
     }
   }
 
-  // ✅ ENHANCED: Update invoice method (already exists but enhanced)
   async updateInvoice(id, invoiceData, retryCount = 0) {
     const maxRetries = 2;
 
@@ -490,13 +478,6 @@ class SalesService {
       if (!id) {
         throw new Error("Invoice ID is required");
       }
-
-      console.log(
-        "🔄 Updating invoice:",
-        id,
-        "with data keys:",
-        Object.keys(invoiceData)
-      );
 
       // ✅ NEW: Validate payment data if present
       if (invoiceData.paymentData) {
@@ -509,14 +490,6 @@ class SalesService {
       }
 
       const cleanData = this.cleanInvoiceDataForUpdate(invoiceData);
-
-      console.log("💾 Sending update data:", {
-        hasItems: !!cleanData.items?.length,
-        hasTotals: !!cleanData.totals,
-        hasPayment: !!cleanData.payment,
-        status: cleanData.status,
-        paymentMethod: cleanData.payment?.method,
-      });
 
       // Add delay for retries
       if (retryCount > 0) {
@@ -646,10 +619,6 @@ class SalesService {
       // ✅ CRITICAL: Remove any manual invoice number - Model will generate
       delete invoiceData.invoiceNumber;
 
-      console.log(
-        "🔢 Model-based numbering - No manual invoice number processing"
-      );
-
       // Auto-detection configuration
       const autoDetectSourceCompany =
         invoiceData.autoDetectSourceCompany !== false;
@@ -661,10 +630,6 @@ class SalesService {
           invoiceData.sourceCompanyId !== companyId &&
           invoiceData.sourceCompanyId.toString() !== companyId.toString()
         ) {
-          console.log(
-            "🔧 Using explicitly provided sourceCompanyId:",
-            invoiceData.sourceCompanyId
-          );
           return invoiceData.sourceCompanyId;
         }
 
@@ -678,10 +643,6 @@ class SalesService {
             customerLinkedCompanyId &&
             customerLinkedCompanyId.toString() !== companyId.toString()
           ) {
-            console.log(
-              "🔧 Auto-detected from customer's linkedCompanyId:",
-              customerLinkedCompanyId
-            );
             return customerLinkedCompanyId;
           }
 
@@ -694,17 +655,10 @@ class SalesService {
             customerCompanyId &&
             customerCompanyId.toString() !== companyId.toString()
           ) {
-            console.log(
-              "🔧 Auto-detected from customer's companyId:",
-              customerCompanyId
-            );
             return customerCompanyId;
           }
         }
 
-        console.log(
-          "🔧 Same-company transaction - sourceCompanyId set to null"
-        );
         return null;
       })();
 
@@ -726,18 +680,6 @@ class SalesService {
 
       const isCrossCompanyTransaction = !!sourceCompanyId;
 
-      console.log(
-        "🔧 Source company analysis (Model will generate invoice number):",
-        {
-          companyId: companyId?.toString(),
-          sourceCompanyId: sourceCompanyId?.toString(),
-          detectionMethod: sourceCompanyDetectionMethod,
-          isCrossCompanyTransaction: isCrossCompanyTransaction,
-          autoDetectEnabled: autoDetectSourceCompany,
-          modelNumbering: true,
-        }
-      );
-
       // Check for preservation flags
       const shouldPreserveCalculations =
         invoiceData.preserveUICalculations ||
@@ -748,10 +690,6 @@ class SalesService {
         invoiceData.FRONTEND_AMOUNTS_FINAL;
 
       if (shouldPreserveCalculations) {
-        console.log(
-          "🔒 PRESERVATION MODE: Using exact amounts - Model will generate invoice number"
-        );
-
         const customerInfo = this.extractCustomerInfo(invoiceData);
         const paymentInfo = this.extractPaymentInfo(invoiceData);
 
@@ -824,14 +762,6 @@ class SalesService {
           _calculationSource: "frontend_preserved",
         };
 
-        console.log("🔒 PRESERVED DATA (Model will generate invoice number):", {
-          itemsCount: preservedItems.length,
-          exactFinalTotal: preservedTotals.finalTotal,
-          preservationApplied: true,
-          authoritativeTotal: invoiceData.authoritative,
-          modelNumbering: true,
-        });
-
         const preservedData = {
           // ✅ NO INVOICE NUMBER - Model will generate
           companyId: companyId,
@@ -898,36 +828,8 @@ class SalesService {
           authoritative: invoiceData.authoritative,
         };
 
-        console.log(
-          "✅ PRESERVED INVOICE DATA (NO INVOICE NUMBER - MODEL GENERATES):",
-          {
-            hasCustomer: !!preservedData.customer,
-            hasItems: !!preservedData.items?.length,
-            hasTotals: !!preservedData.totals,
-            hasPayment: !!preservedData.payment,
-            exactFinalTotal: preservedData.totals?.finalTotal,
-            sourceCompanyId:
-              preservedData.sourceCompanyId?.toString() || "null",
-            detectionMethod: preservedData.sourceCompanyDetectionMethod,
-            isCrossCompanyTransaction: preservedData.isCrossCompanyTransaction,
-            autoDetectEnabled: preservedData.autoDetectSourceCompany,
-            modelWillGenerateInvoiceNumber: true,
-            preservationFlags: {
-              preserveUICalculations: preservedData.preserveUICalculations,
-              BACKEND_SKIP_CALCULATION: preservedData.BACKEND_SKIP_CALCULATION,
-              FRONTEND_AMOUNTS_FINAL: preservedData.FRONTEND_AMOUNTS_FINAL,
-            },
-            documentType: preservedData.documentType,
-          }
-        );
-
         return preservedData;
       }
-
-      // Original calculation logic for non-preserved invoices
-      console.log(
-        "📊 CALCULATION MODE: Performing backend calculations - Model will generate invoice number"
-      );
 
       const customerInfo = this.extractCustomerInfo(invoiceData);
       const paymentInfo = this.extractPaymentInfo(invoiceData);
@@ -998,23 +900,6 @@ class SalesService {
         createdBy: "user",
       };
 
-      console.log(
-        "✅ CALCULATED INVOICE DATA (MODEL WILL GENERATE INVOICE NUMBER):",
-        {
-          hasCustomer: !!cleanData.customer,
-          hasItems: !!cleanData.items?.length,
-          hasTotals: !!cleanData.totals,
-          hasPayment: !!cleanData.payment,
-          finalTotal: cleanData.totals?.finalTotal,
-          sourceCompanyId: cleanData.sourceCompanyId?.toString() || "null",
-          detectionMethod: cleanData.sourceCompanyDetectionMethod,
-          isCrossCompanyTransaction: cleanData.isCrossCompanyTransaction,
-          autoDetectEnabled: cleanData.autoDetectSourceCompany,
-          modelWillGenerateInvoiceNumber: true,
-          documentType: cleanData.documentType,
-        }
-      );
-
       return cleanData;
     } catch (error) {
       console.error("❌ Error cleaning invoice data:", error);
@@ -1024,11 +909,6 @@ class SalesService {
 
   cleanInvoiceDataForUpdate(invoiceData) {
     try {
-      console.log(
-        "🧹 CLEANING UPDATE DATA - Input keys:",
-        Object.keys(invoiceData)
-      );
-
       const companyId = invoiceData.companyId || this.getCompanyId();
 
       // Extract customer/party information
@@ -1165,14 +1045,6 @@ class SalesService {
         lastModifiedBy: "user",
       };
 
-      console.log("✅ CLEANED UPDATE DATA - Model preserves invoice numbers:", {
-        hasCustomer: !!cleanData.customer,
-        hasItems: !!cleanData.items?.length,
-        invoiceNumberUpdate: !!cleanData.invoiceNumber,
-        modelHandlesNumbering: true,
-        outputKeys: Object.keys(cleanData),
-      });
-
       return cleanData;
     } catch (error) {
       console.error("❌ Error cleaning update data:", error);
@@ -1242,10 +1114,6 @@ class SalesService {
     const baseRequestId = invoiceData.submissionId || `create_${Date.now()}`;
 
     if (this._activeRequests && this._activeRequests.has(baseRequestId)) {
-      console.log(
-        "⚠️ Create invoice request already in progress:",
-        baseRequestId
-      );
       return {
         success: false,
         error: "Request already in progress",
@@ -1259,17 +1127,6 @@ class SalesService {
         this._activeRequests = new Set();
       }
       this._activeRequests.add(baseRequestId);
-
-      console.log(
-        "💾 Creating invoice - Model will generate invoice number automatically:",
-        {
-          requestId,
-          baseRequestId,
-          timestamp: new Date().toISOString(),
-          retryCount,
-          modelNumbering: true,
-        }
-      );
 
       if (!this.isWarmedUp && retryCount === 0) {
         await this.warmupBackend();
@@ -1295,23 +1152,10 @@ class SalesService {
       // ✅ CRITICAL: Remove any manual invoice number - let model generate
       delete invoiceData.invoiceNumber;
 
-      console.log(
-        "🔢 Removed manual invoice number - Model will generate sequential number"
-      );
-
       const cleanData = this.cleanInvoiceData(invoiceData);
 
       // ✅ ENSURE: No invoice number is sent to backend
       delete cleanData.invoiceNumber;
-
-      console.log("📤 Sending to backend - Model handles invoice numbering:", {
-        hasCustomer: !!cleanData.customer,
-        hasItems: !!cleanData.items?.length,
-        hasTotals: !!cleanData.totals,
-        finalTotal: cleanData.totals?.finalTotal,
-        modelWillGenerateNumber: true,
-        companyId: cleanData.companyId,
-      });
 
       if (retryCount > 0) {
         await new Promise((resolve) => setTimeout(resolve, retryCount * 500));
@@ -1323,15 +1167,6 @@ class SalesService {
         const responseData = response.data;
 
         if (responseData && responseData.success === true) {
-          console.log("✅ Invoice created with model-generated number:", {
-            requestId,
-            baseRequestId,
-            invoiceId: responseData.data?._id || responseData.data?.id,
-            generatedInvoiceNumber: responseData.data?.invoiceNumber, // ✅ From model
-            companyId: responseData.data?.companyId,
-            modelGenerated: true,
-          });
-
           return {
             success: true,
             data: responseData.data,
@@ -1343,17 +1178,6 @@ class SalesService {
           responseData &&
           (responseData._id || responseData.id || responseData.invoiceNumber)
         ) {
-          console.log(
-            "✅ Invoice created with model-generated number (direct response):",
-            {
-              requestId,
-              baseRequestId,
-              invoiceId: responseData._id || responseData.id,
-              generatedInvoiceNumber: responseData.invoiceNumber, // ✅ From model
-              modelGenerated: true,
-            }
-          );
-
           return {
             success: true,
             data: responseData,
@@ -1368,15 +1192,6 @@ class SalesService {
               responseData.message?.includes("busy") ||
               responseData.message?.includes("initialization"))
           ) {
-            console.log(
-              "🔄 Retrying invoice creation due to temporary error:",
-              {
-                requestId,
-                baseRequestId,
-                retryCount: retryCount + 1,
-                error: responseData.message,
-              }
-            );
             return await this.createInvoice(invoiceData, retryCount + 1);
           }
 
@@ -1408,13 +1223,6 @@ class SalesService {
         error.response?.status &&
         [500, 502, 503, 504].includes(error.response.status)
       ) {
-        console.log("🔄 Retrying due to server error:", {
-          requestId,
-          baseRequestId,
-          status: error.response.status,
-          retryCount: retryCount + 1,
-        });
-
         await new Promise((resolve) =>
           setTimeout(resolve, (retryCount + 1) * 1000)
         );
@@ -1422,12 +1230,6 @@ class SalesService {
       }
 
       if (retryCount < maxRetries && !error.response && error.request) {
-        console.log("🔄 Retrying due to network error:", {
-          requestId,
-          baseRequestId,
-          retryCount: retryCount + 1,
-        });
-
         await new Promise((resolve) =>
           setTimeout(resolve, (retryCount + 1) * 800)
         );
@@ -1470,7 +1272,6 @@ class SalesService {
       setTimeout(() => {
         if (this._activeRequests) {
           this._activeRequests.delete(baseRequestId);
-          console.log("🧹 Cleaned up request tracking for:", baseRequestId);
         }
       }, 1500);
     }
@@ -1547,10 +1348,6 @@ class SalesService {
           invoiceData.totals?.finalTotal ||
           invoiceData.totals?.uiCalculatedTotal ||
           0
-      );
-      console.log(
-        "💰 Using preserved final total for payment calculation:",
-        finalTotal
       );
     } else {
       finalTotal = parseFloat(
@@ -1756,13 +1553,6 @@ class SalesService {
       invoiceData?.priceIncludesTax || globalTaxMode === "inclusive";
     const gstEnabled = Boolean(invoiceData?.gstEnabled);
 
-    console.log("🧹 CLEANING ITEMS FOR UPDATE:", {
-      itemCount: items.length,
-      globalTaxMode,
-      globalPriceIncludesTax,
-      gstEnabled,
-    });
-
     return items.map((item, index) => {
       // Extract item reference (product ID)
       const itemRef =
@@ -1839,26 +1629,12 @@ class SalesService {
         currentStock: item.availableStock || item.currentStock || 0,
       };
 
-      console.log(`✅ CLEANED UPDATE ITEM ${index + 1}:`, {
-        itemName: cleanedItem.itemName,
-        itemRef: cleanedItem.itemRef,
-        quantity: cleanedItem.quantity,
-        pricePerUnit: cleanedItem.pricePerUnit,
-        taxableAmount: cleanedItem.taxableAmount,
-        finalAmount: cleanedItem.amount,
-      });
-
       return cleanedItem;
     });
   }
 
   // ✅ NEW: Calculate totals specifically for updates
   calculateTotalsForUpdate(invoiceData, cleanItems) {
-    console.log("📊 CALCULATING TOTALS FOR UPDATE:", {
-      itemCount: cleanItems.length,
-      hasExistingTotals: !!invoiceData.totals,
-    });
-
     // If frontend has already calculated totals, use them
     if (invoiceData.totals && invoiceData.totals.finalTotal) {
       const existingTotals = {
@@ -1894,8 +1670,6 @@ class SalesService {
             invoiceData.totals.roundOffValue || invoiceData.roundOff
           ) || 0,
       };
-
-      console.log("✅ USING EXISTING TOTALS FOR UPDATE:", existingTotals);
       return existingTotals;
     }
 
@@ -1941,7 +1715,6 @@ class SalesService {
         parseFloat(invoiceData.roundOffValue || invoiceData.roundOff) || 0,
     };
 
-    console.log("✅ CALCULATED TOTALS FOR UPDATE:", calculatedTotals);
     return calculatedTotals;
   }
 
@@ -1953,13 +1726,6 @@ class SalesService {
       if (!id) {
         throw new Error("Invoice ID is required");
       }
-
-      console.log(
-        "🗑️ Deleting/Cancelling invoice:",
-        id,
-        "with options:",
-        options
-      );
 
       // Prepare cancellation data that matches controller expectations
       const cancellationData = {
@@ -2159,14 +1925,6 @@ class SalesService {
     const globalPriceIncludesTax =
       invoiceData?.priceIncludesTax || globalTaxMode === "with-tax";
     const gstEnabled = Boolean(invoiceData?.gstEnabled);
-
-    console.log("🧹 CLEANING ITEMS:", {
-      itemCount: items.length,
-      globalTaxMode,
-      globalPriceIncludesTax,
-      gstEnabled,
-    });
-
     return items.map((item, index) => {
       // ✅ CRITICAL: Determine item-specific tax mode
       const itemTaxMode = item.taxMode || globalTaxMode;
@@ -2189,18 +1947,6 @@ class SalesService {
       const igstAmount = parseFloat(item.igstAmount || item.igst) || 0;
       const finalAmount = parseFloat(item.amount || item.itemAmount) || 0;
       const totalTaxAmount = cgstAmount + sgstAmount + igstAmount;
-
-      console.log(`📦 CLEANING ITEM ${index + 1}:`, {
-        itemName: item.itemName,
-        itemTaxMode,
-        itemPriceIncludesTax,
-        pricePerUnit,
-        quantity,
-        taxableAmount,
-        totalTaxAmount,
-        finalAmount,
-        calculationMode: itemPriceIncludesTax ? "TAX_INCLUDED" : "TAX_EXCLUDED",
-      });
 
       const cleanedItem = {
         // Basic item info
@@ -2247,30 +1993,12 @@ class SalesService {
         minStockLevel: item.minStockLevel || 0,
       };
 
-      console.log(`✅ CLEANED ITEM ${index + 1}:`, {
-        itemName: cleanedItem.itemName,
-        taxMode: cleanedItem.taxMode,
-        priceIncludesTax: cleanedItem.priceIncludesTax,
-        taxableAmount: cleanedItem.taxableAmount,
-        totalTax: cleanedItem.totalTaxAmount,
-        finalAmount: cleanedItem.amount,
-        backend_compatibility: {
-          gstMode: cleanedItem.gstMode,
-          itemAmount: cleanedItem.itemAmount,
-        },
-      });
-
       return cleanedItem;
     });
   }
 
   // ✅ ENHANCED: Calculate totals with proper tax mode consideration
   calculateTotals(invoiceData, cleanItems) {
-    console.log("📊 CALCULATING TOTALS:", {
-      itemCount: cleanItems.length,
-      hasExistingTotals: !!invoiceData.totals,
-    });
-
     // If totals are already calculated by frontend, use them
     if (invoiceData.totals) {
       const existingTotals = {
@@ -2307,8 +2035,6 @@ class SalesService {
         withTaxTotal: parseFloat(invoiceData.totals.withTaxTotal) || 0,
         withoutTaxTotal: parseFloat(invoiceData.totals.withoutTaxTotal) || 0,
       };
-
-      console.log("✅ USING EXISTING TOTALS:", existingTotals);
       return existingTotals;
     }
 
@@ -2373,12 +2099,6 @@ class SalesService {
         : Math.round((totalTaxableAmount + totalTax) * 100) / 100,
       withoutTaxTotal: Math.round(totalTaxableAmount * 100) / 100,
     };
-
-    console.log("✅ CALCULATED TOTALS:", {
-      ...calculatedTotals,
-      taxMode: globalTaxMode,
-      priceIncludesTax: priceIncludesTax,
-    });
 
     return calculatedTotals;
   }
@@ -2556,14 +2276,6 @@ class SalesService {
       };
     }
 
-    console.log("✅ CLEANED UPDATE DATA:", {
-      hasItems: !!cleanData.items?.length,
-      hasTotals: !!cleanData.totals,
-      hasPayment: !!cleanData.payment,
-      status: cleanData.status,
-      finalTotal: cleanData.totals?.finalTotal,
-    });
-
     return cleanData;
   }
 
@@ -2583,13 +2295,6 @@ class SalesService {
           `Payment validation failed: ${validation.errors.join(", ")}`
         );
       }
-
-      console.log(
-        "💰 Adding payment to invoice:",
-        invoiceId,
-        "Amount:",
-        paymentData.amount
-      );
 
       // Clean payment data for backend
       const cleanPaymentData = {
@@ -2703,38 +2408,6 @@ class SalesService {
         success: false,
         error: errorMessage,
         message: errorMessage,
-      };
-    }
-  }
-
-  // Get dashboard data
-  async getDashboardData(companyId) {
-    try {
-      if (!companyId) {
-        throw new Error("Company ID is required");
-      }
-
-      const response = await api.get("/sales/reports/dashboard", {
-        params: {companyId},
-      });
-
-      if (response.data?.success !== false) {
-        return {
-          success: true,
-          data: response.data?.data || response.data,
-          message:
-            response.data?.message || "Dashboard data fetched successfully",
-        };
-      } else {
-        throw new Error(
-          response.data?.message || "Failed to get dashboard data"
-        );
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        data: {},
       };
     }
   }
@@ -3119,8 +2792,6 @@ class SalesService {
         throw new Error("Sales Order ID is required");
       }
 
-      console.log("🔄 Converting sales order to invoice:", salesOrderId);
-
       // ✅ ENHANCED: Ensure sourceCompanyId is included in conversion
       const enhancedConversionData = {
         convertedBy: conversionData.convertedBy || "user",
@@ -3132,14 +2803,6 @@ class SalesService {
         generatedFrom: "sales_order",
         ...conversionData,
       };
-
-      console.log("🔗 Enhanced conversion data:", {
-        sourceCompanyId: enhancedConversionData.sourceCompanyId,
-        sourceOrderId: enhancedConversionData.sourceOrderId,
-        sourceOrderType: enhancedConversionData.sourceOrderType,
-        isAutoGenerated: enhancedConversionData.isAutoGenerated,
-        generatedFrom: enhancedConversionData.generatedFrom,
-      });
 
       const response = await api.post(
         `/sales/convert-from-sales-order/${salesOrderId}`,
@@ -3332,11 +2995,6 @@ class SalesService {
         throw new Error("Sales invoice IDs array is required");
       }
 
-      console.log(
-        "🔄 Bulk converting sales invoices to purchase invoices:",
-        salesInvoiceIds.length
-      );
-
       const response = await api.post(
         "/sales/bulk-convert-to-purchase-invoices",
         {
@@ -3386,8 +3044,6 @@ class SalesService {
       if (!salesOrderId) {
         throw new Error("Sales Order ID is required");
       }
-
-      console.log("🔄 Converting sales order to invoice:", salesOrderId);
 
       const response = await api.post(
         `/sales/convert-from-sales-order/${salesOrderId}`,
@@ -3577,11 +3233,6 @@ class SalesService {
       ) {
         throw new Error("Sales order IDs array is required");
       }
-
-      console.log(
-        "🔄 Bulk converting sales orders to invoices:",
-        salesOrderIds.length
-      );
 
       const response = await api.post("/sales/bulk-convert-sales-orders", {
         salesOrderIds,
@@ -3901,11 +3552,6 @@ class SalesService {
         throw new Error("Sales Invoice ID is required");
       }
 
-      console.log(
-        "🔄 Converting sales invoice to purchase invoice:",
-        salesInvoiceId
-      );
-
       // ✅ ENHANCED: Ensure proper conversion data structure
       const enhancedConversionData = {
         convertedBy: conversionData.convertedBy || "user",
@@ -3918,14 +3564,6 @@ class SalesService {
         preservePricing: conversionData.preservePricing !== false, // Default to true
         ...conversionData,
       };
-
-      console.log("🔗 Enhanced conversion data:", {
-        sourceInvoiceId: enhancedConversionData.sourceInvoiceId,
-        targetCompanyId: enhancedConversionData.targetCompanyId,
-        sourceInvoiceType: enhancedConversionData.sourceInvoiceType,
-        isAutoGenerated: enhancedConversionData.isAutoGenerated,
-        generatedFrom: enhancedConversionData.generatedFrom,
-      });
 
       const response = await api.post(
         `/sales/${salesInvoiceId}/convert-to-purchase-invoice`,
@@ -4073,6 +3711,1575 @@ class SalesService {
       notes: data.notes || "",
       createdBy: data.createdBy || data.convertedBy || data.userId || "user",
       ...data,
+    };
+  }
+
+  // ==================== ADMIN FUNCTIONS ====================
+
+  /**
+   * ✅ FIXED: Admin dashboard - NO companyId for admin calls
+   */
+  async getDashboardData(companyId) {
+    try {
+      // ✅ CRITICAL FIX: Handle admin case properly - NO companyId
+      if (companyId === "admin") {
+        // ✅ FIXED: Remove companyId from admin calls
+        const salesResponse = await this.getAllSalesInvoicesForAdmin({
+          limit: 1000,
+          // ✅ NO companyId for admin
+        });
+
+        if (salesResponse.success) {
+          const salesData = salesResponse.data.salesInvoices || [];
+
+          // Calculate basic dashboard stats from sales data
+          const today = new Date();
+          const startOfDay = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate()
+          );
+          const startOfWeek = new Date(
+            today.setDate(today.getDate() - today.getDay())
+          );
+          const startOfMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+          );
+
+          const todaysSales = salesData.filter((sale) => {
+            const saleDate = new Date(sale.invoiceDate || sale.createdAt);
+            return saleDate >= startOfDay;
+          });
+
+          const weekSales = salesData.filter((sale) => {
+            const saleDate = new Date(sale.invoiceDate || sale.createdAt);
+            return saleDate >= startOfWeek;
+          });
+
+          const monthSales = salesData.filter((sale) => {
+            const saleDate = new Date(sale.invoiceDate || sale.createdAt);
+            return saleDate >= startOfMonth;
+          });
+
+          const dashboardData = {
+            today: {
+              totalSales: todaysSales.reduce(
+                (sum, sale) =>
+                  sum + (sale.totals?.finalTotal || sale.amount || 0),
+                0
+              ),
+              totalInvoices: todaysSales.length,
+            },
+            week: {
+              totalSales: weekSales.reduce(
+                (sum, sale) =>
+                  sum + (sale.totals?.finalTotal || sale.amount || 0),
+                0
+              ),
+              totalInvoices: weekSales.length,
+            },
+            month: {
+              totalSales: monthSales.reduce(
+                (sum, sale) =>
+                  sum + (sale.totals?.finalTotal || sale.amount || 0),
+                0
+              ),
+              totalInvoices: monthSales.length,
+            },
+            recentSales: salesData
+              .sort(
+                (a, b) =>
+                  new Date(b.invoiceDate || b.createdAt) -
+                  new Date(a.invoiceDate || a.createdAt)
+              )
+              .slice(0, 10),
+            isAdmin: true,
+          };
+
+          return {
+            success: true,
+            data: dashboardData,
+            message: "Admin dashboard data calculated from sales",
+          };
+        }
+
+        // Fallback for admin if sales fetch fails
+        return {
+          success: true,
+          data: {
+            today: {totalSales: 0, totalInvoices: 0},
+            week: {totalSales: 0, totalInvoices: 0},
+            month: {totalSales: 0, totalInvoices: 0},
+            recentSales: [],
+            isAdmin: true,
+          },
+          message: "Admin dashboard data (fallback)",
+        };
+      }
+
+      // ✅ Regular company dashboard
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/reports/dashboard", {
+        params: {companyId},
+      });
+
+      if (response.data?.success !== false) {
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+          message:
+            response.data?.message || "Dashboard data fetched successfully",
+        };
+      } else {
+        throw new Error(
+          response.data?.message || "Failed to get dashboard data"
+        );
+      }
+    } catch (error) {
+      console.error("❌ Dashboard data error:", error);
+      return {
+        success: false,
+        error: error.message,
+        data: {},
+      };
+    }
+  }
+
+  /**
+   * ✅ FIXED: Enhanced payment summary - NO companyId for admin
+   */
+  async getEnhancedPaymentSummary(companyId, filters = {}) {
+    try {
+      // ✅ CRITICAL FIX: Handle admin case - NO companyId
+      if (companyId === "admin") {
+        // ✅ FIXED: Use getAllSalesInvoicesForAdmin instead of companyId
+        const salesResponse = await this.getAllSalesInvoicesForAdmin({
+          ...filters,
+          limit: filters.limit || 1000,
+        });
+
+        if (salesResponse.success) {
+          const sales = salesResponse.data.salesInvoices || [];
+
+          // Calculate payment summary manually from all companies
+          const summary = {
+            totalInvoices: sales.length,
+            totalAmount: sales.reduce(
+              (sum, sale) =>
+                sum + (sale.totals?.finalTotal || sale.amount || 0),
+              0
+            ),
+            totalPaid: sales.reduce(
+              (sum, sale) => sum + (sale.payment?.paidAmount || 0),
+              0
+            ),
+            totalPending: sales.reduce(
+              (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+              0
+            ),
+            invoicesByStatus: sales.reduce((acc, sale) => {
+              const status = sale.payment?.status || "pending";
+              acc[status] = (acc[status] || 0) + 1;
+              return acc;
+            }, {}),
+            paymentMethods: sales.reduce((acc, sale) => {
+              const method = sale.payment?.method || "cash";
+              acc[method] =
+                (acc[method] || 0) + (sale.payment?.paidAmount || 0);
+              return acc;
+            }, {}),
+            overdue: sales.filter((sale) => {
+              const dueDate = sale.payment?.dueDate;
+              const pending = sale.payment?.pendingAmount || 0;
+              return dueDate && new Date(dueDate) < new Date() && pending > 0;
+            }),
+            dueToday: sales.filter((sale) => {
+              const dueDate = sale.payment?.dueDate;
+              const pending = sale.payment?.pendingAmount || 0;
+              const today = new Date();
+              return (
+                dueDate &&
+                new Date(dueDate).toDateString() === today.toDateString() &&
+                pending > 0
+              );
+            }),
+            statusDistribution: sales.reduce((acc, sale) => {
+              const status = sale.status || "unknown";
+              acc[status] = (acc[status] || 0) + 1;
+              return acc;
+            }, {}),
+            paymentStatusDistribution: sales.reduce((acc, sale) => {
+              const status = sale.payment?.status || "pending";
+              acc[status] = (acc[status] || 0) + 1;
+              return acc;
+            }, {}),
+            topCompanies: [],
+            customerAnalytics: [],
+            monthlyTrends: [],
+            isAdmin: true,
+          };
+
+          return {
+            success: true,
+            data: summary,
+            message: "Admin payment summary calculated successfully",
+          };
+        }
+
+        throw new Error("Failed to fetch sales data for admin payment summary");
+      }
+
+      // ✅ Regular company payment summary
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {companyId, ...filters};
+
+      // Try the enhanced endpoint first
+      try {
+        const response = await api.get("/sales/analytics/payment-summary", {
+          params,
+        });
+
+        if (response.status >= 200 && response.status < 300) {
+          return {
+            success: true,
+            data: response.data,
+            message: "Enhanced payment summary fetched successfully",
+          };
+        }
+      } catch (enhancedError) {
+        console.log("Enhanced endpoint not available, using fallback");
+      }
+
+      // Fallback to basic sales data and calculate manually
+      const salesResponse = await this.getInvoices(companyId, filters);
+
+      if (salesResponse.success) {
+        const sales = salesResponse.data.sales || salesResponse.data.data || [];
+
+        // Calculate payment summary manually
+        const summary = {
+          totalInvoices: sales.length,
+          totalAmount: sales.reduce(
+            (sum, sale) => sum + (sale.totals?.finalTotal || sale.amount || 0),
+            0
+          ),
+          totalPaid: sales.reduce(
+            (sum, sale) => sum + (sale.payment?.paidAmount || 0),
+            0
+          ),
+          totalPending: sales.reduce(
+            (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+            0
+          ),
+          invoicesByStatus: sales.reduce((acc, sale) => {
+            const status = sale.payment?.status || "pending";
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {}),
+          paymentMethods: sales.reduce((acc, sale) => {
+            const method = sale.payment?.method || "cash";
+            acc[method] = (acc[method] || 0) + (sale.payment?.paidAmount || 0);
+            return acc;
+          }, {}),
+          overdue: sales.filter((sale) => {
+            const dueDate = sale.payment?.dueDate;
+            const pending = sale.payment?.pendingAmount || 0;
+            return dueDate && new Date(dueDate) < new Date() && pending > 0;
+          }),
+          dueToday: sales.filter((sale) => {
+            const dueDate = sale.payment?.dueDate;
+            const pending = sale.payment?.pendingAmount || 0;
+            const today = new Date();
+            return (
+              dueDate &&
+              new Date(dueDate).toDateString() === today.toDateString() &&
+              pending > 0
+            );
+          }),
+          statusDistribution: sales.reduce((acc, sale) => {
+            const status = sale.status || "unknown";
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {}),
+          paymentStatusDistribution: sales.reduce((acc, sale) => {
+            const status = sale.payment?.status || "pending";
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {}),
+          topCompanies: [],
+          customerAnalytics: [],
+          monthlyTrends: [],
+        };
+
+        return {
+          success: true,
+          data: summary,
+          message: "Payment summary calculated successfully",
+        };
+      }
+
+      throw new Error("Failed to fetch sales data for payment summary");
+    } catch (error) {
+      console.error("❌ Error fetching enhanced payment summary:", error);
+
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch enhanced payment summary",
+        data: {
+          totalInvoices: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalPending: 0,
+          invoicesByStatus: {},
+          paymentMethods: {},
+          overdue: [],
+          dueToday: [],
+          statusDistribution: {},
+          paymentStatusDistribution: {},
+          topCompanies: [],
+          customerAnalytics: [],
+          monthlyTrends: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ FIXED: Payment summary with overdue - NO companyId for admin
+   */
+  async getPaymentSummaryWithOverdue(companyId, filters = {}) {
+    try {
+      // ✅ CRITICAL FIX: Handle admin case - NO companyId
+      if (companyId === "admin") {
+        // ✅ FIXED: Use enhanced payment summary for admin
+        const enhancedSummary = await this.getEnhancedPaymentSummary(
+          "admin",
+          filters
+        );
+
+        if (enhancedSummary.success) {
+          // Add overdue-specific calculations
+          const data = enhancedSummary.data;
+          const overdueCount = data.overdue?.length || 0;
+          const dueTodayCount = data.dueToday?.length || 0;
+          const overdueAmount =
+            data.overdue?.reduce(
+              (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+              0
+            ) || 0;
+          const dueTodayAmount =
+            data.dueToday?.reduce(
+              (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+              0
+            ) || 0;
+
+          return {
+            success: true,
+            data: {
+              ...data,
+              summary: {
+                ...data,
+                overdueCount,
+                dueTodayCount,
+                overdueAmount,
+                dueTodayAmount,
+              },
+              totalSales: data.totalInvoices,
+              totalAmount: data.totalAmount,
+              totalReceived: data.totalPaid,
+              totalPending: data.totalPending,
+              totalOverdue: overdueAmount,
+              overdueCount: overdueCount,
+              isAdmin: true,
+            },
+            message: "Admin payment summary with overdue analysis completed",
+          };
+        }
+
+        throw new Error("Failed to fetch admin payment summary data");
+      }
+
+      // ✅ Regular company payment summary with overdue
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {companyId, ...filters};
+
+      // Try the specific endpoint first
+      try {
+        const response = await api.get("/sales/payment-summary-overdue", {
+          params,
+        });
+
+        if (response.status >= 200 && response.status < 300) {
+          return {
+            success: true,
+            data: response.data,
+            message: "Payment summary with overdue fetched successfully",
+          };
+        }
+      } catch (specificError) {
+        console.log("Specific endpoint not available, using enhanced summary");
+      }
+
+      // Fallback to enhanced payment summary
+      const enhancedSummary = await this.getEnhancedPaymentSummary(
+        companyId,
+        filters
+      );
+
+      if (enhancedSummary.success) {
+        // Add overdue-specific calculations
+        const data = enhancedSummary.data;
+        const overdueCount = data.overdue?.length || 0;
+        const dueTodayCount = data.dueToday?.length || 0;
+        const overdueAmount =
+          data.overdue?.reduce(
+            (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+            0
+          ) || 0;
+        const dueTodayAmount =
+          data.dueToday?.reduce(
+            (sum, sale) => sum + (sale.payment?.pendingAmount || 0),
+            0
+          ) || 0;
+
+        return {
+          success: true,
+          data: {
+            ...data,
+            summary: {
+              ...data,
+              overdueCount,
+              dueTodayCount,
+              overdueAmount,
+              dueTodayAmount,
+            },
+            totalSales: data.totalInvoices,
+            totalAmount: data.totalAmount,
+            totalReceived: data.totalPaid,
+            totalPending: data.totalPending,
+            totalOverdue: overdueAmount,
+            overdueCount: overdueCount,
+          },
+          message: "Payment summary with overdue analysis completed",
+        };
+      }
+
+      throw new Error("Failed to fetch payment summary data");
+    } catch (error) {
+      console.error("❌ Error fetching payment summary with overdue:", error);
+
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch payment summary with overdue",
+        data: {
+          summary: {
+            totalInvoices: 0,
+            totalAmount: 0,
+            totalPaid: 0,
+            totalPending: 0,
+            overdueCount: 0,
+            dueTodayCount: 0,
+            overdueAmount: 0,
+            dueTodayAmount: 0,
+          },
+          invoicesByStatus: {},
+          paymentMethods: {},
+          overdue: [],
+          dueToday: [],
+          totalSales: 0,
+          totalAmount: 0,
+          totalReceived: 0,
+          totalPending: 0,
+          totalOverdue: 0,
+          overdueCount: 0,
+        },
+      };
+    }
+  }
+  /**
+   * ✅ FIXED: Get all sales invoices for admin (use proper admin endpoint)
+   */
+  async getAllSalesInvoicesForAdmin(filters = {}) {
+    try {
+      const params = {
+        populate: "customer,companyId",
+        page: filters.page || 1,
+        limit: filters.limit || 100,
+        sortBy: filters.sortBy || "invoiceDate",
+        sortOrder: filters.sortOrder || "desc",
+        status: filters.status,
+        paymentStatus: filters.paymentStatus,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        search: filters.search,
+        ...filters,
+      };
+
+      // Remove undefined/null/empty values
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] === undefined ||
+          params[key] === null ||
+          params[key] === ""
+        ) {
+          delete params[key];
+        }
+      });
+
+      // ✅ FIXED: Use the correct admin endpoint for sales invoices
+      const response = await api.get("/sales/admin/sales-invoices", {params});
+
+      let salesInvoices = [];
+      let responseData = response.data;
+
+      // Handle response format - same pattern as sales orders
+      if (responseData.success !== undefined) {
+        if (responseData.success === false) {
+          throw new Error(responseData.message || "API returned error");
+        }
+        if (responseData.data) {
+          if (Array.isArray(responseData.data)) {
+            salesInvoices = responseData.data;
+          } else if (responseData.data.salesInvoices) {
+            salesInvoices = responseData.data.salesInvoices;
+          } else if (responseData.data.invoices) {
+            salesInvoices = responseData.data.invoices;
+          } else if (responseData.data.sales) {
+            salesInvoices = responseData.data.sales;
+          }
+        }
+      } else if (Array.isArray(responseData)) {
+        salesInvoices = responseData;
+      } else if (
+        responseData.salesInvoices &&
+        Array.isArray(responseData.salesInvoices)
+      ) {
+        salesInvoices = responseData.salesInvoices;
+      } else if (
+        responseData.invoices &&
+        Array.isArray(responseData.invoices)
+      ) {
+        salesInvoices = responseData.invoices;
+      } else if (responseData.sales && Array.isArray(responseData.sales)) {
+        salesInvoices = responseData.sales;
+      }
+
+      return {
+        success: true,
+        data: {
+          salesInvoices: salesInvoices,
+          invoices: salesInvoices,
+          sales: salesInvoices,
+          data: salesInvoices,
+          count: salesInvoices.length,
+          pagination: responseData.pagination || {},
+          summary: responseData.summary || {},
+          adminStats:
+            responseData.adminStats ||
+            this.calculateAdminStatsFromData(salesInvoices),
+          adminInfo: responseData.adminInfo || {
+            isAdminAccess: true,
+            crossAllCompanies: true,
+            totalCompanies: this.getUniqueCompanyCount(salesInvoices),
+          },
+        },
+        message:
+          responseData.message ||
+          `Found ${salesInvoices.length} sales invoices`,
+      };
+    } catch (error) {
+      console.error("❌ Admin sales invoices fetch failed:", error);
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch all sales invoices for admin",
+        data: {
+          salesInvoices: [],
+          invoices: [],
+          sales: [],
+          data: [],
+          count: 0,
+          pagination: {},
+          summary: {},
+          adminStats: {},
+          adminInfo: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Helper method to count unique companies
+   */
+  getUniqueCompanyCount(salesInvoices) {
+    const uniqueCompanies = new Set();
+    salesInvoices.forEach((invoice) => {
+      if (invoice.companyId) {
+        uniqueCompanies.add(
+          typeof invoice.companyId === "object"
+            ? invoice.companyId._id
+            : invoice.companyId
+        );
+      }
+    });
+    return uniqueCompanies.size;
+  }
+
+  // ✅ ADD: Calculate admin stats from data (helper method)
+  calculateAdminStatsFromData(salesInvoices) {
+    if (!Array.isArray(salesInvoices) || salesInvoices.length === 0) {
+      return {
+        totalRevenue: 0,
+        totalInvoices: 0,
+        avgInvoiceValue: 0,
+        totalCompanies: 0,
+        paymentStats: {
+          paid: 0,
+          pending: 0,
+          partial: 0,
+        },
+      };
+    }
+
+    const totalRevenue = salesInvoices.reduce(
+      (sum, invoice) =>
+        sum +
+        (invoice.totals?.finalTotal ||
+          invoice.finalTotal ||
+          invoice.amount ||
+          0),
+      0
+    );
+
+    const totalInvoices = salesInvoices.length;
+    const avgInvoiceValue =
+      totalInvoices > 0 ? totalRevenue / totalInvoices : 0;
+
+    // Get unique companies
+    const uniqueCompanies = new Set();
+    salesInvoices.forEach((invoice) => {
+      if (invoice.companyId) {
+        uniqueCompanies.add(
+          typeof invoice.companyId === "object"
+            ? invoice.companyId._id
+            : invoice.companyId
+        );
+      }
+    });
+
+    // Calculate payment stats
+    const paymentStats = {
+      paid: 0,
+      pending: 0,
+      partial: 0,
+    };
+
+    salesInvoices.forEach((invoice) => {
+      const status =
+        invoice.payment?.status || invoice.paymentStatus || "pending";
+      if (paymentStats.hasOwnProperty(status)) {
+        paymentStats[status]++;
+      } else {
+        paymentStats.pending++;
+      }
+    });
+
+    return {
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalInvoices,
+      avgInvoiceValue: Math.round(avgInvoiceValue * 100) / 100,
+      totalCompanies: uniqueCompanies.size,
+      paymentStats,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get admin bidirectional analytics for sales
+   */
+  async getAdminBidirectionalSalesAnalytics(filters = {}) {
+    try {
+      const params = {
+        isAdmin: true,
+        includeAllCompanies: true,
+        ...filters,
+      };
+
+      const response = await api.get(
+        "/api/admin/sales-invoices/bidirectional-analytics",
+        {
+          params,
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data,
+        message: "Admin bidirectional sales analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch admin bidirectional sales analytics",
+        data: {
+          totalBidirectionalSales: 0,
+          companiesUsingBidirectional: 0,
+          bidirectionalRevenue: 0,
+          conversionRates: {},
+          relationshipMapping: [],
+          sourceBreakdown: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin payment analytics for sales invoices
+   */
+  async getAdminPaymentAnalytics(filters = {}) {
+    try {
+      const params = {
+        isAdmin: true,
+        includeAllCompanies: true,
+        ...filters,
+      };
+
+      const response = await api.get(
+        "/api/admin/sales-invoices/payment-analytics",
+        {
+          params,
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data,
+        message: "Admin payment analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch admin payment analytics",
+        data: {
+          totalPaidAmount: 0,
+          totalPendingAmount: 0,
+          totalOverdueAmount: 0,
+          paymentMethodBreakdown: {},
+          paymentTrends: [],
+          overdueAnalysis: {},
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get admin customer analytics for sales invoices
+   */
+  async getAdminCustomerAnalytics(filters = {}) {
+    try {
+      const params = {
+        isAdmin: true,
+        includeAllCompanies: true,
+        ...filters,
+      };
+
+      const response = await api.get(
+        "/api/admin/sales-invoices/customer-analytics",
+        {
+          params,
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data,
+        message: "Admin customer analytics fetched successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to fetch admin customer analytics",
+        data: {
+          totalCustomers: 0,
+          activeCustomers: 0,
+          topCustomers: [],
+          customerGrowth: [],
+          customerSegmentation: {},
+        },
+      };
+    }
+  }
+
+  // ==================== 🖨️ PRINT AND DOCUMENT FUNCTIONS ====================
+
+  /**
+   * ✅ NEW: Get sales invoice for printing (A4 format)
+   */
+  async getSalesInvoiceForPrint(invoiceId, options = {}) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const params = {
+        format: options.format || "a4",
+        template: options.template || "standard",
+      };
+
+      const response = await api.get(`/sales/${invoiceId}/print`, {params});
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales invoice data prepared for printing",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to get invoice for printing"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales invoice data prepared for printing",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for print:", error);
+
+      let errorMessage = "Failed to get sales invoice for printing";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get sales receipt for thermal printing
+   */
+  async getSalesReceiptForPrint(invoiceId, options = {}) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const params = {
+        format: options.format || "thermal",
+        template: options.template || "receipt",
+      };
+
+      const response = await api.get(`/sales/${invoiceId}/receipt`, {params});
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales receipt data prepared for printing",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to get receipt for printing"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales receipt data prepared for printing",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales receipt for print:", error);
+
+      let errorMessage = "Failed to get sales receipt for printing";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get sales invoice for email/PDF generation (already exists but enhanced)
+   */
+  async getSalesInvoiceForEmail(invoiceId, options = {}) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const params = {
+        includePaymentLink: options.includePaymentLink || false,
+        template: options.template || "professional",
+      };
+
+      const response = await api.get(`/sales/${invoiceId}/email`, {params});
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Sales invoice data prepared for email",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to get invoice for email"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales invoice data prepared for email",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for email:", error);
+
+      let errorMessage = "Failed to get sales invoice for email";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Download sales invoice PDF
+   */
+  async downloadSalesInvoicePDF(invoiceId, options = {}) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const params = {
+        template: options.template || "standard",
+        format: options.format || "a4",
+      };
+
+      const response = await api.get(`/sales/${invoiceId}/pdf`, {params});
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message: responseData.message || "PDF download initiated",
+            action: "download_pdf",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to generate PDF"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "PDF download initiated",
+          action: "download_pdf",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error downloading sales invoice PDF:", error);
+
+      let errorMessage = "Failed to download sales invoice PDF";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get multiple sales invoices for bulk printing
+   */
+  async getBulkSalesInvoicesForPrint(invoiceIds, options = {}) {
+    try {
+      if (
+        !invoiceIds ||
+        !Array.isArray(invoiceIds) ||
+        invoiceIds.length === 0
+      ) {
+        throw new Error("Invoice IDs array is required");
+      }
+
+      const params = {
+        format: options.format || "a4",
+        template: options.template || "standard",
+      };
+
+      const response = await api.post(
+        "/sales/bulk-print",
+        {ids: invoiceIds},
+        {params}
+      );
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Bulk sales invoices prepared for printing",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to get bulk invoices for printing"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Bulk sales invoices prepared for printing",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting bulk sales invoices for print:", error);
+
+      let errorMessage = "Failed to get bulk sales invoices for printing";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+  /**
+   * ✅ NEW: Get sales invoice for QR code payment
+   */
+  async getSalesInvoiceForQRPayment(invoiceId) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const response = await api.get(`/sales/${invoiceId}/qr-payment`);
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Payment QR data generated successfully",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to generate QR payment data"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Payment QR data generated successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for QR payment:", error);
+
+      let errorMessage = "Failed to get sales invoice for QR payment";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Get sales invoice summary for quick view
+   */
+  async getSalesInvoiceSummary(invoiceId) {
+    try {
+      if (!invoiceId) {
+        throw new Error("Invoice ID is required");
+      }
+
+      const response = await api.get(`/sales/${invoiceId}/summary`);
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Sales invoice summary retrieved successfully",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              "Failed to get invoice summary"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || null,
+          message: "Sales invoice summary retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales invoice summary:", error);
+
+      let errorMessage = "Failed to get sales invoice summary";
+
+      if (error.response?.data) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = "Network error - unable to reach server";
+      } else {
+        errorMessage = error.message || "Unknown error occurred";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+        message: errorMessage,
+      };
+    }
+  }
+
+  // ==================== 📄 PRINT UTILITY FUNCTIONS ====================
+
+  /**
+   * ✅ NEW: Check if invoice can be printed
+   */
+  canPrintInvoice(invoice) {
+    return (
+      invoice &&
+      invoice._id &&
+      ["draft", "completed", "active"].includes(invoice.status)
+    );
+  }
+
+  /**
+   * ✅ NEW: Get print format options
+   */
+  getPrintFormatOptions() {
+    return [
+      {
+        value: "a4",
+        label: "A4 Format",
+        description: "Standard A4 invoice format",
+      },
+      {
+        value: "thermal",
+        label: "Thermal Receipt",
+        description: "58mm thermal printer format",
+      },
+      {
+        value: "pos",
+        label: "POS Receipt",
+        description: "80mm POS printer format",
+      },
+    ];
+  }
+
+  /**
+   * ✅ NEW: Get print template options
+   */
+  getPrintTemplateOptions() {
+    return [
+      {
+        value: "standard",
+        label: "Standard Template",
+        description: "Standard business invoice",
+      },
+      {
+        value: "professional",
+        label: "Professional Template",
+        description: "Enhanced professional layout",
+      },
+      {
+        value: "minimal",
+        label: "Minimal Template",
+        description: "Clean minimal design",
+      },
+      {
+        value: "receipt",
+        label: "Receipt Template",
+        description: "Simple receipt format",
+      },
+    ];
+  }
+
+  /**
+   * ✅ NEW: Format invoice data for frontend printing
+   */
+  formatInvoiceDataForPrint(invoiceData) {
+    if (!invoiceData) return null;
+
+    return {
+      // Company info
+      company: {
+        name: invoiceData.company?.name || "Company Name",
+        gstin: invoiceData.company?.gstin || "",
+        address: invoiceData.company?.address || "",
+        phone: invoiceData.company?.phone || "",
+        email: invoiceData.company?.email || "",
+        logo: invoiceData.company?.logo || null,
+      },
+
+      // Customer info
+      customer: {
+        name: invoiceData.customer?.name || "Customer",
+        address: invoiceData.customer?.address || "",
+        mobile: invoiceData.customer?.mobile || "",
+        email: invoiceData.customer?.email || "",
+        gstin: invoiceData.customer?.gstin || "",
+      },
+
+      // Invoice details
+      invoice: {
+        id: invoiceData.invoice?.id || invoiceData._id,
+        invoiceNumber:
+          invoiceData.invoice?.invoiceNumber || invoiceData.invoiceNumber,
+        invoiceDate:
+          invoiceData.invoice?.invoiceDate || invoiceData.invoiceDate,
+        dueDate: invoiceData.invoice?.dueDate || invoiceData.dueDate,
+        status: invoiceData.invoice?.status || invoiceData.status,
+        notes: invoiceData.invoice?.notes || invoiceData.notes || "",
+        terms:
+          invoiceData.invoice?.terms || invoiceData.termsAndConditions || "",
+      },
+
+      // Items
+      items: (invoiceData.items || []).map((item, index) => ({
+        srNo: index + 1,
+        name: item.name || item.itemName || `Item ${index + 1}`,
+        hsnCode: item.hsnCode || "",
+        quantity: item.quantity || 1,
+        unit: item.unit || "PCS",
+        rate: item.rate || item.pricePerUnit || 0,
+        taxRate: item.taxRate || 0,
+        cgst: item.cgst || item.cgstAmount || 0,
+        sgst: item.sgst || item.sgstAmount || 0,
+        igst: item.igst || item.igstAmount || 0,
+        amount: item.amount || 0,
+      })),
+
+      // Totals
+      totals: {
+        subtotal: invoiceData.totals?.subtotal || 0,
+        totalTax: invoiceData.totals?.totalTax || 0,
+        totalCGST: invoiceData.totals?.totalCGST || 0,
+        totalSGST: invoiceData.totals?.totalSGST || 0,
+        totalIGST: invoiceData.totals?.totalIGST || 0,
+        totalDiscount: invoiceData.totals?.totalDiscount || 0,
+        roundOff: invoiceData.totals?.roundOff || 0,
+        finalTotal: invoiceData.totals?.finalTotal || 0,
+      },
+
+      // Payment info
+      payment: {
+        method: invoiceData.payment?.method || "cash",
+        paidAmount: invoiceData.payment?.paidAmount || 0,
+        pendingAmount: invoiceData.payment?.pendingAmount || 0,
+        status: invoiceData.payment?.status || "pending",
+      },
+
+      // Metadata
+      meta: {
+        printDate: new Date(),
+        isSalesInvoice: true,
+        isGSTInvoice: invoiceData.gstEnabled || false,
+        format: invoiceData.meta?.format || "a4",
+        template: invoiceData.meta?.template || "standard",
+      },
+    };
+  }
+
+  /**
+   * ✅ NEW: Generate invoice print preview URL
+   */
+  generateInvoicePrintPreviewURL(invoiceId, options = {}) {
+    if (!invoiceId) return null;
+
+    const baseURL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    const params = new URLSearchParams({
+      format: options.format || "a4",
+      template: options.template || "standard",
+      preview: "true",
+    });
+
+    return `${baseURL}/sales/${invoiceId}/print?${params.toString()}`;
+  }
+  /**
+   * ✅ NEW: Convert invoice to different print formats
+   */
+  async convertInvoiceToPrintFormat(invoiceId, targetFormat, options = {}) {
+    try {
+      // Get invoice data in the target format
+      const printData = await this.getSalesInvoiceForPrint(invoiceId, {
+        format: targetFormat,
+        template: options.template || "standard",
+      });
+
+      if (printData.success) {
+        // Format the data based on target format
+        switch (targetFormat) {
+          case "thermal":
+            return this.formatForThermalPrint(printData.data);
+          case "pos":
+            return this.formatForPOSPrint(printData.data);
+          case "email":
+            return this.formatForEmailPrint(printData.data);
+          default:
+            return printData;
+        }
+      }
+
+      return printData;
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        message: "Failed to convert invoice to print format",
+      };
+    }
+  }
+
+  /**
+   * ✅ NEW: Format data for thermal printing
+   */
+  formatForThermalPrint(invoiceData) {
+    const thermalData = this.formatInvoiceDataForPrint(invoiceData);
+
+    // Thermal-specific formatting
+    if (thermalData) {
+      thermalData.meta.width = 58; // mm
+      thermalData.meta.printType = "thermal";
+      thermalData.meta.lineLimit = 32; // characters per line
+
+      // Truncate long item names for thermal printing
+      thermalData.items = thermalData.items.map((item) => ({
+        ...item,
+        name: item.name.substring(0, 20), // Limit to 20 chars
+      }));
+    }
+
+    return {
+      success: true,
+      data: thermalData,
+      message: "Invoice formatted for thermal printing",
+    };
+  }
+
+  /**
+   * ✅ NEW: Format data for POS printing
+   */
+  formatForPOSPrint(invoiceData) {
+    const posData = this.formatInvoiceDataForPrint(invoiceData);
+
+    // POS-specific formatting
+    if (posData) {
+      posData.meta.width = 80; // mm
+      posData.meta.printType = "pos";
+      posData.meta.lineLimit = 42; // characters per line
+    }
+
+    return {
+      success: true,
+      data: posData,
+      message: "Invoice formatted for POS printing",
+    };
+  }
+
+  /**
+   * ✅ NEW: Format data for email printing
+   */
+  formatForEmailPrint(invoiceData) {
+    const emailData = this.formatInvoiceDataForPrint(invoiceData);
+
+    // Email-specific formatting
+    if (emailData) {
+      emailData.meta.isEmailVersion = true;
+      emailData.meta.includePaymentLink = true;
+      emailData.meta.format = "email";
+    }
+
+    return {
+      success: true,
+      data: emailData,
+      message: "Invoice formatted for email",
     };
   }
 }

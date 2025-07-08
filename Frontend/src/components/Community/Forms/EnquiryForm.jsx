@@ -867,7 +867,7 @@ function EnquiryForm({
       </Modal.Footer>
 
       {/* Add custom CSS for placeholder styling */}
-      <style jsx>{`
+      <style>{`
         .form-control::placeholder,
         .form-control::-webkit-input-placeholder,
         .form-control::-moz-placeholder,

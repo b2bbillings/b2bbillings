@@ -396,7 +396,7 @@ function SalesInvoicesSummary({
         </Card.Body>
       </Card>
 
-      <style jsx>{`
+      <style>{`
         .text-purple {
           color: #8b5cf6 !important;
         }

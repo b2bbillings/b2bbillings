@@ -25,7 +25,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [transactions, setTransactions] = useState([]);
+  // ❌ REMOVED: transactions state (no longer needed)
   const [activeType, setActiveType] = useState("products");
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [transactionSearchQuery, setTransactionSearchQuery] = useState("");
@@ -40,6 +40,10 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     count: 0,
     totalItems: 0,
   });
+
+  // ✅ ADDED: Toast notification state
+  const [toastMessage, setToastMessage] = useState(null);
+  const [toastType, setToastType] = useState("info");
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -83,6 +87,17 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     description: "",
     isActive: true,
   });
+
+  // ✅ ADDED: Toast notification function
+  const addToast = useCallback((message, type = "info") => {
+    setToastMessage(message);
+    setToastType(type);
+
+    // Auto-hide toast after 4 seconds
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  }, []);
 
   const loadItems = async (searchQuery = "", page = 1, limit = 50) => {
     if (!currentCompany?.id) {
@@ -320,6 +335,8 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     }
   }, [sidebarSearchQuery]);
 
+  // ❌ REMOVED: Sample transactions useEffect (no longer needed)
+  /*
   useEffect(() => {
     const sampleTransactions = [
       {
@@ -347,6 +364,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     ];
     setTransactions(sampleTransactions);
   }, [selectedItem]);
+  */
 
   const filteredItems = products.filter((product) => {
     const typeMatch =
@@ -378,22 +396,13 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     setCurrentView("inventory");
   };
 
+  // ✅ UPDATED: Remove transaction state management
   const handleSaleFormSave = (saleData) => {
-    const newTransaction = {
-      id: Date.now(),
-      type: "Sale",
-      invoiceNumber: saleData.invoiceNumber,
-      itemId: selectedItem?.id || selectedItem?._id,
-      customerName: saleData.customer?.name || "Customer",
-      date: new Date().toLocaleDateString("en-GB"),
-      quantity:
-        saleData.items?.reduce((total, item) => total + item.quantity, 0) || 1,
-      pricePerUnit: saleData.totals?.finalTotal || 0,
-      status: saleData.paymentStatus || "Unpaid",
-    };
+    // ❌ REMOVED: Transaction state update
+    // const newTransaction = { ... };
+    // setTransactions((prev) => [...prev, newTransaction]);
 
-    setTransactions((prev) => [...prev, newTransaction]);
-
+    // ✅ KEPT: Stock update logic
     if (saleData.items) {
       saleData.items.forEach((item) => {
         setProducts((prev) =>
@@ -413,26 +422,19 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     }
 
     setCurrentView("inventory");
-    alert(`Sale ${saleData.invoiceNumber} saved successfully!`);
+    addToast(`Sale ${saleData.invoiceNumber} saved successfully!`, "success");
+
+    // ✅ The TransactionHistory component will automatically refresh
+    // when the backend is updated and selectedItem changes
   };
 
+  // ✅ UPDATED: Remove transaction state management
   const handlePurchaseFormSave = (purchaseData) => {
-    const newTransaction = {
-      id: Date.now(),
-      type: "Purchase",
-      invoiceNumber: purchaseData.purchaseNumber,
-      itemId: selectedItem?.id || selectedItem?._id,
-      customerName: purchaseData.supplier?.name || "Supplier",
-      date: new Date().toLocaleDateString("en-GB"),
-      quantity:
-        purchaseData.items?.reduce((total, item) => total + item.quantity, 0) ||
-        1,
-      pricePerUnit: purchaseData.totals?.finalTotal || 0,
-      status: purchaseData.paymentStatus || "Paid",
-    };
+    // ❌ REMOVED: Transaction state update
+    // const newTransaction = { ... };
+    // setTransactions((prev) => [...prev, newTransaction]);
 
-    setTransactions((prev) => [...prev, newTransaction]);
-
+    // ✅ KEPT: Stock update logic
     if (purchaseData.items) {
       purchaseData.items.forEach((item) => {
         setProducts((prev) =>
@@ -446,7 +448,12 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     }
 
     setCurrentView("inventory");
-    alert(`Purchase ${purchaseData.purchaseNumber} saved successfully!`);
+    addToast(
+      `Purchase ${purchaseData.purchaseNumber} saved successfully!`,
+      "success"
+    );
+
+    // ✅ The TransactionHistory component will automatically refresh
   };
 
   const handleAddCategory = async (categoryData) => {
@@ -458,11 +465,12 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     };
 
     setCategories((prev) => [...prev, newCategory]);
+    addToast(`Category "${categoryData.name}" added successfully!`, "success");
   };
 
   const handleAddItem = (itemType) => {
     if (!currentCompany?.id) {
-      alert("Please select a company first");
+      addToast("Please select a company first", "error");
       return;
     }
 
@@ -552,7 +560,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   const handleAdjustStock = (item) => {
     if (item.type === "service") {
-      alert("Stock adjustment is not applicable for services");
+      addToast("Stock adjustment is not applicable for services", "warning");
       return;
     }
 
@@ -586,7 +594,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   const handleSaveProduct = async (productData, isSaveAndAdd = false) => {
     if (!currentCompany?.id) {
-      alert("Please select a company first");
+      addToast("Please select a company first", "error");
       return false;
     }
 
@@ -600,6 +608,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
       if (response && response.success) {
         await loadItems(sidebarSearchQuery);
+        addToast(`Item "${productData.name}" created successfully!`, "success");
 
         if (!isSaveAndAdd) {
           handleCloseModal();
@@ -610,7 +619,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
         throw new Error(response?.message || "Failed to create item");
       }
     } catch (error) {
-      alert(`Failed to create item: ${error.message}`);
+      addToast(`Failed to create item: ${error.message}`, "error");
       return false;
     } finally {
       setIsLoading(false);
@@ -619,12 +628,12 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   const handleUpdateItem = async (updatedItemData) => {
     if (!currentCompany?.id) {
-      alert("No company selected");
+      addToast("No company selected", "error");
       return false;
     }
 
     if (!editingItem?.id && !editingItem?._id) {
-      alert("Cannot update item: Invalid item data");
+      addToast("Cannot update item: Invalid item data", "error");
       return false;
     }
 
@@ -645,10 +654,11 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
         setEditingItem(null);
         setModalType("add");
 
-        alert(
+        addToast(
           `${
             updatedItemData.name || editingItem.name
-          } has been updated successfully!`
+          } has been updated successfully!`,
+          "success"
         );
 
         return true;
@@ -659,7 +669,10 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
       }
     } catch (error) {
       const errorMessage = error.message || "Unknown error occurred";
-      alert(`Failed to update "${editingItem.name}": ${errorMessage}`);
+      addToast(
+        `Failed to update "${editingItem.name}": ${errorMessage}`,
+        "error"
+      );
 
       try {
         await loadItems(sidebarSearchQuery);
@@ -675,12 +688,12 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   const handleDeleteItem = async (item) => {
     if (!currentCompany?.id) {
-      alert("No company selected");
+      addToast("No company selected", "error");
       return false;
     }
 
     if (!item?.id && !item?._id) {
-      alert("Cannot delete item: Invalid item data");
+      addToast("Cannot delete item: Invalid item data", "error");
       return false;
     }
 
@@ -695,14 +708,14 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
       if (response.success) {
         await loadItems(sidebarSearchQuery);
-        alert(`${item.name} has been deleted successfully!`);
+        addToast(`${item.name} has been deleted successfully!`, "success");
         return true;
       } else {
         throw new Error(response.message || "Failed to delete item");
       }
     } catch (error) {
       const errorMessage = error.message || "Unknown error occurred";
-      alert(`Failed to delete "${item.name}": ${errorMessage}`);
+      addToast(`Failed to delete "${item.name}": ${errorMessage}`, "error");
 
       try {
         await loadItems(sidebarSearchQuery);
@@ -725,11 +738,12 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
     setCategories([...categories, newCategory]);
     setCategoryFormData({name: "", description: "", isActive: true});
     setShowCategoryModal(false);
+    addToast(`Category "${newCategory.name}" saved successfully!`, "success");
   };
 
   const handleUpdateStock = async (productId, adjustmentData) => {
     if (!currentCompany?.id) {
-      alert("Please select a company first");
+      addToast("Please select a company first", "error");
       return false;
     }
     try {
@@ -747,10 +761,11 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
         setShowStockModal(false);
         setSelectedProductForStock(null);
 
-        alert(
+        addToast(
           `Stock adjusted successfully! New quantity: ${
             response.data.newStock || adjustmentData.newStock
-          }`
+          }`,
+          "success"
         );
 
         return true;
@@ -758,7 +773,7 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
         throw new Error(response?.message || "Failed to adjust stock");
       }
     } catch (error) {
-      alert(`Failed to adjust stock: ${error.message}`);
+      addToast(`Failed to adjust stock: ${error.message}`, "error");
       return false;
     } finally {
       setIsLoading(false);
@@ -767,16 +782,19 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   const handleMoreOptions = () => {
     // Add your logic here
+    addToast("More options feature coming soon!", "info");
   };
 
   const handleSettings = () => {
     // Add your logic here
+    addToast("Settings feature coming soon!", "info");
   };
 
   const handleRefresh = () => {
     if (currentCompany?.id) {
       loadItems(sidebarSearchQuery);
       loadCategories();
+      addToast("Inventory refreshed successfully!", "success");
     }
   };
 
@@ -870,6 +888,25 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
 
   return (
     <div className="d-flex flex-column vh-100">
+      {/* ✅ ADDED: Toast notifications */}
+      {toastMessage && (
+        <Alert
+          variant={
+            toastType === "error"
+              ? "danger"
+              : toastType === "success"
+              ? "success"
+              : "info"
+          }
+          className="position-fixed top-0 end-0 m-3"
+          style={{zIndex: 1055, maxWidth: "350px"}}
+          dismissible
+          onClose={() => setToastMessage(null)}
+        >
+          {toastMessage}
+        </Alert>
+      )}
+
       {error && (
         <Alert
           variant="danger"
@@ -939,12 +976,13 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
                 </div>
 
                 <div className="flex-grow-1 px-3 pb-3">
+                  {/* ✅ UPDATED: TransactionHistory with new props */}
                   <TransactionHistory
-                    transactions={transactions}
                     selectedItem={selectedItem}
                     searchQuery={transactionSearchQuery}
                     onSearchChange={setTransactionSearchQuery}
-                    currentCompany={currentCompany}
+                    companyId={currentCompany?.id}
+                    addToast={addToast}
                   />
                 </div>
               </div>
@@ -991,6 +1029,10 @@ function Inventory({view = "allProducts", onNavigate, currentCompany}) {
         categories={categories}
         onProductsImported={(importedProducts) => {
           loadItems(sidebarSearchQuery);
+          addToast(
+            `${importedProducts.length} items imported successfully!`,
+            "success"
+          );
         }}
         currentCompany={currentCompany}
       />

@@ -11,7 +11,7 @@ dotenv.config();
 const companyRoutes = require("./src/routes/companies");
 const itemRoutes = require("./src/routes/items");
 const authRoutes = require("./src/routes/authRoutes");
-const userRoutes = require("./src/routes/userRoutes"); // ✅ NEW: User management routes
+const userRoutes = require("./src/routes/userRoutes");
 const partyRoutes = require("./src/routes/partyRoutes");
 const paymentRoutes = require("./src/routes/paymentRoutes");
 const salesRoutes = require("./src/routes/salesRoutes");
@@ -37,18 +37,8 @@ app.use(express.urlencoded({extended: true, limit: "50mb"}));
 // Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Request logging middleware (only in development)
-if (process.env.NODE_ENV === "development") {
-  app.use((req, res, next) => {
-    console.log(
-      `${new Date().toISOString()} - ${req.method} ${req.originalUrl}`
-    );
-    next();
-  });
-}
-
 // ================================
-// 🔄 ROUTES - PROPERLY ORGANIZED
+// 🔄 ROUTES - PROPERLY ORGANIZED (FIXED ORDER)
 // ================================
 
 // Health check route (first)
@@ -70,7 +60,7 @@ app.get("/api/health", (req, res) => {
       transactions: true,
       payments: true,
       auth: true,
-      userManagement: true, // ✅ NEW: User management feature
+      userManagement: true,
     },
   });
 });
@@ -81,7 +71,7 @@ app.get("/api/health", (req, res) => {
 // Auth routes (public - no company required)
 app.use("/api/auth", authRoutes);
 
-// ✅ NEW: User management routes (admin panel)
+// User management routes (admin panel)
 app.use("/api/users", userRoutes);
 
 // ================================
@@ -91,9 +81,16 @@ app.use("/api/users", userRoutes);
 app.use("/api/payments", paymentRoutes);
 
 // ================================
-// 🏢 COMPANY ROUTES
+// 🏢 COMPANY ROUTES (MUST BE BEFORE GENERIC /api ROUTES)
 // ================================
 app.use("/api/companies", companyRoutes);
+
+// ================================
+// 🔥 SPECIFIC ADMIN ROUTES (BEFORE GENERIC /api ROUTES)
+// ================================
+// Use specific paths instead of mounting at /api to avoid conflicts
+app.use("/api/admin/sales-orders", salesOrderRoutes);
+app.use("/api/admin/purchase-orders", purchaseOrderRoutes);
 
 // ================================
 // 🏢 COMPANY-SPECIFIC NESTED ROUTES
@@ -109,7 +106,7 @@ app.use("/api/companies/:companyId/parties", partyRoutes);
 // Sales management
 app.use("/api/companies/:companyId/sales", salesRoutes);
 
-// Sales Order management
+// Sales Order management (company-specific)
 app.use("/api/companies/:companyId/sales-orders", salesOrderRoutes);
 
 // Purchase management
@@ -181,7 +178,7 @@ app.get("/api/docs", (req, res) => {
         ],
       },
 
-      // ✅ NEW: User Management
+      // User Management
       userManagement: {
         base: "/api/users",
         description: "Complete user management and administration",
@@ -221,6 +218,21 @@ app.get("/api/docs", (req, res) => {
         },
       },
 
+      // Admin Sales Orders
+      adminSalesOrders: {
+        base: "/api/admin/sales-orders",
+        description: "Admin sales order management across all companies",
+        endpoints: [
+          "GET / - Get all sales orders for admin (across all companies)",
+          "GET /stats - Get sales order statistics for admin dashboard",
+        ],
+        features: [
+          "Cross-company sales order visibility",
+          "Admin-level statistics and analytics",
+          "Global sales order management",
+        ],
+      },
+
       // Company Management
       companies: {
         base: "/api/companies",
@@ -233,6 +245,9 @@ app.get("/api/docs", (req, res) => {
           "DELETE /:id - Delete company",
           "GET /:id/dashboard - Company dashboard",
           "GET /:id/settings - Company settings",
+          "GET /health - Company service health check",
+          "GET /admin/all - Admin: Get all companies",
+          "GET /admin/stats - Admin: Get company statistics",
         ],
       },
 
@@ -257,6 +272,40 @@ app.get("/api/docs", (req, res) => {
           "Party balance management",
           "Payment history tracking",
           "Payment cancellation",
+        ],
+      },
+
+      // Sales Order Management
+      salesOrders: {
+        base: "/api/sales-orders",
+        description: "Quotation, sales order, and proforma invoice management",
+        endpoints: [
+          "GET / - List all sales orders",
+          "POST / - Create new sales order",
+          "GET /:id - Get sales order details",
+          "PUT /:id - Update sales order",
+          "DELETE /:id - Delete sales order",
+          "POST /:id/convert-to-invoice - Convert to invoice",
+          "PATCH /:id/status - Update order status",
+          "POST /:id/payment - Add payment",
+          "GET /quotations - Get quotations only",
+          "GET /orders - Get orders only",
+          "GET /proforma - Get proforma invoices only",
+          "GET /expired - Get expired quotations",
+          "GET /pending-payment - Get orders pending payment",
+          "GET /reports/dashboard - Sales order dashboard",
+          "GET /generate-number - Generate order number",
+          "GET /export/csv - Export to CSV",
+        ],
+        orderTypes: ["quotation", "sales_order", "proforma_invoice"],
+        statuses: [
+          "draft",
+          "sent",
+          "accepted",
+          "rejected",
+          "expired",
+          "converted",
+          "cancelled",
         ],
       },
 
@@ -306,40 +355,6 @@ app.get("/api/docs", (req, res) => {
           "POST /:id/payment - Add payment to sale",
           "GET /dashboard - Sales dashboard",
           "GET /reports - Sales reports",
-        ],
-      },
-
-      // Sales Order Management
-      salesOrders: {
-        base: "/api/companies/:companyId/sales-orders",
-        description: "Quotation, sales order, and proforma invoice management",
-        endpoints: [
-          "GET / - List all sales orders",
-          "POST / - Create new sales order",
-          "GET /:id - Get sales order details",
-          "PUT /:id - Update sales order",
-          "DELETE /:id - Delete sales order",
-          "POST /:id/convert-to-invoice - Convert to invoice",
-          "PATCH /:id/status - Update order status",
-          "POST /:id/payment - Add payment",
-          "GET /quotations - Get quotations only",
-          "GET /orders - Get orders only",
-          "GET /proforma - Get proforma invoices only",
-          "GET /expired - Get expired quotations",
-          "GET /pending-payment - Get orders pending payment",
-          "GET /reports/dashboard - Sales order dashboard",
-          "GET /generate-number - Generate order number",
-          "GET /export/csv - Export to CSV",
-        ],
-        orderTypes: ["quotation", "sales_order", "proforma_invoice"],
-        statuses: [
-          "draft",
-          "sent",
-          "accepted",
-          "rejected",
-          "expired",
-          "converted",
-          "cancelled",
         ],
       },
 
@@ -462,8 +477,9 @@ app.get("/api/docs", (req, res) => {
     // System Features
     systemFeatures: {
       authentication: "JWT-based authentication with refresh tokens",
-      userManagement: "Complete user administration and role management", // ✅ NEW
+      userManagement: "Complete user administration and role management",
       multiCompany: "Multi-company support with data isolation",
+      adminPanel: "Administrative interface for cross-company management",
       paymentProcessing: "Comprehensive payment processing system",
       inventoryManagement: "Product and service inventory tracking",
       partyManagement: "Customer and supplier relationship management",
@@ -472,7 +488,7 @@ app.get("/api/docs", (req, res) => {
       reporting: "Business intelligence and reporting",
       bulkOperations: "Bulk data processing capabilities",
       dataExport: "CSV and Excel export functionality",
-      adminPanel: "Administrative interface for system management", // ✅ NEW
+      bidirectionalIntegration: "Seamless sales-purchase order integration",
     },
 
     // API Usage Guidelines
@@ -486,7 +502,26 @@ app.get("/api/docs", (req, res) => {
       sorting: "Use ?sortBy=createdAt&sortOrder=desc for sorting",
       search: "Use ?search=keyword for text search",
       userManagement:
-        "User management endpoints support advanced filtering and bulk operations", // ✅ NEW
+        "User management endpoints support advanced filtering and bulk operations",
+      adminAccess: "Admin routes require proper role-based authentication",
+    },
+
+    // Route Mounting Information
+    routeMounting: {
+      note: "Routes are properly ordered to avoid conflicts",
+      specificRoutes: {
+        companies: "/api/companies (mounted first)",
+        adminSalesOrders: "/api/admin/sales-orders (specific path)",
+        adminPurchaseOrders: "/api/admin/purchase-orders (specific path)",
+      },
+      companySpecific: {
+        mount: "/api/companies/:companyId/*",
+        description: "Company-scoped operations",
+      },
+      legacy: {
+        mount: "/api/sales-orders, /api/purchase-orders, etc.",
+        description: "Backward compatibility routes",
+      },
     },
   });
 });
@@ -577,9 +612,11 @@ app.use("*", (req, res) => {
       health: "GET /api/health",
       documentation: "GET /api/docs",
       authentication: "POST /api/auth/*",
-      userManagement: "GET /api/users", // ✅ NEW
+      userManagement: "GET /api/users",
+      adminSalesOrders: "GET /api/admin/sales-orders",
       companies: "GET /api/companies",
       payments: "GET /api/payments",
+      salesOrders: "GET /api/sales-orders",
       companySpecific: {
         items: "GET /api/companies/:companyId/items",
         parties: "GET /api/companies/:companyId/parties",
@@ -623,17 +660,23 @@ mongoose
 // ================================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🚀 Shop Management System Backend Started!");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`🌐 Server: http://localhost:${PORT}`);
-  console.log(`📚 API Docs: http://localhost:${PORT}/api/docs`);
-  console.log(`💰 Payments: http://localhost:${PORT}/api/payments`);
-  console.log(`👥 Users: http://localhost:${PORT}/api/users`); // ✅ NEW
-  console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("✅ Ready to handle requests!");
-  console.log("");
+  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  // console.log("🚀 Shop Management System Backend Started!");
+  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  // console.log(`🌐 Server: http://localhost:${PORT}`);
+  // console.log(`📚 API Docs: http://localhost:${PORT}/api/docs`);
+  // console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
+  // console.log(`🏢 Companies: http://localhost:${PORT}/api/companies`);
+  // console.log(`💰 Payments: http://localhost:${PORT}/api/payments`);
+  // console.log(`👥 Users: http://localhost:${PORT}/api/users`);
+  // console.log(
+  //   `🔥 Admin Sales Orders: http://localhost:${PORT}/api/admin/sales-orders`
+  // );
+  // console.log(`📋 Sales Orders: http://localhost:${PORT}/api/sales-orders`);
+  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  // console.log("✅ Ready to handle requests!");
+  // console.log("🔧 Route order optimized to prevent conflicts!");
+  // console.log("");
 });
 
 // Graceful shutdown

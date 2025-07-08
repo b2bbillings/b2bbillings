@@ -337,7 +337,7 @@ function PurchaseBillsSummary({
         </Card.Body>
       </Card>
 
-      <style jsx>{`
+      <style>{`
         .bg-purple {
           background-color: #6366f1 !important;
         }

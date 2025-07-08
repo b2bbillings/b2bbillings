@@ -46,10 +46,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isLoggedIn && !companies.length) {
+    if (isLoggedIn && companies.length === 0 && !isLoadingCompanies) {
       loadCompanies();
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, companies.length, isLoadingCompanies]);
 
   useEffect(() => {
     const restoreCompanySelection = () => {
@@ -70,19 +70,62 @@ function App() {
   }, [isLoggedIn]);
 
   const loadCompanies = async () => {
+    if (isLoadingCompanies) {
+      return;
+    }
+
     try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        return;
+      }
+
       setIsLoadingCompanies(true);
-      const response = await companyService.getCompanies();
+
+      const response = await companyService.getCompanies({
+        page: 1,
+        limit: 50,
+        search: "",
+        businessType: "",
+        businessCategory: "",
+        state: "",
+        city: "",
+        isActive: "true",
+      });
+
       const isSuccess =
         response?.success === true || response?.status === "success";
 
       if (isSuccess) {
         const companiesList =
           response.data?.companies || response.data || response.companies || [];
+
         setCompanies(companiesList);
-        await handleAutoCompanySelection(companiesList);
+
+        if (!currentCompany && companiesList.length > 0) {
+          await handleAutoCompanySelection(companiesList);
+        }
+      } else {
+        setCompanies([]);
       }
     } catch (error) {
+      if (error.response?.status === 401) {
+        await authService.clearAuthData();
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+        setCompanies([]);
+        setCurrentCompany(null);
+      } else if (error.response?.status === 400) {
+        const errorMessage =
+          error.response.data?.message ||
+          error.response.data?.error?.message ||
+          "Invalid request parameters";
+        showToast(`Failed to load companies: ${errorMessage}`, "error");
+      } else {
+        const errorMessage = error.message || "Unknown error occurred";
+        showToast(`Failed to load companies: ${errorMessage}`, "error");
+      }
+
       setCompanies([]);
     } finally {
       setIsLoadingCompanies(false);
@@ -91,7 +134,11 @@ function App() {
 
   const handleAutoCompanySelection = async (companiesList) => {
     try {
-      if (!companiesList || companiesList.length === 0 || currentCompany) {
+      if (!companiesList || companiesList.length === 0) {
+        return;
+      }
+
+      if (currentCompany) {
         return;
       }
 
@@ -116,7 +163,9 @@ function App() {
       }
 
       const firstCompany = companiesList[0];
-      await setCompanyAsActive(firstCompany);
+      if (firstCompany) {
+        await setCompanyAsActive(firstCompany);
+      }
     } catch (error) {
       // Handle error silently
     }
@@ -124,7 +173,9 @@ function App() {
 
   const setCompanyAsActive = async (company) => {
     try {
-      if (!company) return;
+      if (!company) {
+        return;
+      }
 
       const standardizedCompany = {
         id: company.id || company._id,
@@ -167,12 +218,18 @@ function App() {
         const userData = JSON.parse(savedUser);
         setCurrentUser(userData);
         setIsLoggedIn(true);
-        await loadCompanies();
+
+        if (companies.length === 0 && !isLoadingCompanies) {
+          await loadCompanies();
+        }
       } else if (verificationResponse?.shouldRetry) {
         const userData = JSON.parse(savedUser);
         setCurrentUser(userData);
         setIsLoggedIn(true);
-        await loadCompanies();
+
+        if (companies.length === 0 && !isLoadingCompanies) {
+          await loadCompanies();
+        }
       } else {
         await authService.clearAuthData();
         localStorage.removeItem("currentCompany");
@@ -190,9 +247,12 @@ function App() {
       setIsLoggedIn(true);
       setCurrentUser(userData);
       localStorage.setItem("user", JSON.stringify(userData));
-      await loadCompanies();
+
+      if (companies.length === 0 && !isLoadingCompanies) {
+        await loadCompanies();
+      }
     } catch (error) {
-      // Handle error appropriately
+      // Handle error silently
     }
   };
 
@@ -205,7 +265,7 @@ function App() {
       setCompanies([]);
       localStorage.removeItem("currentCompany");
     } catch (error) {
-      // Handle error appropriately
+      // Handle error silently
     }
   };
 
@@ -218,7 +278,7 @@ function App() {
         localStorage.removeItem("currentCompany");
       }
     } catch (error) {
-      // Handle error appropriately
+      // Handle error silently
     }
   };
 
@@ -227,7 +287,7 @@ function App() {
       setCompanies((prev) => [...prev, newCompany]);
       await setCompanyAsActive(newCompany);
     } catch (error) {
-      // Handle error appropriately
+      // Handle error silently
     }
   };
 
@@ -250,7 +310,7 @@ function App() {
         await setCompanyAsActive(updatedCompany);
       }
     } catch (error) {
-      // Handle error appropriately
+      // Handle error silently
     }
   };
 

@@ -3,14 +3,12 @@ const Item = require("../models/Item");
 const Party = require("../models/Party");
 const Company = require("../models/Company");
 const mongoose = require("mongoose");
+const itemController = require("./itemController");
 
 const normalizePaymentMethod = (method) => {
-  // Valid enum values from Purchase Order schema:
-  // ["cash", "card", "upi", "bank_transfer", "cheque", "credit", "online", "bank"]
-
   const methodMapping = {
-    // Bank-related methods → bank_transfer (most appropriate for bank accounts)
-    "bank account": "bank_transfer",
+    // ✅ FIXED: Bank-related methods → bank_transfer
+    "bank account": "bank_transfer", // ✅ This was the issue
     bank_account: "bank_transfer",
     "bank transfer": "bank_transfer",
     bank_transfer: "bank_transfer",
@@ -71,14 +69,13 @@ const normalizePaymentMethod = (method) => {
   };
 
   const inputMethod = method?.toString().toLowerCase().trim() || "";
-  const normalized = methodMapping[inputMethod] || "cash"; // Default to cash for unknown methods
+  const normalized = methodMapping[inputMethod] || "cash";
 
-  // Validation check
   const validEnums = [
     "cash",
     "card",
     "upi",
-    "bank_transfer",
+    "bank_transfer", // ✅ This is the correct enum value
     "cheque",
     "credit",
     "online",
@@ -86,19 +83,11 @@ const normalizePaymentMethod = (method) => {
   ];
   const isValidEnum = validEnums.includes(normalized);
 
-  console.log("💳 Enhanced payment method normalization:", {
-    original: method,
-    cleaned: inputMethod,
-    normalized: normalized,
-    isValidEnum: isValidEnum,
-    availableEnums: validEnums,
-    mappingSource: methodMapping[inputMethod]
-      ? "explicit_mapping"
-      : "default_fallback",
-    recommendedUse: normalized,
-  });
+  // ✅ ENHANCED: Better logging for debugging
+  console.log(
+    `💳 Payment method normalization: { original: '${method}', normalized: '${normalized}', isValid: ${isValidEnum} }`
+  );
 
-  // Double-check validation
   if (!isValidEnum) {
     console.warn(
       `⚠️ Normalized method '${normalized}' is not in valid enum list, using 'cash' instead`
@@ -131,6 +120,81 @@ const validatePaymentMethod = (method) => {
   };
 };
 
+const updateStockForPurchase = async (
+  purchase,
+  processedItems,
+  supplierRecord,
+  req
+) => {
+  console.log("📦 Updating stock for purchase using direct stock updates...");
+
+  const results = [];
+
+  for (const item of processedItems) {
+    if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+      try {
+        // ✅ DIRECT STOCK UPDATE (no separate adjustment entry)
+        const currentItem = await Item.findById(item.itemRef);
+        if (currentItem) {
+          const previousStock = currentItem.currentStock || 0;
+          const newStock = previousStock + item.quantity; // ✅ ADD for purchase
+
+          // ✅ FIXED: Don't create separate stock history - the purchase transaction itself will be shown
+          await Item.findByIdAndUpdate(item.itemRef, {
+            $set: {
+              currentStock: newStock,
+              lastStockUpdate: new Date(),
+              lastModifiedBy: req.user?.id || "system",
+              updatedAt: new Date(),
+            },
+          });
+
+          console.log(
+            `✅ Stock updated for ${item.itemName}: ${previousStock} → ${newStock} (+${item.quantity})`
+          );
+
+          results.push({
+            itemName: item.itemName,
+            itemId: item.itemRef,
+            quantity: item.quantity,
+            previousStock: previousStock,
+            newStock: newStock,
+            success: true,
+            method: "direct_stock_update",
+          });
+        } else {
+          throw new Error("Item not found");
+        }
+      } catch (error) {
+        console.error(
+          `❌ Stock update failed for ${item.itemName}:`,
+          error.message
+        );
+
+        results.push({
+          itemName: item.itemName,
+          itemId: item.itemRef,
+          quantity: item.quantity,
+          success: false,
+          error: error.message,
+          method: "direct_stock_update",
+        });
+      }
+    } else {
+      console.warn(`⚠️ Invalid item reference for: ${item.itemName}`);
+      results.push({
+        itemName: item.itemName,
+        itemId: item.itemRef,
+        quantity: item.quantity,
+        success: false,
+        error: "Invalid item reference",
+        method: "direct_stock_update",
+      });
+    }
+  }
+
+  return results;
+};
 const purchaseController = {
   // ✅ UPDATED: Generate actual preview purchase number (not just pattern)
   getNextPurchaseNumber: async (req, res) => {
@@ -143,11 +207,6 @@ const purchaseController = {
           message: "Company ID is required",
         });
       }
-
-      console.log(
-        "🔢 Generating preview purchase number for company:",
-        companyId
-      );
 
       // ✅ Get company details
       const Company = require("../models/Company");
@@ -210,14 +269,6 @@ const purchaseController = {
       const gstPrefix = purchaseType === "gst" ? "GST-" : "";
       const previewPurchaseNumber = `${companyPrefix}-PO-${gstPrefix}${dateStr}-${sequenceStr}`;
 
-      console.log("✅ Preview purchase number generated:", {
-        companyId,
-        companyPrefix,
-        dateStr,
-        nextSequence,
-        previewPurchaseNumber,
-      });
-
       res.status(200).json({
         success: true,
         data: {
@@ -257,7 +308,6 @@ const purchaseController = {
     }
   },
 
-  // ✅ UPDATED: Enhanced createPurchase with proper payment method normalization
   createPurchase: async (req, res) => {
     try {
       const {
@@ -287,28 +337,6 @@ const purchaseController = {
         autoDetectSourceCompany = true,
       } = req.body;
 
-      console.log(
-        "📥 Creating purchase with model-based automatic numbering:",
-        {
-          supplierName,
-          supplier,
-          supplierId,
-          taxMode,
-          priceIncludesTax,
-          gstEnabled,
-          itemCount: items?.length || 0,
-          companyId,
-          sourceOrderId,
-          sourceOrderType,
-          sourceCompanyId,
-          isAutoGenerated,
-          generatedFrom,
-          autoDetectSourceCompany,
-          paymentMethod: payment?.method, // Log original payment method
-          modelHandlesNumbering: true,
-        }
-      );
-
       // Validate required fields
       if (!companyId || !items || items.length === 0) {
         return res.status(400).json({
@@ -330,22 +358,11 @@ const purchaseController = {
         });
       }
 
-      console.log(
-        "🏢 Company details (model will handle numbering automatically):",
-        {
-          companyId,
-          businessName: currentCompany.businessName,
-          code: currentCompany.code,
-          modelHandlesPurchaseNumberGeneration: true,
-        }
-      );
-
       // ✅ Handle supplier validation (existing code)
       let supplierRecord = null;
       const finalSupplierId = supplier || supplierId;
 
       if (finalSupplierId && mongoose.Types.ObjectId.isValid(finalSupplierId)) {
-        console.log("🔍 Finding supplier by ID:", finalSupplierId);
         supplierRecord = await Party.findById(finalSupplierId);
 
         if (!supplierRecord) {
@@ -354,21 +371,7 @@ const purchaseController = {
             message: "Supplier not found with provided ID",
           });
         }
-
-        console.log("✅ Found supplier:", {
-          id: supplierRecord._id,
-          name: supplierRecord.name,
-          mobile: supplierRecord.mobile,
-          supplierCompanyId: supplierRecord.companyId,
-          linkedCompanyId: supplierRecord.linkedCompanyId,
-        });
       } else if (supplierName && supplierMobile) {
-        console.log(
-          "🔍 Finding supplier by name and mobile:",
-          supplierName,
-          supplierMobile
-        );
-
         supplierRecord = await Party.findOne({
           $and: [
             {companyId: companyId},
@@ -392,16 +395,7 @@ const purchaseController = {
             createdBy: req.user?.id || "system",
           });
           await supplierRecord.save();
-          console.log("✅ Auto-created supplier:", supplierRecord.name);
         }
-
-        console.log("✅ Found supplier by search:", {
-          id: supplierRecord._id,
-          name: supplierRecord.name,
-          mobile: supplierRecord.mobile,
-          supplierCompanyId: supplierRecord?.companyId,
-          linkedCompanyId: supplierRecord?.linkedCompanyId,
-        });
       } else {
         return res.status(400).json({
           success: false,
@@ -414,14 +408,7 @@ const purchaseController = {
         taxMode || (priceIncludesTax ? "with-tax" : "without-tax");
       const finalPriceIncludesTax = finalTaxMode === "with-tax";
 
-      console.log("🔄 Tax mode synchronization:", {
-        originalTaxMode: taxMode,
-        originalPriceIncludesTax: priceIncludesTax,
-        finalTaxMode,
-        finalPriceIncludesTax,
-      });
-
-      // Process items (similar to sales controller...)
+      // Process items (same as existing)
       const processedItems = [];
       let subtotal = 0;
       let totalDiscount = 0;
@@ -430,13 +417,6 @@ const purchaseController = {
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-
-        console.log(`🔄 Processing item ${i + 1}:`, {
-          itemName: item.itemName,
-          quantity: item.quantity,
-          pricePerUnit: item.pricePerUnit,
-          taxRate: item.taxRate,
-        });
 
         // Basic validation
         if (!item.itemName || !item.quantity || !item.pricePerUnit) {
@@ -552,13 +532,6 @@ const purchaseController = {
         };
 
         processedItems.push(processedItem);
-
-        console.log(`✅ Item ${i + 1} processed:`, {
-          itemName: processedItem.itemName,
-          taxableAmount: processedItem.taxableAmount,
-          totalTax: processedItem.totalTaxAmount,
-          finalAmount: processedItem.amount,
-        });
       }
 
       // Calculate final totals
@@ -598,60 +571,76 @@ const purchaseController = {
         roundOff: parseFloat(appliedRoundOff.toFixed(2)),
       };
 
-      console.log("💰 Final totals calculated:", totals);
-
-      // ✅ FIXED: Normalize payment method BEFORE creating payment details
       const rawPaymentMethod = payment?.method || "credit";
       const normalizedPaymentMethod = normalizePaymentMethod(rawPaymentMethod);
 
-      console.log("💳 Payment method normalization:", {
-        original: rawPaymentMethod,
-        normalized: normalizedPaymentMethod,
-      });
-
-      // Enhanced payment details with normalized method
+      // ✅ ENHANCED PAYMENT DETAILS WITH PROPER DUE DATE CALCULATION (same as sales)
       const paymentDetails = {
-        method: normalizedPaymentMethod, // ✅ Use normalized method
+        method: normalizedPaymentMethod,
         status: payment?.status || "pending",
         paidAmount: parseFloat(payment?.paidAmount || 0),
         pendingAmount: 0,
         paymentDate: payment?.paymentDate
           ? new Date(payment.paymentDate)
           : new Date(),
-        dueDate: payment?.dueDate ? new Date(payment.dueDate) : null,
+        dueDate: null, // ✅ Initialize as null
         creditDays: parseInt(payment?.creditDays || 0),
         reference: payment?.reference || "",
         notes: payment?.notes || "",
+        bankAccountId: payment?.bankAccountId || null,
+        bankAccountName: payment?.bankAccountName || null,
       };
+
+      // ✅ FIXED: Calculate due date properly (same as sales)
+      if (payment?.dueDate) {
+        // If explicit due date is provided
+        paymentDetails.dueDate = new Date(payment.dueDate);
+      } else if (paymentDetails.creditDays > 0) {
+        // Calculate due date from credit days
+        const calculatedDueDate = new Date(paymentDetails.paymentDate);
+        calculatedDueDate.setDate(
+          calculatedDueDate.getDate() + paymentDetails.creditDays
+        );
+        paymentDetails.dueDate = calculatedDueDate;
+
+        console.log(
+          `✅ Calculated due date: ${
+            calculatedDueDate.toISOString().split("T")[0]
+          } (${paymentDetails.creditDays} days from ${
+            paymentDetails.paymentDate.toISOString().split("T")[0]
+          })`
+        );
+      }
 
       const paidAmount = paymentDetails.paidAmount;
       paymentDetails.pendingAmount = parseFloat(
         (adjustedFinalTotal - paidAmount).toFixed(2)
       );
 
-      // Auto-determine payment status
+      // ✅ ENHANCED: Auto-determine payment status with proper due date handling (same as sales)
       if (paidAmount >= adjustedFinalTotal) {
         paymentDetails.status = "paid";
         paymentDetails.pendingAmount = 0;
-        paymentDetails.dueDate = null;
+        paymentDetails.dueDate = null; // Clear due date for fully paid purchases
       } else if (paidAmount > 0) {
         paymentDetails.status = "partial";
-        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
-          const calculatedDueDate = new Date();
-          calculatedDueDate.setDate(
-            calculatedDueDate.getDate() + paymentDetails.creditDays
-          );
-          paymentDetails.dueDate = calculatedDueDate;
-        }
+        // Keep the calculated due date for partial payments
       } else {
         paymentDetails.status = "pending";
         paymentDetails.pendingAmount = adjustedFinalTotal;
-        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
-          const calculatedDueDate = new Date();
-          calculatedDueDate.setDate(
-            calculatedDueDate.getDate() + paymentDetails.creditDays
+        // Keep the calculated due date for pending payments
+      }
+
+      // ✅ Check for overdue status (same as sales)
+      if (paymentDetails.dueDate && paymentDetails.pendingAmount > 0) {
+        const now = new Date();
+        if (now > paymentDetails.dueDate) {
+          paymentDetails.status = "overdue";
+          console.log(
+            `⚠️ Purchase is overdue: Due ${
+              paymentDetails.dueDate.toISOString().split("T")[0]
+            }, Today ${now.toISOString().split("T")[0]}`
           );
-          paymentDetails.dueDate = calculatedDueDate;
         }
       }
 
@@ -659,15 +648,17 @@ const purchaseController = {
         paymentDetails.pendingAmount = 0;
       }
 
-      // ✅ FIXED: Initialize payment history with normalized method
+      // ✅ FIXED: Initialize payment history with normalized method (same as sales)
       let paymentHistory = [];
       if (paidAmount > 0) {
         paymentHistory.push({
           amount: paidAmount,
-          method: normalizedPaymentMethod, // ✅ Use normalized method
+          method: normalizedPaymentMethod,
           reference: paymentDetails.reference,
           paymentDate: paymentDetails.paymentDate,
-          dueDate: paymentDetails.dueDate,
+          dueDate: paymentDetails.dueDate, // ✅ Include due date in payment history
+          bankAccountId: paymentDetails.bankAccountId,
+          bankAccountName: paymentDetails.bankAccountName,
           notes: paymentDetails.notes || "Initial payment",
           createdAt: new Date(),
           createdBy: req.user?.id || "system",
@@ -700,7 +691,7 @@ const purchaseController = {
         companyId,
         items: processedItems,
         totals,
-        payment: paymentDetails,
+        payment: paymentDetails, // ✅ Now includes properly calculated due date
         paymentHistory: paymentHistory,
         notes: finalNotes,
         termsAndConditions: termsAndConditions || "",
@@ -752,20 +743,6 @@ const purchaseController = {
         lastModifiedBy: req.user?.id || "system",
       };
 
-      console.log(
-        "💾 Creating purchase - model will auto-generate purchase number:",
-        {
-          companyId: companyId.toString(),
-          companyName: currentCompany.businessName,
-          companyCode: currentCompany.code,
-          supplier: supplierRecord.name,
-          itemCount: purchaseData.items.length,
-          finalTotal: purchaseData.totals.finalTotal,
-          paymentMethod: purchaseData.payment.method, // ✅ Log normalized method
-          modelHandlesNumbering: true,
-        }
-      );
-
       // ✅ Create the purchase - purchase number will be auto-generated by model's pre-save middleware
       const purchase = new Purchase(purchaseData);
       await purchase.save();
@@ -776,25 +753,31 @@ const purchaseController = {
         "name mobile email address type companyId linkedCompanyId"
       );
 
-      // Update item stock (ADD to stock for purchase)
-      for (const item of processedItems) {
-        if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
-          try {
-            await Item.findByIdAndUpdate(
-              item.itemRef,
-              {$inc: {currentStock: item.quantity}},
-              {new: true}
-            );
-            console.log(
-              `📦 Added stock for ${item.itemName}: +${item.quantity}`
-            );
-          } catch (stockError) {
-            console.warn(
-              `⚠️ Could not update stock for ${item.itemName}:`,
-              stockError.message
-            );
-          }
-        }
+      // ===== ✅ ENHANCED STOCK UPDATE USING ITEMCONTROLLER =====
+      console.log(
+        "📦 Updating stock for purchase using itemController functions..."
+      );
+
+      const stockUpdateResults = await updateStockForPurchase(
+        purchase,
+        processedItems,
+        supplierRecord,
+        req
+      );
+
+      // ✅ Add stock update info to response
+      const successfulUpdates = stockUpdateResults.filter((r) => r.success);
+      const failedUpdates = stockUpdateResults.filter((r) => !r.success);
+
+      console.log(
+        `✅ Stock updates: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`
+      );
+
+      // ===== ✅ SIMPLIFIED PAYMENT HANDLING (SAME AS SALES CONTROLLER) =====
+      if (paidAmount > 0) {
+        console.log(
+          `💰 Payment of ₹${paidAmount} recorded in purchase. Financial transaction will be handled by payment system.`
+        );
       }
 
       // Update source purchase order if conversion
@@ -809,12 +792,6 @@ const purchaseController = {
             convertedBy: convertedBy || req.user?.id || "system",
             status: "completed",
           });
-
-          console.log("🔗 Updated source purchase order:", {
-            sourceOrderId,
-            invoiceId: purchase._id,
-            invoiceNumber: purchase.purchaseNumber,
-          });
         } catch (updateError) {
           console.warn(
             "Failed to update source purchase order:",
@@ -823,25 +800,10 @@ const purchaseController = {
         }
       }
 
-      console.log(
-        "✅ Purchase created successfully with model-generated sequential numbering:",
-        {
-          id: purchase._id,
-          purchaseNumber: purchase.purchaseNumber,
-          companyId: purchase.companyId.toString(),
-          companyName: currentCompany.businessName,
-          supplier: supplierRecord.name,
-          finalTotal: purchase.totals.finalTotal,
-          paymentMethod: purchase.payment.method, // ✅ Confirm normalized method
-          numberingSource: "model_pre_save_middleware",
-        }
-      );
-
-      // ✅ Enhanced response
+      // ✅ SIMPLIFIED RESPONSE (SAME AS SALES CONTROLLER)
       res.status(201).json({
         success: true,
-        message:
-          "Purchase created successfully with automatic model-based sequential numbering",
+        message: "Purchase created successfully with automatic stock tracking",
         data: {
           purchase,
           bill: {
@@ -865,7 +827,22 @@ const purchaseController = {
               ...purchase.payment,
               dueDate: purchase.payment.dueDate,
               creditDays: purchase.payment.creditDays,
-              method: purchase.payment.method, // ✅ Return normalized method
+              // ✅ Add due date information to response (same as sales)
+              dueDateInfo: purchase.payment.dueDate
+                ? {
+                    dueDate: purchase.payment.dueDate,
+                    formattedDueDate: purchase.payment.dueDate
+                      .toISOString()
+                      .split("T")[0],
+                    daysFromNow: Math.ceil(
+                      (purchase.payment.dueDate - new Date()) /
+                        (1000 * 60 * 60 * 24)
+                    ),
+                    isOverdue:
+                      new Date() > purchase.payment.dueDate &&
+                      purchase.payment.pendingAmount > 0,
+                  }
+                : null,
             },
             taxMode: purchase.taxMode,
             priceIncludesTax: purchase.priceIncludesTax,
@@ -880,24 +857,168 @@ const purchaseController = {
               }-PO-[GST-]YYYYMMDD-XXXX`,
               modelBased: true,
             },
-            paymentInfo: {
-              originalMethod: rawPaymentMethod,
-              normalizedMethod: normalizedPaymentMethod,
-              methodNormalized: rawPaymentMethod !== normalizedPaymentMethod,
-            },
+          },
+          stockUpdates: {
+            itemsProcessed: processedItems.length,
+            successfulUpdates: successfulUpdates.length,
+            failedUpdates: failedUpdates.length,
+            stockHistoryCreated: true,
+            transactionHistoryEnabled: true,
+            usingItemController: true,
+            results: stockUpdateResults,
+          },
+          payment: {
+            recorded: paidAmount > 0,
+            amount: paidAmount,
+            method: paymentDetails.method,
+            status: paymentDetails.status,
+            note:
+              paidAmount > 0
+                ? "Payment recorded in purchase. Financial transaction will be created when payment is processed through payment system."
+                : "No payment recorded",
           },
         },
       });
     } catch (error) {
       console.error(
-        "❌ Error creating purchase with model-based numbering:",
+        "❌ Error creating purchase with enhanced tracking:",
         error
       );
       res.status(500).json({
         success: false,
         message: "Failed to create purchase",
         error: error.message,
-        details: error.errors ? Object.keys(error.errors) : undefined,
+      });
+    }
+  },
+
+  addPayment: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {
+        amount,
+        method = "cash",
+        reference = "",
+        paymentDate,
+        dueDate,
+        creditDays,
+        notes = "",
+      } = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase ID",
+        });
+      }
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid payment amount is required",
+        });
+      }
+
+      const purchase = await Purchase.findById(id);
+      if (!purchase) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase not found",
+        });
+      }
+
+      const currentBalance = purchase.balanceAmount;
+      if (amount > currentBalance) {
+        return res.status(400).json({
+          success: false,
+          message: `Payment amount cannot exceed balance amount of ₹${currentBalance.toFixed(
+            2
+          )}`,
+        });
+      }
+
+      // ✅ FIXED: Normalize payment method (same as sales)
+      const normalizedMethod = normalizePaymentMethod(method);
+
+      const newPaidAmount = purchase.payment.paidAmount + parseFloat(amount);
+      const newPendingAmount = purchase.totals.finalTotal - newPaidAmount;
+
+      let newPaymentStatus = "pending";
+      let newDueDate = purchase.payment.dueDate;
+
+      if (newPaidAmount >= purchase.totals.finalTotal) {
+        newPaymentStatus = "paid";
+        newDueDate = null;
+      } else if (newPaidAmount > 0) {
+        newPaymentStatus = "partial";
+
+        if (dueDate) {
+          newDueDate = new Date(dueDate);
+        } else if (creditDays && creditDays > 0) {
+          const calculatedDueDate = new Date();
+          calculatedDueDate.setDate(
+            calculatedDueDate.getDate() + parseInt(creditDays)
+          );
+          newDueDate = calculatedDueDate;
+        }
+      }
+
+      if (newDueDate && new Date() > newDueDate && newPendingAmount > 0) {
+        newPaymentStatus = "overdue";
+      }
+
+      purchase.payment = {
+        ...purchase.payment,
+        method: normalizedMethod,
+        status: newPaymentStatus,
+        paidAmount: parseFloat(newPaidAmount.toFixed(2)),
+        pendingAmount: parseFloat(Math.max(0, newPendingAmount).toFixed(2)),
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        dueDate: newDueDate,
+        creditDays: creditDays
+          ? parseInt(creditDays)
+          : purchase.payment.creditDays,
+        reference: reference,
+        notes: notes,
+      };
+
+      if (!purchase.paymentHistory) {
+        purchase.paymentHistory = [];
+      }
+
+      purchase.paymentHistory.push({
+        amount: parseFloat(amount),
+        method: normalizedMethod,
+        reference,
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        dueDate: newDueDate,
+        notes,
+        createdAt: new Date(),
+        createdBy: req.user?.id || "system",
+      });
+
+      await purchase.save();
+
+      // ✅ SIMPLIFIED: No financial transaction creation (same as sales)
+      res.json({
+        success: true,
+        message: "Payment added successfully",
+        data: {
+          purchase,
+          payment: {
+            recorded: true,
+            amount: amount,
+            method: normalizedMethod,
+            note: "Payment recorded in purchase. Financial transaction will be created when payment is processed through payment system.",
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error adding payment:", error);
+      res.status(400).json({
+        success: false,
+        message: "Failed to add payment",
+        error: error.message,
       });
     }
   },
@@ -944,13 +1065,6 @@ const purchaseController = {
           amount: item.amount || item.itemAmount || 0,
         })),
       };
-
-      console.log("📤 Sending purchase data with tax mode compatibility:", {
-        id: purchase._id,
-        taxMode: compatiblePurchase.taxMode,
-        priceIncludesTax: compatiblePurchase.priceIncludesTax,
-        itemCount: compatiblePurchase.items.length,
-      });
 
       res.json({
         success: true,
@@ -1131,8 +1245,6 @@ const purchaseController = {
     try {
       const {id} = req.params;
 
-      console.log("🗑️ Deleting purchase:", id);
-
       // Basic ID validation
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -1145,21 +1257,14 @@ const purchaseController = {
       const deleteMethod = req.query.hard === "true" ? "hard" : "soft";
       const forceDelete = req.query.force === "true";
 
-      console.log("🔧 Delete method:", deleteMethod, "Force:", forceDelete);
-
       let result;
 
       if (deleteMethod === "hard" || forceDelete) {
         // ✅ HARD DELETE - Permanently remove
-        console.log("🔥 Performing hard delete");
 
         result = await Purchase.findByIdAndDelete(id);
 
         if (!result) {
-          // Purchase not found - treat as already deleted
-          console.log(
-            "⚠️ Purchase not found for hard delete - treating as success"
-          );
           return res.json({
             success: true,
             message: "Purchase not found (may have been already deleted)",
@@ -1178,9 +1283,6 @@ const purchaseController = {
                   {$inc: {currentStock: -item.quantity}},
                   {new: true}
                 );
-                console.log(
-                  `📦 Reversed stock for ${item.itemName}: -${item.quantity}`
-                );
               } catch (stockError) {
                 console.warn(
                   `⚠️ Could not reverse stock for ${item.itemName}:`,
@@ -1190,9 +1292,6 @@ const purchaseController = {
             }
           }
         }
-
-        console.log("✅ Purchase hard deleted successfully");
-
         return res.json({
           success: true,
           message: "Purchase deleted permanently",
@@ -1200,9 +1299,6 @@ const purchaseController = {
           stockReversed: result.items?.length || 0,
         });
       } else {
-        // ✅ SOFT DELETE - Mark as cancelled
-        console.log("📝 Performing soft delete");
-
         result = await Purchase.findByIdAndUpdate(
           id,
           {
@@ -1216,10 +1312,6 @@ const purchaseController = {
         );
 
         if (!result) {
-          // Purchase not found - treat as already deleted
-          console.log(
-            "⚠️ Purchase not found for soft delete - treating as success"
-          );
           return res.json({
             success: true,
             message: "Purchase not found (may have been already deleted)",
@@ -1227,9 +1319,6 @@ const purchaseController = {
             deleteMethod: "soft",
           });
         }
-
-        console.log("✅ Purchase soft deleted successfully");
-
         return res.json({
           success: true,
           message: "Purchase cancelled successfully",
@@ -1256,72 +1345,6 @@ const purchaseController = {
       res.status(500).json({
         success: false,
         message: "Failed to delete purchase",
-        error: error.message,
-      });
-    }
-  },
-  // ✅ ALSO FIX: Add payment method normalization to addPayment method
-  addPayment: async (req, res) => {
-    try {
-      const {id} = req.params;
-      const {
-        amount,
-        method = "cash",
-        reference = "",
-        paymentDate,
-        dueDate,
-        notes = "",
-      } = req.body;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid purchase ID",
-        });
-      }
-
-      if (!amount || amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Valid payment amount is required",
-        });
-      }
-
-      const purchase = await Purchase.findById(id);
-      if (!purchase) {
-        return res.status(404).json({
-          success: false,
-          message: "Purchase not found",
-        });
-      }
-
-      // ✅ FIXED: Normalize payment method
-      const normalizedMethod = normalizePaymentMethod(method);
-
-      console.log("💳 Adding payment with normalized method:", {
-        original: method,
-        normalized: normalizedMethod,
-      });
-
-      await purchase.addPayment(
-        amount,
-        normalizedMethod, // Use normalized method
-        reference,
-        paymentDate,
-        dueDate,
-        notes
-      );
-
-      res.json({
-        success: true,
-        message: "Payment added successfully",
-        data: purchase,
-      });
-    } catch (error) {
-      console.error("❌ Error adding payment:", error);
-      res.status(400).json({
-        success: false,
-        message: "Failed to add payment",
         error: error.message,
       });
     }
@@ -1367,8 +1390,6 @@ const purchaseController = {
           message: "Company ID is required",
         });
       }
-
-      console.log("🔍 Getting purchases due today for company:", companyId);
 
       const today = new Date();
       const startOfDay = new Date(
@@ -1437,8 +1458,6 @@ const purchaseController = {
     try {
       const {id} = req.params;
 
-      console.log("🔍 Checking purchase existence:", id);
-
       // Validate ObjectId format
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -1505,8 +1524,6 @@ const purchaseController = {
   validateItems: async (req, res) => {
     try {
       const {items} = req.body;
-
-      console.log("🔍 Validating purchase items:", items?.length || 0);
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
@@ -2336,6 +2353,1980 @@ const purchaseController = {
       res.status(500).json({
         success: false,
         message: "Failed to get dashboard data",
+        error: error.message,
+      });
+    }
+  },
+
+  // ==================== 📊 ADMIN ANALYTICS FUNCTIONS ====================
+
+  /**
+   * ✅ NEW: Get all purchases for admin (across all companies)
+   */
+  getAllPurchasesForAdmin: async (req, res) => {
+    try {
+      const {
+        page = 1,
+        limit = 100,
+        status,
+        paymentStatus,
+        dateFrom,
+        dateTo,
+        companyId: filterCompanyId,
+        supplierId,
+        search,
+        sortBy = "purchaseDate",
+        sortOrder = "desc",
+      } = req.query;
+
+      // Build admin filter (across all companies)
+      const filter = {};
+
+      if (status) {
+        filter.status = status.includes(",")
+          ? {$in: status.split(",")}
+          : status;
+      }
+
+      if (paymentStatus) {
+        filter["payment.status"] = paymentStatus.includes(",")
+          ? {$in: paymentStatus.split(",")}
+          : paymentStatus;
+      }
+
+      if (filterCompanyId && mongoose.Types.ObjectId.isValid(filterCompanyId)) {
+        filter.companyId = filterCompanyId;
+      }
+
+      if (supplierId && mongoose.Types.ObjectId.isValid(supplierId)) {
+        filter.supplier = supplierId;
+      }
+
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      if (search) {
+        filter.$or = [
+          {purchaseNumber: {$regex: search, $options: "i"}},
+          {supplierMobile: {$regex: search, $options: "i"}},
+          {notes: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      const sortOptions = {};
+      const validSortFields = [
+        "purchaseDate",
+        "purchaseNumber",
+        "status",
+        "totals.finalTotal",
+        "createdAt",
+      ];
+
+      if (validSortFields.includes(sortBy)) {
+        sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+      } else {
+        sortOptions.purchaseDate = -1;
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const [purchases, total] = await Promise.all([
+        Purchase.find(filter)
+          .populate("supplier", "name mobile phoneNumber email")
+          .populate("companyId", "businessName email phoneNumber")
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        Purchase.countDocuments(filter),
+      ]);
+
+      // Calculate admin statistics
+      const adminStats = {
+        totalPurchases: total,
+        totalValue: purchases.reduce(
+          (sum, purch) => sum + (purch.totals?.finalTotal || 0),
+          0
+        ),
+        purchasesByStatus: await Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+        purchasesByCompany: await Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$limit: 10},
+        ]),
+        companiesWithPurchases: await Purchase.distinct("companyId", filter),
+        bidirectionalCount: await Purchase.countDocuments({
+          ...filter,
+          $or: [
+            {autoGeneratedSalesInvoice: true},
+            {convertedFromPurchaseOrder: true},
+            {isAutoGenerated: true},
+          ],
+        }),
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchases: purchases,
+          bills: purchases,
+          invoices: purchases,
+          data: purchases,
+          count: purchases.length,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalPurchases: total,
+            limit: parseInt(limit),
+            hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrev: parseInt(page) > 1,
+          },
+          adminStats,
+          summary: {
+            totalPurchases: total,
+            totalValue: adminStats.totalValue,
+            activeCompanies: adminStats.companiesWithPurchases.length,
+            bidirectional: adminStats.bidirectionalCount,
+          },
+        },
+        message: `Found ${purchases.length} purchases for admin`,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin purchases:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch all purchases for admin",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchase statistics for admin dashboard
+   */
+  getPurchaseStatsForAdmin: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        totalStats,
+        statusBreakdown,
+        companyBreakdown,
+        monthlyStats,
+        paymentStatusBreakdown,
+        topSuppliers,
+        recentPurchases,
+      ] = await Promise.all([
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalPurchases: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              avgPurchaseValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {value: -1}},
+          {$limit: 10},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$purchaseDate"},
+                month: {$month: "$purchaseDate"},
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {totalAmount: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+          {$unwind: {path: "$supplier", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Purchase.find(filter)
+          .populate("supplier", "name mobile")
+          .populate("companyId", "businessName")
+          .sort({createdAt: -1})
+          .limit(10),
+      ]);
+
+      const stats = totalStats[0] || {
+        totalPurchases: 0,
+        totalAmount: 0,
+        totalPaid: 0,
+        totalPending: 0,
+        avgPurchaseValue: 0,
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          ...stats,
+          purchasesByStatus: statusBreakdown.reduce((acc, item) => {
+            acc[item._id] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          purchasesByCompany: companyBreakdown,
+          monthlyStats: monthlyStats.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            count: item.count,
+            value: item.value,
+          })),
+          paymentStatusBreakdown: paymentStatusBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+          topSuppliers: topSuppliers.map((item) => ({
+            supplierId: item._id,
+            supplierName: item.supplier?.name || "Unknown",
+            count: item.count,
+            totalAmount: item.totalAmount,
+          })),
+          recentPurchases: recentPurchases,
+        },
+        message: "Purchase statistics fetched successfully for admin",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin purchase stats:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch purchase statistics for admin",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin analytics for purchases
+   */
+  getAdminPurchaseAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        valueAnalytics,
+        trendAnalytics,
+        companyAnalytics,
+        supplierAnalytics,
+        statusDistribution,
+        paymentAnalytics,
+      ] = await Promise.all([
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalPurchaseValue: {$sum: "$totals.finalTotal"},
+              averagePurchaseValue: {$avg: "$totals.finalTotal"},
+              maxPurchaseValue: {$max: "$totals.finalTotal"},
+              minPurchaseValue: {$min: "$totals.finalTotal"},
+              totalTax: {$sum: "$totals.totalTax"},
+              totalDiscount: {$sum: "$totals.totalDiscount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$purchaseDate"},
+                month: {$month: "$purchaseDate"},
+                week: {$week: "$purchaseDate"},
+              },
+              purchaseCount: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              avgValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1, "_id.week": -1}},
+          {$limit: 24},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              purchaseCount: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              avgValue: {$avg: "$totals.finalTotal"},
+              lastPurchaseDate: {$max: "$purchaseDate"},
+            },
+          },
+          {$sort: {totalValue: -1}},
+          {$limit: 20},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "company",
+            },
+          },
+          {$unwind: {path: "$company", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              purchaseCount: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              avgValue: {$avg: "$totals.finalTotal"},
+              lastPurchaseDate: {$max: "$purchaseDate"},
+            },
+          },
+          {$sort: {totalValue: -1}},
+          {$limit: 20},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+          {$unwind: {path: "$supplier", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+              percentage: {$sum: 1},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+      ]);
+
+      const analytics = valueAnalytics[0] || {
+        totalPurchaseValue: 0,
+        averagePurchaseValue: 0,
+        maxPurchaseValue: 0,
+        minPurchaseValue: 0,
+        totalTax: 0,
+        totalDiscount: 0,
+      };
+
+      // Calculate companies with purchases
+      const companiesWithPurchases = companyAnalytics.length;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          ...analytics,
+          companiesWithPurchases,
+          monthlyTrends: trendAnalytics.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            week: item._id.week,
+            purchaseCount: item.purchaseCount,
+            totalValue: item.totalValue,
+            avgValue: item.avgValue,
+          })),
+          topCompanies: companyAnalytics.map((item) => ({
+            companyId: item._id,
+            companyName: item.company?.businessName || "Unknown",
+            purchaseCount: item.purchaseCount,
+            totalValue: item.totalValue,
+            avgValue: item.avgValue,
+            lastPurchaseDate: item.lastPurchaseDate,
+          })),
+          supplierAnalytics: supplierAnalytics.map((item) => ({
+            supplierId: item._id,
+            supplierName: item.supplier?.name || "Unknown",
+            purchaseCount: item.purchaseCount,
+            totalValue: item.totalValue,
+            avgValue: item.avgValue,
+            lastPurchaseDate: item.lastPurchaseDate,
+          })),
+          statusDistribution: statusDistribution.reduce((acc, item) => {
+            acc[item._id] = {
+              count: item.count,
+              value: item.value,
+            };
+            return acc;
+          }, {}),
+          paymentStatusDistribution: paymentAnalytics.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+        },
+        message: "Admin purchase analytics retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin purchase analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin purchase analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin dashboard summary for purchases
+   */
+  getAdminPurchaseDashboardSummary: async (req, res) => {
+    try {
+      const {dateFrom, dateTo} = req.query;
+
+      const filter = {};
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const today = new Date();
+      const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+      const [
+        totalSummary,
+        thisMonthSummary,
+        lastMonthSummary,
+        recentActivity,
+        statusBreakdown,
+        topPerformingCompanies,
+        paymentSummary,
+      ] = await Promise.all([
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalPurchases: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              activeCompanies: {$addToSet: "$companyId"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: {...filter, purchaseDate: {$gte: thisMonth}}},
+          {
+            $group: {
+              _id: null,
+              thisMonthPurchases: {$sum: 1},
+              thisMonthAmount: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {
+            $match: {
+              ...filter,
+              purchaseDate: {$gte: lastMonth, $lt: thisMonth},
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              lastMonthPurchases: {$sum: 1},
+              lastMonthAmount: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.find(filter)
+          .populate("supplier", "name")
+          .populate("companyId", "businessName")
+          .sort({createdAt: -1})
+          .limit(20)
+          .select(
+            "purchaseNumber purchaseDate totals.finalTotal status createdAt"
+          ),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {value: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "company",
+            },
+          },
+          {$unwind: {path: "$company", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+      ]);
+
+      const summary = totalSummary[0] || {
+        totalPurchases: 0,
+        totalAmount: 0,
+        activeCompanies: [],
+      };
+
+      const thisMonthData = thisMonthSummary[0] || {
+        thisMonthPurchases: 0,
+        thisMonthAmount: 0,
+      };
+
+      const lastMonthData = lastMonthSummary[0] || {
+        lastMonthPurchases: 0,
+        lastMonthAmount: 0,
+      };
+
+      // Calculate growth percentages
+      const purchaseGrowth =
+        lastMonthData.lastMonthPurchases > 0
+          ? (
+              ((thisMonthData.thisMonthPurchases -
+                lastMonthData.lastMonthPurchases) /
+                lastMonthData.lastMonthPurchases) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      const amountGrowth =
+        lastMonthData.lastMonthAmount > 0
+          ? (
+              ((thisMonthData.thisMonthAmount - lastMonthData.lastMonthAmount) /
+                lastMonthData.lastMonthAmount) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalPurchases: summary.totalPurchases,
+          totalAmount: summary.totalAmount,
+          activeCompanies: summary.activeCompanies.length,
+          thisMonthPurchases: thisMonthData.thisMonthPurchases,
+          thisMonthAmount: thisMonthData.thisMonthAmount,
+          purchaseGrowth: parseFloat(purchaseGrowth),
+          amountGrowth: parseFloat(amountGrowth),
+          recentActivity: recentActivity.map((item) => ({
+            purchaseId: item._id,
+            purchaseNumber: item.purchaseNumber,
+            purchaseDate: item.purchaseDate,
+            amount: item.totals?.finalTotal || 0,
+            status: item.status,
+            supplier: item.supplier?.name || "Unknown",
+            company: item.companyId?.businessName || "Unknown",
+            createdAt: item.createdAt,
+          })),
+          statusBreakdown: statusBreakdown.reduce((acc, item) => {
+            acc[item._id] = {
+              count: item.count,
+              value: item.value,
+            };
+            return acc;
+          }, {}),
+          topPerformers: topPerformingCompanies.map((item) => ({
+            companyId: item._id,
+            companyName: item.company?.businessName || "Unknown",
+            purchaseCount: item.count,
+            totalValue: item.value,
+          })),
+          paymentSummary: paymentSummary.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+        },
+        message: "Admin purchase dashboard summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error fetching admin purchase dashboard summary:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin purchase dashboard summary",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get overdue purchases for admin (across all companies)
+   */
+  getOverduePurchasesForAdmin: async (req, res) => {
+    try {
+      const {companyId, limit = 50, sortBy = "payment.dueDate"} = req.query;
+
+      const today = new Date();
+      const filter = {
+        "payment.dueDate": {$lt: today},
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      };
+
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+
+      const overduePurchases = await Purchase.find(filter)
+        .populate("supplier", "name mobile email")
+        .populate("companyId", "businessName email phoneNumber")
+        .sort({[sortBy]: 1})
+        .limit(parseInt(limit));
+
+      const overdueStats = await Purchase.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: null,
+            totalOverdueAmount: {$sum: "$payment.pendingAmount"},
+            totalOverdueCount: {$sum: 1},
+            avgOverdueAmount: {$avg: "$payment.pendingAmount"},
+            maxOverdueAmount: {$max: "$payment.pendingAmount"},
+          },
+        },
+      ]);
+
+      // Calculate days overdue for each purchase
+      const enrichedPurchases = overduePurchases.map((purchase) => {
+        const dueDate = new Date(purchase.payment.dueDate);
+        const daysOverdue = Math.ceil(
+          (today - dueDate) / (1000 * 60 * 60 * 24)
+        );
+
+        return {
+          ...purchase.toObject(),
+          daysOverdue,
+          overdueCategory:
+            daysOverdue <= 7
+              ? "recent"
+              : daysOverdue <= 30
+              ? "medium"
+              : "critical",
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchases: enrichedPurchases,
+          count: enrichedPurchases.length,
+          stats: overdueStats[0] || {
+            totalOverdueAmount: 0,
+            totalOverdueCount: 0,
+            avgOverdueAmount: 0,
+            maxOverdueAmount: 0,
+          },
+        },
+        message: `Found ${enrichedPurchases.length} overdue purchases for admin`,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching overdue purchases for admin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch overdue purchases for admin",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchases due today for admin (across all companies)
+   */
+  getPurchasesDueTodayForAdmin: async (req, res) => {
+    try {
+      const {companyId, limit = 50} = req.query;
+
+      const today = new Date();
+      const startOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const endOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() + 1
+      );
+
+      const filter = {
+        "payment.dueDate": {$gte: startOfDay, $lt: endOfDay},
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      };
+
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+
+      const purchasesDueToday = await Purchase.find(filter)
+        .populate("supplier", "name mobile email")
+        .populate("companyId", "businessName email phoneNumber")
+        .sort({"payment.dueDate": 1})
+        .limit(parseInt(limit));
+
+      const dueTodayStats = await Purchase.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: null,
+            totalDueTodayAmount: {$sum: "$payment.pendingAmount"},
+            totalDueTodayCount: {$sum: 1},
+            avgDueTodayAmount: {$avg: "$payment.pendingAmount"},
+          },
+        },
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchases: purchasesDueToday,
+          count: purchasesDueToday.length,
+          stats: dueTodayStats[0] || {
+            totalDueTodayAmount: 0,
+            totalDueTodayCount: 0,
+            avgDueTodayAmount: 0,
+          },
+        },
+        message: `Found ${purchasesDueToday.length} purchases due today for admin`,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching purchases due today for admin:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch purchases due today for admin",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin bidirectional purchase analytics (like sales)
+   */
+  getAdminBidirectionalPurchaseAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      // Get bidirectional purchases
+      const bidirectionalFilter = {
+        ...filter,
+        $or: [
+          {autoGeneratedSalesInvoice: true},
+          {convertedFromPurchaseOrder: true},
+          {isAutoGenerated: true},
+          {isCrossCompanyTransaction: true},
+        ],
+      };
+
+      const [
+        totalBidirectionalPurchases,
+        totalBidirectionalValue,
+        companiesUsingBidirectional,
+        sourceTypeBreakdown,
+        crossCompanyMapping,
+        conversionRates,
+      ] = await Promise.all([
+        Purchase.countDocuments(bidirectionalFilter),
+
+        Purchase.aggregate([
+          {$match: bidirectionalFilter},
+          {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+        ]),
+
+        Purchase.distinct("companyId", bidirectionalFilter),
+
+        Purchase.aggregate([
+          {$match: bidirectionalFilter},
+          {
+            $group: {
+              _id: {
+                $cond: [
+                  {$eq: ["$isAutoGenerated", true]},
+                  "auto_generated",
+                  {
+                    $cond: [
+                      {$eq: ["$convertedFromPurchaseOrder", true]},
+                      "from_purchase_order",
+                      {
+                        $cond: [
+                          {$eq: ["$autoGeneratedSalesInvoice", true]},
+                          "with_sales_invoice",
+                          "direct",
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {
+            $match: {
+              ...filter,
+              isCrossCompanyTransaction: true,
+              sourceCompanyId: {$exists: true, $ne: null},
+            },
+          },
+          {
+            $group: {
+              _id: {
+                buyingCompany: "$companyId",
+                sellingCompany: "$sourceCompanyId",
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              total: {$sum: 1},
+              bidirectional: {
+                $sum: {
+                  $cond: [
+                    {
+                      $or: [
+                        {$eq: ["$autoGeneratedSalesInvoice", true]},
+                        {$eq: ["$convertedFromPurchaseOrder", true]},
+                        {$eq: ["$isAutoGenerated", true]},
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const conversionData = conversionRates[0] || {total: 0, bidirectional: 0};
+      const bidirectionalPercentage =
+        conversionData.total > 0
+          ? (
+              (conversionData.bidirectional / conversionData.total) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalBidirectionalPurchases,
+          totalBidirectionalValue: totalBidirectionalValue[0]?.total || 0,
+          companiesUsingBidirectional: companiesUsingBidirectional.length,
+          bidirectionalSpend: totalBidirectionalValue[0]?.total || 0,
+          sourceTypeBreakdown: sourceTypeBreakdown.reduce((acc, item) => {
+            acc[item._id] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          crossCompanyMapping: crossCompanyMapping.map((item) => ({
+            buyingCompanyId: item._id.buyingCompany,
+            sellingCompanyId: item._id.sellingCompany,
+            count: item.count,
+            value: item.value,
+          })),
+          conversionRates: {
+            bidirectionalPercentage: parseFloat(bidirectionalPercentage),
+            totalPurchases: conversionData.total,
+            bidirectionalPurchases: conversionData.bidirectional,
+          },
+        },
+        message: "Admin bidirectional purchase analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error fetching admin bidirectional purchase analytics:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin bidirectional purchase analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin payment analytics for purchases
+   */
+  getAdminPurchasePaymentAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const today = new Date();
+
+      const [
+        totalPaidAmount,
+        totalPendingAmount,
+        paymentMethodBreakdown,
+        paymentStatusBreakdown,
+        overdueAnalysis,
+        paymentTrends,
+      ] = await Promise.all([
+        Purchase.aggregate([
+          {$match: filter},
+          {$group: {_id: null, total: {$sum: "$payment.paidAmount"}}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {$group: {_id: null, total: {$sum: "$payment.pendingAmount"}}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.method",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$payment.paidAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {
+            $match: {
+              ...filter,
+              "payment.dueDate": {$lt: today},
+              "payment.pendingAmount": {$gt: 0},
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              count: {$sum: 1},
+              totalOverdueAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$purchaseDate"},
+                month: {$month: "$purchaseDate"},
+              },
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              purchaseCount: {$sum: 1},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalPaidAmount: totalPaidAmount[0]?.total || 0,
+          totalPendingAmount: totalPendingAmount[0]?.total || 0,
+          totalOverdueAmount: overdueAnalysis[0]?.totalOverdueAmount || 0,
+          paymentMethodBreakdown: paymentMethodBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+            };
+            return acc;
+          }, {}),
+          paymentStatusBreakdown: paymentStatusBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+          overdueAnalysis: {
+            count: overdueAnalysis[0]?.count || 0,
+            totalAmount: overdueAnalysis[0]?.totalOverdueAmount || 0,
+          },
+          paymentTrends: paymentTrends.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            totalPaid: item.totalPaid,
+            totalPending: item.totalPending,
+            purchaseCount: item.purchaseCount,
+          })),
+        },
+        message: "Admin purchase payment analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error fetching admin purchase payment analytics:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin purchase payment analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin supplier analytics
+   */
+  getAdminSupplierAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId, limit = 10} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        totalSuppliers,
+        activeSuppliers,
+        topSuppliers,
+        supplierGrowth,
+        supplierSegmentation,
+      ] = await Promise.all([
+        Purchase.distinct("supplier", filter).then(
+          (suppliers) => suppliers.length
+        ),
+
+        Purchase.aggregate([
+          {
+            $match: {
+              ...filter,
+              purchaseDate: {
+                $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+          {$group: {_id: "$supplier"}},
+          {$count: "activeSuppliers"},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              totalPurchases: {$sum: "$totals.finalTotal"},
+              purchaseCount: {$sum: 1},
+              lastPurchaseDate: {$max: "$purchaseDate"},
+              avgPurchaseValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {totalPurchases: -1}},
+          {$limit: parseInt(limit)},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+          {$unwind: {path: "$supplier", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$purchaseDate"},
+                month: {$month: "$purchaseDate"},
+                supplier: "$supplier",
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {year: "$_id.year", month: "$_id.month"},
+              uniqueSuppliers: {$sum: 1},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$supplier",
+              totalSpent: {$sum: "$totals.finalTotal"},
+              purchaseCount: {$sum: 1},
+            },
+          },
+          {
+            $bucket: {
+              groupBy: "$totalSpent",
+              boundaries: [0, 10000, 50000, 100000, 500000, Infinity],
+              default: "Other",
+              output: {
+                count: {$sum: 1},
+                suppliers: {$push: "$_id"},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalSuppliers,
+          activeSuppliers: activeSuppliers[0]?.activeSuppliers || 0,
+          topSuppliers: topSuppliers.map((item) => ({
+            supplierId: item._id,
+            supplierName: item.supplier?.name || "Unknown",
+            supplierEmail: item.supplier?.email,
+            supplierPhone: item.supplier?.mobile || item.supplier?.phoneNumber,
+            totalPurchases: item.totalPurchases,
+            purchaseCount: item.purchaseCount,
+            lastPurchaseDate: item.lastPurchaseDate,
+            avgPurchaseValue: item.avgPurchaseValue,
+          })),
+          supplierGrowth: supplierGrowth.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            uniqueSuppliers: item.uniqueSuppliers,
+          })),
+          supplierSegmentation: supplierSegmentation.reduce((acc, item) => {
+            const key = item._id === "Other" ? "other" : `range_${item._id}`;
+            acc[key] = {
+              count: item.count,
+              supplierIds: item.suppliers,
+            };
+            return acc;
+          }, {}),
+        },
+        message: "Admin supplier analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin supplier analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin supplier analytics",
+        error: error.message,
+      });
+    }
+  },
+  // ==================== 🔍 ENHANCED SEARCH AND FILTERING ====================
+
+  /**
+   * ✅ NEW: Search purchases with advanced filters
+   */
+  searchPurchases: async (req, res) => {
+    try {
+      const {
+        companyId,
+        search,
+        status,
+        paymentStatus,
+        dateFrom,
+        dateTo,
+        supplierId,
+        amountFrom,
+        amountTo,
+        page = 1,
+        limit = 20,
+        sortBy = "purchaseDate",
+        sortOrder = "desc",
+      } = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      // Build search filter
+      const filter = {companyId};
+
+      if (search) {
+        filter.$or = [
+          {purchaseNumber: {$regex: search, $options: "i"}},
+          {supplierMobile: {$regex: search, $options: "i"}},
+          {notes: {$regex: search, $options: "i"}},
+          {"supplier.name": {$regex: search, $options: "i"}},
+        ];
+      }
+
+      if (status) {
+        filter.status = status.includes(",")
+          ? {$in: status.split(",")}
+          : status;
+      }
+
+      if (paymentStatus) {
+        filter["payment.status"] = paymentStatus;
+      }
+
+      if (supplierId && mongoose.Types.ObjectId.isValid(supplierId)) {
+        filter.supplier = supplierId;
+      }
+
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      if (amountFrom || amountTo) {
+        filter["totals.finalTotal"] = {};
+        if (amountFrom)
+          filter["totals.finalTotal"].$gte = parseFloat(amountFrom);
+        if (amountTo) filter["totals.finalTotal"].$lte = parseFloat(amountTo);
+      }
+
+      const sortOptions = {};
+      sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const [purchases, total] = await Promise.all([
+        Purchase.find(filter)
+          .populate("supplier", "name mobile email")
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        Purchase.countDocuments(filter),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchases,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            pages: Math.ceil(total / parseInt(limit)),
+          },
+          searchCriteria: {
+            search,
+            status,
+            paymentStatus,
+            dateFrom,
+            dateTo,
+            supplierId,
+            amountFrom,
+            amountTo,
+          },
+        },
+        message: `Found ${purchases.length} purchases matching search criteria`,
+      });
+    } catch (error) {
+      console.error("❌ Error searching purchases:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to search purchases",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchases by supplier with enhanced data
+   */
+  getPurchasesBySupplier: async (req, res) => {
+    try {
+      const {
+        companyId,
+        supplierId,
+        limit = 10,
+        includeStats = true,
+      } = req.query;
+
+      if (!companyId || !supplierId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Supplier ID are required",
+        });
+      }
+
+      const filter = {
+        companyId,
+        supplier: supplierId,
+        status: {$ne: "cancelled"},
+      };
+
+      const purchases = await Purchase.find(filter)
+        .populate("supplier", "name mobile email address")
+        .sort({purchaseDate: -1})
+        .limit(parseInt(limit));
+
+      let supplierStats = null;
+      if (includeStats === "true") {
+        const stats = await Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalPurchases: {$sum: "$totals.finalTotal"},
+              totalBills: {$sum: 1},
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              avgPurchaseValue: {$avg: "$totals.finalTotal"},
+              lastPurchaseDate: {$max: "$purchaseDate"},
+              firstPurchaseDate: {$min: "$purchaseDate"},
+            },
+          },
+        ]);
+
+        supplierStats = stats[0] || {
+          totalPurchases: 0,
+          totalBills: 0,
+          totalPaid: 0,
+          totalPending: 0,
+          avgPurchaseValue: 0,
+          lastPurchaseDate: null,
+          firstPurchaseDate: null,
+        };
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          purchases,
+          supplierStats,
+          count: purchases.length,
+        },
+        message: `Found ${purchases.length} purchases for supplier`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchases by supplier:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchases by supplier",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get enhanced payment summary with detailed breakdown
+   */
+  getEnhancedPaymentSummary: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const filter = {companyId};
+      if (dateFrom || dateTo) {
+        filter.purchaseDate = {};
+        if (dateFrom) filter.purchaseDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.purchaseDate.$lte = new Date(dateTo);
+      }
+
+      const today = new Date();
+
+      const [
+        totalSummary,
+        statusBreakdown,
+        paymentMethodBreakdown,
+        agingAnalysis,
+        overdueAnalysis,
+      ] = await Promise.all([
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalPurchases: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              avgPurchaseValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.method",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$payment.paidAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {$match: {...filter, "payment.pendingAmount": {$gt: 0}}},
+          {
+            $addFields: {
+              ageInDays: {
+                $cond: [
+                  {$ne: ["$payment.dueDate", null]},
+                  {
+                    $divide: [
+                      {$subtract: [today, "$payment.dueDate"]},
+                      1000 * 60 * 60 * 24,
+                    ],
+                  },
+                  0,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                range: {
+                  $switch: {
+                    branches: [
+                      {case: {$lte: ["$ageInDays", 0]}, then: "Not Due"},
+                      {case: {$lte: ["$ageInDays", 7]}, then: "1-7 days"},
+                      {case: {$lte: ["$ageInDays", 30]}, then: "8-30 days"},
+                      {case: {$lte: ["$ageInDays", 60]}, then: "31-60 days"},
+                      {case: {$lte: ["$ageInDays", 90]}, then: "61-90 days"},
+                    ],
+                    default: "90+ days",
+                  },
+                },
+              },
+              count: {$sum: 1},
+              totalAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Purchase.aggregate([
+          {
+            $match: {
+              ...filter,
+              "payment.dueDate": {$lt: today},
+              "payment.pendingAmount": {$gt: 0},
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              overdueCount: {$sum: 1},
+              totalOverdueAmount: {$sum: "$payment.pendingAmount"},
+              avgOverdueAmount: {$avg: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+      ]);
+
+      const summary = totalSummary[0] || {
+        totalPurchases: 0,
+        totalAmount: 0,
+        totalPaid: 0,
+        totalPending: 0,
+        avgPurchaseValue: 0,
+      };
+
+      const overdue = overdueAnalysis[0] || {
+        overdueCount: 0,
+        totalOverdueAmount: 0,
+        avgOverdueAmount: 0,
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          ...summary,
+          ...overdue,
+          paymentStatusBreakdown: statusBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+          paymentMethodBreakdown: paymentMethodBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+            };
+            return acc;
+          }, {}),
+          agingAnalysis: agingAnalysis.reduce((acc, item) => {
+            acc[item._id.range] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+            };
+            return acc;
+          }, {}),
+        },
+        message: "Enhanced payment summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting enhanced payment summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get enhanced payment summary",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get purchases grouped by status with enhanced data
+   */
+  getPurchasesGroupedByStatus: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const today = new Date();
+      const filter = {companyId};
+
+      const purchases = await Purchase.find(filter)
+        .populate("supplier", "name mobile")
+        .sort({purchaseDate: -1});
+
+      const grouped = {
+        paid: [],
+        partial: [],
+        pending: [],
+        overdue: [],
+        dueToday: [],
+        completed: [],
+        draft: [],
+        cancelled: [],
+      };
+
+      purchases.forEach((purchase) => {
+        const pending = purchase.payment?.pendingAmount || 0;
+        const dueDate = purchase.payment?.dueDate
+          ? new Date(purchase.payment.dueDate)
+          : null;
+        const paymentStatus = purchase.payment?.status || "pending";
+        const purchaseStatus = purchase.status || "draft";
+
+        // Add overdue information
+        if (dueDate && pending > 0) {
+          const daysOverdue = Math.ceil(
+            (today - dueDate) / (1000 * 60 * 60 * 24)
+          );
+          purchase.overdueInfo = {
+            isOverdue: daysOverdue > 0,
+            daysOverdue: Math.max(0, daysOverdue),
+          };
+        }
+
+        // Group by status
+        if (purchaseStatus === "cancelled") {
+          grouped.cancelled.push(purchase);
+        } else if (purchaseStatus === "draft") {
+          grouped.draft.push(purchase);
+        } else if (purchaseStatus === "completed" || paymentStatus === "paid") {
+          grouped.completed.push(purchase);
+          if (paymentStatus === "paid") {
+            grouped.paid.push(purchase);
+          }
+        } else if (dueDate && pending > 0 && dueDate < today) {
+          grouped.overdue.push(purchase);
+        } else if (
+          dueDate &&
+          pending > 0 &&
+          dueDate.toDateString() === today.toDateString()
+        ) {
+          grouped.dueToday.push(purchase);
+        } else if (paymentStatus === "partial") {
+          grouped.partial.push(purchase);
+        } else {
+          grouped.pending.push(purchase);
+        }
+      });
+
+      // Calculate summary for each group
+      const summary = {};
+      Object.keys(grouped).forEach((status) => {
+        const items = grouped[status];
+        summary[status] = {
+          count: items.length,
+          totalAmount: items.reduce(
+            (sum, item) => sum + (item.totals?.finalTotal || 0),
+            0
+          ),
+          totalPending: items.reduce(
+            (sum, item) => sum + (item.payment?.pendingAmount || 0),
+            0
+          ),
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          grouped,
+          summary,
+          totalPurchases: purchases.length,
+        },
+        message: "Purchases grouped by status retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchases grouped by status:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchases grouped by status",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ Get purchase bill for printing - Enhanced version
+   */
+  getPurchaseBillForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase ID format",
+        });
+      }
+
+      // Get purchase with populated data
+      const purchase = await Purchase.findById(id)
+        .populate("supplier", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!purchase) {
+        return res.status(404).json({
+          success: false,
+          message: "Purchase not found",
+        });
+      }
+
+      // Transform data for printing
+      const billData = {
+        company: {
+          name: purchase.companyId?.businessName || "Your Company",
+          gstin: purchase.companyId?.gstin || "",
+          address: purchase.companyId?.address || "",
+          phone: purchase.companyId?.phoneNumber || "",
+          email: purchase.companyId?.email || "",
+          // ✅ Handle logo safely
+          logo:
+            purchase.companyId?.logo?.base64 &&
+            purchase.companyId.logo.base64.trim() !== ""
+              ? purchase.companyId.logo.base64
+              : null,
+        },
+        supplier: {
+          name:
+            purchase.supplier?.name ||
+            purchase.supplierName ||
+            "Unknown Supplier",
+          address: purchase.supplier?.address || purchase.supplierAddress || "",
+          mobile: purchase.supplier?.mobile || purchase.supplierMobile || "",
+          email: purchase.supplier?.email || purchase.supplierEmail || "",
+          gstin:
+            purchase.supplier?.gstNumber || purchase.supplierGstNumber || "",
+        },
+        purchase: {
+          id: purchase._id,
+          billNumber: purchase.purchaseNumber || purchase.billNumber,
+          billDate: purchase.purchaseDate || purchase.billDate,
+          dueDate: purchase.dueDate || purchase.payment?.dueDate,
+          status: purchase.status,
+          notes: purchase.notes || "",
+          terms: purchase.termsAndConditions || "",
+        },
+        items: (purchase.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || item.productName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || item.hsnNumber || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || item.rate || 0,
+          taxRate: item.taxRate || item.gstRate || 0,
+          cgst: item.cgstAmount || item.cgst || 0,
+          sgst: item.sgstAmount || item.sgst || 0,
+          igst: item.igstAmount || item.igst || 0,
+          amount: item.amount || item.totalAmount || 0,
+        })),
+        totals: {
+          subtotal: purchase.totals?.subtotal || 0,
+          totalTax: purchase.totals?.totalTax || 0,
+          totalCGST: purchase.totals?.totalCGST || 0,
+          totalSGST: purchase.totals?.totalSGST || 0,
+          totalIGST: purchase.totals?.totalIGST || 0,
+          totalDiscount: purchase.totals?.totalDiscount || 0,
+          roundOff: purchase.totals?.roundOff || 0,
+          finalTotal: purchase.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: purchase.payment?.method || "cash",
+          paidAmount: purchase.payment?.paidAmount || 0,
+          pendingAmount: purchase.payment?.pendingAmount || 0,
+          status: purchase.payment?.status || "pending",
+          terms: purchase.termsAndConditions || "",
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isPurchaseBill: true,
+          isGSTBill: purchase.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: billData,
+        message: "Purchase bill data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting purchase bill for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get purchase bill for printing",
         error: error.message,
       });
     }

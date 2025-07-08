@@ -2770,7 +2770,7 @@ function SalesInvoiceFormSection({
       />
 
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         /* Button hover effects */
         .btn-primary:hover {
           transform: translateY(-2px);

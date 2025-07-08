@@ -1,5 +1,7 @@
 const Item = require("../models/Item");
 const mongoose = require("mongoose");
+const Sale = require("../models/Sale");
+const Purchase = require("../models/Purchase");
 
 const itemController = {
   // ✅ Existing functions (keep as they are)
@@ -336,6 +338,13 @@ const itemController = {
       const {companyId, itemId} = req.params;
       const {adjustmentType, quantity, newStock, reason, asOfDate} = req.body;
 
+      console.log(`🔧 Adjusting stock for item ${itemId}:`, {
+        adjustmentType,
+        quantity,
+        newStock,
+        reason,
+      });
+
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
         return res.status(400).json({
           success: false,
@@ -384,10 +393,10 @@ const itemController = {
       }
 
       const previousStock = item.currentStock || 0;
-
       let finalStock;
       let actualQuantity = 0;
 
+      // Calculate final stock based on adjustment type
       switch (adjustmentType) {
         case "set":
           finalStock = Number(quantity) || Number(newStock) || 0;
@@ -406,27 +415,34 @@ const itemController = {
           actualQuantity = finalStock - previousStock;
       }
 
+      // Ensure stock doesn't go below 0
       if (finalStock < 0) {
         finalStock = 0;
+        actualQuantity = -previousStock; // Adjust quantity to match final stock
       }
 
+      // ✅ CREATE PROPER STOCK HISTORY ENTRY
       const stockHistoryEntry = {
         date: asOfDate ? new Date(asOfDate) : new Date(),
         previousStock: previousStock,
         newStock: finalStock,
-        adjustmentType: adjustmentType,
+        adjustmentType: actualQuantity > 0 ? "add" : "subtract",
         quantity: actualQuantity,
-        reason: reason || "Manual adjustment",
+        reason: reason || "Manual stock adjustment",
         adjustedBy: req.user?.id || "system",
         adjustedAt: new Date(),
+        // ✅ IMPORTANT: Mark as manual adjustment for transaction filtering
+        referenceType: "manual_adjustment",
+        referenceId: null,
+        _id: new mongoose.Types.ObjectId(),
       };
 
+      // ✅ UPDATE ITEM WITH NEW STOCK AND HISTORY
       const updatedItem = await Item.findByIdAndUpdate(
         new mongoose.Types.ObjectId(itemId),
         {
           $set: {
             currentStock: finalStock,
-            openingStock: finalStock,
             lastStockUpdate: new Date(),
             lastModifiedBy: req.user?.id || "system",
             updatedAt: new Date(),
@@ -438,21 +454,37 @@ const itemController = {
         {new: true, runValidators: true}
       );
 
+      console.log(`✅ Stock adjusted successfully:`, {
+        itemName: item.name,
+        previousStock,
+        newStock: finalStock,
+        adjustment: actualQuantity,
+        reason: stockHistoryEntry.reason,
+      });
+
       res.json({
         success: true,
         message: "Stock adjusted successfully",
         data: {
-          item: updatedItem,
+          item: {
+            id: updatedItem._id,
+            name: updatedItem.name,
+            currentStock: finalStock,
+            previousStock: previousStock,
+          },
           stockAdjustment: {
             previousStock: previousStock,
             newStock: finalStock,
             adjustmentQuantity: actualQuantity,
             adjustmentType: adjustmentType,
-            reason: reason || "Manual adjustment",
+            reason: stockHistoryEntry.reason,
           },
+          // ✅ Return the stock history entry for verification
+          stockHistory: stockHistoryEntry,
         },
       });
     } catch (error) {
+      console.error("❌ Error adjusting stock:", error);
       res.status(500).json({
         success: false,
         message: "Error adjusting stock",
@@ -785,6 +817,717 @@ const itemController = {
       res.status(500).json({
         success: false,
         message: "Error fetching stock summary",
+        error: error.message,
+      });
+    }
+  },
+  // ===== ✅ TRANSACTION CONTROLLER METHODS =====
+
+  getItemTransactions: async (req, res) => {
+    try {
+      const {companyId, itemId} = req.params;
+      const {
+        page = 1,
+        limit = 50,
+        type,
+        dateFrom,
+        dateTo,
+        sortBy = "date",
+        sortOrder = "desc",
+      } = req.query;
+
+      // Validate inputs
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      // Verify item exists
+      const item = await Item.findOne({
+        _id: new mongoose.Types.ObjectId(itemId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+      });
+
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      console.log(`🔍 Getting transactions for item: ${item.name} (${itemId})`);
+
+      // Build date filter
+      const dateFilter = {};
+      if (dateFrom || dateTo) {
+        if (dateFrom) dateFilter.$gte = new Date(dateFrom);
+        if (dateTo) dateFilter.$lte = new Date(dateTo);
+      }
+
+      // ✅ ENHANCED: Get transactions from multiple sources
+      const [salesTransactions, purchaseTransactions, stockAdjustments] =
+        await Promise.all([
+          // 1. Sales transactions
+          type === "adjustment"
+            ? []
+            : Sale.find({
+                companyId: new mongoose.Types.ObjectId(companyId),
+                "items.itemRef": new mongoose.Types.ObjectId(itemId),
+                ...(dateFilter &&
+                  Object.keys(dateFilter).length && {
+                    saleDate: dateFilter,
+                  }),
+              })
+                .populate("customer", "name mobile email")
+                .sort({saleDate: -1})
+                .lean(),
+
+          // 2. Purchase transactions
+          type === "adjustment"
+            ? []
+            : Purchase.find({
+                companyId: new mongoose.Types.ObjectId(companyId),
+                "items.itemRef": new mongoose.Types.ObjectId(itemId),
+                ...(dateFilter &&
+                  Object.keys(dateFilter).length && {
+                    purchaseDate: dateFilter,
+                  }),
+              })
+                .populate("supplier", "name mobile email")
+                .sort({purchaseDate: -1})
+                .lean(),
+
+          // 3. Stock adjustments (from item's stock history)
+          type === "sale" || type === "purchase"
+            ? []
+            : Item.findById(itemId).select("stockHistory").lean(),
+        ]);
+
+      let allTransactions = [];
+
+      // ✅ Transform sales to transaction format
+      if (type !== "adjustment") {
+        const salesTransformed = salesTransactions.flatMap((sale) => {
+          const itemInSale = sale.items.find(
+            (item) => item.itemRef && item.itemRef.toString() === itemId
+          );
+
+          if (!itemInSale) return [];
+
+          return {
+            id: `sale_${sale._id}`,
+            type: "sale",
+            transactionType: "out",
+            date: sale.saleDate || sale.createdAt,
+            transactionDate: sale.saleDate || sale.createdAt,
+            invoiceNumber: sale.invoiceNumber,
+            referenceNumber: sale.invoiceNumber,
+            customerName: sale.customer?.name || sale.customerName || "Unknown",
+            vendorName: null,
+            quantity: -itemInSale.quantity,
+            unit: itemInSale.unit || "PCS",
+            pricePerUnit: itemInSale.pricePerUnit || 0,
+            status: sale.status || "completed",
+            totalAmount:
+              itemInSale.amount ||
+              itemInSale.quantity * itemInSale.pricePerUnit,
+            customerMobile: sale.customer?.mobile,
+            paymentStatus: sale.payment?.status,
+            saleType: sale.saleType || "gst",
+          };
+        });
+
+        allTransactions = allTransactions.concat(salesTransformed);
+      }
+
+      // ✅ Transform purchases to transaction format
+      if (type !== "adjustment") {
+        const purchasesTransformed = purchaseTransactions.flatMap(
+          (purchase) => {
+            const itemInPurchase = purchase.items.find(
+              (item) => item.itemRef && item.itemRef.toString() === itemId
+            );
+
+            if (!itemInPurchase) return [];
+
+            return {
+              id: `purchase_${purchase._id}`,
+              type: "purchase",
+              transactionType: "in",
+              date: purchase.purchaseDate || purchase.createdAt,
+              transactionDate: purchase.purchaseDate || purchase.createdAt,
+              invoiceNumber: purchase.purchaseNumber || purchase.billNumber,
+              referenceNumber: purchase.purchaseNumber || purchase.billNumber,
+              customerName: null,
+              vendorName:
+                purchase.supplier?.name || purchase.supplierName || "Unknown",
+              quantity: itemInPurchase.quantity,
+              unit: itemInPurchase.unit || "PCS",
+              pricePerUnit: itemInPurchase.pricePerUnit || 0,
+              status: purchase.status || "completed",
+              totalAmount:
+                itemInPurchase.amount ||
+                itemInPurchase.quantity * itemInPurchase.pricePerUnit,
+              supplierMobile: purchase.supplier?.mobile,
+              paymentStatus: purchase.payment?.status,
+              purchaseType: purchase.purchaseType || "gst",
+            };
+          }
+        );
+
+        allTransactions = allTransactions.concat(purchasesTransformed);
+      }
+
+      // ✅ ENHANCED: Transform stock adjustments with price lookup
+      if (
+        type !== "sale" &&
+        type !== "purchase" &&
+        stockAdjustments?.stockHistory
+      ) {
+        // Create a map of purchase prices for reference lookup
+        const purchasePriceMap = new Map();
+
+        // Build purchase price map from actual purchase transactions
+        purchaseTransactions.forEach((purchase) => {
+          const itemInPurchase = purchase.items.find(
+            (item) => item.itemRef && item.itemRef.toString() === itemId
+          );
+          if (itemInPurchase) {
+            purchasePriceMap.set(purchase._id.toString(), {
+              pricePerUnit: itemInPurchase.pricePerUnit || 0,
+              invoiceNumber: purchase.purchaseNumber || purchase.billNumber,
+            });
+          }
+        });
+
+        const adjustmentsTransformed = stockAdjustments.stockHistory
+          .filter((adj) => {
+            if (!dateFilter || !Object.keys(dateFilter).length) return true;
+            const adjDate = new Date(adj.date);
+            if (dateFilter.$gte && adjDate < dateFilter.$gte) return false;
+            if (dateFilter.$lte && adjDate > dateFilter.$lte) return false;
+            return true;
+          })
+          .map((adj) => {
+            // ✅ ENHANCED: Try to get price from linked purchase
+            let pricePerUnit = 0;
+            let totalAmount = 0;
+            let enhancedReason = adj.reason || "Stock adjustment";
+
+            // If this adjustment is linked to a purchase, get the actual price
+            if (adj.referenceId && adj.referenceType === "purchase") {
+              const purchasePrice = purchasePriceMap.get(
+                adj.referenceId.toString()
+              );
+              if (purchasePrice) {
+                pricePerUnit = purchasePrice.pricePerUnit;
+                totalAmount = Math.abs(adj.quantity) * pricePerUnit;
+                enhancedReason = `Purchase-related stock adjustment: ${purchasePrice.invoiceNumber}`;
+              }
+            }
+
+            // If no price found, try to use item's current buy price as fallback
+            if (pricePerUnit === 0 && adj.adjustmentType === "add") {
+              pricePerUnit = item.buyPrice || item.buyPriceWithoutTax || 0;
+              if (pricePerUnit > 0) {
+                totalAmount = Math.abs(adj.quantity) * pricePerUnit;
+                enhancedReason = `Stock adjustment (estimated at current buy price)`;
+              }
+            }
+
+            return {
+              id: `adjustment_${adj._id}`,
+              type: "adjustment",
+              transactionType: "adjustment",
+              date: adj.date,
+              transactionDate: adj.date,
+              invoiceNumber: null,
+              referenceNumber: adj.reference || `ADJ-${Date.parse(adj.date)}`,
+              customerName:
+                adj.adjustmentType === "add" ? "Stock In" : "Stock Out",
+              vendorName:
+                adj.adjustmentType === "add" ? "Stock In" : "Stock Out",
+              quantity: adj.quantity,
+              unit: "PCS",
+              pricePerUnit: pricePerUnit, // ✅ ENHANCED: Real price if available
+              status: "completed",
+              totalAmount: totalAmount, // ✅ ENHANCED: Real amount if available
+              // Adjustment-specific fields
+              adjustmentType: adj.adjustmentType,
+              reason: enhancedReason, // ✅ ENHANCED: Better reason
+              adjustedBy: adj.adjustedBy,
+              previousStock: adj.previousStock,
+              newStock: adj.newStock,
+              // Reference information
+              referenceId: adj.referenceId,
+              referenceType: adj.referenceType,
+              originalReason: adj.reason, // Keep original reason for reference
+            };
+          });
+
+        allTransactions = allTransactions.concat(adjustmentsTransformed);
+      }
+
+      // ✅ Filter by type if specified
+      if (type && type !== "all") {
+        allTransactions = allTransactions.filter((t) => t.type === type);
+      }
+
+      // ✅ Sort transactions
+      const sortDirection = sortOrder === "desc" ? -1 : 1;
+      allTransactions.sort((a, b) => {
+        const aVal = new Date(a[sortBy] || a.date);
+        const bVal = new Date(b[sortBy] || b.date);
+        return sortDirection * (aVal - bVal);
+      });
+
+      // ✅ Apply pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + parseInt(limit);
+      const paginatedTransactions = allTransactions.slice(startIndex, endIndex);
+
+      // ✅ ENHANCED: Calculate summary with real values
+      const summary = {
+        totalTransactions: allTransactions.length,
+        sales: allTransactions.filter((t) => t.type === "sale").length,
+        purchases: allTransactions.filter((t) => t.type === "purchase").length,
+        adjustments: allTransactions.filter((t) => t.type === "adjustment")
+          .length,
+        totalQuantityIn: allTransactions
+          .filter((t) => t.quantity > 0)
+          .reduce((sum, t) => sum + t.quantity, 0),
+        totalQuantityOut: Math.abs(
+          allTransactions
+            .filter((t) => t.quantity < 0)
+            .reduce((sum, t) => sum + t.quantity, 0)
+        ),
+        totalValue: allTransactions.reduce(
+          (sum, t) => sum + (t.totalAmount || 0),
+          0
+        ),
+        // ✅ ENHANCED: Separate financial vs non-financial value
+        totalFinancialValue: allTransactions
+          .filter((t) => t.type !== "adjustment" || t.pricePerUnit > 0)
+          .reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+        totalStockAdjustmentValue: allTransactions
+          .filter((t) => t.type === "adjustment" && t.pricePerUnit > 0)
+          .reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+      };
+
+      console.log(
+        `✅ Retrieved ${allTransactions.length} transactions for item: ${item.name}`
+      );
+
+      res.json({
+        success: true,
+        data: {
+          transactions: paginatedTransactions,
+          summary,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: allTransactions.length,
+            totalPages: Math.ceil(allTransactions.length / limit),
+            hasNextPage: endIndex < allTransactions.length,
+            hasPrevPage: page > 1,
+          },
+        },
+        message: `Found ${allTransactions.length} transactions for item`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting item transactions:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch item transactions",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Create transaction for a specific item
+   * POST /api/companies/:companyId/items/:itemId/transactions
+   */
+  createItemTransaction: async (req, res) => {
+    try {
+      const {companyId, itemId} = req.params;
+      const {
+        type,
+        quantity,
+        pricePerUnit,
+        customerName,
+        vendorName,
+        invoiceNumber,
+        date,
+        status = "completed",
+        reason,
+      } = req.body;
+
+      console.log("🔍 Creating transaction for item:", itemId);
+
+      // Validate companyId
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      // Validate itemId
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      // Validate required fields
+      if (!type || !quantity) {
+        return res.status(400).json({
+          success: false,
+          message: "Type and quantity are required",
+        });
+      }
+
+      // Check if item exists
+      const item = await Item.findOne({
+        _id: new mongoose.Types.ObjectId(itemId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+      });
+
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      // Create transaction based on type
+      let transaction;
+      const transactionData = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        date: date ? new Date(date) : new Date(),
+        invoiceNumber: invoiceNumber || `${type.toUpperCase()}-${Date.now()}`,
+        status: status,
+        items: [
+          {
+            itemId: new mongoose.Types.ObjectId(itemId),
+            quantity: Number(quantity),
+            pricePerUnit: Number(pricePerUnit || 0),
+            unit: item.unit,
+          },
+        ],
+        total: Number(quantity) * Number(pricePerUnit || 0),
+        createdBy: req.user?.id || "system",
+      };
+
+      if (type === "sale") {
+        // Create sale transaction
+        transaction = new Sale({
+          ...transactionData,
+          customerId: null, // You might want to look up customer by name
+          customerName: customerName,
+        });
+
+        // Update item stock (decrease)
+        if (item.type === "product") {
+          await Item.findByIdAndUpdate(itemId, {
+            $inc: {currentStock: -Number(quantity)},
+            $push: {
+              stockHistory: {
+                date: new Date(),
+                previousStock: item.currentStock,
+                newStock: Math.max(0, item.currentStock - Number(quantity)),
+                adjustmentType: "subtract",
+                quantity: -Number(quantity),
+                reason: `Sale: ${invoiceNumber}`,
+                adjustedBy: req.user?.id || "system",
+              },
+            },
+          });
+        }
+      } else if (type === "purchase") {
+        // Create purchase transaction
+        transaction = new Purchase({
+          ...transactionData,
+          vendorId: null, // You might want to look up vendor by name
+          vendorName: vendorName,
+        });
+
+        // Update item stock (increase)
+        if (item.type === "product") {
+          await Item.findByIdAndUpdate(itemId, {
+            $inc: {currentStock: Number(quantity)},
+            $push: {
+              stockHistory: {
+                date: new Date(),
+                previousStock: item.currentStock,
+                newStock: item.currentStock + Number(quantity),
+                adjustmentType: "add",
+                quantity: Number(quantity),
+                reason: `Purchase: ${invoiceNumber}`,
+                adjustedBy: req.user?.id || "system",
+              },
+            },
+          });
+        }
+      } else if (type === "adjustment") {
+        // Create stock adjustment directly in item
+        const previousStock = item.currentStock || 0;
+        const newStock = Math.max(0, previousStock + Number(quantity));
+
+        await Item.findByIdAndUpdate(itemId, {
+          $set: {currentStock: newStock},
+          $push: {
+            stockHistory: {
+              date: new Date(),
+              previousStock: previousStock,
+              newStock: newStock,
+              adjustmentType: Number(quantity) > 0 ? "add" : "subtract",
+              quantity: Number(quantity),
+              reason: reason || "Manual adjustment",
+              adjustedBy: req.user?.id || "system",
+            },
+          },
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Stock adjustment created successfully",
+          data: {
+            transaction: {
+              type: "adjustment",
+              quantity: Number(quantity),
+              previousStock,
+              newStock,
+              reason: reason || "Manual adjustment",
+            },
+          },
+        });
+      }
+
+      if (transaction) {
+        await transaction.save();
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {transaction},
+        message: "Transaction created successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error creating item transaction:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to create item transaction",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Update transaction for a specific item
+   * PUT /api/companies/:companyId/items/:itemId/transactions/:transactionId
+   */
+  updateItemTransaction: async (req, res) => {
+    try {
+      const {companyId, itemId, transactionId} = req.params;
+      const updateData = req.body;
+
+      console.log(
+        "🔍 Updating transaction:",
+        transactionId,
+        "for item:",
+        itemId
+      );
+
+      // Validate IDs
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(transactionId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid transaction ID format",
+        });
+      }
+
+      // Try to find in Sales collection first
+      let transaction = await Sale.findOne({
+        _id: new mongoose.Types.ObjectId(transactionId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "items.itemId": new mongoose.Types.ObjectId(itemId),
+      });
+
+      if (transaction) {
+        // Update sale transaction
+        const updatedTransaction = await Sale.findByIdAndUpdate(
+          transactionId,
+          {$set: updateData},
+          {new: true}
+        );
+
+        return res.json({
+          success: true,
+          data: {transaction: updatedTransaction},
+          message: "Sale transaction updated successfully",
+        });
+      }
+
+      // Try to find in Purchases collection
+      transaction = await Purchase.findOne({
+        _id: new mongoose.Types.ObjectId(transactionId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "items.itemId": new mongoose.Types.ObjectId(itemId),
+      });
+
+      if (transaction) {
+        // Update purchase transaction
+        const updatedTransaction = await Purchase.findByIdAndUpdate(
+          transactionId,
+          {$set: updateData},
+          {new: true}
+        );
+
+        return res.json({
+          success: true,
+          data: {transaction: updatedTransaction},
+          message: "Purchase transaction updated successfully",
+        });
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    } catch (error) {
+      console.error("❌ Error updating item transaction:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to update item transaction",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Delete transaction for a specific item
+   * DELETE /api/companies/:companyId/items/:itemId/transactions/:transactionId
+   */
+  deleteItemTransaction: async (req, res) => {
+    try {
+      const {companyId, itemId, transactionId} = req.params;
+
+      console.log(
+        "🔍 Deleting transaction:",
+        transactionId,
+        "for item:",
+        itemId
+      );
+
+      // Validate IDs
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(transactionId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid transaction ID format",
+        });
+      }
+
+      // Try to find and delete from Sales collection first
+      let transaction = await Sale.findOneAndDelete({
+        _id: new mongoose.Types.ObjectId(transactionId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "items.itemId": new mongoose.Types.ObjectId(itemId),
+      });
+
+      if (transaction) {
+        // Reverse stock changes for deleted sale
+        const itemData = transaction.items.find(
+          (item) => item.itemId.toString() === itemId
+        );
+
+        if (itemData) {
+          await Item.findByIdAndUpdate(itemId, {
+            $inc: {currentStock: itemData.quantity}, // Add back the sold quantity
+          });
+        }
+
+        return res.json({
+          success: true,
+          data: {transaction},
+          message: "Sale transaction deleted successfully",
+        });
+      }
+
+      // Try to find and delete from Purchases collection
+      transaction = await Purchase.findOneAndDelete({
+        _id: new mongoose.Types.ObjectId(transactionId),
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "items.itemId": new mongoose.Types.ObjectId(itemId),
+      });
+
+      if (transaction) {
+        // Reverse stock changes for deleted purchase
+        const itemData = transaction.items.find(
+          (item) => item.itemId.toString() === itemId
+        );
+
+        if (itemData) {
+          await Item.findByIdAndUpdate(itemId, {
+            $inc: {currentStock: -itemData.quantity}, // Remove the purchased quantity
+          });
+        }
+
+        return res.json({
+          success: true,
+          data: {transaction},
+          message: "Purchase transaction deleted successfully",
+        });
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    } catch (error) {
+      console.error("❌ Error deleting item transaction:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete item transaction",
         error: error.message,
       });
     }

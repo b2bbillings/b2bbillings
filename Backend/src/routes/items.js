@@ -59,7 +59,7 @@ router.get("/admin/low-stock", itemController.getAllLowStockItemsAdmin);
 
 // ===== STOCK MANAGEMENT ROUTES =====
 
-// GET /api/companies/:companyId/stock-summary - Get stock summary/analytics
+// GET /api/companies/:companyId/items/stock-summary - Get stock summary/analytics
 router.get("/stock-summary", itemController.getStockSummary);
 
 // PATCH /api/companies/:companyId/items/bulk/stock - Bulk update stock
@@ -83,6 +83,26 @@ router.put("/:itemId/adjust-stock", itemController.adjustStock);
 
 // 📊 GET /api/companies/:companyId/items/:itemId/stock-history - Get stock history for specific item
 router.get("/:itemId/stock-history", itemController.getStockHistory);
+
+// ===== ✅ TRANSACTION ROUTES (MISSING - ADD THESE) =====
+
+// 📊 GET /api/companies/:companyId/items/:itemId/transactions - Get transactions for specific item
+router.get("/:itemId/transactions", itemController.getItemTransactions);
+
+// 📊 POST /api/companies/:companyId/items/:itemId/transactions - Create transaction for specific item
+router.post("/:itemId/transactions", itemController.createItemTransaction);
+
+// 📊 PUT /api/companies/:companyId/items/:itemId/transactions/:transactionId - Update transaction
+router.put(
+  "/:itemId/transactions/:transactionId",
+  itemController.updateItemTransaction
+);
+
+// 📊 DELETE /api/companies/:companyId/items/:itemId/transactions/:transactionId - Delete transaction
+router.delete(
+  "/:itemId/transactions/:transactionId",
+  itemController.deleteItemTransaction
+);
 
 // ===== ROUTE TESTING/DEBUG =====
 
@@ -110,10 +130,10 @@ router.use("*", (req, res) => {
         "GET /search",
         "GET /categories",
         "GET /low-stock",
-        "GET /admin/all", // ✅ NEW
-        "GET /admin/stats", // ✅ NEW
-        "GET /admin/export", // ✅ NEW
-        "GET /admin/low-stock", // ✅ NEW
+        "GET /admin/all",
+        "GET /admin/stats",
+        "GET /admin/export",
+        "GET /admin/low-stock",
         "GET /stock-summary",
         "PATCH /bulk/stock",
         "GET /:itemId",
@@ -121,6 +141,10 @@ router.use("*", (req, res) => {
         "DELETE /:itemId",
         "PUT /:itemId/adjust-stock",
         "GET /:itemId/stock-history",
+        "GET /:itemId/transactions", // ✅ NEW
+        "POST /:itemId/transactions", // ✅ NEW
+        "PUT /:itemId/transactions/:transactionId", // ✅ NEW
+        "DELETE /:itemId/transactions/:transactionId", // ✅ NEW
       ],
     },
   });

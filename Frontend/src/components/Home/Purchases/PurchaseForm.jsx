@@ -893,7 +893,7 @@ function PurchaseForm({
       </Container>
 
       {/* ✅ UPDATED: Clean Styles - Removed orange colors and curves */}
-      <style jsx>{`
+      <style>{`
         /* ✅ FIXED: Changed orange colors to blue/purple theme */
         .purchase-form-wrapper[data-mode="purchase-orders"] {
           --primary-color: #6f42c1; /* Purple instead of orange */

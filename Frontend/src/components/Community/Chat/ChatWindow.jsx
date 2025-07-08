@@ -252,7 +252,7 @@ function ChatWindow({chat, currentUser}) {
       )}
 
       {/* Inline CSS for typing indicator animation */}
-      <style jsx>{`
+      <style>{`
         .typing-indicator {
           display: inline-flex;
           align-items: center;

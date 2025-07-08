@@ -1108,7 +1108,7 @@ function CompanyManagement({adminData, currentUser, addToast}) {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         /* Modern Professional Styles */
         .company-management {
           font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;

@@ -1243,7 +1243,7 @@ function SalesForm({
       )}
 
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         .sales-form-wrapper[data-mode="quotations"] {
           --primary-color: #17a2b8;
           --primary-rgb: 23, 162, 184;

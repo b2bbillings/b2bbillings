@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo, useEffect, useRef} from "react";
+import React, {useState, useCallback, useMemo, useEffect} from "react";
 import {
   Card,
   Table,
@@ -7,6 +7,10 @@ import {
   Badge,
   Button,
   Dropdown,
+  Spinner,
+  Alert,
+  Row,
+  Col,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -14,71 +18,295 @@ import {
   faFilter,
   faEllipsisV,
   faFileExport,
-  faSortDown,
   faArrowUp,
   faArrowDown,
   faEye,
   faEdit,
   faTrash,
+  faRefresh,
+  faAdjust,
+  faShoppingCart,
+  faTag,
+  faInfoCircle,
+  faSyncAlt,
+  faCalendarAlt,
+  faUser,
+  faReceipt,
 } from "@fortawesome/free-solid-svg-icons";
+import itemService from "../../../services/itemService";
 
 function TransactionHistory({
-  transactions = [],
   selectedItem,
   searchQuery = "",
   onSearchChange,
+  companyId,
+  addToast,
 }) {
-  const [sortConfig, setSortConfig] = useState({key: null, direction: "asc"});
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [sortConfig, setSortConfig] = useState({
+    key: "date",
+    direction: "desc",
+  });
+  const [lastFetchedItemId, setLastFetchedItemId] = useState(null);
+  const [transactionSummary, setTransactionSummary] = useState(null);
+  const [filterType, setFilterType] = useState("all");
 
-  // Filter transactions for selected item and search query
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((transaction) => {
-      if (!selectedItem) return false;
+  // ✅ ENHANCED: Fetch transactions with better error handling and parameters
+  const fetchTransactions = useCallback(
+    async (itemId, companyId, filters = {}) => {
+      if (!itemId || !companyId) {
+        setTransactions([]);
+        setTransactionSummary(null);
+        return;
+      }
 
-      const itemMatch = transaction.itemId === selectedItem.id;
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        console.log(`🔍 Fetching transactions for item: ${itemId}`);
+
+        // ✅ ENHANCED: Call with additional parameters
+        const params = {
+          page: 1,
+          limit: 100,
+          sortBy: "date",
+          sortOrder: "desc",
+          type: filterType !== "all" ? filterType : undefined,
+          ...filters,
+        };
+
+        const response = await itemService.getItemTransactions(
+          companyId,
+          itemId,
+          params
+        );
+
+        if (response.success) {
+          const transactionData = response.data.transactions || [];
+          const summary = response.data.summary || null;
+
+          setTransactions(transactionData);
+          setTransactionSummary(summary);
+          setLastFetchedItemId(itemId);
+
+          console.log(
+            `✅ Loaded ${transactionData.length} transactions for item: ${selectedItem?.name}`
+          );
+
+          if (transactionData.length === 0 && !error) {
+            addToast?.("No transactions found for this item", "info");
+          }
+        } else {
+          throw new Error(response.message || "Failed to fetch transactions");
+        }
+      } catch (err) {
+        console.error("❌ Error fetching transactions:", err);
+        setError(err.message || "Failed to fetch transactions");
+        setTransactions([]);
+        setTransactionSummary(null);
+        addToast?.(err.message || "Failed to fetch transactions", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [addToast, selectedItem?.name, filterType]
+  );
+
+  // ✅ ENHANCED: Effect to fetch transactions when selectedItem or filter changes
+  useEffect(() => {
+    if (selectedItem?.id && companyId) {
+      // Fetch if it's a different item, filter changed, or no previous fetch
+      if (lastFetchedItemId !== selectedItem.id || filterType !== "all") {
+        fetchTransactions(selectedItem.id, companyId);
+      }
+    } else {
+      setTransactions([]);
+      setTransactionSummary(null);
+      setLastFetchedItemId(null);
+    }
+  }, [selectedItem?.id, companyId, fetchTransactions, filterType]);
+
+  // ✅ ENHANCED: Filter and sort transactions with better logic
+  const filteredAndSortedTransactions = useMemo(() => {
+    let filtered = transactions.filter((transaction) => {
+      if (!transaction) return false;
+
+      // Search filter
       const searchMatch =
         searchQuery === "" ||
         transaction.customerName
           ?.toLowerCase()
           .includes(searchQuery.toLowerCase()) ||
+        transaction.vendorName
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
         transaction.invoiceNumber
           ?.toLowerCase()
           .includes(searchQuery.toLowerCase()) ||
-        transaction.type?.toLowerCase().includes(searchQuery.toLowerCase());
+        transaction.referenceNumber
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        transaction.type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        transaction.transactionType
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        transaction.reason?.toLowerCase().includes(searchQuery.toLowerCase());
 
-      return itemMatch && searchMatch;
+      return searchMatch;
     });
-  }, [transactions, selectedItem, searchQuery]);
 
+    // Sort transactions
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aVal = a[sortConfig.key];
+        let bVal = b[sortConfig.key];
+
+        // Handle date sorting
+        if (sortConfig.key === "date" || sortConfig.key === "transactionDate") {
+          aVal = new Date(aVal || 0).getTime();
+          bVal = new Date(bVal || 0).getTime();
+        }
+
+        // Handle number sorting
+        if (
+          sortConfig.key === "quantity" ||
+          sortConfig.key === "pricePerUnit" ||
+          sortConfig.key === "total" ||
+          sortConfig.key === "totalAmount"
+        ) {
+          aVal = Number(aVal || 0);
+          bVal = Number(bVal || 0);
+        }
+
+        // Handle string sorting
+        if (typeof aVal === "string" && typeof bVal === "string") {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+
+        if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [transactions, searchQuery, sortConfig]);
+
+  // ✅ ENHANCED: Better price formatting
   const formatPrice = useCallback((price) => {
-    return `₹${Number(price || 0).toLocaleString("en-IN")}`;
+    const numPrice = Number(price || 0);
+    if (numPrice === 0) return "₹0";
+    return `₹${numPrice.toLocaleString("en-IN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
   }, []);
 
+  // ✅ ENHANCED: Better transaction icons with colors
   const getTransactionIcon = useCallback((type) => {
-    return type === "Sale" ? (
-      <FontAwesomeIcon icon={faArrowUp} className="text-success" size="sm" />
-    ) : (
-      <FontAwesomeIcon icon={faArrowDown} className="text-danger" size="sm" />
-    );
+    const transactionType = type?.toLowerCase();
+
+    if (
+      transactionType === "sale" ||
+      transactionType === "sales" ||
+      transactionType === "out"
+    ) {
+      return (
+        <FontAwesomeIcon
+          icon={faArrowUp}
+          className="text-success"
+          size="sm"
+          title="Sale - Stock Out"
+        />
+      );
+    } else if (
+      transactionType === "purchase" ||
+      transactionType === "buy" ||
+      transactionType === "in"
+    ) {
+      return (
+        <FontAwesomeIcon
+          icon={faArrowDown}
+          className="text-primary"
+          size="sm"
+          title="Purchase - Stock In"
+        />
+      );
+    } else if (transactionType === "adjustment") {
+      return (
+        <FontAwesomeIcon
+          icon={faAdjust}
+          className="text-warning"
+          size="sm"
+          title="Stock Adjustment"
+        />
+      );
+    } else {
+      return (
+        <FontAwesomeIcon
+          icon={faInfoCircle}
+          className="text-muted"
+          size="sm"
+          title="Other Transaction"
+        />
+      );
+    }
   }, []);
 
+  // ✅ ENHANCED: Better status badges
   const getStatusBadge = useCallback((status) => {
-    const variant = status === "Paid" ? "success" : "warning";
+    if (!status) return null;
+
+    const statusLower = status.toLowerCase();
+    let variant = "secondary";
+    let text = status;
+
+    switch (statusLower) {
+      case "paid":
+      case "completed":
+      case "success":
+        variant = "success";
+        text = "Completed";
+        break;
+      case "pending":
+        variant = "warning";
+        text = "Pending";
+        break;
+      case "partial":
+        variant = "info";
+        text = "Partial";
+        break;
+      case "cancelled":
+      case "failed":
+        variant = "danger";
+        text = "Failed";
+        break;
+      default:
+        variant = "secondary";
+        text = status;
+    }
+
     return (
       <Badge
         bg={variant}
         className="fw-normal"
         style={{
-          borderRadius: "0",
+          borderRadius: "4px",
           fontSize: "11px",
           padding: "0.25rem 0.5rem",
+          textTransform: "capitalize",
         }}
       >
-        {status}
+        {text}
       </Badge>
     );
   }, []);
 
+  // ✅ ENHANCED: Better sorting with visual feedback
   const handleSort = useCallback((key) => {
     setSortConfig((prev) => {
       let direction = "asc";
@@ -89,25 +317,137 @@ function TransactionHistory({
     });
   }, []);
 
-  // Action handlers
-  const handleViewDetails = useCallback((transaction) => {
-    console.log("View details for:", transaction);
-    // Add your view details logic here
-  }, []);
-
-  const handleEditTransaction = useCallback((transaction) => {
-    console.log("Edit transaction:", transaction);
-    // Add your edit transaction logic here
-  }, []);
-
-  const handleDeleteTransaction = useCallback((transaction) => {
-    if (window.confirm("Are you sure you want to delete this transaction?")) {
-      console.log("Delete transaction:", transaction);
-      // Add your delete transaction logic here
+  // ✅ ENHANCED: Refresh with loading state
+  const handleRefresh = useCallback(() => {
+    if (selectedItem?.id && companyId) {
+      setLastFetchedItemId(null); // Force refetch
+      fetchTransactions(selectedItem.id, companyId);
     }
+  }, [selectedItem?.id, companyId, fetchTransactions]);
+
+  // ✅ ENHANCED: Filter by transaction type
+  const handleFilterChange = useCallback((type) => {
+    setFilterType(type);
   }, []);
 
-  // Custom Dropdown Toggle
+  // ✅ ENHANCED: Action handlers with better feedback
+  const handleViewDetails = useCallback(
+    (transaction) => {
+      console.log("📋 View details for:", transaction);
+
+      // Create a detailed view of the transaction
+      const details = [
+        `Transaction ID: ${transaction.id}`,
+        `Type: ${transaction.type}`,
+        `Date: ${new Date(transaction.date).toLocaleString()}`,
+        `${
+          transaction.customerName
+            ? `Customer: ${transaction.customerName}`
+            : ""
+        }`,
+        `${transaction.vendorName ? `Vendor: ${transaction.vendorName}` : ""}`,
+        `Quantity: ${transaction.quantity} ${transaction.unit || "PCS"}`,
+        `Price: ${formatPrice(transaction.pricePerUnit)}`,
+        `Total: ${formatPrice(transaction.totalAmount)}`,
+        `Status: ${transaction.status}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      alert(details);
+    },
+    [formatPrice]
+  );
+
+  const handleEditTransaction = useCallback(
+    (transaction) => {
+      console.log("✏️ Edit transaction:", transaction);
+      addToast?.("Edit transaction feature will be available soon", "info");
+    },
+    [addToast]
+  );
+
+  const handleDeleteTransaction = useCallback(
+    (transaction) => {
+      if (
+        window.confirm(
+          `Are you sure you want to delete this ${transaction.type} transaction?`
+        )
+      ) {
+        console.log("🗑️ Delete transaction:", transaction);
+        addToast?.("Delete transaction feature will be available soon", "info");
+      }
+    },
+    [addToast]
+  );
+
+  // ✅ ENHANCED: Better export with more details
+  const handleExport = useCallback(() => {
+    if (filteredAndSortedTransactions.length === 0) {
+      addToast?.("No transactions to export", "warning");
+      return;
+    }
+
+    try {
+      // Create enhanced CSV content
+      const headers = [
+        "Date",
+        "Type",
+        "Invoice/Reference",
+        "Customer/Vendor",
+        "Quantity",
+        "Unit",
+        "Price Per Unit",
+        "Total Amount",
+        "Status",
+        "Reason/Notes",
+      ];
+
+      const csvContent = [
+        headers.join(","),
+        ...filteredAndSortedTransactions.map((transaction) =>
+          [
+            new Date(
+              transaction.date || transaction.transactionDate
+            ).toLocaleDateString("en-IN"),
+            transaction.type || transaction.transactionType || "Unknown",
+            transaction.invoiceNumber || transaction.referenceNumber || "-",
+            transaction.customerName || transaction.vendorName || "Unknown",
+            transaction.quantity || 0,
+            transaction.unit || "PCS",
+            transaction.pricePerUnit || 0,
+            transaction.totalAmount ||
+              (transaction.quantity || 0) * (transaction.pricePerUnit || 0),
+            transaction.status || "Unknown",
+            transaction.reason || transaction.notes || "-",
+          ].join(",")
+        ),
+      ].join("\n");
+
+      // Download CSV with better filename
+      const blob = new Blob([csvContent], {type: "text/csv;charset=utf-8;"});
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${selectedItem?.name || "item"}_transactions_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      addToast?.(
+        `${filteredAndSortedTransactions.length} transactions exported successfully`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Export error:", error);
+      addToast?.("Failed to export transactions", "error");
+    }
+  }, [filteredAndSortedTransactions, selectedItem?.name, addToast]);
+
+  // ✅ ENHANCED: Custom Dropdown Toggle with better styling
   const CustomToggle = React.forwardRef(({children, onClick}, ref) => (
     <button
       ref={ref}
@@ -118,7 +458,7 @@ function TransactionHistory({
       }}
       className="btn btn-link p-0 border-0 text-muted custom-dropdown-toggle"
       style={{
-        borderRadius: "0",
+        borderRadius: "4px",
         opacity: 0.7,
         transition: "all 0.2s ease",
         background: "none",
@@ -135,30 +475,79 @@ function TransactionHistory({
   return (
     <>
       <Card className="border-0 shadow-sm h-100 transaction-history-card">
-        {/* Header */}
-        <Card.Header
-          className="bg-white border-bottom py-3"
-          style={{borderRadius: "0"}}
-        >
-          <div className="d-flex justify-content-between align-items-center">
+        {/* ✅ ENHANCED: Header with summary stats */}
+        <Card.Header className="bg-white border-bottom py-3">
+          <div className="d-flex justify-content-between align-items-center mb-3">
             <h5
               className="mb-0 fw-bold"
               style={{color: "#495057", fontSize: "16px"}}
             >
+              <FontAwesomeIcon icon={faReceipt} className="me-2" />
               TRANSACTIONS
               {selectedItem && (
                 <small className="text-muted ms-2" style={{fontSize: "12px"}}>
                   for {selectedItem.name}
                 </small>
               )}
+              {isLoading && (
+                <Spinner
+                  animation="border"
+                  size="sm"
+                  className="ms-2"
+                  style={{width: "1rem", height: "1rem"}}
+                />
+              )}
             </h5>
-            <div className="d-flex align-items-center gap-3">
+
+            <div className="d-flex align-items-center gap-2">
+              {/* ✅ ENHANCED: Transaction type filter */}
+              <Dropdown size="sm">
+                <Dropdown.Toggle
+                  variant="outline-secondary"
+                  style={{borderRadius: "4px", fontSize: "12px"}}
+                  disabled={isLoading}
+                >
+                  <FontAwesomeIcon icon={faFilter} className="me-1" />
+                  {filterType === "all"
+                    ? "All Types"
+                    : filterType.charAt(0).toUpperCase() + filterType.slice(1)}
+                </Dropdown.Toggle>
+                <Dropdown.Menu style={{borderRadius: "4px"}}>
+                  <Dropdown.Item onClick={() => handleFilterChange("all")}>
+                    All Types
+                  </Dropdown.Item>
+                  <Dropdown.Item onClick={() => handleFilterChange("purchase")}>
+                    <FontAwesomeIcon
+                      icon={faShoppingCart}
+                      className="me-2 text-primary"
+                    />
+                    Purchases
+                  </Dropdown.Item>
+                  <Dropdown.Item onClick={() => handleFilterChange("sale")}>
+                    <FontAwesomeIcon
+                      icon={faTag}
+                      className="me-2 text-success"
+                    />
+                    Sales
+                  </Dropdown.Item>
+                  <Dropdown.Item
+                    onClick={() => handleFilterChange("adjustment")}
+                  >
+                    <FontAwesomeIcon
+                      icon={faAdjust}
+                      className="me-2 text-warning"
+                    />
+                    Adjustments
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+
               {/* Search */}
               <div className="search-container">
-                <InputGroup size="sm" style={{width: "250px"}}>
+                <InputGroup size="sm" style={{width: "200px"}}>
                   <InputGroup.Text
                     className="bg-light border-end-0"
-                    style={{borderRadius: "0"}}
+                    style={{borderRadius: "4px 0 0 4px"}}
                   >
                     <FontAwesomeIcon
                       icon={faSearch}
@@ -172,23 +561,45 @@ function TransactionHistory({
                     value={searchQuery}
                     onChange={(e) => onSearchChange(e.target.value)}
                     className="border-start-0 bg-light"
-                    style={{
-                      borderRadius: "0",
-                      fontSize: "13px",
-                    }}
+                    style={{borderRadius: "0 4px 4px 0", fontSize: "13px"}}
+                    disabled={isLoading}
                   />
                 </InputGroup>
               </div>
+
+              {/* Refresh Button */}
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={handleRefresh}
+                disabled={isLoading || !selectedItem}
+                title="Refresh transactions"
+                style={{
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  padding: "0.375rem 0.75rem",
+                }}
+              >
+                <FontAwesomeIcon
+                  icon={faRefresh}
+                  className={isLoading ? "fa-spin" : ""}
+                  size="sm"
+                />
+              </Button>
 
               {/* Export Button */}
               <Button
                 size="sm"
                 className="fw-semibold text-white border-0"
+                onClick={handleExport}
+                disabled={
+                  isLoading || filteredAndSortedTransactions.length === 0
+                }
                 style={{
                   background: "#6c757d",
-                  borderRadius: "0",
+                  borderRadius: "4px",
                   fontSize: "12px",
-                  padding: "0.5rem 1rem",
+                  padding: "0.375rem 0.75rem",
                 }}
               >
                 <FontAwesomeIcon
@@ -200,126 +611,168 @@ function TransactionHistory({
               </Button>
             </div>
           </div>
+
+          {/* ✅ ENHANCED: Summary stats */}
+          {transactionSummary && (
+            <Row className="g-3">
+              <Col md={3}>
+                <div className="text-center p-2 bg-light rounded">
+                  <div className="fw-bold text-primary">
+                    {transactionSummary.totalTransactions}
+                  </div>
+                  <small className="text-muted">Total Transactions</small>
+                </div>
+              </Col>
+              <Col md={3}>
+                <div className="text-center p-2 bg-light rounded">
+                  <div className="fw-bold text-success">
+                    {transactionSummary.purchases || 0}
+                  </div>
+                  <small className="text-muted">Purchases</small>
+                </div>
+              </Col>
+              <Col md={3}>
+                <div className="text-center p-2 bg-light rounded">
+                  <div className="fw-bold text-info">
+                    {transactionSummary.sales || 0}
+                  </div>
+                  <small className="text-muted">Sales</small>
+                </div>
+              </Col>
+              <Col md={3}>
+                <div className="text-center p-2 bg-light rounded">
+                  <div className="fw-bold text-warning">
+                    {transactionSummary.adjustments || 0}
+                  </div>
+                  <small className="text-muted">Adjustments</small>
+                </div>
+              </Col>
+            </Row>
+          )}
         </Card.Header>
 
-        {/* Table */}
-        <Card.Body className="p-0" style={{borderRadius: "0"}}>
-          <div className="table-responsive transaction-table-container">
-            <Table
-              className="mb-0 transaction-table"
-              style={{borderRadius: "0"}}
+        {/* ✅ ENHANCED: Error Alert */}
+        {error && (
+          <Alert
+            variant="danger"
+            className="m-3 mb-0"
+            style={{borderRadius: "4px"}}
+          >
+            <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+            {error}
+            <Button
+              variant="outline-danger"
+              size="sm"
+              className="ms-2"
+              onClick={handleRefresh}
+              style={{borderRadius: "4px"}}
             >
+              <FontAwesomeIcon icon={faRefresh} className="me-1" />
+              Retry
+            </Button>
+          </Alert>
+        )}
+
+        {/* ✅ ENHANCED: Transaction Table */}
+        <Card.Body className="p-0">
+          <div className="table-responsive transaction-table-container">
+            <Table className="mb-0 transaction-table" hover>
               <thead className="bg-light">
                 <tr>
-                  <th
-                    className="border-0 py-3 ps-4 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 ps-4 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       TYPE
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("type")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       INVOICE/REF.
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("invoiceNumber")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       CUSTOMER/VENDOR
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("customerName")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       DATE
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("date")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       QUANTITY
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("quantity")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       PRICE/UNIT
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
                         onClick={() => handleSort("pricePerUnit")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     <div className="d-flex align-items-center gap-2">
                       TOTAL
                       <FontAwesomeIcon
                         icon={faFilter}
                         className="text-muted cursor-pointer"
-                        onClick={() => handleSort("total")}
-                        style={{fontSize: "10px", color: "#6c757d"}}
+                        onClick={() => handleSort("totalAmount")}
+                        style={{fontSize: "10px"}}
                       />
                     </div>
                   </th>
-                  <th
-                    className="border-0 py-3 text-muted small fw-semibold text-uppercase"
-                    style={{fontSize: "11px"}}
-                  >
+                  <th className="border-0 py-3 text-muted small fw-semibold text-uppercase">
                     STATUS
                   </th>
                   <th className="border-0 py-3 pe-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTransactions.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan="9" className="text-center py-5">
+                      <Spinner animation="border" size="sm" className="mb-2" />
+                      <div className="text-muted small">
+                        Loading transactions...
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredAndSortedTransactions.length === 0 ? (
                   <tr>
                     <td colSpan="9" className="text-center py-5 text-muted">
                       <div className="d-flex flex-column align-items-center">
@@ -334,35 +787,43 @@ function TransactionHistory({
                           style={{fontSize: "14px"}}
                         >
                           {selectedItem
-                            ? searchQuery
+                            ? error
+                              ? "Failed to load transactions"
+                              : searchQuery
                               ? "No transactions found matching your search"
+                              : filterType !== "all"
+                              ? `No ${filterType} transactions found for this item`
                               : "No transactions found for this item"
                             : "Select an item to view transactions"}
                         </div>
                         <small style={{fontSize: "12px", color: "#6c757d"}}>
-                          {selectedItem && !searchQuery
-                            ? "Transactions will appear here once created"
+                          {selectedItem && !searchQuery && !error
+                            ? "Transactions will appear here once sales/purchases are made"
                             : ""}
                         </small>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((transaction, index) => (
+                  filteredAndSortedTransactions.map((transaction, index) => (
                     <tr
-                      key={transaction.id || index}
+                      key={transaction.id || transaction._id || index}
                       className="border-bottom transaction-row"
                     >
                       <td className="py-3 ps-4">
                         <div className="d-flex align-items-center gap-2">
                           <span className="transaction-icon">
-                            {getTransactionIcon(transaction.type)}
+                            {getTransactionIcon(
+                              transaction.type || transaction.transactionType
+                            )}
                           </span>
                           <span
                             className="fw-medium text-dark"
                             style={{fontSize: "13px"}}
                           >
-                            {transaction.type}
+                            {transaction.type ||
+                              transaction.transactionType ||
+                              "Unknown"}
                           </span>
                         </div>
                       </td>
@@ -373,34 +834,62 @@ function TransactionHistory({
                             fontSize: "13px",
                             fontFamily: "monospace",
                             background: "#f8f9fa",
-                            padding: "2px 4px",
-                            borderRadius: "0",
+                            padding: "2px 6px",
+                            borderRadius: "3px",
                           }}
                         >
-                          {transaction.invoiceNumber || "-"}
+                          {transaction.invoiceNumber ||
+                            transaction.referenceNumber ||
+                            "-"}
                         </span>
                       </td>
                       <td className="py-3">
-                        <span
-                          className="text-dark fw-medium"
-                          style={{fontSize: "13px"}}
-                        >
-                          {transaction.customerName}
-                        </span>
-                      </td>
-                      <td className="py-3">
-                        <span className="text-muted" style={{fontSize: "13px"}}>
-                          {new Date(transaction.date).toLocaleDateString(
-                            "en-IN"
+                        <div className="d-flex align-items-center gap-1">
+                          {transaction.customerName && (
+                            <FontAwesomeIcon
+                              icon={faUser}
+                              className="text-muted me-1"
+                              size="sm"
+                            />
                           )}
-                        </span>
+                          <span
+                            className="text-dark fw-medium"
+                            style={{fontSize: "13px"}}
+                          >
+                            {transaction.customerName ||
+                              transaction.vendorName ||
+                              "System"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3">
+                        <div className="d-flex align-items-center gap-1">
+                          <FontAwesomeIcon
+                            icon={faCalendarAlt}
+                            className="text-muted me-1"
+                            size="sm"
+                          />
+                          <span
+                            className="text-muted"
+                            style={{fontSize: "13px"}}
+                          >
+                            {new Date(
+                              transaction.date || transaction.transactionDate
+                            ).toLocaleDateString("en-IN")}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3">
                         <span
-                          className="text-dark fw-medium"
+                          className={`fw-medium ${
+                            transaction.quantity < 0
+                              ? "text-danger"
+                              : "text-success"
+                          }`}
                           style={{fontSize: "13px"}}
                         >
-                          {transaction.quantity} {transaction.unit || "PCS"}
+                          {transaction.quantity || 0}{" "}
+                          {transaction.unit || "PCS"}
                         </span>
                       </td>
                       <td className="py-3">
@@ -417,13 +906,22 @@ function TransactionHistory({
                           style={{
                             fontSize: "13px",
                             color:
-                              transaction.type === "Sale"
+                              (
+                                transaction.type || transaction.transactionType
+                              )?.toLowerCase() === "sale"
                                 ? "#28a745"
-                                : "#dc3545",
+                                : (
+                                    transaction.type ||
+                                    transaction.transactionType
+                                  )?.toLowerCase() === "purchase"
+                                ? "#007bff"
+                                : "#6c757d",
                           }}
                         >
                           {formatPrice(
-                            transaction.quantity * transaction.pricePerUnit
+                            transaction.totalAmount ||
+                              (transaction.quantity || 0) *
+                                (transaction.pricePerUnit || 0)
                           )}
                         </span>
                       </td>
@@ -438,7 +936,7 @@ function TransactionHistory({
 
                           <Dropdown.Menu
                             style={{
-                              borderRadius: "0",
+                              borderRadius: "4px",
                               border: "1px solid #dee2e6",
                               boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
                               padding: "0.5rem 0",
@@ -453,12 +951,7 @@ function TransactionHistory({
                                 handleViewDetails(transaction);
                               }}
                               className="d-flex align-items-center gap-2"
-                              style={{
-                                fontSize: "13px",
-                                padding: "0.5rem 1rem",
-                                transition: "all 0.2s ease",
-                                borderRadius: "0",
-                              }}
+                              style={{fontSize: "13px", padding: "0.5rem 1rem"}}
                             >
                               <FontAwesomeIcon
                                 icon={faEye}
@@ -475,12 +968,7 @@ function TransactionHistory({
                                 handleEditTransaction(transaction);
                               }}
                               className="d-flex align-items-center gap-2"
-                              style={{
-                                fontSize: "13px",
-                                padding: "0.5rem 1rem",
-                                transition: "all 0.2s ease",
-                                borderRadius: "0",
-                              }}
+                              style={{fontSize: "13px", padding: "0.5rem 1rem"}}
                             >
                               <FontAwesomeIcon
                                 icon={faEdit}
@@ -499,12 +987,7 @@ function TransactionHistory({
                                 handleDeleteTransaction(transaction);
                               }}
                               className="d-flex align-items-center gap-2 text-danger"
-                              style={{
-                                fontSize: "13px",
-                                padding: "0.5rem 1rem",
-                                transition: "all 0.2s ease",
-                                borderRadius: "0",
-                              }}
+                              style={{fontSize: "13px", padding: "0.5rem 1rem"}}
                             >
                               <FontAwesomeIcon
                                 icon={faTrash}
@@ -524,225 +1007,176 @@ function TransactionHistory({
         </Card.Body>
       </Card>
 
-      {/* Clean Styles */}
+      {/* ✅ ENHANCED: Modern Styles */}
       <style>
         {`
-                /* Remove all border radius */
-                .transaction-history-card,
-                .transaction-history-card *,
-                .transaction-history-card *::before,
-                .transaction-history-card *::after {
-                    border-radius: 0 !important;
-                }
+          .transaction-history-card {
+            background: #ffffff;
+            border: 1px solid #e9ecef !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease;
+          }
 
-                /* Apply theme colors */
-                .transaction-history-card {
-                    background: #ffffff;
-                    border: 1px solid #dee2e6 !important;
-                    transition: all 0.2s ease;
-                }
+          .transaction-history-card:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+            border-color: #6c757d !important;
+          }
 
-                .transaction-history-card:hover {
-                    box-shadow: 0 2px 8px rgba(108, 117, 125, 0.1) !important;
-                    border-color: #6c757d !important;
-                }
+          .cursor-pointer {
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
 
-                .cursor-pointer {
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                }
+          .cursor-pointer:hover {
+            color: #007bff !important;
+            transform: scale(1.1);
+          }
 
-                .cursor-pointer:hover {
-                    color: #6c757d !important;
-                    transform: scale(1.1);
-                }
+          .search-container .input-group-text {
+            background-color: #f8f9fa !important;
+            border-color: #dee2e6 !important;
+          }
 
-                .search-container .input-group-text {
-                    background-color: #f8f9fa !important;
-                    border-color: #dee2e6 !important;
-                }
+          .transaction-table-container {
+            max-height: calc(100vh - 400px);
+            overflow-y: auto;
+          }
 
-                .transaction-table-container {
-                    max-height: calc(100vh - 300px);
-                    overflow-y: auto;
-                }
+          .transaction-table thead th {
+            position: sticky;
+            top: 0;
+            background-color: #f8f9fa !important;
+            z-index: 10;
+            border-bottom: 2px solid #dee2e6 !important;
+          }
 
-                .transaction-table thead th {
-                    position: sticky;
-                    top: 0;
-                    background-color: #f8f9fa !important;
-                    z-index: 10;
-                    border-bottom: 2px solid #dee2e6 !important;
-                }
+          .transaction-row {
+            transition: all 0.2s ease;
+            border-bottom: 1px solid #f1f3f4 !important;
+          }
 
-                .transaction-row {
-                    transition: all 0.2s ease;
-                    border-bottom: 1px solid #f1f3f4 !important;
-                }
+          .transaction-row:hover {
+            background-color: #f8f9fa !important;
+            transform: translateX(2px);
+          }
 
-                .transaction-row:hover {
-                    background-color: #f8f9fa !important;
-                    border-color: #6c757d !important;
-                    transform: translateX(2px);
-                }
+          .transaction-row:hover .custom-dropdown-toggle {
+            opacity: 1 !important;
+          }
 
-                .transaction-row:hover .custom-dropdown-toggle {
-                    opacity: 1 !important;
-                }
+          .transaction-icon {
+            font-size: 0.9rem;
+            min-width: 20px;
+          }
 
-                .transaction-icon {
-                    font-size: 0.8rem;
-                }
+          .table td, .table th {
+            vertical-align: middle;
+            border-color: #e9ecef;
+          }
 
-                .table td, .table th {
-                    vertical-align: middle;
-                    border-color: #e9ecef;
-                }
+          .btn[style*="background: #6c757d"]:hover {
+            background: #5a6268 !important;
+            transform: translateY(-1px);
+          }
 
-                /* Export button hover */
-                .btn[style*="background: #6c757d"]:hover {
-                    background: #5a6268 !important;
-                    transform: translateY(-1px);
-                }
+          .form-control:focus {
+            border-color: #007bff !important;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+            background-color: white !important;
+          }
 
-                /* Form focus states */
-                .form-control:focus {
-                    border-color: #6c757d !important;
-                    box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.25) !important;
-                    background-color: white !important;
-                }
+          .custom-dropdown-toggle {
+            transition: all 0.2s ease !important;
+          }
 
-                /* Custom toggle button */
-                .custom-dropdown-toggle {
-                    transition: all 0.2s ease !important;
-                }
+          .custom-dropdown-toggle:hover {
+            opacity: 1 !important;
+            transform: scale(1.1);
+            color: #007bff !important;
+          }
 
-                .custom-dropdown-toggle:hover {
-                    opacity: 1 !important;
-                    transform: scale(1.1);
-                    color: #6c757d !important;
-                    text-decoration: none !important;
-                }
+          .dropdown-item {
+            transition: all 0.2s ease !important;
+          }
 
-                .custom-dropdown-toggle:focus {
-                    box-shadow: none !important;
-                    outline: none !important;
-                    text-decoration: none !important;
-                }
+          .dropdown-item:hover {
+            background: #f8f9fa !important;
+            padding-left: 1.25rem !important;
+            transform: translateX(4px);
+          }
 
-                .custom-dropdown-toggle:active {
-                    text-decoration: none !important;
-                }
+          .dropdown-item.text-danger:hover {
+            background: rgba(220, 53, 69, 0.1) !important;
+            color: #dc3545 !important;
+          }
 
-                /* Enhanced Dropdown styling */
-                .dropdown-menu {
-                    border-radius: 0 !important;
-                    min-width: 180px;
-                }
+          .transaction-table-container::-webkit-scrollbar {
+            width: 6px;
+          }
 
-                .dropdown-item {
-                    border-radius: 0 !important;
-                    transition: all 0.2s ease !important;
-                }
+          .transaction-table-container::-webkit-scrollbar-track {
+            background: transparent;
+          }
 
-                .dropdown-item:hover {
-                    background: #f8f9fa !important;
-                    padding-left: 1.25rem !important;
-                    transform: translateX(4px);
-                }
+          .transaction-table-container::-webkit-scrollbar-thumb {
+            background: #dee2e6;
+            border-radius: 3px;
+          }
 
-                .dropdown-item.text-danger:hover {
-                    background: rgba(220, 53, 69, 0.1) !important;
-                    color: #dc3545 !important;
-                }
+          .transaction-table-container::-webkit-scrollbar-thumb:hover {
+            background: #adb5bd;
+          }
 
-                .dropdown-item:focus {
-                    background: #f8f9fa !important;
-                    outline: none;
-                }
+          .badge {
+            font-weight: 500 !important;
+          }
 
-                .dropdown-item:active {
-                    background: #e9ecef !important;
-                }
+          @media (max-width: 768px) {
+            .search-container {
+              display: none;
+            }
+            
+            .transaction-table-container {
+              max-height: 400px;
+            }
+            
+            .table-responsive {
+              font-size: 0.875rem;
+            }
 
-                /* Ensure dropdown appears above other elements */
-                .dropdown-menu.show {
-                    z-index: 1050 !important;
-                }
+            .transaction-row:hover {
+              transform: none;
+            }
 
-                /* Scrollbar styling */
-                .transaction-table-container::-webkit-scrollbar {
-                    width: 6px;
-                }
+            .dropdown-item:hover {
+              transform: none;
+              padding-left: 1rem !important;
+            }
+          }
 
-                .transaction-table-container::-webkit-scrollbar-track {
-                    background: transparent;
-                }
+          @media (max-width: 576px) {
+            .transaction-table th,
+            .transaction-table td {
+              padding: 0.5rem 0.25rem;
+              font-size: 12px !important;
+            }
+            
+            .transaction-table th:first-child,
+            .transaction-table td:first-child {
+              padding-left: 0.75rem;
+            }
+            
+            .transaction-table th:last-child,
+            .transaction-table td:last-child {
+              padding-right: 0.75rem;
+            }
 
-                .transaction-table-container::-webkit-scrollbar-thumb {
-                    background: #dee2e6;
-                }
-
-                .transaction-table-container::-webkit-scrollbar-thumb:hover {
-                    background: #adb5bd;
-                }
-
-                /* Enhanced visual elements */
-                .badge {
-                    font-weight: 500 !important;
-                }
-
-                /* Responsive design */
-                @media (max-width: 768px) {
-                    .search-container {
-                        display: none;
-                    }
-                    
-                    .transaction-table-container {
-                        max-height: 400px;
-                    }
-                    
-                    .table-responsive {
-                        font-size: 0.875rem;
-                    }
-
-                    .transaction-row:hover {
-                        transform: none;
-                    }
-
-                    .dropdown-item:hover {
-                        transform: none;
-                        padding-left: 1rem !important;
-                    }
-                }
-
-                @media (max-width: 576px) {
-                    .transaction-table th,
-                    .transaction-table td {
-                        padding: 0.5rem 0.25rem;
-                        font-size: 12px !important;
-                    }
-                    
-                    .transaction-table th:first-child,
-                    .transaction-table td:first-child {
-                        padding-left: 0.75rem;
-                    }
-                    
-                    .transaction-table th:last-child,
-                    .transaction-table td:last-child {
-                        padding-right: 0.75rem;
-                    }
-
-                    .d-flex.justify-content-between {
-                        flex-direction: column;
-                        gap: 1rem;
-                    }
-
-                    .dropdown-menu {
-                        min-width: 160px;
-                    }
-                }
-                `}
+            .d-flex.justify-content-between {
+              flex-direction: column;
+              gap: 1rem;
+            }
+          }
+        `}
       </style>
     </>
   );

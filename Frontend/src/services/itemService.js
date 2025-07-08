@@ -187,6 +187,49 @@ class ItemService {
   }
 
   /**
+   * Get transactions for a specific item
+   * @param {string} companyId - Company ID
+   * @param {string} itemId - Item ID
+   * @param {Object} params - Query parameters
+   * @param {number} params.page - Page number
+   * @param {number} params.limit - Items per page
+   * @param {string} params.type - Transaction type filter ('sale', 'purchase', 'adjustment')
+   * @param {string} params.dateFrom - Start date filter
+   * @param {string} params.dateTo - End date filter
+   * @returns {Promise<Object>} Item transactions data
+   */
+  async getItemTransactions(companyId, itemId, params = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!itemId) {
+        throw new Error("Item ID is required");
+      }
+
+      const response = await apiClient.get(
+        `/api/companies/${companyId}/items/${itemId}/transactions`,
+        {
+          params: {
+            page: params.page || 1,
+            limit: params.limit || 50,
+            type: params.type || "",
+            dateFrom: params.dateFrom || "",
+            dateTo: params.dateTo || "",
+            sortBy: params.sortBy || "date",
+            sortOrder: params.sortOrder || "desc",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Update item
    * @param {string} companyId - Company ID
    * @param {string} itemId - Item ID

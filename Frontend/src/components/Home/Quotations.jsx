@@ -531,45 +531,83 @@ function Quotations({
     try {
       const quotationNumber =
         quotation.quotationNumber || quotation.orderNumber || quotation._id;
-      addToast?.(
-        `Preparing quotation ${quotationNumber} for printing...`,
-        "info"
+
+      // ✅ REMOVED: No "preparing quotation for printing" toast
+      // ✅ REMOVED: No "quotation sent to printer" toast
+
+      // Just call the print service without showing toasts
+      const response = await saleOrderService.getSalesOrderForPrint?.(
+        quotation._id || quotation.id,
+        {
+          template: "quotation",
+          format: "a4",
+        }
       );
-      setTimeout(() => {
-        addToast?.(`Quotation ${quotationNumber} sent to printer`, "success");
-      }, 1000);
+
+      if (response && response.success) {
+        // Let the SalesOrderTable component handle the print UI
+        return response;
+      }
     } catch (error) {
+      // Only show error toasts
       addToast?.(`Failed to print quotation: ${error.message}`, "error");
     }
   };
 
+  // ✅ FIXED: Remove toasts from handleShareQuotation function around line 545
   const handleShareQuotation = async (quotation) => {
     try {
       const quotationNumber =
         quotation.quotationNumber || quotation.orderNumber || quotation._id;
-      addToast?.(`Sharing quotation ${quotationNumber}...`, "info");
-      setTimeout(() => {
+
+      // ✅ REMOVED: No "sharing quotation" toast
+      // ✅ REMOVED: No "quotation shared successfully" toast
+
+      // Just call the share service without showing toasts
+      const response = await saleOrderService.shareOrder?.(
+        quotation._id || quotation.id,
+        {
+          method: "email",
+        }
+      );
+
+      if (response && response.success) {
+        // Only show final success message
         addToast?.(
           `Quotation ${quotationNumber} shared successfully`,
           "success"
         );
-      }, 1000);
+      }
     } catch (error) {
       addToast?.(`Failed to share quotation: ${error.message}`, "error");
     }
   };
 
+  // ✅ FIXED: Remove toasts from handleDownloadQuotation function around line 555
   const handleDownloadQuotation = async (quotation) => {
     try {
       const quotationNumber =
         quotation.quotationNumber || quotation.orderNumber || quotation._id;
-      addToast?.(`Downloading quotation ${quotationNumber}...`, "info");
-      setTimeout(() => {
+
+      // ✅ REMOVED: No "downloading quotation" toast
+      // ✅ REMOVED: No "quotation downloaded successfully" toast
+
+      // Just call the download service without showing toasts
+      const response = await saleOrderService.downloadSalesOrderPDF?.(
+        quotation._id || quotation.id,
+        {
+          template: "quotation",
+          format: "pdf",
+        }
+      );
+
+      if (response && response.success) {
+        // Only show final success message
         addToast?.(
           `Quotation ${quotationNumber} downloaded successfully`,
           "success"
         );
-      }, 1000);
+      }
     } catch (error) {
       addToast?.(`Failed to download quotation: ${error.message}`, "error");
     }
@@ -642,54 +680,6 @@ function Quotations({
       });
     } catch (error) {
       addToast?.(`Failed to load generated orders: ${error.message}`, "error");
-    }
-  };
-
-  const handleConfirmQuotation = async (quotation) => {
-    try {
-      const response = await saleOrderService.updateOrderStatus(
-        quotation._id || quotation.id,
-        "confirmed",
-        "Quotation confirmed from quotations page"
-      );
-
-      if (response.success) {
-        const quotationNumber =
-          quotation.quotationNumber || quotation.orderNumber || quotation._id;
-        addToast?.(
-          `Quotation ${quotationNumber} confirmed successfully`,
-          "success"
-        );
-        await loadQuotations();
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      addToast?.(`Failed to confirm quotation: ${error.message}`, "error");
-    }
-  };
-
-  const handleApproveQuotation = async (quotation) => {
-    try {
-      const response = await saleOrderService.updateOrderStatus(
-        quotation._id || quotation.id,
-        "approved",
-        "Quotation approved from quotations page"
-      );
-
-      if (response.success) {
-        const quotationNumber =
-          quotation.quotationNumber || quotation.orderNumber || quotation._id;
-        addToast?.(
-          `Quotation ${quotationNumber} approved successfully`,
-          "success"
-        );
-        await loadQuotations();
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      addToast?.(`Failed to approve quotation: ${error.message}`, "error");
     }
   };
 
@@ -991,8 +981,6 @@ function Quotations({
     );
   }
 
-  // ✅ FIXED: Update the main container and style to remove double scroll bars
-
   return (
     <div
       style={{
@@ -1250,8 +1238,6 @@ function Quotations({
                         documentType="quotation"
                         isQuotationsMode={true}
                         saleOrderService={saleOrderService}
-                        onConfirmOrder={handleConfirmQuotation}
-                        onApproveOrder={handleApproveQuotation}
                         onCancelOrder={handleCancelQuotation}
                         onViewTrackingChain={handleViewTrackingChain}
                         onViewSourceOrder={handleViewSourceOrder}
@@ -1396,8 +1382,6 @@ function Quotations({
                         documentType="quotation"
                         isQuotationsMode={true}
                         saleOrderService={saleOrderService}
-                        onConfirmOrder={handleConfirmQuotation}
-                        onApproveOrder={handleApproveQuotation}
                         onCancelOrder={handleCancelQuotation}
                         onViewTrackingChain={handleViewTrackingChain}
                         onViewSourceOrder={handleViewSourceOrder}

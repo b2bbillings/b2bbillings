@@ -906,7 +906,7 @@ function CompanyDashboard({
       </Modal>
 
       {/* Professional Styles */}
-      <style jsx>{`
+      <style>{`
         /* Company Dashboard Styles */
         .company-dashboard {
           background: transparent;

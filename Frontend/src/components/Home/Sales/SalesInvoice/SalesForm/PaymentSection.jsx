@@ -1044,7 +1044,7 @@ function PaymentSection({
         </Form.Group>
       </Card.Body>
 
-      <style jsx>{`
+      <style>{`
         .payment-option:checked + label {
           background-color: var(--bs-primary-bg-subtle);
           border-color: var(--bs-primary);

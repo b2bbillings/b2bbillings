@@ -28,6 +28,12 @@ import {
   faBoxes,
   faShoppingCart,
   faClipboardList,
+  faReceipt,
+  faShoppingBag,
+  faFileInvoice,
+  faExchangeAlt,
+  faChartBar,
+  faWarehouse,
 } from "@fortawesome/free-solid-svg-icons";
 
 import AdminSidebar from "./AdminSidebar";
@@ -35,12 +41,19 @@ import AdminStats from "./AdminStats";
 import AdminOverview from "./AdminOverview";
 import CompanyManagement from "./CompanyManagement";
 import UserManagement from "./UserManagement";
+import ItemManagement from "./ItemManagement";
 import SystemSettings from "./SystemSettings";
 import SecurityManagement from "./SecurityManagement";
 import DatabaseManagement from "./DatabaseManagement";
 import ReportsAnalytics from "./ReportsAnalytics";
 import UserDetailPage from "./UserDetail/UserDetailPage";
 import CompanyDetailPage from "./UserDetail/CompanyDetailPage";
+
+// Import the new management components
+import SalesInvoiceManagement from "./SalesInvoiceManegment";
+import SalesOrderManagement from "./SalesOrderManegment";
+import PurchaseInvoiceManagement from "./PurchaseInvoiceManegment";
+import PurchaseOrderManagement from "./PurchaseOrderManegment";
 
 // NotificationCenter component
 const NotificationCenter = ({adminData, currentUser, addToast}) => {
@@ -513,94 +526,13 @@ const Permissions = ({adminData, addToast}) => (
   </Container>
 );
 
-// Enhanced Product Management Component
-const ProductManagement = ({adminData, addToast}) => (
-  <Container fluid>
-    <div className="d-flex justify-content-between align-items-center mb-4">
-      <div>
-        <h4 className="mb-1">
-          <FontAwesomeIcon icon={faBoxes} className="me-2 text-primary" />
-          Product Management
-        </h4>
-        <p className="text-muted mb-0">
-          Manage your product inventory and catalog
-        </p>
-      </div>
-      <div className="d-flex gap-2">
-        <Button variant="outline-primary" size="sm">
-          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
-          Export Products
-        </Button>
-        <Button variant="primary">
-          <FontAwesomeIcon icon={faBoxes} className="me-2" />
-          Add Product
-        </Button>
-      </div>
-    </div>
-
-    <Row className="g-4 mb-4">
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-primary mb-2">1,245</h3>
-            <p className="text-muted mb-0">Total Products</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-success mb-2">1,198</h3>
-            <p className="text-muted mb-0">In Stock</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-warning mb-2">32</h3>
-            <p className="text-muted mb-0">Low Stock</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-danger mb-2">15</h3>
-            <p className="text-muted mb-0">Out of Stock</p>
-          </Card.Body>
-        </Card>
-      </Col>
-    </Row>
-
-    <Card className="border-0 shadow-sm">
-      <Card.Header className="bg-light border-0">
-        <h6 className="mb-0 fw-bold">Product Catalog Overview</h6>
-      </Card.Header>
-      <Card.Body className="text-center py-5">
-        <FontAwesomeIcon icon={faBoxes} className="fs-1 text-muted mb-3" />
-        <h5 className="text-muted">Product Catalog Management</h5>
-        <p className="text-muted mb-4">
-          Comprehensive product management including adding, editing, and
-          removing products, product categories and tags, pricing and stock
-          management.
-        </p>
-        <Button variant="primary">
-          <FontAwesomeIcon icon={faBoxes} className="me-2" />
-          Manage Products
-        </Button>
-      </Card.Body>
-    </Card>
-  </Container>
-);
-
 // Enhanced Inventory Management Component
 const InventoryManagement = ({adminData, addToast}) => (
   <Container fluid>
     <div className="d-flex justify-content-between align-items-center mb-4">
       <div>
         <h4 className="mb-1">
-          <FontAwesomeIcon icon={faDatabase} className="me-2 text-primary" />
+          <FontAwesomeIcon icon={faWarehouse} className="me-2 text-primary" />
           Inventory Management
         </h4>
         <p className="text-muted mb-0">
@@ -613,7 +545,7 @@ const InventoryManagement = ({adminData, addToast}) => (
           Export Inventory
         </Button>
         <Button variant="primary">
-          <FontAwesomeIcon icon={faDatabase} className="me-2" />
+          <FontAwesomeIcon icon={faWarehouse} className="me-2" />
           Stock Adjustment
         </Button>
       </div>
@@ -659,101 +591,15 @@ const InventoryManagement = ({adminData, addToast}) => (
         <h6 className="mb-0 fw-bold">Inventory Control Center</h6>
       </Card.Header>
       <Card.Body className="text-center py-5">
-        <FontAwesomeIcon icon={faDatabase} className="fs-1 text-muted mb-3" />
+        <FontAwesomeIcon icon={faWarehouse} className="fs-1 text-muted mb-3" />
         <h5 className="text-muted">Advanced Inventory Management</h5>
         <p className="text-muted mb-4">
           Stock level monitoring, low stock alerts, inventory tracking, and
           supplier management all in one place.
         </p>
         <Button variant="primary">
-          <FontAwesomeIcon icon={faDatabase} className="me-2" />
+          <FontAwesomeIcon icon={faWarehouse} className="me-2" />
           Manage Inventory
-        </Button>
-      </Card.Body>
-    </Card>
-  </Container>
-);
-
-// Enhanced Order Management Component
-const OrderManagement = ({adminData, addToast}) => (
-  <Container fluid>
-    <div className="d-flex justify-content-between align-items-center mb-4">
-      <div>
-        <h4 className="mb-1">
-          <FontAwesomeIcon
-            icon={faShoppingCart}
-            className="me-2 text-primary"
-          />
-          Order Management
-        </h4>
-        <p className="text-muted mb-0">
-          Manage customer orders and fulfillment
-        </p>
-      </div>
-      <div className="d-flex gap-2">
-        <Button variant="outline-primary" size="sm">
-          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
-          Export Orders
-        </Button>
-        <Button variant="primary">
-          <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-          Create Order
-        </Button>
-      </div>
-    </div>
-
-    <Row className="g-4 mb-4">
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-primary mb-2">2,840</h3>
-            <p className="text-muted mb-0">Total Orders</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-success mb-2">2,654</h3>
-            <p className="text-muted mb-0">Completed</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-warning mb-2">156</h3>
-            <p className="text-muted mb-0">Pending</p>
-          </Card.Body>
-        </Card>
-      </Col>
-      <Col lg={3} md={6}>
-        <Card className="border-0 shadow-sm text-center">
-          <Card.Body>
-            <h3 className="text-danger mb-2">30</h3>
-            <p className="text-muted mb-0">Cancelled</p>
-          </Card.Body>
-        </Card>
-      </Col>
-    </Row>
-
-    <Card className="border-0 shadow-sm">
-      <Card.Header className="bg-light border-0">
-        <h6 className="mb-0 fw-bold">Order Processing Center</h6>
-      </Card.Header>
-      <Card.Body className="text-center py-5">
-        <FontAwesomeIcon
-          icon={faShoppingCart}
-          className="fs-1 text-muted mb-3"
-        />
-        <h5 className="text-muted">Complete Order Management</h5>
-        <p className="text-muted mb-4">
-          Order processing workflow, status tracking, customer communication,
-          and shipping and delivery management.
-        </p>
-        <Button variant="primary">
-          <FontAwesomeIcon icon={faShoppingCart} className="me-2" />
-          Manage Orders
         </Button>
       </Card.Body>
     </Card>
@@ -786,8 +632,14 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       setActiveTab("products");
     } else if (path.includes("/inventory")) {
       setActiveTab("inventory");
-    } else if (path.includes("/orders")) {
-      setActiveTab("orders");
+    } else if (path.includes("/sales-invoices")) {
+      setActiveTab("sales-invoices");
+    } else if (path.includes("/sales-orders")) {
+      setActiveTab("sales-orders");
+    } else if (path.includes("/purchase-invoices")) {
+      setActiveTab("purchase-invoices");
+    } else if (path.includes("/purchase-orders")) {
+      setActiveTab("purchase-orders");
     } else if (path.includes("/staff")) {
       setActiveTab("staff");
     } else if (path.includes("/permissions")) {
@@ -824,7 +676,10 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         notifications: 8,
         alerts: 2,
         totalProducts: 1245,
-        totalOrders: 2840,
+        totalSalesInvoices: 2840,
+        totalSalesOrders: 1520,
+        totalPurchaseInvoices: 1890,
+        totalPurchaseOrders: 1420,
         totalRevenue: 245680,
         monthlyGrowth: 23.5,
       };
@@ -1015,8 +870,9 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
               <Route
                 path="/products"
                 element={
-                  <ProductManagement
+                  <ItemManagement
                     adminData={adminData}
+                    currentUser={currentUser}
                     addToast={addToast}
                   />
                 }
@@ -1030,12 +886,49 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
                   />
                 }
               />
+
+              {/* ✅ NEW MANAGEMENT ROUTES */}
               <Route
-                path="/orders"
+                path="/sales-invoices"
                 element={
-                  <OrderManagement adminData={adminData} addToast={addToast} />
+                  <SalesInvoiceManagement
+                    companyId={null}
+                    userRole="admin"
+                    isAdmin={true}
+                  />
                 }
               />
+              <Route
+                path="/sales-orders"
+                element={
+                  <SalesOrderManagement
+                    companyId={null}
+                    userRole="admin"
+                    isAdmin={true}
+                  />
+                }
+              />
+              <Route
+                path="/purchase-invoices"
+                element={
+                  <PurchaseInvoiceManagement
+                    companyId={null}
+                    userRole="admin"
+                    isAdmin={true}
+                  />
+                }
+              />
+              <Route
+                path="/purchase-orders"
+                element={
+                  <PurchaseOrderManagement
+                    companyId={null}
+                    userRole="admin"
+                    isAdmin={true}
+                  />
+                }
+              />
+
               <Route
                 path="/staff"
                 element={

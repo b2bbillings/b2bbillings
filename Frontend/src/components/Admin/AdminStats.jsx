@@ -1,5 +1,13 @@
 import React, {useState, useEffect} from "react";
-import {Row, Col, Card, Button, Alert, Spinner, ProgressBar} from "react-bootstrap";
+import {
+  Row,
+  Col,
+  Card,
+  Button,
+  Alert,
+  Spinner,
+  ProgressBar,
+} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faUsers,
@@ -91,17 +99,19 @@ function AdminStats({adminData, onRefresh, addToast}) {
             <h3 className="stat-value mb-1">{value}</h3>
             <p className="stat-title text-muted mb-0">{title}</p>
             {trend && (
-              <div className={`stat-trend ${trend.direction === "up" ? "text-success" : "text-danger"}`}>
-                <FontAwesomeIcon 
-                  icon={trend.direction === "up" ? faArrowUp : faArrowDown} 
-                  className="me-1" 
+              <div
+                className={`stat-trend ${
+                  trend.direction === "up" ? "text-success" : "text-danger"
+                }`}
+              >
+                <FontAwesomeIcon
+                  icon={trend.direction === "up" ? faArrowUp : faArrowDown}
+                  className="me-1"
                 />
                 {trend.value}
               </div>
             )}
-            {description && (
-              <small className="text-muted">{description}</small>
-            )}
+            {description && <small className="text-muted">{description}</small>}
           </div>
         </div>
       </Card.Body>
@@ -126,7 +136,13 @@ function AdminStats({adminData, onRefresh, addToast}) {
             {item.percentage !== undefined && (
               <ProgressBar
                 now={item.percentage}
-                variant={item.percentage > 80 ? "danger" : item.percentage > 60 ? "warning" : "success"}
+                variant={
+                  item.percentage > 80
+                    ? "danger"
+                    : item.percentage > 60
+                    ? "warning"
+                    : "success"
+                }
                 className="mb-2"
                 style={{height: "6px"}}
               />
@@ -152,7 +168,9 @@ function AdminStats({adminData, onRefresh, addToast}) {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h4 className="mb-1">System Overview</h4>
-          <p className="text-muted mb-0">Real-time system statistics and monitoring</p>
+          <p className="text-muted mb-0">
+            Real-time system statistics and monitoring
+          </p>
         </div>
         <Button
           variant="outline-primary"
@@ -160,9 +178,9 @@ function AdminStats({adminData, onRefresh, addToast}) {
           onClick={handleRefresh}
           disabled={isRefreshing}
         >
-          <FontAwesomeIcon 
-            icon={faRefresh} 
-            className={`me-2 ${isRefreshing ? "fa-spin" : ""}`} 
+          <FontAwesomeIcon
+            icon={faRefresh}
+            className={`me-2 ${isRefreshing ? "fa-spin" : ""}`}
           />
           Refresh
         </Button>
@@ -304,13 +322,17 @@ function AdminStats({adminData, onRefresh, addToast}) {
               <Row>
                 <Col sm={6}>
                   <div className="metric-item">
-                    <h4 className="text-primary">{systemStats.business.newRegistrations}</h4>
+                    <h4 className="text-primary">
+                      {systemStats.business.newRegistrations}
+                    </h4>
                     <p className="text-muted mb-0">New Registrations Today</p>
                   </div>
                 </Col>
                 <Col sm={6}>
                   <div className="metric-item">
-                    <h4 className="text-success">{systemStats.business.totalTransactions}</h4>
+                    <h4 className="text-success">
+                      {systemStats.business.totalTransactions}
+                    </h4>
                     <p className="text-muted mb-0">Total Transactions</p>
                   </div>
                 </Col>
@@ -325,7 +347,10 @@ function AdminStats({adminData, onRefresh, addToast}) {
             </Card.Header>
             <Card.Body>
               <Alert variant="warning" className="mb-2">
-                <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                <FontAwesomeIcon
+                  icon={faExclamationTriangle}
+                  className="me-2"
+                />
                 High memory usage detected (67%)
               </Alert>
               <Alert variant="info" className="mb-0">
@@ -338,7 +363,7 @@ function AdminStats({adminData, onRefresh, addToast}) {
       </Row>
 
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         .stat-card {
           border: none;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

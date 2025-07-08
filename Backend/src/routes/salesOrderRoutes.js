@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const salesOrderController = require("../controllers/salesOrderController");
-const purchaseOrderController = require("../controllers/purchaseOrderController"); // ✅ ADD THIS LINE
+
 // Middleware for validation
 const validateRequest = (req, res, next) => {
   next();
@@ -39,6 +39,59 @@ const validateOrderType = (req, res, next) => {
   }
   next();
 };
+
+// Admin validation middleware
+const validateAdmin = (req, res, next) => {
+  const userRole = req.user?.role || req.headers["x-user-role"];
+
+  if (!userRole || userRole !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+      code: "ADMIN_ACCESS_REQUIRED",
+    });
+  }
+
+  next();
+};
+
+// ==================== ADMIN ROUTES (MUST BE FIRST) ====================
+
+/**
+ * @route   GET /api/sales-orders/admin/all
+ * @desc    Get all sales orders for admin (across all companies)
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/all",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  salesOrderController.getAllSalesOrdersForAdmin
+);
+
+/**
+ * @route   GET /api/sales-orders/admin/stats
+ * @desc    Get sales order statistics for admin dashboard
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/stats",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  salesOrderController.getSalesOrderStatsForAdmin
+);
+
+/**
+ * @route   GET /api/sales-orders/admin/conversion-analysis
+ * @desc    Get conversion rate analysis for admin
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/conversion-analysis",
+  authenticate,
+  // validateAdmin, // Enable when you have proper admin validation
+  salesOrderController.getConversionRateAnalysisForAdmin
+);
 
 // ==================== UTILITY ROUTES (MUST BE FIRST) ====================
 
@@ -232,6 +285,18 @@ router.get(
   }
 );
 
+/**
+ * @route   GET /api/sales-orders/stats
+ * @desc    Get sales order statistics (company-specific)
+ * @access  Private
+ */
+router.get(
+  "/stats",
+  authenticate,
+  validateCompany,
+  salesOrderController.getDashboardSummary
+);
+
 // ==================== BIDIRECTIONAL FUNCTIONALITY ROUTES ====================
 
 /**
@@ -292,6 +357,54 @@ router.get(
   authenticate,
   validateCompany,
   salesOrderController.getBidirectionalPurchaseAnalytics
+);
+
+/**
+ * @route   PUT /api/sales-orders/:id/confirm
+ * @desc    Confirm a generated sales order (alternative method)
+ * @access  Private
+ */
+router.put(
+  "/:id/confirm",
+  authenticate,
+  validateRequest,
+  salesOrderController.confirmGeneratedSalesOrder
+);
+
+/**
+ * @route   POST /api/sales-orders/:id/confirm
+ * @desc    Confirm a generated sales order
+ * @access  Private
+ */
+router.post(
+  "/:id/confirm",
+  authenticate,
+  validateCompany,
+  salesOrderController.confirmGeneratedSalesOrder
+);
+
+/**
+ * @route   GET /api/sales-orders/needing-confirmation
+ * @desc    Get orders needing confirmation
+ * @access  Private
+ */
+router.get(
+  "/needing-confirmation",
+  authenticate,
+  validateCompany,
+  salesOrderController.getOrdersNeedingConfirmation
+);
+
+/**
+ * @route   POST /api/sales-orders/bulk/confirm
+ * @desc    Bulk confirm multiple orders
+ * @access  Private
+ */
+router.post(
+  "/bulk/confirm",
+  authenticate,
+  validateRequest,
+  salesOrderController.bulkConfirmOrders
 );
 
 /**
@@ -489,6 +602,72 @@ router.get(
   authenticate,
   validateCompany,
   salesOrderController.getSalesOrderGenerationStatus
+);
+
+// ==================== TRACKING ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/source-tracking/:salesOrderId
+ * @desc    Get sales order source tracking information
+ * @access  Private
+ */
+router.get(
+  "/source-tracking/:salesOrderId",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderSourceTracking
+);
+
+/**
+ * @route   GET /api/sales-orders/purchase-order-tracking/:purchaseOrderId
+ * @desc    Get purchase order source tracking information
+ * @access  Private
+ */
+router.get(
+  "/purchase-order-tracking/:purchaseOrderId",
+  authenticate,
+  validateRequest,
+  salesOrderController.getPurchaseOrderSourceTracking
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/tracking-chain
+ * @desc    Get complete tracking chain for a sales order
+ * @access  Private
+ */
+router.get(
+  "/:id/tracking-chain",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {id} = req.params;
+      const SalesOrder = require("../models/SalesOrder");
+
+      const salesOrder = await SalesOrder.findById(id);
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      const trackingChain = await salesOrder.getTrackingChain();
+
+      res.status(200).json({
+        success: true,
+        data: trackingChain,
+        message: "Tracking chain retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting tracking chain:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get tracking chain",
+        error: error.message,
+      });
+    }
+  }
 );
 
 // ==================== REPORTING ROUTES ====================
@@ -1441,82 +1620,51 @@ router.post(
 /**
  * 🔥 MAIN ROUTE: Get all sales orders with advanced filtering
  * @route   GET /api/sales-orders
- * @desc    Get all sales orders with pagination and filters
+ * @desc    Get all sales orders with pagination and filters (WITH ADMIN SUPPORT)
  * @access  Private
  * @query   companyId, orderType, status, search, dateFrom, dateTo, etc.
  */
-router.get(
-  "/",
-  authenticate,
-  validateCompany,
-  salesOrderController.getAllSalesOrders
-);
+router.get("/", authenticate, async (req, res) => {
+  try {
+    // ✅ Check if this is an admin request
+    const isAdminRequest =
+      req.query.isAdmin === "true" ||
+      req.query.includeAllCompanies === "true" ||
+      req.query.adminAccess === "true" ||
+      req.headers["x-admin-access"] === "true";
 
-// ==================== PARAMETERIZED ROUTES (MUST BE LAST) ====================
-
-/**
- * @route   GET /api/sales-orders/:id/tracking-chain
- * @desc    Get complete tracking chain for a sales order
- * @access  Private
- */
-router.get(
-  "/:id/tracking-chain",
-  authenticate,
-  validateRequest,
-  async (req, res) => {
-    try {
-      const {id} = req.params;
-      const SalesOrder = require("../models/SalesOrder");
-
-      const salesOrder = await SalesOrder.findById(id);
-      if (!salesOrder) {
-        return res.status(404).json({
+    if (isAdminRequest) {
+      return await salesOrderController.getAllSalesOrdersForAdmin(req, res);
+    } else {
+      // ✅ Check if company validation is needed for regular users
+      const companyId = req.query.companyId || req.body.companyId;
+      if (!companyId) {
+        return res.status(400).json({
           success: false,
-          message: "Sales order not found",
+          message: "Company ID is required for regular users",
+          code: "COMPANY_ID_REQUIRED",
         });
       }
 
-      const trackingChain = await salesOrder.getTrackingChain();
-
-      res.status(200).json({
-        success: true,
-        data: trackingChain,
-        message: "Tracking chain retrieved successfully",
-      });
-    } catch (error) {
-      console.error("Error getting tracking chain:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to get tracking chain",
-        error: error.message,
-      });
+      return await salesOrderController.getAllSalesOrders(req, res);
     }
+  } catch (error) {
+    console.error("❌ Error in sales orders main route:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+      data: {
+        salesOrders: [],
+        orders: [],
+        data: [],
+        count: 0,
+      },
+    });
   }
-);
+});
 
-/**
- * @route   GET /api/sales-orders/source-tracking/:salesOrderId
- * @desc    Get sales order source tracking information
- * @access  Private
- */
-router.get(
-  "/source-tracking/:salesOrderId",
-  authenticate,
-  validateRequest,
-  salesOrderController.getSalesOrderSourceTracking
-);
-
-/**
- * @route   GET /api/sales-orders/purchase-order-tracking/:purchaseOrderId
- * @desc    Get purchase order source tracking information
- * @access  Private
- */
-router.get(
-  "/purchase-order-tracking/:purchaseOrderId",
-  authenticate,
-  validateRequest,
-  salesOrderController.getPurchaseOrderSourceTracking
-);
+// ==================== PARAMETERIZED ROUTES (MUST BE LAST) ====================
 
 /**
  * @route   POST /api/sales-orders/:id/convert-to-invoice
@@ -1704,6 +1852,583 @@ router.delete(
   authenticate,
   validateRequest,
   salesOrderController.deleteSalesOrder
+);
+
+// ==================== PRINT AND DOCUMENT ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/print
+ * @desc    Get sales order for printing
+ * @access  Private
+ */
+router.get(
+  "/:id/print",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForPrint
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/email-data
+ * @desc    Get sales order data for email/PDF generation
+ * @access  Private
+ */
+router.get(
+  "/:id/email-data",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForEmail
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/download-pdf
+ * @desc    Generate and download sales order PDF
+ * @access  Private
+ */
+router.get(
+  "/:id/download-pdf",
+  authenticate,
+  validateRequest,
+  salesOrderController.downloadSalesOrderPDF
+);
+
+/**
+ * @route   POST /api/sales-orders/bulk-print
+ * @desc    Get multiple sales orders for bulk printing
+ * @access  Private
+ */
+router.post(
+  "/bulk-print",
+  authenticate,
+  validateRequest,
+  salesOrderController.getBulkSalesOrdersForPrint
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/qr-acceptance
+ * @desc    Get sales order for QR code acceptance
+ * @access  Private
+ */
+router.get(
+  "/:id/qr-acceptance",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForQRAcceptance
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/summary
+ * @desc    Get sales order summary for quick view
+ * @access  Private
+ */
+router.get(
+  "/:id/summary",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderSummary
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/quotation-print
+ * @desc    Get quotation for printing (specialized quotation format)
+ * @access  Private
+ */
+router.get(
+  "/:id/quotation-print",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    // Set template for quotation
+    req.query.template = "quotation";
+    next();
+  },
+  salesOrderController.getSalesOrderForPrint
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/proforma-print
+ * @desc    Get proforma invoice for printing
+ * @access  Private
+ */
+router.get(
+  "/:id/proforma-print",
+  authenticate,
+  validateRequest,
+  salesOrderController.getProformaInvoiceForPrint
+);
+
+// ==================== SPECIALIZED DOCUMENT TYPE ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/quotations/:id/print
+ * @desc    Get quotation for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/quotations/:id/print",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.template = "quotation";
+    req.query.format = req.query.format || "a4";
+    next();
+  },
+  salesOrderController.getSalesOrderForPrint
+);
+
+/**
+ * @route   GET /api/sales-orders/proforma/:id/print
+ * @desc    Get proforma invoice for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/proforma/:id/print",
+  authenticate,
+  validateRequest,
+  salesOrderController.getProformaInvoiceForPrint
+);
+
+/**
+ * @route   GET /api/sales-orders/orders/:id/print
+ * @desc    Get sales order for printing (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/orders/:id/print",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.template = "standard";
+    req.query.format = req.query.format || "a4";
+    next();
+  },
+  salesOrderController.getSalesOrderForPrint
+);
+
+// ==================== EMAIL AND PDF ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/email
+ * @desc    Get sales order data for email (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/email",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForEmail
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/pdf
+ * @desc    Generate PDF for sales order (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/pdf",
+  authenticate,
+  validateRequest,
+  salesOrderController.downloadSalesOrderPDF
+);
+
+/**
+ * @route   POST /api/sales-orders/bulk/print-data
+ * @desc    Get bulk print data for multiple orders (alternative endpoint)
+ * @access  Private
+ */
+router.post(
+  "/bulk/print-data",
+  authenticate,
+  validateRequest,
+  salesOrderController.getBulkSalesOrdersForPrint
+);
+
+// ==================== QR CODE AND ACCEPTANCE ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/qr
+ * @desc    Get QR code data for order acceptance (alternative endpoint)
+ * @access  Private
+ */
+router.get(
+  "/:id/qr",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForQRAcceptance
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/accept-qr
+ * @desc    Get order acceptance QR code data
+ * @access  Private
+ */
+router.get(
+  "/:id/accept-qr",
+  authenticate,
+  validateRequest,
+  salesOrderController.getSalesOrderForQRAcceptance
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/acceptance-link
+ * @desc    Get order acceptance link for sharing
+ * @access  Private
+ */
+router.get(
+  "/:id/acceptance-link",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales order ID format",
+        });
+      }
+
+      const salesOrder = await SalesOrder.findById(id).select(
+        "orderNumber orderType status validUntil"
+      );
+
+      if (!salesOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales order not found",
+        });
+      }
+
+      if (["accepted", "converted", "cancelled"].includes(salesOrder.status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Order cannot be accepted in current status",
+        });
+      }
+
+      const acceptanceLink = `${process.env.FRONTEND_URL}/order/accept/${id}`;
+
+      res.json({
+        success: true,
+        data: {
+          orderId: id,
+          orderNumber: salesOrder.orderNumber,
+          orderType: salesOrder.orderType,
+          status: salesOrder.status,
+          validUntil: salesOrder.validUntil,
+          acceptanceLink,
+          qrCodeUrl: `${process.env.BACKEND_URL}/api/sales-orders/${id}/qr`,
+          shareableText: `Please review and accept ${salesOrder.orderType} ${salesOrder.orderNumber}: ${acceptanceLink}`,
+        },
+        message: "Order acceptance link generated successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate acceptance link",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ==================== DOCUMENT FORMAT ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/formats/:format
+ * @desc    Get sales order in specific format (pdf, html, json)
+ * @access  Private
+ */
+router.get(
+  "/:id/formats/:format",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    const {id, format} = req.params;
+    const {template = "standard"} = req.query;
+
+    const validFormats = ["pdf", "html", "json", "csv"];
+    if (!validFormats.includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid format. Supported formats: " + validFormats.join(", "),
+      });
+    }
+
+    try {
+      switch (format) {
+        case "pdf":
+          return await salesOrderController.downloadSalesOrderPDF(req, res);
+        case "json":
+          req.query.template = template;
+          return await salesOrderController.getSalesOrderForPrint(req, res);
+        case "html":
+          req.query.template = "html";
+          req.query.format = "html";
+          return await salesOrderController.getSalesOrderForEmail(req, res);
+        case "csv":
+          return res.status(501).json({
+            success: false,
+            message: "CSV export for individual orders not implemented",
+            suggestion: "Use bulk export for CSV format",
+          });
+        default:
+          return res.status(400).json({
+            success: false,
+            message: "Unsupported format",
+          });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: `Failed to generate ${format} format`,
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ==================== TEMPLATE-SPECIFIC ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/templates/:template
+ * @desc    Get sales order with specific template
+ * @access  Private
+ */
+router.get(
+  "/:id/templates/:template",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    const validTemplates = [
+      "standard",
+      "professional",
+      "minimal",
+      "detailed",
+      "quotation",
+      "proforma",
+    ];
+    if (!validTemplates.includes(req.params.template)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid template. Supported templates: " + validTemplates.join(", "),
+      });
+    }
+    req.query.template = req.params.template;
+    next();
+  },
+  salesOrderController.getSalesOrderForPrint
+);
+
+// ==================== PREVIEW ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/preview
+ * @desc    Get sales order preview data
+ * @access  Private
+ */
+router.get(
+  "/:id/preview",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.template = "preview";
+    req.query.format = "html";
+    next();
+  },
+  salesOrderController.getSalesOrderForEmail
+);
+
+/**
+ * @route   GET /api/sales-orders/:id/print-preview
+ * @desc    Get sales order print preview
+ * @access  Private
+ */
+router.get(
+  "/:id/print-preview",
+  authenticate,
+  validateRequest,
+  (req, res, next) => {
+    req.query.template = req.query.template || "standard";
+    req.query.format = "a4";
+    req.query.preview = "true";
+    next();
+  },
+  salesOrderController.getSalesOrderForPrint
+);
+
+// ==================== SHARING ROUTES ====================
+
+/**
+ * @route   GET /api/sales-orders/:id/share
+ * @desc    Get shareable data for sales order
+ * @access  Private
+ */
+router.get("/:id/share", authenticate, validateRequest, async (req, res) => {
+  try {
+    const {id} = req.params;
+    const {method = "link"} = req.query; // link, qr, email
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid sales order ID format",
+      });
+    }
+
+    const salesOrder = await SalesOrder.findById(id)
+      .populate("customer", "name mobile email")
+      .populate("companyId", "businessName")
+      .select(
+        "orderNumber orderType status validUntil totals customer companyId"
+      );
+
+    if (!salesOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales order not found",
+      });
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const shareData = {
+      orderId: id,
+      orderNumber: salesOrder.orderNumber,
+      orderType: salesOrder.orderType,
+      status: salesOrder.status,
+      companyName: salesOrder.companyId?.businessName,
+      customerName: salesOrder.customer?.name,
+      amount: salesOrder.totals?.finalTotal,
+      validUntil: salesOrder.validUntil,
+
+      links: {
+        view: `${baseUrl}/sales-orders/${id}`,
+        accept: `${baseUrl}/order/accept/${id}`,
+        print: `${baseUrl}/sales-orders/${id}/print`,
+        pdf: `${process.env.BACKEND_URL}/api/sales-orders/${id}/pdf`,
+      },
+
+      sharing: {
+        whatsapp: `https://wa.me/${salesOrder.customer?.mobile}?text=Please review ${salesOrder.orderType} ${salesOrder.orderNumber}: ${baseUrl}/order/accept/${id}`,
+        email: `mailto:${salesOrder.customer?.email}?subject=${salesOrder.orderType} ${salesOrder.orderNumber}&body=Please review and accept: ${baseUrl}/order/accept/${id}`,
+        sms: `sms:${salesOrder.customer?.mobile}?body=Please review ${salesOrder.orderType} ${salesOrder.orderNumber}: ${baseUrl}/order/accept/${id}`,
+      },
+
+      qrCode:
+        method === "qr"
+          ? {
+              acceptanceUrl: `${baseUrl}/order/accept/${id}`,
+              qrApiUrl: `${process.env.BACKEND_URL}/api/sales-orders/${id}/qr`,
+            }
+          : null,
+    };
+
+    res.json({
+      success: true,
+      data: shareData,
+      message: "Sharing data generated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate sharing data",
+      error: error.message,
+    });
+  }
+});
+
+// ==================== QUICK ACTION ROUTES ====================
+
+/**
+ * @route   POST /api/sales-orders/:id/quick-actions
+ * @desc    Perform quick actions on sales order
+ * @access  Private
+ */
+router.post(
+  "/:id/quick-actions",
+  authenticate,
+  validateRequest,
+  async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {action, ...actionData} = req.body;
+
+      const validActions = [
+        "print",
+        "email",
+        "share",
+        "duplicate",
+        "send",
+        "accept",
+        "reject",
+        "convert",
+      ];
+
+      if (!validActions.includes(action)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid action. Valid actions: " + validActions.join(", "),
+        });
+      }
+
+      // Route to appropriate controller method based on action
+      switch (action) {
+        case "print":
+          req.query.template = actionData.template || "standard";
+          req.query.format = actionData.format || "a4";
+          return await salesOrderController.getSalesOrderForPrint(req, res);
+
+        case "email":
+          req.query.template = actionData.template || "professional";
+          req.query.includePaymentLink = actionData.includePaymentLink || false;
+          return await salesOrderController.getSalesOrderForEmail(req, res);
+
+        case "share":
+          // Redirect to share endpoint
+          req.url = `/${id}/share`;
+          req.query.method = actionData.method || "link";
+          return router.handle(req, res);
+
+        case "send":
+          req.body.status = "sent";
+          return await salesOrderController.updateStatus(req, res);
+
+        case "accept":
+          req.body.status = "accepted";
+          return await salesOrderController.updateStatus(req, res);
+
+        case "reject":
+          req.body.status = "rejected";
+          req.body.reason = actionData.reason || "Customer rejected";
+          return await salesOrderController.updateStatus(req, res);
+
+        case "convert":
+          return await salesOrderController.convertToInvoice(req, res);
+
+        case "duplicate":
+          // Implementation for duplicating order would go here
+          return res.status(501).json({
+            success: false,
+            message: "Duplicate action not yet implemented",
+          });
+
+        default:
+          return res.status(400).json({
+            success: false,
+            message: "Action not implemented",
+          });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to perform quick action",
+        error: error.message,
+      });
+    }
+  }
 );
 
 module.exports = router;

@@ -25,6 +25,10 @@ import {
   faShoppingCart,
   faWarehouse,
   faClipboardList,
+  faFileInvoice,
+  faFileInvoiceDollar,
+  faMoneyBillWave,
+  faReceipt,
 } from "@fortawesome/free-solid-svg-icons";
 
 function AdminSidebar({
@@ -43,11 +47,25 @@ function AdminSidebar({
     system: false,
   });
 
+  // State for managing dropdown menus
+  const [expandedDropdowns, setExpandedDropdowns] = useState({
+    orders: false,
+    invoices: false,
+  });
+
   // Toggle section expansion
   const toggleSection = (section) => {
     setExpandedSections((prev) => ({
       ...prev,
       [section]: !prev[section],
+    }));
+  };
+
+  // Toggle dropdown expansion
+  const toggleDropdown = (dropdown) => {
+    setExpandedDropdowns((prev) => ({
+      ...prev,
+      [dropdown]: !prev[dropdown],
     }));
   };
 
@@ -111,12 +129,51 @@ function AdminSidebar({
       section: "sales",
       title: "Sales & Operations",
       items: [
+        // Orders with dropdown
         {
           key: "orders",
           label: "Orders",
           icon: faShoppingCart,
           badge: null,
           description: "Order management and tracking",
+          hasDropdown: true,
+          dropdownItems: [
+            {
+              key: "sales-orders",
+              label: "Sales Orders",
+              icon: faMoneyBillWave,
+              description: "Manage sales orders",
+            },
+            {
+              key: "purchase-orders",
+              label: "Purchase Orders",
+              icon: faShoppingCart,
+              description: "Manage purchase orders",
+            },
+          ],
+        },
+        // Invoices with dropdown
+        {
+          key: "invoices",
+          label: "Invoices",
+          icon: faFileInvoice,
+          badge: null,
+          description: "Invoice management and billing",
+          hasDropdown: true,
+          dropdownItems: [
+            {
+              key: "sales-invoices",
+              label: "Sales Invoices",
+              icon: faFileInvoiceDollar,
+              description: "Manage sales invoices",
+            },
+            {
+              key: "purchase-invoices",
+              label: "Purchase Invoices",
+              icon: faReceipt,
+              description: "Manage purchase invoices",
+            },
+          ],
         },
         {
           key: "reports",
@@ -180,50 +237,468 @@ function AdminSidebar({
     },
   ];
 
-  // Render navigation item
-  const renderNavItem = (item, isMain = false) => {
+  // Generate CSS styles
+  const getStyles = () => `
+    .admin-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      width: ${isCollapsed ? "70px" : "280px"};
+      background: linear-gradient(180deg, #4e73df 0%, #3a5bd7 100%);
+      transition: width 0.3s ease;
+      z-index: 1000;
+      overflow-y: auto;
+      overflow-x: hidden;
+      color: white;
+    }
+
+    .admin-sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .admin-sidebar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .admin-sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 2px;
+    }
+
+    .admin-sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Header */
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 15px;
+      height: 70px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      margin: 0;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 1.5rem;
+      letter-spacing: 1px;
+      transition: opacity 0.3s ease;
+      color: white;
+    }
+
+    .sidebar-toggle-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.9);
+      padding: 8px;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sidebar-toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+      color: white;
+    }
+
+    /* Menu */
+    .sidebar-menu {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 70px);
+      padding: 15px 0;
+    }
+
+    .sidebar-main-nav {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 15px;
+      margin-bottom: 15px;
+    }
+
+    .sidebar-sections {
+      flex-grow: 1;
+    }
+
+    .sidebar-logout {
+      margin-top: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 15px;
+    }
+
+    /* Lists */
+    .sidebar-nav-list,
+    .sidebar-dropdown-list {
+      list-style: none;
+      margin: 0;
+      padding: 0 10px;
+    }
+
+    .sidebar-dropdown-list {
+      padding: 0 20px;
+    }
+
+    /* Navigation Items */
+    .sidebar-nav-item,
+    .sidebar-dropdown-item {
+      margin: 2px 0;
+    }
+
+    .sidebar-nav-link,
+    .sidebar-dropdown-link {
+      display: flex;
+      align-items: center;
+      padding: 12px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: rgba(255, 255, 255, 0.85);
+      text-decoration: none;
+    }
+
+    .sidebar-dropdown-link {
+      padding: 8px 15px 8px 45px;
+      font-size: 0.9rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 2px solid rgba(255, 255, 255, 0.3);
+      margin-left: 10px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Hover Effects */
+    .sidebar-nav-link:hover,
+    .sidebar-dropdown-link:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      transform: translateX(5px);
+    }
+
+    .sidebar-dropdown-link:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-left-color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Active States */
+    .sidebar-nav-item.active .sidebar-nav-link,
+    .sidebar-dropdown-item.active .sidebar-dropdown-link {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .sidebar-dropdown-item.active .sidebar-dropdown-link {
+      background: rgba(255, 255, 255, 0.25);
+      border-left-color: white;
+    }
+
+    /* Icons and Labels - IMPROVED VISIBILITY */
+    .sidebar-icon {
+      width: 20px;
+      text-align: center;
+      font-size: ${isCollapsed ? "1.3rem" : "1.1rem"};
+      margin-right: ${isCollapsed ? "0" : "12px"};
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    /* Icon hover effects */
+    .sidebar-nav-link:hover .sidebar-icon,
+    .sidebar-dropdown-link:hover .sidebar-icon {
+      color: white;
+      transform: scale(1.1);
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+    }
+
+    /* Active icon styling */
+    .sidebar-nav-item.active .sidebar-icon,
+    .sidebar-dropdown-item.active .sidebar-icon {
+      color: white;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+    }
+
+    .sidebar-label {
+      flex-grow: 1;
+      font-weight: 500;
+    }
+
+    .sidebar-badge {
+      margin-right: 8px;
+      font-size: 0.7rem;
+      animation: pulse 2s infinite;
+    }
+
+    .sidebar-chevron {
+      font-size: 0.8rem;
+      transition: transform 0.3s ease;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .sidebar-nav-link:hover .sidebar-chevron {
+      transform: scale(1.1);
+      color: white;
+    }
+
+    /* Sections */
+    .sidebar-section {
+      margin-bottom: 15px;
+    }
+
+    .sidebar-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 15px;
+      margin: 0 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .sidebar-section-header:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .sidebar-section-title {
+      color: rgba(255, 255, 255, 0.8);
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-section-chevron {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.7rem;
+    }
+
+    /* Dropdown Container */
+    .sidebar-dropdown-container {
+      margin-top: 5px;
+    }
+
+    /* Logout Special Styling */
+    .logout-link {
+      transition: all 0.3s ease;
+    }
+
+    .logout-link:hover {
+      background: rgba(255, 107, 107, 0.15) !important;
+      color: #ff6b6b !important;
+    }
+
+    .logout-link:hover .sidebar-icon {
+      color: #ff6b6b !important;
+      transform: scale(1.15);
+      text-shadow: 0 0 10px rgba(255, 107, 107, 0.4);
+    }
+
+    /* Tooltips for collapsed state */
+    .admin-sidebar.collapsed .sidebar-nav-link[title]:hover::before,
+    .admin-sidebar.collapsed .sidebar-dropdown-link[title]:hover::before {
+      content: attr(title);
+      position: fixed;
+      left: 80px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      z-index: 1001;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Enhanced collapsed state icon visibility */
+    .admin-sidebar.collapsed .sidebar-icon {
+      font-size: 1.4rem;
+      color: rgba(255, 255, 255, 0.95);
+      font-weight: 600;
+    }
+
+    .admin-sidebar.collapsed .sidebar-nav-link:hover .sidebar-icon {
+      color: white;
+      transform: scale(1.2);
+      text-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+    }
+
+    .admin-sidebar.collapsed .sidebar-nav-item.active .sidebar-icon {
+      color: white;
+      text-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+    }
+
+    /* Badge styling improvements */
+    .sidebar-badge {
+      background: rgba(255, 255, 255, 0.9) !important;
+      color: #4e73df !important;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    /* Animations */
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.05);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* Glow effect for active items */
+    @keyframes glow {
+      0% {
+        box-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+      }
+      50% {
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+      }
+      100% {
+        box-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+      }
+    }
+
+    .sidebar-nav-item.active .sidebar-nav-link,
+    .sidebar-dropdown-item.active .sidebar-dropdown-link {
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+
+    /* Mobile responsiveness */
+    @media (max-width: 767px) {
+      .admin-sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .admin-sidebar.show {
+        transform: translateX(0);
+      }
+
+      /* Better icon visibility on mobile */
+      .sidebar-icon {
+        font-size: 1.2rem;
+        color: rgba(255, 255, 255, 0.95);
+      }
+    }
+
+    /* Additional contrast improvements */
+    .sidebar-nav-link,
+    .sidebar-dropdown-link {
+      border: 1px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar-nav-link:hover,
+    .sidebar-dropdown-link:hover {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .sidebar-nav-item.active .sidebar-nav-link,
+    .sidebar-dropdown-item.active .sidebar-dropdown-link {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+  `;
+
+  // Render dropdown item
+  const renderDropdownItem = (item, parentKey) => {
     const isActive = activeTab === item.key;
 
     return (
-      <li key={item.key} className={`nav-item ${isActive ? "active" : ""}`}>
-        <a
-          href="#"
-          className={`nav-link d-flex align-items-center ${
-            isActive ? "text-white fw-bold" : "text-white-50"
-          }`}
+      <li
+        key={item.key}
+        className={`sidebar-dropdown-item ${isActive ? "active" : ""}`}
+      >
+        <div
+          className="sidebar-dropdown-link"
           onClick={(e) => {
             e.preventDefault();
             onTabChange(item.key);
           }}
           title={isCollapsed ? item.description : ""}
-          style={{
-            padding: "12px 15px",
-            transition: "all 0.3s ease",
-            borderRadius: "8px",
-            margin: "2px 0",
-          }}
         >
-          <FontAwesomeIcon
-            icon={item.icon}
-            className={`${isCollapsed ? "text-center" : "me-3"}`}
-            style={{width: "20px", fontSize: isCollapsed ? "1.2rem" : "1rem"}}
-          />
-          {!isCollapsed && (
-            <>
-              <span className="flex-grow-1">{item.label}</span>
-              {item.badge !== null && item.badge > 0 && (
-                <Badge
-                  bg={item.badgeVariant || "primary"}
-                  className="ms-auto"
-                  style={{fontSize: "0.7rem"}}
-                >
-                  {item.badge > 99 ? "99+" : item.badge}
-                </Badge>
-              )}
-            </>
-          )}
-        </a>
+          <FontAwesomeIcon icon={item.icon} className="sidebar-icon" />
+          {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
+        </div>
       </li>
+    );
+  };
+
+  // Render navigation item
+  const renderNavItem = (item, isMain = false) => {
+    const isActive = activeTab === item.key;
+    const hasDropdown = item.hasDropdown;
+    const isDropdownExpanded = expandedDropdowns[item.key];
+
+    return (
+      <div key={item.key}>
+        <li className={`sidebar-nav-item ${isActive ? "active" : ""}`}>
+          <div
+            className="sidebar-nav-link"
+            onClick={(e) => {
+              e.preventDefault();
+              if (hasDropdown && !isCollapsed) {
+                toggleDropdown(item.key);
+              } else {
+                onTabChange(item.key);
+              }
+            }}
+            title={isCollapsed ? item.description : ""}
+          >
+            <FontAwesomeIcon icon={item.icon} className="sidebar-icon" />
+            {!isCollapsed && (
+              <>
+                <span className="sidebar-label">{item.label}</span>
+                {item.badge !== null && item.badge > 0 && (
+                  <Badge
+                    bg={item.badgeVariant || "primary"}
+                    className="sidebar-badge"
+                  >
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </Badge>
+                )}
+                {hasDropdown && (
+                  <FontAwesomeIcon
+                    icon={isDropdownExpanded ? faChevronDown : faChevronRight}
+                    className="sidebar-chevron"
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </li>
+
+        {/* Dropdown items */}
+        {hasDropdown && !isCollapsed && (
+          <Collapse in={isDropdownExpanded}>
+            <div className="sidebar-dropdown-container">
+              <ul className="sidebar-dropdown-list">
+                {item.dropdownItems.map((dropdownItem) =>
+                  renderDropdownItem(dropdownItem, item.key)
+                )}
+              </ul>
+            </div>
+          </Collapse>
+        )}
+      </div>
     );
   };
 
@@ -232,42 +707,23 @@ function AdminSidebar({
     const isExpanded = expandedSections[section.section];
 
     return (
-      <div key={section.section} className="mb-3">
+      <div key={section.section} className="sidebar-section">
         {!isCollapsed && (
           <div
-            className="px-3 py-2 d-flex justify-content-between align-items-center"
+            className="sidebar-section-header"
             onClick={() => toggleSection(section.section)}
-            style={{
-              cursor: "pointer",
-              backgroundColor: "rgba(255, 255, 255, 0.05)",
-              borderRadius: "6px",
-              margin: "0 10px",
-              transition: "background-color 0.3s ease",
-            }}
-            onMouseEnter={(e) =>
-              (e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)")
-            }
-            onMouseLeave={(e) =>
-              (e.target.style.backgroundColor = "rgba(255, 255, 255, 0.05)")
-            }
           >
-            <small
-              className="text-white-50 fw-bold text-uppercase"
-              style={{fontSize: "0.75rem", letterSpacing: "0.5px"}}
-            >
-              {section.title}
-            </small>
+            <small className="sidebar-section-title">{section.title}</small>
             <FontAwesomeIcon
               icon={isExpanded ? faChevronDown : faChevronRight}
-              className="text-white-50"
-              style={{fontSize: "0.7rem"}}
+              className="sidebar-section-chevron"
             />
           </div>
         )}
 
         <Collapse in={isExpanded || isCollapsed}>
           <div>
-            <ul className="nav flex-column px-2">
+            <ul className="sidebar-nav-list">
               {section.items.map((item) => renderNavItem(item))}
             </ul>
           </div>
@@ -278,59 +734,16 @@ function AdminSidebar({
 
   return (
     <>
-      <div
-        className={`bg-primary position-fixed top-0 start-0 h-100 admin-sidebar ${
-          isCollapsed ? "" : ""
-        }`}
-        style={{
-          width: isCollapsed ? "70px" : "280px",
-          background: "linear-gradient(180deg, #4e73df 0%, #3a5bd7 100%)",
-          transition: "width 0.3s ease",
-          zIndex: 1000,
-          overflowY: "auto",
-          overflowX: "hidden",
-        }}
-      >
+      <div className={`admin-sidebar ${isCollapsed ? "collapsed" : ""}`}>
         {/* Sidebar Header */}
-        <div
-          className="d-flex align-items-center justify-content-between text-white px-3"
-          style={{
-            height: "70px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-            flexShrink: 0,
-          }}
-        >
-          <h3
-            className={`mb-0 fw-bold text-uppercase ${
-              isCollapsed ? "d-none" : ""
-            }`}
-            style={{
-              fontSize: "1.5rem",
-              letterSpacing: "1px",
-              transition: "opacity 0.3s ease",
-            }}
-          >
+        <div className="sidebar-header">
+          <h3 className={`sidebar-title ${isCollapsed ? "d-none" : ""}`}>
             Management
           </h3>
           <button
-            className="btn text-white p-2 rounded-circle"
+            className="sidebar-toggle-btn"
             onClick={onToggleCollapse}
             aria-label="Toggle Sidebar"
-            style={{
-              backgroundColor: "transparent",
-              border: "none",
-              width: "36px",
-              height: "36px",
-              transition: "all 0.3s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-              e.target.style.transform = "scale(1.1)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = "transparent";
-              e.target.style.transform = "scale(1)";
-            }}
           >
             <FontAwesomeIcon
               icon={isCollapsed ? faAnglesRight : faAnglesLeft}
@@ -339,172 +752,46 @@ function AdminSidebar({
         </div>
 
         {/* Sidebar Menu */}
-        <div
-          className="py-3"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "calc(100vh - 70px)",
-          }}
-        >
+        <div className="sidebar-menu">
           {/* Main Navigation */}
-          <div
-            className="px-2 mb-3"
-            style={{
-              borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-              paddingBottom: "15px",
-            }}
-          >
-            <ul className="nav flex-column">
+          <div className="sidebar-main-nav">
+            <ul className="sidebar-nav-list">
               {mainNavItems.map((item) => renderNavItem(item, true))}
             </ul>
           </div>
 
           {/* Additional Sections */}
-          <div className="flex-grow-1">
+          <div className="sidebar-sections">
             {navigationSections.map(renderSection)}
           </div>
 
           {/* Logout Section */}
-          <div className="mt-auto px-2">
-            <ul className="nav flex-column">
-              <li
-                className="nav-item"
-                style={{
-                  borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                  paddingTop: "15px",
-                }}
-              >
-                <a
-                  href="#"
-                  className="nav-link d-flex align-items-center text-white-50"
+          <div className="sidebar-logout">
+            <ul className="sidebar-nav-list">
+              <li className="sidebar-nav-item">
+                <div
+                  className="sidebar-nav-link logout-link"
                   onClick={(e) => {
                     e.preventDefault();
                     onLogout();
                   }}
-                  style={{
-                    padding: "12px 15px",
-                    transition: "all 0.3s ease",
-                    borderRadius: "8px",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.color = "#ff6b6b";
-                    e.target.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.color = "rgba(255, 255, 255, 0.5)";
-                    e.target.style.backgroundColor = "transparent";
-                  }}
                 >
                   <FontAwesomeIcon
                     icon={faSignOutAlt}
-                    className={`${isCollapsed ? "text-center" : "me-3"}`}
-                    style={{
-                      width: "20px",
-                      fontSize: isCollapsed ? "1.2rem" : "1rem",
-                    }}
+                    className="sidebar-icon"
                   />
-                  {!isCollapsed && <span>Logout</span>}
-                </a>
+                  {!isCollapsed && (
+                    <span className="sidebar-label">Logout</span>
+                  )}
+                </div>
               </li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Custom Styles */}
-      <style>
-        {`
-          .admin-sidebar::-webkit-scrollbar {
-            width: 4px;
-          }
-          .admin-sidebar::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-          }
-          .admin-sidebar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 2px;
-          }
-          .admin-sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.5);
-          }
-
-          /* Mobile responsiveness */
-          @media (max-width: 767px) {
-            .admin-sidebar {
-              transform: translateX(-100%);
-              transition: transform 0.3s ease;
-            }
-            .admin-sidebar.show {
-              transform: translateX(0);
-            }
-          }
-
-          /* Hover effects for nav items */
-          .admin-sidebar .nav-link:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white !important;
-            transform: translateX(5px);
-          }
-
-          .admin-sidebar .nav-item.active .nav-link {
-            background-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          }
-
-          /* Smooth animations */
-          .admin-sidebar .nav-link,
-          .admin-sidebar .nav-item {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-
-          /* Badge animations */
-          .admin-sidebar .badge {
-            animation: pulse 2s infinite;
-          }
-
-          @keyframes pulse {
-            0% {
-              transform: scale(1);
-            }
-            50% {
-              transform: scale(1.05);
-            }
-            100% {
-              transform: scale(1);
-            }
-          }
-
-          /* Collapsed state improvements */
-          .admin-sidebar .nav-link[title]:hover::after {
-            content: attr(title);
-            position: absolute;
-            left: 80px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            white-space: nowrap;
-            z-index: 1001;
-            opacity: 0;
-            animation: fadeIn 0.3s ease forwards;
-          }
-
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-              transform: translateY(-50%) translateX(-10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(-50%) translateX(0);
-            }
-          }
-        `}
-      </style>
+      {/* CSS Styles */}
+      <style dangerouslySetInnerHTML={{__html: getStyles()}} />
     </>
   );
 }

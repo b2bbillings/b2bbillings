@@ -25,8 +25,6 @@ const healthCheck = async (req, res) => {
 
 const getAllCompaniesAdmin = async (req, res) => {
   try {
-    console.log("🔍 Admin access - Development Mode (No Auth Required)");
-
     const {
       page = 1,
       limit = 50,
@@ -151,8 +149,6 @@ const getAllCompaniesAdmin = async (req, res) => {
       ),
     }));
 
-    console.log(`✅ Admin: Retrieved ${formattedCompanies.length} companies`);
-
     res.json({
       success: true,
       message: `Retrieved ${formattedCompanies.length} companies for admin dashboard`,
@@ -178,8 +174,6 @@ const getAllCompaniesAdmin = async (req, res) => {
 };
 const getAdminCompanyStats = async (req, res) => {
   try {
-    console.log("📊 Admin stats access - Development Mode");
-
     // ✅ Get company statistics
     const totalCompanies = await Company.countDocuments();
     const activeCompanies = await Company.countDocuments({isActive: true});
@@ -255,8 +249,6 @@ const getAdminCompanyStats = async (req, res) => {
         count: item.count,
       })),
     };
-
-    console.log("✅ Admin stats calculated successfully");
 
     res.json({
       success: true,
@@ -668,8 +660,23 @@ const createCompany = async (req, res) => {
   }
 };
 
+// Update the getAllCompanies method (around line 622):
+
 const getAllCompanies = async (req, res) => {
   try {
+    // ✅ CRITICAL FIX: Check if this is an admin request
+    const isAdminRequest =
+      req.query.isAdmin === "true" ||
+      req.query.includeAllCompanies === "true" ||
+      req.headers["x-admin-access"] === "true" ||
+      req.path.includes("/admin/");
+
+    // ✅ For admin requests, skip user authentication requirement
+    if (isAdminRequest) {
+      return await getAllCompaniesAdmin(req, res);
+    }
+
+    // ✅ For regular requests, require authentication
     if (!req.user || !req.user.id) {
       return res.status(401).json({
         success: false,
@@ -681,83 +688,100 @@ const getAllCompanies = async (req, res) => {
 
     const {
       page = 1,
-      limit = 10,
+      limit = 50,
       search = "",
       businessType = "",
       businessCategory = "",
       state = "",
       city = "",
-      isActive = "true",
+      isActive = "",
     } = req.query;
 
-    const filter = {
+    // ✅ Build user-specific filter
+    const baseFilter = {
       $or: [
         {owner: req.user.id},
-        {"users.user": req.user.id, "users.isActive": true},
+        {
+          "users.user": req.user.id,
+          "users.isActive": true,
+        },
       ],
     };
 
+    // ✅ Add search filter
     if (search && search.trim()) {
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          {businessName: {$regex: search.trim(), $options: "i"}},
-          {email: {$regex: search.trim(), $options: "i"}},
-          {phoneNumber: {$regex: search.trim(), $options: "i"}},
-          {gstin: {$regex: search.trim(), $options: "i"}},
-          {ownerName: {$regex: search.trim(), $options: "i"}},
-        ],
-      });
+      baseFilter.$and = [
+        {
+          $or: [
+            {businessName: {$regex: search.trim(), $options: "i"}},
+            {email: {$regex: search.trim(), $options: "i"}},
+            {phoneNumber: {$regex: search.trim(), $options: "i"}},
+            {gstin: {$regex: search.trim(), $options: "i"}},
+            {ownerName: {$regex: search.trim(), $options: "i"}},
+          ],
+        },
+      ];
     }
 
-    if (businessType) {
-      filter.businessType = businessType;
+    // ✅ Apply additional filters
+    if (businessType && businessType.trim()) {
+      baseFilter.businessType = businessType;
     }
 
-    if (businessCategory) {
-      filter.businessCategory = businessCategory;
+    if (businessCategory && businessCategory.trim()) {
+      baseFilter.businessCategory = businessCategory;
     }
 
-    if (state) {
-      filter.state = {$regex: state, $options: "i"};
+    if (state && state.trim()) {
+      baseFilter.state = {$regex: state.trim(), $options: "i"};
     }
 
-    if (city) {
-      filter.city = {$regex: city, $options: "i"};
+    if (city && city.trim()) {
+      baseFilter.city = {$regex: city.trim(), $options: "i"};
     }
 
-    if (isActive !== "") {
-      filter.isActive = isActive === "true";
+    if (isActive !== "" && isActive !== undefined) {
+      baseFilter.isActive = isActive === "true";
     }
 
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10)));
     const skip = (pageNum - 1) * limitNum;
 
-    const companies = await Company.find(filter)
-      .select("-__v -logo.base64 -signatureImage.base64")
-      .populate("owner", "name email")
-      .sort({createdAt: -1})
-      .skip(skip)
-      .limit(limitNum);
+    // ✅ Execute database query
+    let companies, total;
 
-    const total = await Company.countDocuments(filter);
+    try {
+      companies = await Company.find(baseFilter)
+        .select("-__v -logo.base64 -signatureImage.base64")
+        .populate("owner", "name email")
+        .sort({createdAt: -1})
+        .skip(skip)
+        .limit(limitNum)
+        .lean();
+
+      total = await Company.countDocuments(baseFilter);
+    } catch (dbError) {
+      console.error("❌ Database query error:", dbError);
+      throw new Error(`Database query failed: ${dbError.message}`);
+    }
 
     const totalPages = Math.ceil(total / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
 
+    // ✅ Enhanced role determination
     const companiesWithRole = companies.map((company) => {
-      const companyObj = company.toObject();
-
       let userRole = "employee";
 
+      // Check if user is owner
       if (
         company.owner &&
         company.owner._id.toString() === req.user.id.toString()
       ) {
         userRole = "owner";
       } else if (company.users && Array.isArray(company.users)) {
+        // Check if user is in users array
         const userEntry = company.users.find(
           (user) =>
             user.user &&
@@ -765,17 +789,40 @@ const getAllCompanies = async (req, res) => {
             user.isActive
         );
         if (userEntry) {
-          userRole = userEntry.role;
+          userRole = userEntry.role || "employee";
         }
       }
 
-      companyObj.userRole = userRole;
-      delete companyObj.users;
-
-      return companyObj;
+      return {
+        id: company._id,
+        _id: company._id,
+        businessName: company.businessName,
+        phoneNumber: company.phoneNumber,
+        email: company.email,
+        businessType: company.businessType,
+        businessCategory: company.businessCategory,
+        gstin: company.gstin,
+        state: company.state,
+        city: company.city,
+        address: company.address,
+        pincode: company.pincode,
+        ownerName: company.ownerName,
+        isActive: company.isActive,
+        createdAt: company.createdAt,
+        updatedAt: company.updatedAt,
+        userRole,
+        ownerInfo: company.owner
+          ? {
+              id: company.owner._id,
+              name: company.owner.name,
+              email: company.owner.email,
+            }
+          : null,
+        totalUsers: (company.users?.length || 0) + 1,
+      };
     });
 
-    res.status(200).json({
+    const responseData = {
       success: true,
       status: "success",
       data: {
@@ -789,14 +836,20 @@ const getAllCompanies = async (req, res) => {
           limit: limitNum,
         },
       },
-    });
+      message: `Found ${companiesWithRole.length} companies`,
+    };
+
+    res.status(200).json(responseData);
   } catch (error) {
+    console.error("❌ Error in getAllCompanies:", error);
+
     res.status(500).json({
       success: false,
       status: "error",
       message: "Internal server error",
       code: "INTERNAL_ERROR",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 };

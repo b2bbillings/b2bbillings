@@ -2,8 +2,152 @@ const mongoose = require("mongoose");
 const Sale = require("../models/Sale");
 const Item = require("../models/Item");
 const Party = require("../models/Party");
+const itemController = require("./itemController");
+
+const updateStockForSale = async (
+  sale,
+  processedItems,
+  customerRecord,
+  req
+) => {
+  console.log("📦 Updating stock using itemController functions...");
+
+  const results = [];
+
+  for (const item of processedItems) {
+    if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
+      try {
+        // ✅ Prepare transaction data for itemController
+        const transactionRequest = {
+          params: {
+            companyId: sale.companyId,
+            itemId: item.itemRef,
+          },
+          body: {
+            type: "sale",
+            quantity: item.quantity,
+            pricePerUnit: item.pricePerUnit || 0,
+            customerName: customerRecord?.name || "Unknown",
+            vendorName: customerRecord?.name || "Unknown", // For compatibility
+            invoiceNumber: sale.invoiceNumber,
+            referenceNumber: sale.invoiceNumber, // For compatibility
+            date: sale.invoiceDate,
+            transactionDate: sale.invoiceDate, // For compatibility
+            status: "completed",
+            reason: `Sale: ${sale.invoiceNumber} - ${
+              customerRecord?.name || "Unknown"
+            }`,
+          },
+          user: req.user || {id: "system"},
+        };
+
+        // ✅ Mock response object to capture the result
+        let transactionResult = null;
+        const mockRes = {
+          status: (code) => ({
+            json: (data) => {
+              transactionResult = {code, data};
+              return data;
+            },
+          }),
+        };
+
+        // ✅ Call itemController function
+        await itemController.createItemTransaction(transactionRequest, mockRes);
+
+        if (
+          transactionResult?.code === 201 &&
+          transactionResult?.data?.success
+        ) {
+          console.log(
+            `✅ Stock updated for ${item.itemName}: -${item.quantity}`
+          );
+          results.push({
+            itemName: item.itemName,
+            itemId: item.itemRef,
+            quantity: item.quantity,
+            success: true,
+            transaction: transactionResult.data.data?.transaction,
+          });
+        } else {
+          throw new Error(
+            transactionResult?.data?.message || "Transaction creation failed"
+          );
+        }
+      } catch (error) {
+        console.error(
+          `❌ Stock update failed for ${item.itemName}:`,
+          error.message
+        );
+
+        // ✅ FALLBACK: Direct stock update if itemController fails
+        try {
+          const currentItem = await Item.findById(item.itemRef);
+          if (currentItem) {
+            const previousStock = currentItem.currentStock || 0;
+            const newStock = Math.max(0, previousStock - item.quantity);
+
+            await Item.findByIdAndUpdate(item.itemRef, {
+              $set: {currentStock: newStock},
+              $push: {
+                stockHistory: {
+                  date: new Date(),
+                  previousStock: previousStock,
+                  newStock: newStock,
+                  quantity: -item.quantity,
+                  adjustmentType: "subtract",
+                  reason: `Sale: ${sale.invoiceNumber} - ${
+                    customerRecord?.name || "Unknown"
+                  }`,
+                  adjustedBy: req.user?.id || "system",
+                  adjustedAt: new Date(),
+                  referenceId: sale._id,
+                  referenceType: "sale",
+                },
+              },
+            });
+
+            console.log(
+              `✅ Fallback stock update for ${item.itemName}: ${previousStock} → ${newStock}`
+            );
+            results.push({
+              itemName: item.itemName,
+              itemId: item.itemRef,
+              quantity: item.quantity,
+              success: true,
+              method: "fallback_direct_update",
+            });
+          }
+        } catch (fallbackError) {
+          console.error(
+            `❌ Fallback stock update also failed for ${item.itemName}:`,
+            fallbackError.message
+          );
+          results.push({
+            itemName: item.itemName,
+            itemId: item.itemRef,
+            quantity: item.quantity,
+            success: false,
+            error: error.message,
+            fallbackError: fallbackError.message,
+          });
+        }
+      }
+    } else {
+      console.warn(`⚠️ Invalid item reference for: ${item.itemName}`);
+      results.push({
+        itemName: item.itemName,
+        itemId: item.itemRef,
+        quantity: item.quantity,
+        success: false,
+        error: "Invalid item reference",
+      });
+    }
+  }
+
+  return results;
+};
 const saleController = {
-  // ✅ UPDATED: Generate actual preview invoice number (not just pattern)
   getNextInvoiceNumber: async (req, res) => {
     try {
       const {companyId, invoiceType = "gst"} = req.query;
@@ -14,11 +158,6 @@ const saleController = {
           message: "Company ID is required",
         });
       }
-
-      console.log(
-        "🔢 Generating preview invoice number for company:",
-        companyId
-      );
 
       // ✅ Get company details
       const Company = require("../models/Company");
@@ -81,14 +220,6 @@ const saleController = {
       const gstPrefix = invoiceType === "gst" ? "GST-" : "";
       const previewInvoiceNumber = `${companyPrefix}-${gstPrefix}${dateStr}-${sequenceStr}`;
 
-      console.log("✅ Preview invoice number generated:", {
-        companyId,
-        companyPrefix,
-        dateStr,
-        nextSequence,
-        previewInvoiceNumber,
-      });
-
       res.status(200).json({
         success: true,
         data: {
@@ -127,7 +258,6 @@ const saleController = {
       });
     }
   },
-
   createSale: async (req, res) => {
     try {
       const {
@@ -135,7 +265,6 @@ const saleController = {
         customerMobile,
         customer,
         customerId,
-        // ❌ REMOVED: invoiceNumber, // Don't accept manual invoice numbers
         invoiceDate,
         gstEnabled = true,
         companyId,
@@ -158,27 +287,6 @@ const saleController = {
         autoDetectSourceCompany = true,
       } = req.body;
 
-      console.log(
-        "📥 Creating sale with model-based automatic invoice numbering:",
-        {
-          customerName,
-          customer,
-          customerId,
-          taxMode,
-          priceIncludesTax,
-          gstEnabled,
-          itemCount: items?.length || 0,
-          companyId,
-          sourceOrderId,
-          sourceOrderType,
-          sourceCompanyId,
-          isAutoGenerated,
-          generatedFrom,
-          autoDetectSourceCompany,
-          modelHandlesNumbering: true, // ✅ Clear indication
-        }
-      );
-
       // Validate required fields
       if (!companyId || !items || items.length === 0) {
         return res.status(400).json({
@@ -200,22 +308,11 @@ const saleController = {
         });
       }
 
-      console.log(
-        "🏢 Company details (model will handle numbering automatically):",
-        {
-          companyId,
-          businessName: currentCompany.businessName,
-          code: currentCompany.code,
-          modelHandlesInvoiceNumberGeneration: true, // ✅ Emphasize model responsibility
-        }
-      );
-
       // ✅ Handle customer validation (existing code)
       let customerRecord = null;
       const finalCustomerId = customer || customerId;
 
       if (finalCustomerId && mongoose.Types.ObjectId.isValid(finalCustomerId)) {
-        console.log("🔍 Finding customer by ID:", finalCustomerId);
         customerRecord = await Party.findById(finalCustomerId);
 
         if (!customerRecord) {
@@ -224,21 +321,7 @@ const saleController = {
             message: "Customer not found with provided ID",
           });
         }
-
-        console.log("✅ Found customer:", {
-          id: customerRecord._id,
-          name: customerRecord.name,
-          mobile: customerRecord.mobile,
-          customerCompanyId: customerRecord.companyId,
-          linkedCompanyId: customerRecord.linkedCompanyId,
-        });
       } else if (customerName && customerMobile) {
-        console.log(
-          "🔍 Finding customer by name and mobile:",
-          customerName,
-          customerMobile
-        );
-
         customerRecord = await Party.findOne({
           $and: [
             {companyId: companyId},
@@ -264,14 +347,6 @@ const saleController = {
               "Customer not found. Please select an existing customer or create one first.",
           });
         }
-
-        console.log("✅ Found customer by search:", {
-          id: customerRecord._id,
-          name: customerRecord.name,
-          mobile: customerRecord.mobile,
-          customerCompanyId: customerRecord?.companyId,
-          linkedCompanyId: customerRecord?.linkedCompanyId,
-        });
       } else {
         return res.status(400).json({
           success: false,
@@ -284,13 +359,6 @@ const saleController = {
         taxMode || (priceIncludesTax ? "with-tax" : "without-tax");
       const finalPriceIncludesTax = finalTaxMode === "with-tax";
 
-      console.log("🔄 Tax mode synchronization:", {
-        originalTaxMode: taxMode,
-        originalPriceIncludesTax: priceIncludesTax,
-        finalTaxMode,
-        finalPriceIncludesTax,
-      });
-
       // Process items (existing code continues...)
       const processedItems = [];
       let subtotal = 0;
@@ -300,13 +368,6 @@ const saleController = {
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-
-        console.log(`🔄 Processing item ${i + 1}:`, {
-          itemName: item.itemName,
-          quantity: item.quantity,
-          pricePerUnit: item.pricePerUnit,
-          taxRate: item.taxRate,
-        });
 
         // Basic validation
         if (!item.itemName || !item.quantity || !item.pricePerUnit) {
@@ -415,13 +476,6 @@ const saleController = {
         };
 
         processedItems.push(processedItem);
-
-        console.log(`✅ Item ${i + 1} processed:`, {
-          itemName: processedItem.itemName,
-          taxableAmount: processedItem.taxableAmount,
-          totalTax: processedItem.totalTaxAmount,
-          finalAmount: processedItem.amount,
-        });
       }
 
       // Calculate final totals
@@ -461,9 +515,7 @@ const saleController = {
         roundOff: parseFloat(appliedRoundOff.toFixed(2)),
       };
 
-      console.log("💰 Final totals calculated:", totals);
-
-      // Enhanced payment details
+      // ✅ ENHANCED PAYMENT DETAILS WITH PROPER DUE DATE CALCULATION
       const paymentDetails = {
         method: payment?.method || "cash",
         status: payment?.status || "pending",
@@ -472,7 +524,7 @@ const saleController = {
         paymentDate: payment?.paymentDate
           ? new Date(payment.paymentDate)
           : new Date(),
-        dueDate: payment?.dueDate ? new Date(payment.dueDate) : null,
+        dueDate: null, // ✅ Initialize as null
         creditDays: parseInt(payment?.creditDays || 0),
         reference: payment?.reference || "",
         notes: payment?.notes || "",
@@ -480,30 +532,56 @@ const saleController = {
         bankAccountName: payment?.bankAccountName || null,
       };
 
+      // ✅ FIXED: Calculate due date properly
+      if (payment?.dueDate) {
+        // If explicit due date is provided
+        paymentDetails.dueDate = new Date(payment.dueDate);
+      } else if (paymentDetails.creditDays > 0) {
+        // Calculate due date from credit days
+        const calculatedDueDate = new Date(paymentDetails.paymentDate);
+        calculatedDueDate.setDate(
+          calculatedDueDate.getDate() + paymentDetails.creditDays
+        );
+        paymentDetails.dueDate = calculatedDueDate;
+
+        console.log(
+          `✅ Calculated due date: ${
+            calculatedDueDate.toISOString().split("T")[0]
+          } (${paymentDetails.creditDays} days from ${
+            paymentDetails.paymentDate.toISOString().split("T")[0]
+          })`
+        );
+      }
+
       const paidAmount = paymentDetails.paidAmount;
       paymentDetails.pendingAmount = parseFloat(
         (adjustedFinalTotal - paidAmount).toFixed(2)
       );
 
-      // Auto-determine payment status
+      // ✅ ENHANCED: Auto-determine payment status with proper due date handling
       if (paidAmount >= adjustedFinalTotal) {
         paymentDetails.status = "paid";
         paymentDetails.pendingAmount = 0;
-        paymentDetails.dueDate = null;
+        paymentDetails.dueDate = null; // Clear due date for fully paid invoices
       } else if (paidAmount > 0) {
         paymentDetails.status = "partial";
-        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + paymentDetails.creditDays);
-          paymentDetails.dueDate = dueDate;
-        }
+        // Keep the calculated due date for partial payments
       } else {
         paymentDetails.status = "pending";
         paymentDetails.pendingAmount = adjustedFinalTotal;
-        if (paymentDetails.creditDays > 0 && !paymentDetails.dueDate) {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + paymentDetails.creditDays);
-          paymentDetails.dueDate = dueDate;
+        // Keep the calculated due date for pending payments
+      }
+
+      // ✅ Check for overdue status
+      if (paymentDetails.dueDate && paymentDetails.pendingAmount > 0) {
+        const now = new Date();
+        if (now > paymentDetails.dueDate) {
+          paymentDetails.status = "overdue";
+          console.log(
+            `⚠️ Invoice is overdue: Due ${
+              paymentDetails.dueDate.toISOString().split("T")[0]
+            }, Today ${now.toISOString().split("T")[0]}`
+          );
         }
       }
 
@@ -519,6 +597,7 @@ const saleController = {
           method: paymentDetails.method,
           reference: paymentDetails.reference,
           paymentDate: paymentDetails.paymentDate,
+          dueDate: paymentDetails.dueDate, // ✅ Include due date in payment history
           bankAccountId: paymentDetails.bankAccountId,
           bankAccountName: paymentDetails.bankAccountName,
           notes: paymentDetails.notes || "Initial payment",
@@ -546,7 +625,6 @@ const saleController = {
         invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
         invoiceType: gstEnabled ? "gst" : "non-gst",
         customer: customerRecord._id,
-        // ❌ NO invoiceNumber field - let model's pre-save middleware generate it
         customerMobile: customerRecord.mobile || customerMobile,
         gstEnabled,
         taxMode: finalTaxMode,
@@ -554,7 +632,7 @@ const saleController = {
         companyId, // ✅ Required for model's automatic numbering
         items: processedItems,
         totals,
-        payment: paymentDetails,
+        payment: paymentDetails, // ✅ Now includes properly calculated due date
         paymentHistory: paymentHistory,
         notes: finalNotes,
         termsAndConditions: termsAndConditions || "",
@@ -606,19 +684,6 @@ const saleController = {
         lastModifiedBy: req.user?.id || "system",
       };
 
-      console.log(
-        "💾 Creating sale - model will auto-generate invoice number:",
-        {
-          companyId: companyId.toString(),
-          companyName: currentCompany.businessName,
-          companyCode: currentCompany.code,
-          customer: customerRecord.name,
-          itemCount: saleData.items.length,
-          finalTotal: saleData.totals.finalTotal,
-          modelHandlesNumbering: true, // ✅ Emphasize model responsibility
-        }
-      );
-
       // ✅ Create the sale - invoice number will be auto-generated by model's pre-save middleware
       const sale = new Sale(saleData);
       await sale.save(); // ✅ Model's pre-save middleware generates invoiceNumber automatically
@@ -629,22 +694,29 @@ const saleController = {
         "name mobile email address type companyId linkedCompanyId"
       );
 
-      // Update item stock
-      for (const item of processedItems) {
-        if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
-          try {
-            await Item.findByIdAndUpdate(
-              item.itemRef,
-              {$inc: {currentStock: -item.quantity}},
-              {new: true}
-            );
-            console.log(
-              `📦 Updated stock for item ${item.itemName}: -${item.quantity}`
-            );
-          } catch (stockError) {
-            console.warn("Stock update failed:", stockError.message);
-          }
-        }
+      // ===== ✅ ENHANCED STOCK UPDATE USING ITEMCONTROLLER =====
+      console.log("📦 Updating stock using itemController functions...");
+
+      const stockUpdateResults = await updateStockForSale(
+        sale,
+        processedItems,
+        customerRecord,
+        req
+      );
+
+      // ✅ Add stock update info to response
+      const successfulUpdates = stockUpdateResults.filter((r) => r.success);
+      const failedUpdates = stockUpdateResults.filter((r) => !r.success);
+
+      console.log(
+        `✅ Stock updates: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`
+      );
+
+      // ===== ✅ SIMPLIFIED PAYMENT HANDLING (REMOVED DUPLICATE TRANSACTION CREATION) =====
+      if (paidAmount > 0) {
+        console.log(
+          `💰 Payment of ₹${paidAmount} recorded in sale. Financial transaction will be handled by payment system.`
+        );
       }
 
       // Update source sales order if conversion
@@ -659,12 +731,6 @@ const saleController = {
             convertedBy: convertedBy || req.user?.id || "system",
             status: "completed",
           });
-
-          console.log("🔗 Updated source sales order:", {
-            sourceOrderId,
-            invoiceId: sale._id,
-            invoiceNumber: sale.invoiceNumber,
-          });
         } catch (updateError) {
           console.warn(
             "Failed to update source sales order:",
@@ -673,24 +739,10 @@ const saleController = {
         }
       }
 
-      console.log(
-        "✅ Sale created successfully with model-generated sequential numbering:",
-        {
-          id: sale._id,
-          invoiceNumber: sale.invoiceNumber, // ✅ Generated by model's pre-save middleware
-          companyId: sale.companyId.toString(),
-          companyName: currentCompany.businessName,
-          customer: customerRecord.name,
-          finalTotal: sale.totals.finalTotal,
-          numberingSource: "model_pre_save_middleware", // ✅ Clear source
-        }
-      );
-
-      // ✅ Enhanced response
+      // ✅ Enhanced response with due date information (UPDATED)
       res.status(201).json({
         success: true,
-        message:
-          "Sale created successfully with automatic model-based sequential invoice numbering",
+        message: "Sale created successfully with automatic stock tracking",
         data: {
           sale,
           invoice: {
@@ -712,8 +764,24 @@ const saleController = {
             totals: sale.totals,
             payment: {
               ...sale.payment,
-              dueDate: sale.payment.dueDate,
+              dueDate: sale.payment.dueDate, // ✅ Now properly calculated
               creditDays: sale.payment.creditDays,
+              // ✅ Add due date information to response
+              dueDateInfo: sale.payment.dueDate
+                ? {
+                    dueDate: sale.payment.dueDate,
+                    formattedDueDate: sale.payment.dueDate
+                      .toISOString()
+                      .split("T")[0],
+                    daysFromNow: Math.ceil(
+                      (sale.payment.dueDate - new Date()) /
+                        (1000 * 60 * 60 * 24)
+                    ),
+                    isOverdue:
+                      new Date() > sale.payment.dueDate &&
+                      sale.payment.pendingAmount > 0,
+                  }
+                : null,
             },
             taxMode: sale.taxMode,
             priceIncludesTax: sale.priceIncludesTax,
@@ -729,13 +797,29 @@ const saleController = {
               modelBased: true, // ✅ Indicate model-based generation
             },
           },
+          stockUpdates: {
+            itemsProcessed: processedItems.length,
+            successfulUpdates: successfulUpdates.length,
+            failedUpdates: failedUpdates.length,
+            stockHistoryCreated: true,
+            transactionHistoryEnabled: true,
+            usingItemController: true, // ✅ Indicate we're using itemController
+            results: stockUpdateResults,
+          },
+          payment: {
+            recorded: paidAmount > 0,
+            amount: paidAmount,
+            method: paymentDetails.method,
+            status: paymentDetails.status,
+            note:
+              paidAmount > 0
+                ? "Payment recorded in sale. Financial transaction will be created when payment is processed through payment system."
+                : "No payment recorded",
+          },
         },
       });
     } catch (error) {
-      console.error(
-        "❌ Error creating sale with model-based numbering:",
-        error
-      );
+      console.error("❌ Error creating sale with enhanced tracking:", error);
       res.status(500).json({
         success: false,
         message: "Failed to create sale",
@@ -784,12 +868,6 @@ const saleController = {
           amount: item.amount || item.itemAmount || 0,
         })),
       };
-
-      console.log("📤 Sending sale data with tax mode compatibility:", {
-        id: sale._id,
-        taxMode: compatibleSale.taxMode,
-        priceIncludesTax: compatibleSale.priceIncludesTax,
-      });
 
       res.json({
         success: true,
@@ -1056,13 +1134,6 @@ const saleController = {
       const {id} = req.params;
       const updateData = req.body;
 
-      console.log(
-        "🔄 Updating sale:",
-        id,
-        "with data:",
-        Object.keys(updateData)
-      );
-
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
           success: false,
@@ -1094,8 +1165,6 @@ const saleController = {
 
       // FIXED: Process updated items if provided
       if (updateData.items && Array.isArray(updateData.items)) {
-        console.log("🔄 Processing updated items:", updateData.items.length);
-
         const processedItems = [];
         let subtotal = 0;
         let totalDiscount = 0;
@@ -1302,11 +1371,6 @@ const saleController = {
             updateData.payment.pendingAmount = updateData.totals.finalTotal;
           }
         }
-
-        console.log(
-          "✅ Items processed, new total:",
-          updateData.totals.finalTotal
-        );
       }
 
       // Add update metadata
@@ -1358,19 +1422,12 @@ const saleController = {
                 {$inc: {currentStock: -quantityDifference}},
                 {new: true}
               );
-              console.log(
-                `📦 Stock adjusted for item ${itemRef}: ${
-                  quantityDifference > 0 ? "-" : "+"
-                }${Math.abs(quantityDifference)}`
-              );
             } catch (stockError) {
               console.warn("Stock adjustment failed:", stockError.message);
             }
           }
         }
       }
-
-      console.log("✅ Sale updated successfully:", updatedSale.invoiceNumber);
 
       res.status(200).json({
         success: true,
@@ -1391,8 +1448,6 @@ const saleController = {
     try {
       const {id} = req.params;
       const {reason = "User requested deletion"} = req.body;
-
-      console.log("🗑️ Deleting/Cancelling sale:", id);
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -1430,8 +1485,6 @@ const saleController = {
 
       // FIXED: Restore stock for all items
       if (sale.items && sale.items.length > 0) {
-        console.log("📦 Restoring stock for cancelled sale items...");
-
         for (const item of sale.items) {
           if (item.itemRef && mongoose.Types.ObjectId.isValid(item.itemRef)) {
             try {
@@ -1497,11 +1550,6 @@ const saleController = {
       const cancelledSale = await Sale.findByIdAndUpdate(id, cancellationData, {
         new: true,
       }).populate("customer", "name mobile email");
-
-      console.log("✅ Sale cancelled successfully:", sale.invoiceNumber);
-
-      // OPTIONAL: Send notification (implement as needed)
-      // await sendCancellationNotification(sale, reason);
 
       res.status(200).json({
         success: true,
@@ -2168,10 +2216,6 @@ const saleController = {
         };
       });
 
-      console.log(
-        `Found ${salesWithOverdueInfo.length} overdue sales for company ${companyId}`
-      );
-
       res.status(200).json({
         success: true,
         data: salesWithOverdueInfo,
@@ -2223,10 +2267,6 @@ const saleController = {
         .populate("customer", "name mobile email")
         .sort({"payment.dueDate": 1});
 
-      console.log(
-        `Found ${salesDueToday.length} sales due today for company ${companyId}`
-      );
-
       res.status(200).json({
         success: true,
         data: salesDueToday,
@@ -2268,9 +2308,6 @@ const saleController = {
       sale.lastModifiedBy = req.user?.id || "system";
 
       await sale.save();
-
-      console.log(`Updated due date for sale ${id}`);
-
       res.status(200).json({
         success: true,
         data: sale,
@@ -2473,11 +2510,6 @@ const saleController = {
       });
 
       if (!supplierParty) {
-        console.log(
-          "🏗️ Creating supplier party representing selling company:",
-          salesInvoice.companyId.businessName
-        );
-
         // ✅ ENHANCED: Generate unique phone number if duplicate exists
         const generateUniquePhoneNumber = async (
           basePhoneNumber,
@@ -2562,27 +2594,11 @@ const saleController = {
         try {
           supplierParty = new Party(supplierPartyData);
           await supplierParty.save();
-
-          console.log("✅ Successfully created supplier party:", {
-            id: supplierParty._id,
-            name: supplierParty.name,
-            phoneNumber: supplierParty.phoneNumber,
-            originalPhone: salesInvoice.companyId.phoneNumber,
-            phoneModified:
-              uniquePhoneNumber !== salesInvoice.companyId.phoneNumber,
-            companyId: supplierParty.companyId,
-            userId: supplierParty.userId,
-            linkedCompanyId: supplierParty.linkedCompanyId,
-          });
         } catch (partyError) {
           console.error("❌ Error creating supplier party:", partyError);
 
           // ✅ ENHANCED: Check if it's still a duplicate error and try to find existing party
           if (partyError.code === 11000) {
-            console.log(
-              "🔍 Duplicate error occurred, searching for existing party..."
-            );
-
             // Try to find the existing party that's causing the duplicate
             const existingParty = await Party.findOne({
               companyId: purchaseCompanyId,
@@ -2594,12 +2610,6 @@ const saleController = {
             });
 
             if (existingParty) {
-              console.log("✅ Found existing party, will use it:", {
-                id: existingParty._id,
-                name: existingParty.name,
-                phoneNumber: existingParty.phoneNumber,
-              });
-
               // ✅ Update existing party with cross-company linking if needed
               if (!existingParty.linkedCompanyId) {
                 existingParty.linkedCompanyId = salesInvoice.companyId._id;
@@ -2611,9 +2621,6 @@ const saleController = {
                   salesInvoice.companyId.businessName
                 } via invoice ${salesInvoice.invoiceNumber}`;
                 await existingParty.save();
-                console.log(
-                  "✅ Updated existing party with cross-company linking"
-                );
               }
 
               supplierParty = existingParty;
@@ -2717,10 +2724,6 @@ const saleController = {
       };
 
       const purchaseNumber = generatePurchaseNumber();
-      console.log(
-        "📝 Generated purchase number for customer's company:",
-        purchaseNumber
-      );
 
       // ✅ ENHANCED: Create purchase invoice data for CUSTOMER'S company
       const purchaseInvoiceData = {
@@ -2797,20 +2800,9 @@ const saleController = {
         lastModifiedBy: validUserId,
       };
 
-      console.log(
-        "📋 Creating cross-company purchase invoice for customer's company..."
-      );
-
       // Create the purchase invoice
       const purchaseInvoice = new Purchase(purchaseInvoiceData);
       await purchaseInvoice.save();
-
-      console.log(
-        "✅ Cross-company purchase invoice created:",
-        purchaseInvoice.purchaseNumber,
-        "for company:",
-        purchaseCompanyId
-      );
 
       // ✅ ENHANCED: Update the sales invoice with cross-company references
       salesInvoice.autoGeneratedPurchaseInvoice = true;
@@ -2828,10 +2820,6 @@ const saleController = {
       salesInvoice.isCrossCompanyLinked = true;
 
       await salesInvoice.save();
-
-      console.log(
-        "✅ Sales invoice updated with cross-company purchase reference"
-      );
 
       res.status(201).json({
         success: true,
@@ -3229,9 +3217,6 @@ const saleController = {
         failed: results.failed.length,
         skipped: results.skipped.length,
       };
-
-      console.log("📊 Bulk invoice conversion summary:", summary);
-
       res.status(200).json({
         success: true,
         message: `Bulk conversion completed: ${summary.successful} successful, ${summary.failed} failed, ${summary.skipped} skipped`,
@@ -3504,12 +3489,6 @@ const saleController = {
 
       // Convert to invoice using the model method
       const invoice = await salesOrder.convertToInvoice();
-
-      console.log("✅ Sales order converted to invoice successfully:", {
-        salesOrderNumber: salesOrder.orderNumber,
-        invoiceNumber: invoice.invoiceNumber,
-        finalTotal: invoice.totals.finalTotal,
-      });
 
       res.status(201).json({
         success: true,
@@ -3840,9 +3819,6 @@ const saleController = {
         failed: results.failed.length,
         skipped: results.skipped.length,
       };
-
-      console.log("📊 Bulk conversion summary:", summary);
-
       res.status(200).json({
         success: true,
         message: `Bulk conversion completed: ${summary.successful} successful, ${summary.failed} failed, ${summary.skipped} skipped`,
@@ -3955,6 +3931,1844 @@ const saleController = {
       res.status(500).json({
         success: false,
         message: "Failed to get invoice source tracking",
+        error: error.message,
+      });
+    }
+  },
+
+  // ==================== 📊 ADMIN ANALYTICS FUNCTIONS ====================
+
+  /**
+   * ✅ FIXED: Get all sales invoices for admin (across ALL companies) - NO companyId handling
+   */
+  getAllSalesInvoicesForAdmin: async (req, res) => {
+    try {
+      const {
+        page = 1,
+        limit = 100,
+        status,
+        paymentStatus,
+        dateFrom,
+        dateTo,
+        companyId: filterCompanyId, // Optional filter for specific company (but DON'T pass as companyId)
+        customerId,
+        search,
+        sortBy = "invoiceDate",
+        sortOrder = "desc",
+      } = req.query;
+
+      const filter = {};
+
+      // ✅ ONLY apply companyId filter if explicitly requested AND valid
+      if (filterCompanyId && mongoose.Types.ObjectId.isValid(filterCompanyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
+      } else {
+        console.log(
+          "🌐 Admin: Fetching from ALL companies (no company filter)"
+        );
+      }
+
+      // Apply other filters (not company-specific)
+      if (status) {
+        filter.status = status.includes(",")
+          ? {$in: status.split(",")}
+          : status;
+      }
+
+      if (paymentStatus) {
+        filter["payment.status"] = paymentStatus.includes(",")
+          ? {$in: paymentStatus.split(",")}
+          : paymentStatus;
+      }
+
+      if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+        filter.customer = new mongoose.Types.ObjectId(customerId);
+      }
+
+      // Date range filter
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      // Search filter
+      if (search) {
+        filter.$or = [
+          {invoiceNumber: {$regex: search, $options: "i"}},
+          {customerMobile: {$regex: search, $options: "i"}},
+          {notes: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      // ✅ Sorting options
+      const sortOptions = {};
+      const validSortFields = [
+        "invoiceDate",
+        "invoiceNumber",
+        "status",
+        "totals.finalTotal",
+        "createdAt",
+        "companyId", // Add company sorting for admin
+      ];
+
+      if (validSortFields.includes(sortBy)) {
+        sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1;
+      } else {
+        sortOptions.invoiceDate = -1; // Default sort
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // ✅ Execute admin query with enhanced population
+      const [invoices, total] = await Promise.all([
+        Sale.find(filter)
+          .populate("customer", "name mobile phoneNumber email address")
+          .populate(
+            "companyId",
+            "businessName companyName email phoneNumber address gstin code"
+          )
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+
+        Sale.countDocuments(filter),
+      ]);
+
+      // ✅ Calculate comprehensive admin statistics
+      const [
+        adminStats,
+        companiesWithInvoices,
+        statusBreakdown,
+        paymentBreakdown,
+        topCompanies,
+      ] = await Promise.all([
+        // Basic admin stats
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalInvoices: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              avgInvoiceValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Unique companies
+        Sale.distinct("companyId", filter),
+
+        // Status breakdown
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Payment status breakdown
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        // Top companies by invoice count and value
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$companyId",
+              invoiceCount: {$sum: 1},
+              totalValue: {$sum: "$totals.finalTotal"},
+              avgValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {totalValue: -1}},
+          {$limit: 10},
+          {
+            $lookup: {
+              from: "companies",
+              localField: "_id",
+              foreignField: "_id",
+              as: "company",
+            },
+          },
+          {$unwind: {path: "$company", preserveNullAndEmptyArrays: true}},
+        ]),
+      ]);
+
+      // ✅ Transform invoices for consistent API response
+      const transformedInvoices = invoices.map((invoice) => ({
+        id: invoice._id,
+        invoiceNo: invoice.invoiceNumber,
+        invoiceNumber: invoice.invoiceNumber,
+        date: invoice.invoiceDate,
+        invoiceDate: invoice.invoiceDate,
+
+        // ✅ Enhanced company info for admin
+        companyId: invoice.companyId?._id,
+        companyName:
+          invoice.companyId?.businessName ||
+          invoice.companyId?.companyName ||
+          "Unknown Company",
+        companyEmail: invoice.companyId?.email,
+        companyPhone: invoice.companyId?.phoneNumber,
+        companyGstin: invoice.companyId?.gstin,
+        companyCode: invoice.companyId?.code,
+
+        // Customer info
+        customerId: invoice.customer?._id,
+        customerName: invoice.customer?.name || "Unknown Customer",
+        customerMobile:
+          invoice.customer?.mobile ||
+          invoice.customer?.phoneNumber ||
+          invoice.customerMobile,
+        customerEmail: invoice.customer?.email,
+
+        // Financial details
+        amount: invoice.totals?.finalTotal || 0,
+        finalTotal: invoice.totals?.finalTotal || 0,
+        subtotal: invoice.totals?.subtotal || 0,
+        totalTax: invoice.totals?.totalTax || 0,
+        paidAmount: invoice.payment?.paidAmount || 0,
+        pendingAmount: invoice.payment?.pendingAmount || 0,
+
+        // Status info
+        status: invoice.status,
+        paymentStatus: invoice.payment?.status || "pending",
+        paymentMethod: invoice.payment?.method || "cash",
+
+        // ✅ Enhanced admin tracking
+        isAutoGenerated: invoice.isAutoGenerated || false,
+        isCrossCompanyLinked: invoice.isCrossCompanyLinked || false,
+        convertedFromSalesOrder: invoice.convertedFromSalesOrder || false,
+        autoGeneratedPurchaseInvoice:
+          invoice.autoGeneratedPurchaseInvoice || false,
+
+        // Dates
+        createdAt: invoice.createdAt,
+        updatedAt: invoice.updatedAt,
+
+        // Full invoice object
+        ...invoice.toObject(),
+      }));
+
+      // ✅ Build comprehensive admin response
+      const baseStats = adminStats[0] || {
+        totalInvoices: 0,
+        totalValue: 0,
+        totalPaid: 0,
+        totalPending: 0,
+        avgInvoiceValue: 0,
+      };
+
+      const responseData = {
+        success: true,
+        data: {
+          // ✅ Multiple data keys for frontend compatibility
+          salesInvoices: transformedInvoices,
+          invoices: transformedInvoices,
+          sales: transformedInvoices,
+          data: transformedInvoices,
+
+          count: transformedInvoices.length,
+
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalInvoices: total,
+            totalSales: total,
+            limit: parseInt(limit),
+            hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrev: parseInt(page) > 1,
+          },
+
+          // ✅ Comprehensive admin statistics
+          adminStats: {
+            ...baseStats,
+            totalCompanies: companiesWithInvoices.length,
+            activeCompanies: companiesWithInvoices.length,
+
+            statusBreakdown: statusBreakdown.reduce((acc, item) => {
+              acc[item._id] = {count: item.count, value: item.value};
+              return acc;
+            }, {}),
+
+            paymentBreakdown: paymentBreakdown.reduce((acc, item) => {
+              acc[item._id || "unknown"] = {
+                count: item.count,
+                value: item.value,
+                pendingAmount: item.pendingAmount || 0,
+              };
+              return acc;
+            }, {}),
+
+            topCompanies: topCompanies.map((company) => ({
+              companyId: company._id,
+              companyName: company.company?.businessName || "Unknown",
+              invoiceCount: company.invoiceCount,
+              totalValue: company.totalValue,
+              avgValue: company.avgValue,
+            })),
+          },
+
+          summary: {
+            totalInvoices: total,
+            totalValue: baseStats.totalValue,
+            totalPaid: baseStats.totalPaid,
+            totalPending: baseStats.totalPending,
+            activeCompanies: companiesWithInvoices.length,
+            avgInvoiceValue: baseStats.avgInvoiceValue,
+          },
+
+          // ✅ Clear admin metadata
+          adminInfo: {
+            isAdminAccess: true,
+            crossAllCompanies: !filterCompanyId,
+            filteredByCompany: !!filterCompanyId,
+            filterCompanyId: filterCompanyId || null,
+            companiesIncluded: companiesWithInvoices.length,
+          },
+        },
+        message: filterCompanyId
+          ? `Found ${transformedInvoices.length} invoices for company ${filterCompanyId}`
+          : `Found ${transformedInvoices.length} invoices across ${companiesWithInvoices.length} companies`,
+      };
+
+      res.status(200).json(responseData);
+    } catch (error) {
+      console.error("❌ Error fetching admin sales invoices:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch all sales invoices for admin",
+        error: error.message,
+        data: {
+          salesInvoices: [],
+          invoices: [],
+          sales: [],
+          data: [],
+          count: 0,
+          pagination: {},
+          adminStats: {},
+          summary: {},
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin bidirectional sales analytics
+   */
+  getAdminBidirectionalSalesAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      // Get bidirectional invoices
+      const bidirectionalFilter = {
+        ...filter,
+        $or: [
+          {autoGeneratedPurchaseInvoice: true},
+          {convertedFromSalesOrder: true},
+          {isAutoGenerated: true},
+          {isCrossCompanyLinked: true},
+        ],
+      };
+
+      const [
+        totalBidirectionalInvoices,
+        totalBidirectionalValue,
+        companiesUsingBidirectional,
+        sourceTypeBreakdown,
+        crossCompanyMapping,
+        conversionRates,
+      ] = await Promise.all([
+        Sale.countDocuments(bidirectionalFilter),
+
+        Sale.aggregate([
+          {$match: bidirectionalFilter},
+          {$group: {_id: null, total: {$sum: "$totals.finalTotal"}}},
+        ]),
+
+        Sale.distinct("companyId", bidirectionalFilter),
+
+        Sale.aggregate([
+          {$match: bidirectionalFilter},
+          {
+            $group: {
+              _id: {
+                $cond: [
+                  {$eq: ["$isAutoGenerated", true]},
+                  "auto_generated",
+                  {
+                    $cond: [
+                      {$eq: ["$convertedFromSalesOrder", true]},
+                      "from_sales_order",
+                      {
+                        $cond: [
+                          {$eq: ["$autoGeneratedPurchaseInvoice", true]},
+                          "with_purchase_invoice",
+                          "direct",
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        Sale.aggregate([
+          {
+            $match: {
+              ...filter,
+              isCrossCompanyLinked: true,
+              targetCompanyId: {$exists: true, $ne: null},
+            },
+          },
+          {
+            $group: {
+              _id: {
+                sourceCompany: "$companyId",
+                targetCompany: "$targetCompanyId",
+              },
+              count: {$sum: 1},
+              value: {$sum: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {count: -1}},
+          {$limit: 10},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              total: {$sum: 1},
+              bidirectional: {
+                $sum: {
+                  $cond: [
+                    {
+                      $or: [
+                        {$eq: ["$autoGeneratedPurchaseInvoice", true]},
+                        {$eq: ["$convertedFromSalesOrder", true]},
+                        {$eq: ["$isAutoGenerated", true]},
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const conversionData = conversionRates[0] || {total: 0, bidirectional: 0};
+      const bidirectionalPercentage =
+        conversionData.total > 0
+          ? (
+              (conversionData.bidirectional / conversionData.total) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalBidirectionalInvoices,
+          totalBidirectionalValue: totalBidirectionalValue[0]?.total || 0,
+          companiesUsingBidirectional: companiesUsingBidirectional.length,
+          bidirectionalRevenue: totalBidirectionalValue[0]?.total || 0,
+          sourceTypeBreakdown: sourceTypeBreakdown.reduce((acc, item) => {
+            acc[item._id] = {count: item.count, value: item.value};
+            return acc;
+          }, {}),
+          crossCompanyMapping: crossCompanyMapping.map((item) => ({
+            sourceCompanyId: item._id.sourceCompany,
+            targetCompanyId: item._id.targetCompany,
+            count: item.count,
+            value: item.value,
+          })),
+          conversionRates: {
+            bidirectionalPercentage: parseFloat(bidirectionalPercentage),
+            totalInvoices: conversionData.total,
+            bidirectionalInvoices: conversionData.bidirectional,
+          },
+        },
+        message: "Admin bidirectional sales analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error(
+        "❌ Error fetching admin bidirectional sales analytics:",
+        error
+      );
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin bidirectional sales analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin payment analytics
+   */
+  getAdminPaymentAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const today = new Date();
+
+      const [
+        totalPaidAmount,
+        totalPendingAmount,
+        paymentMethodBreakdown,
+        paymentStatusBreakdown,
+        overdueAnalysis,
+        paymentTrends,
+      ] = await Promise.all([
+        Sale.aggregate([
+          {$match: filter},
+          {$group: {_id: null, total: {$sum: "$payment.paidAmount"}}},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {$group: {_id: null, total: {$sum: "$payment.pendingAmount"}}},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.method",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$payment.paidAmount"},
+            },
+          },
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              paidAmount: {$sum: "$payment.paidAmount"},
+              pendingAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Sale.aggregate([
+          {
+            $match: {
+              ...filter,
+              "payment.dueDate": {$lt: today},
+              "payment.pendingAmount": {$gt: 0},
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              count: {$sum: 1},
+              totalOverdueAmount: {$sum: "$payment.pendingAmount"},
+            },
+          },
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$invoiceDate"},
+                month: {$month: "$invoiceDate"},
+              },
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              invoiceCount: {$sum: 1},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalPaidAmount: totalPaidAmount[0]?.total || 0,
+          totalPendingAmount: totalPendingAmount[0]?.total || 0,
+          totalOverdueAmount: overdueAnalysis[0]?.totalOverdueAmount || 0,
+          paymentMethodBreakdown: paymentMethodBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+            };
+            return acc;
+          }, {}),
+          paymentStatusBreakdown: paymentStatusBreakdown.reduce((acc, item) => {
+            acc[item._id || "unknown"] = {
+              count: item.count,
+              totalAmount: item.totalAmount,
+              paidAmount: item.paidAmount,
+              pendingAmount: item.pendingAmount,
+            };
+            return acc;
+          }, {}),
+          overdueAnalysis: {
+            count: overdueAnalysis[0]?.count || 0,
+            totalAmount: overdueAnalysis[0]?.totalOverdueAmount || 0,
+          },
+          paymentTrends: paymentTrends.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            totalPaid: item.totalPaid,
+            totalPending: item.totalPending,
+            invoiceCount: item.invoiceCount,
+          })),
+        },
+        message: "Admin payment analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin payment analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin payment analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get admin customer analytics
+   */
+  getAdminCustomerAnalytics: async (req, res) => {
+    try {
+      const {dateFrom, dateTo, companyId, limit = 10} = req.query;
+
+      const filter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = companyId;
+      }
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        totalCustomers,
+        activeCustomers,
+        topCustomers,
+        customerGrowth,
+        customerSegmentation,
+      ] = await Promise.all([
+        Sale.distinct("customer", filter).then((customers) => customers.length),
+
+        Sale.aggregate([
+          {
+            $match: {
+              ...filter,
+              invoiceDate: {
+                $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+          {$group: {_id: "$customer"}},
+          {$count: "activeCustomers"},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$customer",
+              totalPurchases: {$sum: "$totals.finalTotal"},
+              invoiceCount: {$sum: 1},
+              lastPurchaseDate: {$max: "$invoiceDate"},
+              avgInvoiceValue: {$avg: "$totals.finalTotal"},
+            },
+          },
+          {$sort: {totalPurchases: -1}},
+          {$limit: parseInt(limit)},
+          {
+            $lookup: {
+              from: "parties",
+              localField: "_id",
+              foreignField: "_id",
+              as: "customer",
+            },
+          },
+          {$unwind: {path: "$customer", preserveNullAndEmptyArrays: true}},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: {
+                year: {$year: "$invoiceDate"},
+                month: {$month: "$invoiceDate"},
+                customer: "$customer",
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {year: "$_id.year", month: "$_id.month"},
+              uniqueCustomers: {$sum: 1},
+            },
+          },
+          {$sort: {"_id.year": -1, "_id.month": -1}},
+          {$limit: 12},
+        ]),
+
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$customer",
+              totalSpent: {$sum: "$totals.finalTotal"},
+              invoiceCount: {$sum: 1},
+            },
+          },
+          {
+            $bucket: {
+              groupBy: "$totalSpent",
+              boundaries: [0, 10000, 50000, 100000, 500000, Infinity],
+              default: "Other",
+              output: {
+                count: {$sum: 1},
+                customers: {$push: "$_id"},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          totalCustomers,
+          activeCustomers: activeCustomers[0]?.activeCustomers || 0,
+          topCustomers: topCustomers.map((item) => ({
+            customerId: item._id,
+            customerName: item.customer?.name || "Unknown",
+            customerEmail: item.customer?.email,
+            customerPhone: item.customer?.mobile || item.customer?.phoneNumber,
+            totalPurchases: item.totalPurchases,
+            invoiceCount: item.invoiceCount,
+            lastPurchaseDate: item.lastPurchaseDate,
+            avgInvoiceValue: item.avgInvoiceValue,
+          })),
+          customerGrowth: customerGrowth.map((item) => ({
+            year: item._id.year,
+            month: item._id.month,
+            uniqueCustomers: item.uniqueCustomers,
+          })),
+          customerSegmentation: customerSegmentation.reduce((acc, item) => {
+            const key = item._id === "Other" ? "other" : `range_${item._id}`;
+            acc[key] = {
+              count: item.count,
+              customerIds: item.customers,
+            };
+            return acc;
+          }, {}),
+        },
+        message: "Admin customer analytics fetched successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error fetching admin customer analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch admin customer analytics",
+        error: error.message,
+      });
+    }
+  },
+
+  // ==================== 📊 ENHANCED REPORTING FUNCTIONS ====================
+
+  /**
+   * ✅ NEW: Get bidirectional summary report
+   */
+  getBidirectionalSummaryReport: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const filter = {companyId};
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const summary = await Sale.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: null,
+            totalInvoices: {$sum: 1},
+            autoGeneratedInvoices: {
+              $sum: {$cond: ["$isAutoGenerated", 1, 0]},
+            },
+            manualInvoices: {
+              $sum: {$cond: [{$not: "$isAutoGenerated"}, 1, 0]},
+            },
+            invoicesFromSalesOrders: {
+              $sum: {$cond: ["$convertedFromSalesOrder", 1, 0]},
+            },
+            invoicesWithGeneratedPurchase: {
+              $sum: {$cond: ["$autoGeneratedPurchaseInvoice", 1, 0]},
+            },
+            crossCompanyInvoices: {
+              $sum: {$cond: ["$isCrossCompanyLinked", 1, 0]},
+            },
+            totalValue: {$sum: "$totals.finalTotal"},
+            autoGeneratedValue: {
+              $sum: {$cond: ["$isAutoGenerated", "$totals.finalTotal", 0]},
+            },
+            manualValue: {
+              $sum: {
+                $cond: [{$not: "$isAutoGenerated"}, "$totals.finalTotal", 0],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            totalInvoices: 1,
+            autoGeneratedInvoices: 1,
+            manualInvoices: 1,
+            invoicesFromSalesOrders: 1,
+            invoicesWithGeneratedPurchase: 1,
+            crossCompanyInvoices: 1,
+            totalValue: 1,
+            autoGeneratedValue: 1,
+            manualValue: 1,
+            autoGenerationRate: {
+              $multiply: [
+                {$divide: ["$autoGeneratedInvoices", "$totalInvoices"]},
+                100,
+              ],
+            },
+            bidirectionalCoverage: {
+              $multiply: [
+                {
+                  $divide: [
+                    {
+                      $add: [
+                        "$invoicesFromSalesOrders",
+                        "$invoicesWithGeneratedPurchase",
+                        "$autoGeneratedInvoices",
+                      ],
+                    },
+                    "$totalInvoices",
+                  ],
+                },
+                100,
+              ],
+            },
+            crossCompanyRate: {
+              $multiply: [
+                {$divide: ["$crossCompanyInvoices", "$totalInvoices"]},
+                100,
+              ],
+            },
+            purchaseGenerationRate: {
+              $multiply: [
+                {$divide: ["$invoicesWithGeneratedPurchase", "$totalInvoices"]},
+                100,
+              ],
+            },
+          },
+        },
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: summary[0] || {
+          totalInvoices: 0,
+          autoGeneratedInvoices: 0,
+          manualInvoices: 0,
+          invoicesFromSalesOrders: 0,
+          invoicesWithGeneratedPurchase: 0,
+          crossCompanyInvoices: 0,
+          totalValue: 0,
+          autoGeneratedValue: 0,
+          manualValue: 0,
+          autoGenerationRate: 0,
+          bidirectionalCoverage: 0,
+          crossCompanyRate: 0,
+          purchaseGenerationRate: 0,
+        },
+        message: "Bidirectional summary report retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting bidirectional summary report:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bidirectional summary report",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Export bidirectional sales data as CSV
+   */
+  exportBidirectionalCSV: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const filter = {companyId};
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      // Add bidirectional filter
+      filter.$or = [
+        {isAutoGenerated: true},
+        {convertedFromSalesOrder: true},
+        {autoGeneratedPurchaseInvoice: true},
+        {isCrossCompanyLinked: true},
+      ];
+
+      const sales = await Sale.find(filter)
+        .populate("customer", "name mobile email")
+        .populate("companyId", "businessName")
+        .sort({invoiceDate: -1})
+        .limit(10000);
+
+      const csvHeaders = [
+        "Invoice Number",
+        "Invoice Date",
+        "Company",
+        "Customer Name",
+        "Customer Mobile",
+        "Total Amount",
+        "Payment Status",
+        "Is Auto Generated",
+        "Generated From",
+        "Converted From Sales Order",
+        "Has Generated Purchase Invoice",
+        "Purchase Invoice Number",
+        "Is Cross Company Linked",
+        "Target Company ID",
+        "Source Company ID",
+        "Created At",
+      ];
+
+      const csvRows = sales.map((sale) => [
+        sale.invoiceNumber,
+        sale.invoiceDate.toISOString().split("T")[0],
+        sale.companyId?.businessName || "",
+        sale.customer?.name || "",
+        sale.customer?.mobile || sale.customerMobile || "",
+        sale.totals?.finalTotal || 0,
+        sale.payment?.status || "pending",
+        sale.isAutoGenerated ? "Yes" : "No",
+        sale.generatedFrom || "manual",
+        sale.convertedFromSalesOrder ? "Yes" : "No",
+        sale.autoGeneratedPurchaseInvoice ? "Yes" : "No",
+        sale.purchaseInvoiceNumber || "",
+        sale.isCrossCompanyLinked ? "Yes" : "No",
+        sale.targetCompanyId || "",
+        sale.sourceCompanyId || "",
+        sale.createdAt.toISOString().split("T")[0],
+      ]);
+
+      const csvContent = [csvHeaders, ...csvRows]
+        .map((row) => row.map((field) => `"${field}"`).join(","))
+        .join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="bidirectional-sales-${Date.now()}.csv"`
+      );
+      res.send(csvContent);
+    } catch (error) {
+      console.error("❌ Error exporting bidirectional CSV:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to export bidirectional sales data",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get enhanced payment summary
+   */
+  getEnhancedPaymentSummary: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const Sale = require("../models/Sale");
+      const mongoose = require("mongoose");
+
+      const filter = {status: {$ne: "cancelled"}};
+
+      // ✅ Handle admin vs company-specific access
+      if (companyId !== "admin") {
+        if (!mongoose.Types.ObjectId.isValid(companyId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid Company ID format",
+          });
+        }
+        filter.companyId = new mongoose.Types.ObjectId(companyId);
+      }
+
+      // Add date filters if provided
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const [
+        paymentSummary,
+        invoicesByStatus,
+        paymentMethods,
+        overdueInvoices,
+      ] = await Promise.all([
+        // Payment summary
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalInvoices: {$sum: 1},
+              totalAmount: {$sum: "$totals.finalTotal"},
+              totalPaid: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              paidCount: {
+                $sum: {$cond: [{$eq: ["$payment.status", "paid"]}, 1, 0]},
+              },
+              partialCount: {
+                $sum: {$cond: [{$eq: ["$payment.status", "partial"]}, 1, 0]},
+              },
+              pendingCount: {
+                $sum: {$cond: [{$eq: ["$payment.status", "pending"]}, 1, 0]},
+              },
+            },
+          },
+        ]),
+
+        // Invoices by status
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.status",
+              count: {$sum: 1},
+              amount: {$sum: "$totals.finalTotal"},
+            },
+          },
+        ]),
+
+        // Payment methods breakdown
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.method",
+              count: {$sum: 1},
+              amount: {$sum: "$payment.paidAmount"},
+            },
+          },
+        ]),
+
+        // Overdue invoices
+        Sale.find({
+          ...filter,
+          "payment.dueDate": {$lt: new Date()},
+          "payment.pendingAmount": {$gt: 0},
+        }).countDocuments(),
+      ]);
+
+      const summary = {
+        ...(paymentSummary[0] || {
+          totalInvoices: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalPending: 0,
+          paidCount: 0,
+          partialCount: 0,
+          pendingCount: 0,
+        }),
+        overdueCount: overdueInvoices,
+        invoicesByStatus: invoicesByStatus.reduce((acc, item) => {
+          acc[item._id || "unknown"] = {count: item.count, amount: item.amount};
+          return acc;
+        }, {}),
+        paymentMethods: paymentMethods.reduce((acc, item) => {
+          acc[item._id || "cash"] = {count: item.count, amount: item.amount};
+          return acc;
+        }, {}),
+      };
+
+      res.status(200).json({
+        success: true,
+        data: summary,
+        message: "Enhanced payment summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting enhanced payment summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get enhanced payment summary",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales invoice for printing - Enhanced version
+   */
+  getSalesInvoiceForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      // Get sales invoice with populated data
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Transform data for printing
+      const invoiceData = {
+        company: {
+          name: sale.companyId?.businessName || "Your Company",
+          gstin: sale.companyId?.gstin || "",
+          address: sale.companyId?.address || "",
+          phone: sale.companyId?.phoneNumber || "",
+          email: sale.companyId?.email || "",
+          // ✅ Handle logo safely
+          logo:
+            sale.companyId?.logo?.base64 &&
+            sale.companyId.logo.base64.trim() !== ""
+              ? sale.companyId.logo.base64
+              : null,
+        },
+        customer: {
+          name: sale.customer?.name || sale.customerName || "Unknown Customer",
+          address: sale.customer?.address || sale.customerAddress || "",
+          mobile: sale.customer?.mobile || sale.customerMobile || "",
+          email: sale.customer?.email || sale.customerEmail || "",
+          gstin: sale.customer?.gstNumber || sale.customerGstNumber || "",
+        },
+        invoice: {
+          id: sale._id,
+          invoiceNumber: sale.invoiceNumber,
+          invoiceDate: sale.invoiceDate,
+          dueDate: sale.dueDate || sale.payment?.dueDate,
+          status: sale.status,
+          notes: sale.notes || "",
+          terms: sale.termsAndConditions || "",
+        },
+        items: (sale.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || item.productName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || item.hsnNumber || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || item.rate || 0,
+          taxRate: item.taxRate || item.gstRate || 0,
+          cgst: item.cgstAmount || item.cgst || 0,
+          sgst: item.sgstAmount || item.sgst || 0,
+          igst: item.igstAmount || item.igst || 0,
+          amount: item.amount || item.totalAmount || 0,
+        })),
+        totals: {
+          subtotal: sale.totals?.subtotal || 0,
+          totalTax: sale.totals?.totalTax || 0,
+          totalCGST: sale.totals?.totalCGST || 0,
+          totalSGST: sale.totals?.totalSGST || 0,
+          totalIGST: sale.totals?.totalIGST || 0,
+          totalDiscount: sale.totals?.totalDiscount || 0,
+          roundOff: sale.totals?.roundOff || 0,
+          finalTotal: sale.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: sale.payment?.method || "cash",
+          paidAmount: sale.payment?.paidAmount || 0,
+          pendingAmount: sale.payment?.pendingAmount || 0,
+          status: sale.payment?.status || "pending",
+          terms: sale.termsAndConditions || "",
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isSalesInvoice: true,
+          isGSTInvoice: sale.gstEnabled,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: invoiceData,
+        message: "Sales invoice data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales receipt for printing
+   */
+  getSalesReceiptForPrint: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {format = "thermal", template = "receipt"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile")
+        .populate("companyId", "businessName address phoneNumber")
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Transform data for receipt printing
+      const receiptData = {
+        store: {
+          name: sale.companyId?.businessName || "Your Store",
+          address: sale.companyId?.address || "",
+          phone: sale.companyId?.phoneNumber || "",
+        },
+        transaction: {
+          receiptNo: sale.invoiceNumber,
+          date: sale.invoiceDate,
+          time: sale.createdAt,
+          cashier: sale.createdBy || "System",
+        },
+        customer: {
+          name: sale.customer?.name || "Walk-in Customer",
+          mobile: sale.customer?.mobile || sale.customerMobile || "",
+        },
+        items: (sale.items || []).map((item, index) => ({
+          name: item.itemName?.substring(0, 20) || `Item ${index + 1}`,
+          qty: item.quantity || 1,
+          rate: item.pricePerUnit || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: sale.totals?.subtotal || 0,
+          tax: sale.totals?.totalTax || 0,
+          discount: sale.totals?.totalDiscount || 0,
+          total: sale.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: sale.payment?.method || "cash",
+          paid: sale.payment?.paidAmount || 0,
+          change: Math.max(
+            0,
+            (sale.payment?.paidAmount || 0) - (sale.totals?.finalTotal || 0)
+          ),
+        },
+        meta: {
+          format,
+          template,
+          printDate: new Date(),
+          isReceipt: true,
+          width: format === "thermal" ? 58 : 80, // mm
+        },
+      };
+
+      res.json({
+        success: true,
+        data: receiptData,
+        message: "Sales receipt data prepared for printing",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales receipt for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales receipt for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales invoice for email/PDF generation
+   */
+  getSalesInvoiceForEmail: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {includePaymentLink = false, template = "professional"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo website"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Enhanced data for email template
+      const emailData = {
+        company: {
+          name: sale.companyId?.businessName || "Your Company",
+          gstin: sale.companyId?.gstin || "",
+          address: sale.companyId?.address || "",
+          phone: sale.companyId?.phoneNumber || "",
+          email: sale.companyId?.email || "",
+          website: sale.companyId?.website || "",
+          logo: sale.companyId?.logo?.base64 || null,
+        },
+        customer: {
+          name: sale.customer?.name || "Customer",
+          email: sale.customer?.email || "",
+          mobile: sale.customer?.mobile || sale.customerMobile || "",
+          address: sale.customer?.address || "",
+          gstin: sale.customer?.gstNumber || "",
+        },
+        invoice: {
+          id: sale._id,
+          invoiceNumber: sale.invoiceNumber,
+          invoiceDate: sale.invoiceDate,
+          dueDate: sale.payment?.dueDate,
+          status: sale.status,
+          paymentStatus: sale.payment?.status,
+          notes: sale.notes || "",
+          terms: sale.termsAndConditions || "",
+        },
+        items: (sale.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          description: item.description || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          discount: item.discountAmount || 0,
+          taxableAmount: item.taxableAmount || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          totalTax: item.totalTaxAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: sale.totals?.subtotal || 0,
+          totalDiscount: sale.totals?.totalDiscount || 0,
+          taxableAmount: sale.totals?.totalTaxableAmount || 0,
+          totalCGST: sale.totals?.totalCGST || 0,
+          totalSGST: sale.totals?.totalSGST || 0,
+          totalIGST: sale.totals?.totalIGST || 0,
+          totalTax: sale.totals?.totalTax || 0,
+          roundOff: sale.totals?.roundOff || 0,
+          finalTotal: sale.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: sale.payment?.method || "cash",
+          paidAmount: sale.payment?.paidAmount || 0,
+          pendingAmount: sale.payment?.pendingAmount || 0,
+          status: sale.payment?.status || "pending",
+          dueDate: sale.payment?.dueDate,
+          creditDays: sale.payment?.creditDays || 0,
+        },
+        paymentLink:
+          includePaymentLink === "true" && sale.payment?.pendingAmount > 0
+            ? `${process.env.FRONTEND_URL}/pay/${sale._id}`
+            : null,
+        meta: {
+          template,
+          generatedDate: new Date(),
+          isEmailVersion: true,
+          isGSTInvoice: sale.gstEnabled,
+          hasLogo: !!sale.companyId?.logo?.base64,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: emailData,
+        message: "Sales invoice data prepared for email",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for email:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice for email",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Generate and download sales invoice PDF
+   */
+  downloadSalesInvoicePDF: async (req, res) => {
+    try {
+      const {id} = req.params;
+      const {template = "standard", format = "a4"} = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Set appropriate headers for PDF download
+      const filename = `invoice-${sale.invoiceNumber || sale._id}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+
+      // Return invoice data with PDF metadata
+      // Note: Actual PDF generation should be handled by frontend or a PDF service
+      res.json({
+        success: true,
+        data: {
+          filename,
+          invoiceNumber: sale.invoiceNumber,
+          customerName: sale.customer?.name || "Customer",
+          amount: sale.totals?.finalTotal || 0,
+          downloadUrl: `/api/sales/${id}/print?template=${template}&format=pdf`,
+        },
+        message: "PDF download initiated",
+        action: "download_pdf",
+      });
+    } catch (error) {
+      console.error("❌ Error generating PDF:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate PDF",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get multiple sales invoices for bulk printing
+   */
+  getBulkSalesInvoicesForPrint: async (req, res) => {
+    try {
+      const {ids} = req.body; // Array of invoice IDs
+      const {format = "a4", template = "standard"} = req.query;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invoice IDs array is required",
+        });
+      }
+
+      // Validate all IDs
+      const invalidIds = ids.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid invoice ID format",
+          invalidIds,
+        });
+      }
+
+      // Get all sales invoices
+      const sales = await Sale.find({_id: {$in: ids}})
+        .populate("customer", "name mobile email address gstNumber")
+        .populate(
+          "companyId",
+          "businessName gstin address phoneNumber email logo"
+        )
+        .populate("items.itemRef", "name code hsnCode unit")
+        .lean();
+
+      if (sales.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No sales invoices found",
+        });
+      }
+
+      // Transform each invoice for printing
+      const bulkInvoiceData = sales.map((sale) => ({
+        company: {
+          name: sale.companyId?.businessName || "Your Company",
+          gstin: sale.companyId?.gstin || "",
+          address: sale.companyId?.address || "",
+          phone: sale.companyId?.phoneNumber || "",
+          email: sale.companyId?.email || "",
+          logo: sale.companyId?.logo?.base64 || null,
+        },
+        customer: {
+          name: sale.customer?.name || "Customer",
+          address: sale.customer?.address || "",
+          mobile: sale.customer?.mobile || sale.customerMobile || "",
+          email: sale.customer?.email || "",
+          gstin: sale.customer?.gstNumber || "",
+        },
+        invoice: {
+          id: sale._id,
+          invoiceNumber: sale.invoiceNumber,
+          invoiceDate: sale.invoiceDate,
+          dueDate: sale.payment?.dueDate,
+          status: sale.status,
+          notes: sale.notes || "",
+          terms: sale.termsAndConditions || "",
+        },
+        items: (sale.items || []).map((item, index) => ({
+          srNo: index + 1,
+          name: item.itemName || `Item ${index + 1}`,
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.pricePerUnit || 0,
+          taxRate: item.taxRate || 0,
+          cgst: item.cgstAmount || 0,
+          sgst: item.sgstAmount || 0,
+          igst: item.igstAmount || 0,
+          amount: item.amount || 0,
+        })),
+        totals: {
+          subtotal: sale.totals?.subtotal || 0,
+          totalTax: sale.totals?.totalTax || 0,
+          totalCGST: sale.totals?.totalCGST || 0,
+          totalSGST: sale.totals?.totalSGST || 0,
+          totalIGST: sale.totals?.totalIGST || 0,
+          totalDiscount: sale.totals?.totalDiscount || 0,
+          roundOff: sale.totals?.roundOff || 0,
+          finalTotal: sale.totals?.finalTotal || 0,
+        },
+        payment: {
+          method: sale.payment?.method || "cash",
+          paidAmount: sale.payment?.paidAmount || 0,
+          pendingAmount: sale.payment?.pendingAmount || 0,
+          status: sale.payment?.status || "pending",
+        },
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          invoices: bulkInvoiceData,
+          count: bulkInvoiceData.length,
+          requestedCount: ids.length,
+          notFound: ids.length - bulkInvoiceData.length,
+          meta: {
+            format,
+            template,
+            printDate: new Date(),
+            isBulkPrint: true,
+          },
+        },
+        message: `${bulkInvoiceData.length} sales invoices prepared for bulk printing`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting bulk sales invoices for print:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bulk sales invoices for printing",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales invoice for QR code payment
+   */
+  getSalesInvoiceForQRPayment: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      if (sale.payment?.status === "paid") {
+        return res.status(400).json({
+          success: false,
+          message: "Invoice is already paid",
+        });
+      }
+
+      // Generate payment data for QR code
+      const paymentData = {
+        invoiceId: sale._id,
+        invoiceNumber: sale.invoiceNumber,
+        companyName: sale.companyId?.businessName || "Company",
+        customerName: sale.customer?.name || "Customer",
+        amount: sale.payment?.pendingAmount || sale.totals?.finalTotal || 0,
+        dueDate: sale.payment?.dueDate,
+        // UPI payment string format
+        upiString: `upi://pay?pa=${
+          process.env.UPI_ID || "merchant@upi"
+        }&pn=${encodeURIComponent(
+          sale.companyId?.businessName || "Company"
+        )}&am=${
+          sale.payment?.pendingAmount || sale.totals?.finalTotal || 0
+        }&cu=INR&tn=${encodeURIComponent(
+          `Payment for Invoice ${sale.invoiceNumber}`
+        )}`,
+        paymentUrl: `${process.env.FRONTEND_URL}/pay/${sale._id}`,
+        qrSize: 256,
+        meta: {
+          generatedAt: new Date(),
+          expiresAt:
+            sale.payment?.dueDate ||
+            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        },
+      };
+
+      res.json({
+        success: true,
+        data: paymentData,
+        message: "Payment QR data generated successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales invoice for QR payment:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice for QR payment",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales invoice summary for quick view
+   */
+  getSalesInvoiceSummary: async (req, res) => {
+    try {
+      const {id} = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid sales invoice ID format",
+        });
+      }
+
+      const sale = await Sale.findById(id)
+        .populate("customer", "name mobile")
+        .populate("companyId", "businessName")
+        .lean();
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sales invoice not found",
+        });
+      }
+
+      // Generate summary data
+      const summaryData = {
+        basic: {
+          invoiceId: sale._id,
+          invoiceNumber: sale.invoiceNumber,
+          invoiceDate: sale.invoiceDate,
+          status: sale.status,
+          companyName: sale.companyId?.businessName || "Company",
+          customerName: sale.customer?.name || "Customer",
+          customerMobile: sale.customer?.mobile || sale.customerMobile || "",
+        },
+        financial: {
+          subtotal: sale.totals?.subtotal || 0,
+          totalTax: sale.totals?.totalTax || 0,
+          totalDiscount: sale.totals?.totalDiscount || 0,
+          finalTotal: sale.totals?.finalTotal || 0,
+          paidAmount: sale.payment?.paidAmount || 0,
+          pendingAmount: sale.payment?.pendingAmount || 0,
+          paymentStatus: sale.payment?.status || "pending",
+          paymentMethod: sale.payment?.method || "cash",
+        },
+        items: {
+          totalItems: sale.items?.length || 0,
+          totalQuantity: sale.totals?.totalQuantity || 0,
+          topItem:
+            sale.items && sale.items.length > 0
+              ? {
+                  name: sale.items[0].itemName,
+                  quantity: sale.items[0].quantity,
+                  amount: sale.items[0].amount,
+                }
+              : null,
+        },
+        timeline: {
+          createdAt: sale.createdAt,
+          lastModified: sale.updatedAt,
+          dueDate: sale.payment?.dueDate,
+          isOverdue: sale.payment?.dueDate
+            ? new Date() > new Date(sale.payment.dueDate)
+            : false,
+        },
+        actions: {
+          canEdit: ["draft", "pending"].includes(sale.status),
+          canCancel: !["completed", "cancelled"].includes(sale.status),
+          canPrint: true,
+          canEmail: !!sale.customer?.email,
+          canAddPayment: sale.payment?.pendingAmount > 0,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: summaryData,
+        message: "Sales invoice summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting sales invoice summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales invoice summary",
         error: error.message,
       });
     }

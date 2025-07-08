@@ -811,7 +811,7 @@ function ReportsAnalytics({adminData, currentUser, addToast}) {
         </Modal.Footer>
       </Modal>
 
-      <style jsx>{`
+      <style>{`
         .metric-card {
           transition: transform 0.2s ease, box-shadow 0.2s ease;
           border: none;
