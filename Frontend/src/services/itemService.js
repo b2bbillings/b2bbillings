@@ -663,7 +663,7 @@ class ItemService {
     }
   }
 
-  // ===== ✅ NEW ADMIN FUNCTIONS =====
+  // ===== ✅ EXISTING ADMIN FUNCTIONS =====
 
   /**
    * 🔧 Get all items across companies for admin dashboard
@@ -832,6 +832,281 @@ class ItemService {
     }
   }
 
+  // ===== ✅ NEW ADMIN NAME VERIFICATION FUNCTIONS =====
+
+  /**
+   * 🔍 Get items for name verification review
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {Object} params - Query parameters
+   * @param {number} params.page - Page number (default: 1)
+   * @param {number} params.limit - Items per page (default: 50, max: 100)
+   * @param {string} params.search - Search query (name, code, category, etc.)
+   * @param {string} params.companyId - Filter by specific company
+   * @param {string} params.status - Filter by verification status (all/pending/approved/rejected)
+   * @param {string} params.sortBy - Sort field (default: createdAt)
+   * @param {string} params.sortOrder - Sort order (asc/desc)
+   * @returns {Promise<Object>} Items for verification with admin data
+   */
+  async getPendingVerificationItems(companyId, params = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await apiClient.get(
+        `/api/companies/${companyId}/items/admin/verification/pending`,
+        {
+          params: {
+            page: params.page || 1,
+            limit: Math.min(params.limit || 50, 100),
+            search: params.search || "",
+            companyId: params.companyId || "",
+            status: params.status || "all",
+            sortBy: params.sortBy || "createdAt",
+            sortOrder: params.sortOrder || "desc",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * 📊 Get verification statistics for admin
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {Object} params - Query parameters
+   * @param {string} params.companyId - Filter by specific company (optional)
+   * @param {string} params.dateFrom - Start date filter (optional)
+   * @param {string} params.dateTo - End date filter (optional)
+   * @returns {Promise<Object>} Verification statistics
+   */
+  async getVerificationStats(companyId, params = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await apiClient.get(
+        `/api/companies/${companyId}/items/admin/verification/stats`,
+        {
+          params: {
+            companyId: params.companyId || "",
+            dateFrom: params.dateFrom || "",
+            dateTo: params.dateTo || "",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ Approve item name (with optional correction)
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {string} itemId - Item ID to approve
+   * @param {Object} approvalData - Approval data
+   * @param {string} approvalData.correctedName - Corrected name (optional)
+   * @param {string} approvalData.adminId - Admin ID (default: "admin")
+   * @param {string} approvalData.adminNotes - Admin notes (optional)
+   * @returns {Promise<Object>} Approval result
+   */
+  async approveItemName(companyId, itemId, approvalData = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!itemId) {
+        throw new Error("Item ID is required");
+      }
+
+      const response = await apiClient.put(
+        `/api/companies/${companyId}/items/admin/verification/${itemId}/approve`,
+        {
+          correctedName: approvalData.correctedName?.trim() || "",
+          adminId: approvalData.adminId || "admin",
+          adminNotes: approvalData.adminNotes?.trim() || "",
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * ❌ Reject item name
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {string} itemId - Item ID to reject
+   * @param {Object} rejectionData - Rejection data
+   * @param {string} rejectionData.rejectionReason - Reason for rejection (required)
+   * @param {string} rejectionData.suggestedName - Suggested correct name (optional)
+   * @param {string} rejectionData.adminId - Admin ID (default: "admin")
+   * @returns {Promise<Object>} Rejection result
+   */
+  async rejectItemName(companyId, itemId, rejectionData) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!itemId) {
+        throw new Error("Item ID is required");
+      }
+
+      if (!rejectionData.rejectionReason?.trim()) {
+        throw new Error("Rejection reason is required");
+      }
+
+      const response = await apiClient.put(
+        `/api/companies/${companyId}/items/admin/verification/${itemId}/reject`,
+        {
+          rejectionReason: rejectionData.rejectionReason.trim(),
+          suggestedName: rejectionData.suggestedName?.trim() || "",
+          adminId: rejectionData.adminId || "admin",
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * ⚡ Quick approve multiple items (names are correct as submitted)
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {Array} itemIds - Array of item IDs to approve
+   * @param {string} adminId - Admin ID (default: "admin")
+   * @returns {Promise<Object>} Quick approval results
+   */
+  async quickApproveItems(companyId, itemIds, adminId = "admin") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        throw new Error("Item IDs array is required and cannot be empty");
+      }
+
+      const response = await apiClient.post(
+        `/api/companies/${companyId}/items/admin/verification/quick-approve`,
+        {
+          itemIds: itemIds,
+          adminId: adminId,
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * 📋 Bulk approve multiple items with individual corrections
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {Array} approvals - Array of {itemId, correctedName?, adminNotes?}
+   * @param {string} adminId - Admin ID (default: "admin")
+   * @returns {Promise<Object>} Bulk approval results
+   */
+  async bulkApproveItems(companyId, approvals, adminId = "admin") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!Array.isArray(approvals) || approvals.length === 0) {
+        throw new Error("Approvals array is required and cannot be empty");
+      }
+
+      const response = await apiClient.post(
+        `/api/companies/${companyId}/items/admin/verification/bulk-approve`,
+        {
+          approvals: approvals,
+          adminId: adminId,
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * 📜 Get verification history for an item
+   * @param {string} companyId - Any company ID (admin can see all)
+   * @param {string} itemId - Item ID
+   * @returns {Promise<Object>} Verification history
+   */
+  async getVerificationHistory(companyId, itemId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!itemId) {
+        throw new Error("Item ID is required");
+      }
+
+      const response = await apiClient.get(
+        `/api/companies/${companyId}/items/admin/verification/${itemId}/history`
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * 🔄 Resubmit item for verification (company function)
+   * @param {string} companyId - Company ID
+   * @param {string} itemId - Item ID to resubmit
+   * @param {Object} resubmissionData - Resubmission data
+   * @param {string} resubmissionData.newName - New corrected name
+   * @param {string} resubmissionData.resubmissionReason - Reason for resubmission
+   * @returns {Promise<Object>} Resubmission result
+   */
+  async resubmitForVerification(companyId, itemId, resubmissionData) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      if (!itemId) {
+        throw new Error("Item ID is required");
+      }
+
+      if (!resubmissionData.newName?.trim()) {
+        throw new Error("New name is required for resubmission");
+      }
+
+      const response = await apiClient.put(
+        `/api/companies/${companyId}/items/admin/verification/${itemId}/resubmit`,
+        {
+          newName: resubmissionData.newName.trim(),
+          resubmissionReason:
+            resubmissionData.resubmissionReason?.trim() ||
+            "Name updated based on admin feedback",
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // ===== EXISTING UTILITY FUNCTIONS =====
 
   /**
@@ -983,6 +1258,71 @@ class ItemService {
   }
 
   /**
+   * ✅ NEW: Format verification items for display
+   * @param {Array} items - Raw verification items data
+   * @returns {Array} Formatted verification items for UI
+   */
+  formatVerificationItems(items) {
+    if (!Array.isArray(items)) return [];
+
+    return items.map((item) => ({
+      ...item,
+      formattedSubmissionDate: item.verification?.submittedDate
+        ? new Date(item.verification.submittedDate).toLocaleDateString()
+        : "Unknown",
+      formattedVerificationDate: item.verification?.verificationDate
+        ? new Date(item.verification.verificationDate).toLocaleDateString()
+        : null,
+      verificationStatusBadge: this.getVerificationStatusBadge(
+        item.verification?.status
+      ),
+      companyDisplayName: item.companyInfo?.name || "Unknown Company",
+      isUrgent: item.needsAttention,
+      wasNameChanged:
+        item.verification?.verifiedName !== item.verification?.originalName,
+      daysSinceSubmission: item.daysSinceSubmission || 0,
+    }));
+  }
+
+  /**
+   * ✅ NEW: Get verification status badge configuration
+   * @param {string} status - Verification status
+   * @returns {Object} Badge configuration
+   */
+  getVerificationStatusBadge(status) {
+    switch (status) {
+      case "pending":
+        return {
+          text: "Pending Review",
+          color: "yellow",
+          variant: "solid",
+          icon: "clock",
+        };
+      case "approved":
+        return {
+          text: "Approved",
+          color: "green",
+          variant: "solid",
+          icon: "checkCircle",
+        };
+      case "rejected":
+        return {
+          text: "Rejected",
+          color: "red",
+          variant: "solid",
+          icon: "xCircle",
+        };
+      default:
+        return {
+          text: "Unknown",
+          color: "gray",
+          variant: "outline",
+          icon: "question",
+        };
+    }
+  }
+
+  /**
    * ✅ Get stock status badge configuration
    * @param {Object} item - Item data
    * @returns {Object} Badge configuration
@@ -1069,6 +1409,109 @@ class ItemService {
 
       return true;
     });
+  }
+
+  /**
+   * ✅ NEW: Filter verification items by multiple criteria
+   * @param {Array} items - Verification items array
+   * @param {Object} filters - Filter criteria
+   * @returns {Array} Filtered verification items
+   */
+  filterVerificationItems(items, filters = {}) {
+    if (!Array.isArray(items)) return [];
+
+    return items.filter((item) => {
+      // Search filter
+      if (filters.search) {
+        const searchTerm = filters.search.toLowerCase();
+        const searchFields = [
+          item.currentName,
+          item.originalName,
+          item.verifiedName,
+          item.itemCode,
+          item.category,
+          item.companyInfo?.name,
+        ].filter(Boolean);
+
+        if (
+          !searchFields.some((field) =>
+            field.toLowerCase().includes(searchTerm)
+          )
+        ) {
+          return false;
+        }
+      }
+
+      // Verification status filter
+      if (filters.status && filters.status !== "all") {
+        if (item.verification?.status !== filters.status) {
+          return false;
+        }
+      }
+
+      // Company filter
+      if (filters.companyId && item.companyInfo?.id !== filters.companyId) {
+        return false;
+      }
+
+      // Urgency filter
+      if (filters.urgentOnly && !item.needsAttention) {
+        return false;
+      }
+
+      // Type filter
+      if (filters.type && item.type !== filters.type) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * ✅ NEW: Get verification action button configuration
+   * @param {string} status - Verification status
+   * @returns {Object} Action button configuration
+   */
+  getVerificationActions(status) {
+    switch (status) {
+      case "pending":
+        return {
+          canApprove: true,
+          canReject: true,
+          canResubmit: false,
+          canViewHistory: true,
+          primaryAction: "approve",
+          secondaryAction: "reject",
+        };
+      case "approved":
+        return {
+          canApprove: false,
+          canReject: false,
+          canResubmit: false,
+          canViewHistory: true,
+          primaryAction: "viewHistory",
+          secondaryAction: null,
+        };
+      case "rejected":
+        return {
+          canApprove: false,
+          canReject: false,
+          canResubmit: true,
+          canViewHistory: true,
+          primaryAction: "resubmit",
+          secondaryAction: "viewHistory",
+        };
+      default:
+        return {
+          canApprove: false,
+          canReject: false,
+          canResubmit: false,
+          canViewHistory: false,
+          primaryAction: null,
+          secondaryAction: null,
+        };
+    }
   }
 }
 

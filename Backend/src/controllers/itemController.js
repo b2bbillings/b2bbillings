@@ -123,6 +123,8 @@ const itemController = {
       const {companyId} = req.params;
       const itemData = req.body;
 
+      console.log(`🔍 Creating item for company ${companyId}:`, itemData.name);
+
       if (!companyId) {
         return res.status(400).json({
           success: false,
@@ -150,6 +152,7 @@ const itemController = {
         });
       }
 
+      // Check for duplicate item code
       if (itemData.itemCode) {
         const existingItem = await Item.findOne({
           companyId: new mongoose.Types.ObjectId(companyId),
@@ -164,32 +167,112 @@ const itemController = {
         }
       }
 
+      // ✅ NEW: Create item with name verification
       const newItem = new Item({
         ...itemData,
         companyId: new mongoose.Types.ObjectId(companyId),
         createdBy: req.user?.id || "system",
+
+        // ✅ UPDATED: Always set name verification for new items
+        nameVerification: {
+          status: "pending",
+          originalName: itemData.name,
+          verifiedName: null,
+          verificationHistory: [
+            {
+              action: "submitted",
+              oldName: null,
+              newName: itemData.name,
+              date: new Date(),
+              reason: "Initial submission - awaiting admin verification",
+            },
+          ],
+        },
       });
 
+      // Handle stock for products vs services
       if (newItem.type === "service") {
         newItem.currentStock = 0;
         newItem.openingStock = 0;
         newItem.minStockLevel = 0;
       } else {
         newItem.currentStock = newItem.openingStock || 0;
+
+        // ✅ Add opening stock to history if > 0
+        if (newItem.currentStock > 0) {
+          newItem.stockHistory = [
+            {
+              date: newItem.asOfDate || new Date(),
+              previousStock: 0,
+              newStock: newItem.currentStock,
+              quantity: newItem.currentStock,
+              adjustmentType: "set",
+              reason: "Opening stock",
+              adjustedBy: req.user?.id || "system",
+              referenceType: "opening",
+              _id: new mongoose.Types.ObjectId(),
+            },
+          ];
+        }
       }
 
       await newItem.save();
 
+      // ✅ Log for admin notification
+      console.log(
+        `🔔 NEW ITEM NEEDS VERIFICATION: "${itemData.name}" from company ${companyId}`
+      );
+      console.log(`📋 Item created successfully with ID: ${newItem._id}`);
+
+      // ✅ Enhanced response with verification status
       res.status(201).json({
         success: true,
-        message: "Item created successfully",
-        data: {item: newItem},
+        message:
+          "Item created successfully. Name verification pending admin approval.",
+        data: {
+          item: {
+            id: newItem._id,
+            name: newItem.name,
+            itemCode: newItem.itemCode,
+            category: newItem.category,
+            type: newItem.type,
+            unit: newItem.unit,
+            currentStock: newItem.currentStock,
+            createdAt: newItem.createdAt,
+            companyId: newItem.companyId,
+
+            // ✅ Verification status for UI
+            nameVerification: {
+              status: "pending",
+              originalName: itemData.name,
+              needsReview: true,
+            },
+          },
+          verification: {
+            status: "pending",
+            message:
+              "Item created! Admin will verify the name before it becomes fully active.",
+            statusBadge: {
+              text: "PENDING VERIFICATION",
+              color: "warning",
+              variant: "warning",
+            },
+          },
+          notification: {
+            type: "info",
+            title: "Item Created Successfully",
+            message: `"${itemData.name}" has been added to your inventory and is pending name verification by admin.`,
+          },
+        },
       });
     } catch (error) {
+      console.error("❌ Error creating item:", error);
+
       if (error.code === 11000) {
         return res.status(400).json({
           success: false,
           message: "Item code already exists",
+          error: "Duplicate item code",
         });
       }
 
@@ -1430,10 +1513,6 @@ const itemController = {
     }
   },
 
-  /**
-   * Delete transaction for a specific item
-   * DELETE /api/companies/:companyId/items/:itemId/transactions/:transactionId
-   */
   deleteItemTransaction: async (req, res) => {
     try {
       const {companyId, itemId, transactionId} = req.params;
@@ -2095,6 +2174,905 @@ const itemController = {
       });
     }
   },
-}; // ✅ FIXED: Proper closing of itemController object
+
+  // ===== ✅ ADMIN NAME VERIFICATION FUNCTIONS =====
+
+  /**
+   * Get items pending name verification
+   * GET /admin/items/pending-verification
+   */
+  getPendingVerificationItems: async (req, res) => {
+    try {
+      console.log("🔍 Admin: Getting ALL items for name verification review");
+
+      const {
+        page = 1,
+        limit = 50,
+        search = "",
+        companyId = "",
+        status = "all", // ✅ NEW: all, pending, approved, rejected
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = req.query;
+
+      // ✅ UPDATED: Show all items by default, filter by status if needed
+      const filter = {};
+
+      // Status filter
+      if (status !== "all") {
+        filter["nameVerification.status"] = status;
+      }
+
+      // Search filter
+      if (search && search.trim()) {
+        filter.$or = [
+          {"nameVerification.originalName": {$regex: search, $options: "i"}},
+          {name: {$regex: search, $options: "i"}}, // ✅ Also search current name
+          {itemCode: {$regex: search, $options: "i"}},
+          {category: {$regex: search, $options: "i"}},
+        ];
+      }
+
+      // Company filter
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        filter.companyId = new mongoose.Types.ObjectId(companyId);
+      }
+
+      // Pagination
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+      const skip = (pageNum - 1) * limitNum;
+
+      // Sorting
+      const sortObject = {};
+      sortObject[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+      const items = await Item.find(filter)
+        .populate("companyId", "businessName phoneNumber email state city")
+        .sort(sortObject)
+        .skip(skip)
+        .limit(limitNum)
+        .lean();
+
+      const totalItems = await Item.countDocuments(filter);
+
+      const formattedItems = items.map((item) => ({
+        id: item._id,
+        currentName: item.name, // ✅ Current name (approved or original)
+        originalName: item.nameVerification?.originalName || item.name,
+        verifiedName: item.nameVerification?.verifiedName,
+        itemCode: item.itemCode,
+        category: item.category,
+        type: item.type,
+        unit: item.unit,
+        gstRate: item.gstRate || 0,
+        description: item.description || "",
+
+        // Pricing info for admin
+        buyPrice: item.buyPrice || 0,
+        salePrice: item.salePrice || 0,
+
+        // Stock info
+        currentStock: item.type === "product" ? item.currentStock || 0 : "N/A",
+
+        // Company information
+        companyInfo: item.companyId
+          ? {
+              id: item.companyId._id,
+              name: item.companyId.businessName,
+              phone: item.companyId.phoneNumber,
+              email: item.companyId.email,
+              location: `${item.companyId.city || ""}, ${
+                item.companyId.state || ""
+              }`.replace(/^,\s*|,\s*$/g, ""),
+            }
+          : null,
+
+        // ✅ ENHANCED: Verification details
+        verification: {
+          status: item.nameVerification?.status || "pending",
+          submittedDate: item.createdAt,
+          verificationDate: item.nameVerification?.verificationDate,
+          verifiedBy: item.nameVerification?.verifiedBy,
+          rejectionReason: item.nameVerification?.rejectionReason,
+          history: item.nameVerification?.verificationHistory || [],
+        },
+
+        // Additional metrics
+        daysSinceSubmission: Math.floor(
+          (Date.now() - new Date(item.createdAt)) / (1000 * 60 * 60 * 24)
+        ),
+        needsAttention:
+          Math.floor(
+            (Date.now() - new Date(item.createdAt)) / (1000 * 60 * 60 * 24)
+          ) > 3 && item.nameVerification?.status === "pending",
+      }));
+
+      // ✅ ENHANCED: Summary statistics
+      const statusCounts = await Item.aggregate([
+        {
+          $match:
+            companyId && mongoose.Types.ObjectId.isValid(companyId)
+              ? {companyId: new mongoose.Types.ObjectId(companyId)}
+              : {},
+        },
+        {
+          $group: {
+            _id: "$nameVerification.status",
+            count: {$sum: 1},
+          },
+        },
+      ]);
+
+      const summary = {
+        total: totalItems,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+      };
+
+      statusCounts.forEach((stat) => {
+        if (stat._id) summary[stat._id] = stat.count;
+      });
+
+      const pagination = {
+        page: pageNum,
+        limit: limitNum,
+        total: totalItems,
+        totalPages: Math.ceil(totalItems / limitNum),
+        hasNextPage: pageNum < Math.ceil(totalItems / limitNum),
+        hasPrevPage: pageNum > 1,
+      };
+
+      console.log(
+        `✅ Admin: Retrieved ${formattedItems.length} items for verification review`
+      );
+
+      res.json({
+        success: true,
+        data: {
+          items: formattedItems,
+          pagination,
+          summary,
+          filters: {
+            currentStatus: status,
+            availableStatuses: ["all", "pending", "approved", "rejected"],
+          },
+        },
+        message: `Found ${formattedItems.length} items for verification review`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting items for verification:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch items for verification",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Approve item name
+   * PUT /admin/items/:itemId/approve-name
+   */
+  approveItemName: async (req, res) => {
+    try {
+      const {itemId} = req.params;
+      const {correctedName, adminId = "admin", adminNotes = ""} = req.body;
+
+      console.log(`🔍 Admin: Reviewing item ${itemId} for name verification`);
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      const item = await Item.findById(itemId).populate(
+        "companyId",
+        "businessName phoneNumber email"
+      );
+
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      // ✅ UPDATED: Admin can approve from any status (not just pending)
+      const originalName = item.nameVerification?.originalName || item.name;
+
+      // ✅ NEW: Use corrected name if provided, otherwise keep original
+      const finalName =
+        correctedName && correctedName.trim()
+          ? correctedName.trim()
+          : originalName;
+
+      // Check if corrected name already exists in the same company
+      if (correctedName && correctedName.trim() !== item.name) {
+        const existingItem = await Item.findOne({
+          companyId: item.companyId,
+          name: finalName,
+          _id: {$ne: itemId},
+        });
+
+        if (existingItem) {
+          return res.status(400).json({
+            success: false,
+            message: `An item with the name "${finalName}" already exists in this company`,
+          });
+        }
+      }
+
+      // ✅ UPDATED: Determine if name was corrected
+      const wasNameCorrected =
+        correctedName &&
+        correctedName.trim() &&
+        correctedName.trim() !== originalName;
+
+      const reasonMessage = wasNameCorrected
+        ? `Name corrected by admin: "${originalName}" → "${finalName}". ${adminNotes}`
+        : `Name approved as submitted. ${adminNotes}`;
+
+      // Update item with approved/corrected name
+      const updatedItem = await Item.findByIdAndUpdate(
+        itemId,
+        {
+          $set: {
+            name: finalName, // ✅ Set the final approved name
+            "nameVerification.status": "approved",
+            "nameVerification.verifiedName": finalName,
+            "nameVerification.verifiedBy": adminId,
+            "nameVerification.verificationDate": new Date(),
+            lastModifiedBy: adminId,
+            updatedAt: new Date(),
+          },
+          $push: {
+            "nameVerification.verificationHistory": {
+              action: "approved",
+              oldName: originalName,
+              newName: finalName,
+              adminId: adminId,
+              date: new Date(),
+              reason: reasonMessage,
+            },
+          },
+        },
+        {new: true}
+      );
+
+      if (wasNameCorrected) {
+        console.log(
+          `✅ Admin: Name CORRECTED - "${originalName}" → "${finalName}"`
+        );
+      } else {
+        console.log(`✅ Admin: Name APPROVED as submitted - "${finalName}"`);
+      }
+
+      res.json({
+        success: true,
+        message: wasNameCorrected
+          ? "Item name corrected and approved successfully"
+          : "Item name approved successfully",
+        data: {
+          item: {
+            id: updatedItem._id,
+            originalName: originalName,
+            finalName: finalName,
+            wasNameCorrected: wasNameCorrected,
+            status: "approved",
+            companyName: item.companyId?.businessName || "Unknown",
+          },
+          verification: {
+            action: wasNameCorrected
+              ? "corrected_and_approved"
+              : "approved_as_submitted",
+            approvedBy: adminId,
+            approvedAt: new Date(),
+            notes: reasonMessage,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error approving item name:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to approve item name",
+        error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Quick approve multiple items (names are correct as submitted)
+  quickApproveItems: async (req, res) => {
+    try {
+      const {itemIds, adminId = "admin"} = req.body;
+
+      console.log(`🔍 Admin: Quick approving ${itemIds?.length || 0} items`);
+
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Item IDs array is required",
+        });
+      }
+
+      const results = {
+        approved: [],
+        failed: [],
+        total: itemIds.length,
+      };
+
+      for (const itemId of itemIds) {
+        try {
+          if (!mongoose.Types.ObjectId.isValid(itemId)) {
+            results.failed.push({
+              itemId,
+              error: "Invalid item ID format",
+            });
+            continue;
+          }
+
+          const item = await Item.findById(itemId);
+          if (!item) {
+            results.failed.push({
+              itemId,
+              error: "Item not found",
+            });
+            continue;
+          }
+
+          const originalName = item.nameVerification?.originalName || item.name;
+
+          // ✅ Quick approve - name is correct as submitted
+          await Item.findByIdAndUpdate(itemId, {
+            $set: {
+              name: originalName, // Keep original name
+              "nameVerification.status": "approved",
+              "nameVerification.verifiedName": originalName,
+              "nameVerification.verifiedBy": adminId,
+              "nameVerification.verificationDate": new Date(),
+            },
+            $push: {
+              "nameVerification.verificationHistory": {
+                action: "approved",
+                oldName: originalName,
+                newName: originalName,
+                adminId: adminId,
+                date: new Date(),
+                reason: "Quick approved - name correct as submitted",
+              },
+            },
+          });
+
+          results.approved.push({
+            itemId,
+            name: originalName,
+          });
+        } catch (error) {
+          results.failed.push({
+            itemId,
+            error: error.message,
+          });
+        }
+      }
+
+      console.log(
+        `✅ Admin: Quick approval completed - ${results.approved.length} approved, ${results.failed.length} failed`
+      );
+
+      res.json({
+        success: true,
+        message: `Quick approval completed: ${results.approved.length} approved, ${results.failed.length} failed`,
+        data: results,
+      });
+    } catch (error) {
+      console.error("❌ Error in quick approve:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to quick approve items",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Reject item name
+   * PUT /admin/items/:itemId/reject-name
+   */
+  rejectItemName: async (req, res) => {
+    try {
+      const {itemId} = req.params;
+      const {rejectionReason, adminId, suggestedName} = req.body;
+
+      console.log(`🔍 Admin: Rejecting name for item ${itemId}`);
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      if (!rejectionReason || !rejectionReason.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Rejection reason is required",
+        });
+      }
+
+      const item = await Item.findById(itemId).populate(
+        "companyId",
+        "businessName phoneNumber email"
+      );
+
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      if (item.nameVerification.status !== "pending") {
+        return res.status(400).json({
+          success: false,
+          message: `Item is not pending verification (current status: ${item.nameVerification.status})`,
+        });
+      }
+
+      // Update item with rejection
+      const updatedItem = await Item.findByIdAndUpdate(
+        itemId,
+        {
+          $set: {
+            "nameVerification.status": "rejected",
+            "nameVerification.rejectionReason": rejectionReason.trim(),
+            "nameVerification.verifiedBy": adminId || "admin",
+            "nameVerification.verificationDate": new Date(),
+            lastModifiedBy: adminId || "admin",
+            updatedAt: new Date(),
+          },
+          $push: {
+            "nameVerification.verificationHistory": {
+              action: "rejected",
+              oldName: item.nameVerification.originalName,
+              newName: suggestedName || null,
+              adminId: adminId || "admin",
+              date: new Date(),
+              reason: rejectionReason.trim(),
+            },
+          },
+        },
+        {new: true}
+      );
+
+      console.log(
+        `❌ Admin: Name rejected - "${item.nameVerification.originalName}" - Reason: ${rejectionReason}`
+      );
+
+      // Optional: Send notification to company
+      // await notifyCompanyNameRejected(item.companyId, item.name, rejectionReason);
+
+      res.json({
+        success: true,
+        message: "Item name rejected successfully",
+        data: {
+          item: {
+            id: updatedItem._id,
+            originalName: item.nameVerification.originalName,
+            status: "rejected",
+            companyName: item.companyId?.businessName || "Unknown",
+          },
+          rejection: {
+            reason: rejectionReason.trim(),
+            suggestedName: suggestedName || null,
+            rejectedBy: adminId || "admin",
+            rejectedAt: new Date(),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error rejecting item name:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to reject item name",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Get verification history for an item
+   * GET /admin/items/:itemId/verification-history
+   */
+  getVerificationHistory: async (req, res) => {
+    try {
+      const {itemId} = req.params;
+
+      console.log(`🔍 Admin: Getting verification history for item ${itemId}`);
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      const item = await Item.findById(itemId)
+        .populate("companyId", "businessName phoneNumber email")
+        .select("name nameVerification createdAt")
+        .lean();
+
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      const verificationData = {
+        item: {
+          id: item._id,
+          currentName: item.name,
+          companyName: item.companyId?.businessName || "Unknown",
+          submittedDate: item.createdAt,
+        },
+        verification: {
+          status: item.nameVerification.status,
+          originalName: item.nameVerification.originalName,
+          verifiedName: item.nameVerification.verifiedName,
+          verifiedBy: item.nameVerification.verifiedBy,
+          verificationDate: item.nameVerification.verificationDate,
+          rejectionReason: item.nameVerification.rejectionReason,
+          history: (item.nameVerification.verificationHistory || []).map(
+            (entry) => ({
+              action: entry.action,
+              oldName: entry.oldName,
+              newName: entry.newName,
+              adminId: entry.adminId,
+              date: entry.date,
+              reason: entry.reason,
+              formattedDate: new Date(entry.date).toLocaleString(),
+            })
+          ),
+        },
+      };
+
+      res.json({
+        success: true,
+        data: verificationData,
+        message: "Verification history retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting verification history:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch verification history",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Get verification statistics
+   * GET /admin/items/verification-stats
+   */
+  getVerificationStats: async (req, res) => {
+    try {
+      console.log("📊 Admin: Getting verification statistics");
+
+      const {companyId} = req.query;
+
+      // Build match filter
+      const matchFilter = {};
+      if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+        matchFilter.companyId = new mongoose.Types.ObjectId(companyId);
+      }
+
+      const stats = await Item.aggregate([
+        {$match: matchFilter},
+        {
+          $group: {
+            _id: "$nameVerification.status",
+            count: {$sum: 1},
+            items: {$push: "$nameVerification.originalName"},
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalItems: {$sum: "$count"},
+            statusCounts: {
+              $push: {
+                status: "$_id",
+                count: "$count",
+              },
+            },
+          },
+        },
+      ]);
+
+      // Recent verification activity (last 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recentActivity = await Item.find({
+        ...matchFilter,
+        "nameVerification.verificationDate": {$gte: sevenDaysAgo},
+      })
+        .select(
+          "nameVerification.status nameVerification.verificationDate nameVerification.originalName"
+        )
+        .populate("companyId", "businessName")
+        .sort({"nameVerification.verificationDate": -1})
+        .limit(10)
+        .lean();
+
+      // Average verification time
+      const avgVerificationTime = await Item.aggregate([
+        {
+          $match: {
+            ...matchFilter,
+            "nameVerification.status": {$in: ["approved", "rejected"]},
+            "nameVerification.verificationDate": {$exists: true},
+          },
+        },
+        {
+          $project: {
+            verificationTime: {
+              $divide: [
+                {
+                  $subtract: [
+                    "$nameVerification.verificationDate",
+                    "$createdAt",
+                  ],
+                },
+                1000 * 60 * 60 * 24, // Convert to days
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            avgDays: {$avg: "$verificationTime"},
+          },
+        },
+      ]);
+
+      const formattedStats = {
+        total: stats[0]?.totalItems || 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        averageVerificationDays: avgVerificationTime[0]?.avgDays || 0,
+        recentActivity: recentActivity.map((item) => ({
+          itemName: item.nameVerification.originalName,
+          status: item.nameVerification.status,
+          verificationDate: item.nameVerification.verificationDate,
+          companyName: item.companyId?.businessName || "Unknown",
+        })),
+      };
+
+      // Process status counts
+      if (stats[0]?.statusCounts) {
+        stats[0].statusCounts.forEach((statusCount) => {
+          formattedStats[statusCount.status] = statusCount.count;
+        });
+      }
+
+      console.log("✅ Admin: Verification statistics calculated");
+
+      res.json({
+        success: true,
+        data: formattedStats,
+        message: "Verification statistics retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting verification stats:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch verification statistics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Bulk approve multiple items
+   * POST /admin/items/bulk-approve
+   */
+  bulkApproveItems: async (req, res) => {
+    try {
+      const {items, adminId} = req.body; // items: [{ itemId, verifiedName }]
+
+      console.log(`🔍 Admin: Bulk approving ${items?.length || 0} items`);
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Items array is required",
+        });
+      }
+
+      const results = {
+        approved: [],
+        failed: [],
+        total: items.length,
+      };
+
+      for (const itemData of items) {
+        try {
+          const {itemId, verifiedName} = itemData;
+
+          if (!mongoose.Types.ObjectId.isValid(itemId)) {
+            results.failed.push({
+              itemId,
+              error: "Invalid item ID format",
+            });
+            continue;
+          }
+
+          const item = await Item.findById(itemId);
+          if (!item) {
+            results.failed.push({
+              itemId,
+              error: "Item not found",
+            });
+            continue;
+          }
+
+          if (item.nameVerification.status !== "pending") {
+            results.failed.push({
+              itemId,
+              error: `Item not pending verification (status: ${item.nameVerification.status})`,
+            });
+            continue;
+          }
+
+          const finalName = verifiedName || item.nameVerification.originalName;
+
+          await Item.findByIdAndUpdate(itemId, {
+            $set: {
+              name: finalName,
+              "nameVerification.status": "approved",
+              "nameVerification.verifiedName": finalName,
+              "nameVerification.verifiedBy": adminId || "admin",
+              "nameVerification.verificationDate": new Date(),
+            },
+            $push: {
+              "nameVerification.verificationHistory": {
+                action: "approved",
+                oldName: item.nameVerification.originalName,
+                newName: finalName,
+                adminId: adminId || "admin",
+                date: new Date(),
+                reason: "Bulk approved by admin",
+              },
+            },
+          });
+
+          results.approved.push({
+            itemId,
+            originalName: item.nameVerification.originalName,
+            verifiedName: finalName,
+          });
+        } catch (error) {
+          results.failed.push({
+            itemId: itemData.itemId,
+            error: error.message,
+          });
+        }
+      }
+
+      console.log(
+        `✅ Admin: Bulk approval completed - ${results.approved.length} approved, ${results.failed.length} failed`
+      );
+
+      res.json({
+        success: true,
+        message: `Bulk approval completed: ${results.approved.length} approved, ${results.failed.length} failed`,
+        data: results,
+      });
+    } catch (error) {
+      console.error("❌ Error in bulk approve:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to bulk approve items",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * Resubmit item for verification (for companies to fix rejected items)
+   * PUT /admin/items/:itemId/resubmit
+   */
+  resubmitForVerification: async (req, res) => {
+    try {
+      const {itemId} = req.params;
+      const {newName, resubmissionReason} = req.body;
+
+      console.log(`🔍 Resubmitting item ${itemId} for verification`);
+
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid item ID format",
+        });
+      }
+
+      if (!newName || !newName.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "New name is required for resubmission",
+        });
+      }
+
+      const item = await Item.findById(itemId);
+      if (!item) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      if (item.nameVerification.status !== "rejected") {
+        return res.status(400).json({
+          success: false,
+          message: "Only rejected items can be resubmitted",
+        });
+      }
+
+      // Update item for resubmission
+      const updatedItem = await Item.findByIdAndUpdate(
+        itemId,
+        {
+          $set: {
+            name: newName.trim(),
+            "nameVerification.status": "pending",
+            "nameVerification.originalName": newName.trim(),
+            "nameVerification.verifiedName": null,
+            "nameVerification.verifiedBy": null,
+            "nameVerification.verificationDate": null,
+            "nameVerification.rejectionReason": null,
+            updatedAt: new Date(),
+          },
+          $push: {
+            "nameVerification.verificationHistory": {
+              action: "resubmitted",
+              oldName: item.nameVerification.originalName,
+              newName: newName.trim(),
+              date: new Date(),
+              reason: resubmissionReason || "Resubmitted after rejection",
+            },
+          },
+        },
+        {new: true}
+      );
+
+      console.log(`✅ Item resubmitted for verification: ${newName.trim()}`);
+
+      res.json({
+        success: true,
+        message: "Item resubmitted for verification successfully",
+        data: {
+          item: {
+            id: updatedItem._id,
+            newName: newName.trim(),
+            status: "pending",
+          },
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error resubmitting item:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to resubmit item for verification",
+        error: error.message,
+      });
+    }
+  },
+};
 
 module.exports = itemController;

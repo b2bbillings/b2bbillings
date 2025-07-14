@@ -34,6 +34,8 @@ import {
   faExchangeAlt,
   faChartBar,
   faWarehouse,
+  faCheckCircle, // ✅ NEW: For name verification
+  faHistory, // ✅ NEW: For verification history
 } from "@fortawesome/free-solid-svg-icons";
 
 import AdminSidebar from "./AdminSidebar";
@@ -49,11 +51,202 @@ import ReportsAnalytics from "./ReportsAnalytics";
 import UserDetailPage from "./UserDetail/UserDetailPage";
 import CompanyDetailPage from "./UserDetail/CompanyDetailPage";
 
-// Import the new management components
+// Import the existing management components
 import SalesInvoiceManagement from "./SalesInvoiceManegment";
 import SalesOrderManagement from "./SalesOrderManegment";
 import PurchaseInvoiceManagement from "./PurchaseInvoiceManegment";
 import PurchaseOrderManagement from "./PurchaseOrderManegment";
+
+// ✅ NEW: Import the name verification components
+import ItemNameVerification from "./ItemNameVerification";
+
+// ✅ NEW: Verification History Component
+const VerificationHistory = ({adminData, currentUser, addToast}) => (
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faHistory} className="me-2 text-primary" />
+          Verification History
+        </h4>
+        <p className="text-muted mb-0">
+          Complete audit trail of all name verification activities
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export History
+        </Button>
+        <Button variant="primary" size="sm">
+          <FontAwesomeIcon icon={faChartLine} className="me-1" />
+          Generate Report
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-success mb-2">1,245</h3>
+            <p className="text-muted mb-0">Total Verified</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-danger mb-2">89</h3>
+            <p className="text-muted mb-0">Total Rejected</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-warning mb-2">2.5</h3>
+            <p className="text-muted mb-0">Avg. Days</p>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={3} md={6}>
+        <Card className="border-0 shadow-sm text-center">
+          <Card.Body>
+            <h3 className="text-info mb-2">93.4%</h3>
+            <p className="text-muted mb-0">Approval Rate</p>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Verification Timeline</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faHistory} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Verification History Dashboard</h5>
+        <p className="text-muted mb-4">
+          Complete timeline of all verification activities, admin actions, and
+          detailed audit logs for compliance and tracking purposes.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faHistory} className="me-2" />
+          View Full History
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
+);
+
+// ✅ NEW: Verification Analytics Component
+const VerificationAnalytics = ({adminData, currentUser, addToast}) => (
+  <Container fluid>
+    <div className="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 className="mb-1">
+          <FontAwesomeIcon icon={faChartLine} className="me-2 text-primary" />
+          Verification Analytics
+        </h4>
+        <p className="text-muted mb-0">
+          Performance metrics and insights for name verification process
+        </p>
+      </div>
+      <div className="d-flex gap-2">
+        <Button variant="outline-primary" size="sm">
+          <FontAwesomeIcon icon={faFileAlt} className="me-1" />
+          Export Analytics
+        </Button>
+        <Button variant="primary" size="sm">
+          <FontAwesomeIcon icon={faChartBar} className="me-1" />
+          Advanced Analytics
+        </Button>
+      </div>
+    </div>
+
+    <Row className="g-4 mb-4">
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-success bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon
+                icon={faCheckCircle}
+                className="fs-2 text-success"
+              />
+            </div>
+            <h5 className="fw-bold">Performance Metrics</h5>
+            <p className="text-muted small">
+              Track verification speed and accuracy
+            </p>
+            <Badge bg="success" className="w-100">
+              Available
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-info bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faChartLine} className="fs-2 text-info" />
+            </div>
+            <h5 className="fw-bold">Trend Analysis</h5>
+            <p className="text-muted small">
+              Analyze verification patterns over time
+            </p>
+            <Badge bg="info" className="w-100">
+              In Development
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+      <Col lg={4}>
+        <Card className="border-0 shadow-sm h-100">
+          <Card.Body className="text-center">
+            <div
+              className="rounded-circle bg-warning bg-opacity-10 mx-auto mb-3 d-flex align-items-center justify-content-center"
+              style={{width: "60px", height: "60px"}}
+            >
+              <FontAwesomeIcon icon={faUsers} className="fs-2 text-warning" />
+            </div>
+            <h5 className="fw-bold">Admin Performance</h5>
+            <p className="text-muted small">
+              Individual admin verification stats
+            </p>
+            <Badge bg="warning" className="w-100">
+              Beta
+            </Badge>
+          </Card.Body>
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className="border-0 shadow-sm">
+      <Card.Header className="bg-light border-0">
+        <h6 className="mb-0 fw-bold">Verification Analytics Dashboard</h6>
+      </Card.Header>
+      <Card.Body className="text-center py-5">
+        <FontAwesomeIcon icon={faChartLine} className="fs-1 text-muted mb-3" />
+        <h5 className="text-muted">Advanced Verification Analytics</h5>
+        <p className="text-muted mb-4">
+          Comprehensive analytics including approval rates, processing times,
+          admin performance metrics, and trend analysis for optimization.
+        </p>
+        <Button variant="primary">
+          <FontAwesomeIcon icon={faChartLine} className="me-2" />
+          View Analytics
+        </Button>
+      </Card.Body>
+    </Card>
+  </Container>
+);
 
 // NotificationCenter component
 const NotificationCenter = ({adminData, currentUser, addToast}) => {
@@ -654,6 +847,12 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       setActiveTab("notifications");
     } else if (path.includes("/settings")) {
       setActiveTab("settings");
+    } else if (path.includes("/name-verification")) {
+      setActiveTab("name-verification");
+    } else if (path.includes("/verification-history")) {
+      setActiveTab("verification-history");
+    } else if (path.includes("/verification-stats")) {
+      setActiveTab("verification-stats");
     } else {
       setActiveTab("dashboard");
     }
@@ -682,6 +881,17 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         totalPurchaseOrders: 1420,
         totalRevenue: 245680,
         monthlyGrowth: 23.5,
+        // ✅ NEW: Add verification data
+        pendingVerifications: 12,
+        urgentVerifications: 3,
+        totalVerifications: 1245,
+        verificationStats: {
+          approved: 1156,
+          rejected: 89,
+          pending: 12,
+          averageProcessingDays: 2.5,
+          approvalRate: 93.4,
+        },
       };
 
       setAdminData(mockAdminData);
@@ -887,7 +1097,7 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
                 }
               />
 
-              {/* ✅ NEW MANAGEMENT ROUTES */}
+              {/* Existing Management Routes */}
               <Route
                 path="/sales-invoices"
                 element={
@@ -929,6 +1139,39 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
                 }
               />
 
+              {/* ✅ NEW: Name Verification Routes */}
+              <Route
+                path="/name-verification"
+                element={
+                  <ItemNameVerification
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/verification-history"
+                element={
+                  <VerificationHistory
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/verification-stats"
+                element={
+                  <VerificationAnalytics
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+
+              {/* Existing Routes */}
               <Route
                 path="/staff"
                 element={
@@ -1039,7 +1282,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
     }
 
-    /* ✅ UPDATED: Reduced padding from 2rem to 0.5rem */
     .admin-content {
       flex: 1;
       padding: 0.5rem;
@@ -1144,7 +1386,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         min-height: 70px;
       }
 
-      /* ✅ UPDATED: Mobile padding also reduced to 0.5rem */
       .admin-content {
         padding: 0.5rem;
       }
@@ -1168,7 +1409,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         min-height: 60px;
       }
 
-      /* ✅ UPDATED: Small mobile padding to 0.5rem */
       .admin-content {
         padding: 0.5rem;
       }
@@ -1242,7 +1482,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
     }
 
-    /* ✅ ADDITIONAL: Tighter spacing for better content utilization */
     .admin-content .container-fluid {
       padding-left: 0.5rem;
       padding-right: 0.5rem;
@@ -1259,7 +1498,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       padding-right: 0.25rem;
     }
 
-    /* ✅ ADDITIONAL: Compact spacing for cards and components */
     .admin-content .card-body {
       padding: 1rem;
     }
@@ -1276,7 +1514,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       margin-bottom: 0.75rem !important;
     }
 
-    /* ✅ ADDITIONAL: Optimize vertical spacing */
     .admin-content .g-4 {
       --bs-gutter-x: 0.5rem;
       --bs-gutter-y: 0.5rem;

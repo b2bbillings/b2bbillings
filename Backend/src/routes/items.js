@@ -43,7 +43,7 @@ router.get("/categories", itemController.getCategories);
 // 📊 GET /api/companies/:companyId/items/low-stock - Get low stock items
 router.get("/low-stock", itemController.getLowStockItems);
 
-// ===== ADMIN ROUTES (NEW) =====
+// ===== ADMIN ROUTES (EXISTING) =====
 
 // 🔧 GET /api/companies/:companyId/items/admin/all - Get all items across companies (Admin)
 router.get("/admin/all", itemController.getAllItemsAdmin);
@@ -56,6 +56,50 @@ router.get("/admin/export", itemController.exportAllItemsAdmin);
 
 // 🚨 GET /api/companies/:companyId/items/admin/low-stock - Get low stock items across companies (Admin)
 router.get("/admin/low-stock", itemController.getAllLowStockItemsAdmin);
+
+// ===== ✅ NEW ADMIN NAME VERIFICATION ROUTES =====
+
+// 🔍 GET /api/companies/:companyId/items/admin/verification/pending - Get items for verification review
+router.get(
+  "/admin/verification/pending",
+  itemController.getPendingVerificationItems
+);
+
+// 📊 GET /api/companies/:companyId/items/admin/verification/stats - Get verification statistics
+router.get("/admin/verification/stats", itemController.getVerificationStats);
+
+// ✅ PUT /api/companies/:companyId/items/admin/verification/:itemId/approve - Approve item name (with optional correction)
+router.put(
+  "/admin/verification/:itemId/approve",
+  itemController.approveItemName
+);
+
+// ❌ PUT /api/companies/:companyId/items/admin/verification/:itemId/reject - Reject item name
+router.put("/admin/verification/:itemId/reject", itemController.rejectItemName);
+
+// ⚡ POST /api/companies/:companyId/items/admin/verification/quick-approve - Quick approve multiple items
+router.post(
+  "/admin/verification/quick-approve",
+  itemController.quickApproveItems
+);
+
+// 📋 POST /api/companies/:companyId/items/admin/verification/bulk-approve - Bulk approve multiple items
+router.post(
+  "/admin/verification/bulk-approve",
+  itemController.bulkApproveItems
+);
+
+// 📜 GET /api/companies/:companyId/items/admin/verification/:itemId/history - Get verification history
+router.get(
+  "/admin/verification/:itemId/history",
+  itemController.getVerificationHistory
+);
+
+// 🔄 PUT /api/companies/:companyId/items/admin/verification/:itemId/resubmit - Resubmit item for verification
+router.put(
+  "/admin/verification/:itemId/resubmit",
+  itemController.resubmitForVerification
+);
 
 // ===== STOCK MANAGEMENT ROUTES =====
 
@@ -84,7 +128,7 @@ router.put("/:itemId/adjust-stock", itemController.adjustStock);
 // 📊 GET /api/companies/:companyId/items/:itemId/stock-history - Get stock history for specific item
 router.get("/:itemId/stock-history", itemController.getStockHistory);
 
-// ===== ✅ TRANSACTION ROUTES (MISSING - ADD THESE) =====
+// ===== TRANSACTION ROUTES =====
 
 // 📊 GET /api/companies/:companyId/items/:itemId/transactions - Get transactions for specific item
 router.get("/:itemId/transactions", itemController.getItemTransactions);
@@ -125,26 +169,45 @@ router.use("*", (req, res) => {
       url: req.originalUrl,
       params: req.params,
       availableRoutes: [
+        // Basic CRUD
         "POST /",
         "GET /",
         "GET /search",
         "GET /categories",
         "GET /low-stock",
+
+        // Admin routes
         "GET /admin/all",
         "GET /admin/stats",
         "GET /admin/export",
         "GET /admin/low-stock",
+
+        // ✅ NEW: Admin verification routes
+        "GET /admin/verification/pending",
+        "GET /admin/verification/stats",
+        "PUT /admin/verification/:itemId/approve",
+        "PUT /admin/verification/:itemId/reject",
+        "POST /admin/verification/quick-approve",
+        "POST /admin/verification/bulk-approve",
+        "GET /admin/verification/:itemId/history",
+        "PUT /admin/verification/:itemId/resubmit",
+
+        // Stock management
         "GET /stock-summary",
         "PATCH /bulk/stock",
+
+        // Individual item routes
         "GET /:itemId",
         "PUT /:itemId",
         "DELETE /:itemId",
         "PUT /:itemId/adjust-stock",
         "GET /:itemId/stock-history",
-        "GET /:itemId/transactions", // ✅ NEW
-        "POST /:itemId/transactions", // ✅ NEW
-        "PUT /:itemId/transactions/:transactionId", // ✅ NEW
-        "DELETE /:itemId/transactions/:transactionId", // ✅ NEW
+
+        // Transaction routes
+        "GET /:itemId/transactions",
+        "POST /:itemId/transactions",
+        "PUT /:itemId/transactions/:transactionId",
+        "DELETE /:itemId/transactions/:transactionId",
       ],
     },
   });

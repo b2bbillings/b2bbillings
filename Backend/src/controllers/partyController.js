@@ -989,7 +989,11 @@ const partyController = {
         type = "all",
         sortBy = "createdAt",
         sortOrder = "desc",
-        includeLinked = false, // ✅ NEW: Option to include only linked suppliers
+        includeLinked = false,
+        includeChatFields = false,
+        includeCompanyData = false,
+        populateLinkedCompany = false,
+        showAllParties = false, // ✅ NEW: Parameter to show all parties
       } = req.query;
 
       const userId = req.user?.id || req.user?._id;
@@ -1018,26 +1022,29 @@ const partyController = {
           ? new mongoose.Types.ObjectId(companyId)
           : companyId;
 
+      // ✅ FIXED: Base filter - show ALL parties for this company
       const filter = {
         isActive: true,
         companyId: companyObjectId,
       };
 
+      // ✅ FIXED: Only add search filters if provided
       if (search && search.trim()) {
         filter.$or = [
-          {name: {$regex: search, $options: "i"}},
-          {phoneNumber: {$regex: search, $options: "i"}},
-          {email: {$regex: search, $options: "i"}},
-          {companyName: {$regex: search, $options: "i"}},
-          {gstNumber: {$regex: search, $options: "i"}},
+          {name: {$regex: search.trim(), $options: "i"}},
+          {phoneNumber: {$regex: search.trim(), $options: "i"}},
+          {email: {$regex: search.trim(), $options: "i"}},
+          {companyName: {$regex: search.trim(), $options: "i"}},
+          {gstNumber: {$regex: search.trim(), $options: "i"}},
         ];
       }
 
+      // ✅ FIXED: Only filter by party type if specified
       if (type && type !== "all") {
         filter.partyType = type;
       }
 
-      // ✅ NEW: Filter for linked suppliers only
+      // ✅ FIXED: Only filter for linked companies if explicitly requested
       if (includeLinked === "true") {
         filter.isLinkedSupplier = true;
         filter.linkedCompanyId = {$exists: true, $ne: null};
@@ -1048,9 +1055,22 @@ const partyController = {
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      // ✅ ENHANCED: Include linked company information
+      console.log("🔄 Fetching parties with filter:", {
+        filter,
+        sort,
+        skip,
+        limit: parseInt(limit),
+        includeLinked: includeLinked === "true",
+        populateLinkedCompany: populateLinkedCompany === "true",
+        showAllParties: showAllParties === "true",
+      });
+
+      // ✅ FIXED: Always populate linked company information (will be null for unlinked parties)
       const parties = await Party.find(filter)
-        .populate("linkedCompanyId", "businessName gstin phoneNumber email")
+        .populate(
+          "linkedCompanyId",
+          "businessName gstin phoneNumber email isActive website businessType"
+        )
         .sort(sort)
         .skip(skip)
         .limit(parseInt(limit))
@@ -1058,16 +1078,70 @@ const partyController = {
 
       const total = await Party.countDocuments(filter);
 
-      // ✅ NEW: Add bidirectional order readiness info
-      const partiesWithLinkingInfo = parties.map((party) => ({
-        ...party,
-        bidirectionalOrderReady: !!(
-          party.linkedCompanyId &&
-          party.isLinkedSupplier &&
-          party.enableBidirectionalOrders &&
-          party.partyType === "supplier"
-        ),
-      }));
+      // ✅ FIXED: Process ALL parties and add comprehensive linking information
+      const partiesWithLinkingInfo = parties.map((party) => {
+        const enhanced = {
+          ...party,
+          // ✅ FIXED: Chat capability based on any type of company linking
+          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+          chatCompanyId:
+            party.linkedCompanyId?._id || party.externalCompanyId || null,
+          chatCompanyName: party.linkedCompanyId?.businessName || null,
+          bidirectionalOrderReady: !!(
+            party.linkedCompanyId &&
+            party.isLinkedSupplier &&
+            party.enableBidirectionalOrders &&
+            party.partyType === "supplier"
+          ),
+          // ✅ NEW: Enhanced linking status
+          linkingStatus: party.linkedCompanyId
+            ? "linked"
+            : party.externalCompanyId
+            ? "external"
+            : "unlinked",
+          hasLinkedCompany: !!party.linkedCompanyId,
+          hasExternalCompany: !!party.externalCompanyId,
+          isUnlinked: !party.linkedCompanyId && !party.externalCompanyId,
+        };
+
+        return enhanced;
+      });
+
+      // ✅ FIXED: Comprehensive statistics for all party types
+      const linkedParties = partiesWithLinkingInfo.filter(
+        (p) => p.linkedCompanyId
+      );
+      const externalParties = partiesWithLinkingInfo.filter(
+        (p) => p.externalCompanyId && !p.linkedCompanyId
+      );
+      const unlinkedParties = partiesWithLinkingInfo.filter(
+        (p) => !p.linkedCompanyId && !p.externalCompanyId
+      );
+      const chatEnabledParties = partiesWithLinkingInfo.filter(
+        (p) => p.canChat
+      );
+
+      console.log(`✅ Retrieved ALL parties with comprehensive linking info:`, {
+        total: partiesWithLinkingInfo.length,
+        breakdown: {
+          linked: linkedParties.length,
+          external: externalParties.length,
+          unlinked: unlinkedParties.length,
+          chatEnabled: chatEnabledParties.length,
+        },
+        partyTypes: {
+          customers: partiesWithLinkingInfo.filter(
+            (p) => p.partyType === "customer"
+          ).length,
+          suppliers: partiesWithLinkingInfo.filter(
+            (p) => p.partyType === "supplier"
+          ).length,
+          vendors: partiesWithLinkingInfo.filter(
+            (p) => p.partyType === "vendor"
+          ).length,
+        },
+        filter: filter,
+      });
 
       res.json({
         success: true,
@@ -1081,9 +1155,38 @@ const partyController = {
             hasNextPage: parseInt(page) < Math.ceil(total / parseInt(limit)),
             hasPrevPage: parseInt(page) > 1,
           },
+          // ✅ NEW: Enhanced summary information
+          summary: {
+            total: partiesWithLinkingInfo.length,
+            linked: linkedParties.length,
+            external: externalParties.length,
+            unlinked: unlinkedParties.length,
+            chatEnabled: chatEnabledParties.length,
+            byType: {
+              customers: partiesWithLinkingInfo.filter(
+                (p) => p.partyType === "customer"
+              ).length,
+              suppliers: partiesWithLinkingInfo.filter(
+                (p) => p.partyType === "supplier"
+              ).length,
+              vendors: partiesWithLinkingInfo.filter(
+                (p) => p.partyType === "vendor"
+              ).length,
+            },
+            linking: {
+              linkedSuppliers: linkedParties.filter(
+                (p) => p.partyType === "supplier"
+              ).length,
+              bidirectionalReady: partiesWithLinkingInfo.filter(
+                (p) => p.bidirectionalOrderReady
+              ).length,
+              chatCapable: chatEnabledParties.length,
+            },
+          },
         },
       });
     } catch (error) {
+      console.error("❌ Error fetching parties:", error);
       res.status(500).json({
         success: false,
         message: "Error fetching parties",
@@ -1091,10 +1194,11 @@ const partyController = {
       });
     }
   },
-
+  // ✅ FIXED: getPartyById method
   async getPartyById(req, res) {
     try {
       const {id} = req.params;
+      const {includeChatFields} = req.query;
 
       const userId = req.user?.id || req.user?._id;
       const companyId =
@@ -1128,12 +1232,17 @@ const partyController = {
           ? new mongoose.Types.ObjectId(companyId)
           : companyId;
 
-      // ✅ ENHANCED: Include linked company information
+      // ✅ FIXED: Always populate linkedCompanyId field
       const party = await Party.findOne({
         _id: id,
         companyId: companyObjectId,
         isActive: true,
-      }).populate("linkedCompanyId", "businessName gstin phoneNumber email");
+      })
+        .populate(
+          "linkedCompanyId",
+          "businessName gstin phoneNumber email isActive"
+        )
+        .lean(); // Use lean() for better performance
 
       if (!party) {
         return res.status(404).json({
@@ -1142,18 +1251,36 @@ const partyController = {
         });
       }
 
-      // ✅ NEW: Add linking information to response
-      const partyWithLinkingInfo = {
-        ...party.toObject(),
-        bidirectionalOrderReady: party.isBidirectionalOrderReady(),
+      // ✅ FIXED: Enhance with chat capability info
+      const enhancedParty = {
+        ...party,
+        canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+        chatCompanyId: party.linkedCompanyId?._id || party.externalCompanyId,
+        chatCompanyName: party.linkedCompanyId?.businessName || party.name,
+        bidirectionalOrderReady: !!(
+          party.linkedCompanyId &&
+          party.isLinkedSupplier &&
+          party.enableBidirectionalOrders &&
+          party.partyType === "supplier"
+        ),
       };
+
+      console.log("✅ Party retrieved with linking info:", {
+        partyId: party._id,
+        partyName: party.name,
+        linkedCompanyId: party.linkedCompanyId?._id,
+        linkedCompanyName: party.linkedCompanyId?.businessName,
+        canChat: enhancedParty.canChat,
+        chatCompanyId: enhancedParty.chatCompanyId,
+      });
 
       res.json({
         success: true,
         message: "Party retrieved successfully",
-        data: partyWithLinkingInfo,
+        data: enhancedParty,
       });
     } catch (error) {
+      console.error("❌ Error fetching party:", error);
       res.status(500).json({
         success: false,
         message: "Error fetching party",

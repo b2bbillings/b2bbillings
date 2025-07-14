@@ -17,6 +17,9 @@ import CommunityPage from "./Pages/CommunityPage";
 // Import Admin Dashboard
 import AdminDashboard from "./components/Admin/AdminDashboard";
 
+// ✅ Import MainDashboard component - NO LAYOUT
+import MainDashboard from "./components/MainDashboard/MainDashboard";
+
 // Import services
 import companyService from "./services/companyService";
 import authService from "./services/authService";
@@ -264,6 +267,7 @@ function App() {
       setCurrentCompany(null);
       setCompanies([]);
       localStorage.removeItem("currentCompany");
+      localStorage.removeItem("dashboard-active-view");
     } catch (error) {
       // Handle error silently
     }
@@ -325,6 +329,7 @@ function App() {
     );
   };
 
+  // ✅ Updated navigation handler for MainDashboard
   const navigateToListView = (section) => {
     const companyId = getCompanyId();
     if (companyId) {
@@ -332,9 +337,55 @@ function App() {
     }
   };
 
+  // ✅ Navigation handler specifically for MainDashboard
+  const handleDashboardNavigation = (page) => {
+    const companyId = getCompanyId();
+    if (!companyId) {
+      showToast("Please select a company first", "warning");
+      return;
+    }
+
+    // Map dashboard actions to proper routes
+    const routeMap = {
+      dailySummary: `/companies/${companyId}/daybook`,
+      transactions: `/companies/${companyId}/transactions`,
+      paymentIn: `/companies/${companyId}/daybook`,
+      paymentOut: `/companies/${companyId}/daybook`,
+      createInvoice: `/companies/${companyId}/sales/add`,
+      createPurchaseOrder: `/companies/${companyId}/purchase-orders/add`,
+      createQuotation: `/companies/${companyId}/quotations/add`,
+      expenses: `/companies/${companyId}/daybook`,
+      reports: `/companies/${companyId}/reports`,
+      parties: `/companies/${companyId}/parties`,
+      allProducts: `/companies/${companyId}/products`,
+      inventory: `/companies/${companyId}/inventory`,
+      bankAccounts: `/companies/${companyId}/bank-accounts`,
+      staff: `/companies/${companyId}/staff`,
+      insights: `/companies/${companyId}/insights`,
+      settings: `/companies/${companyId}/settings`,
+      community: `/companies/${companyId}/community`,
+      createTransaction: `/companies/${companyId}/daybook`,
+      createPayment: `/companies/${companyId}/daybook`,
+      createExpense: `/companies/${companyId}/daybook`,
+    };
+
+    const targetRoute = routeMap[page];
+    if (targetRoute) {
+      window.location.href = targetRoute;
+    } else {
+      showToast("Feature coming soon!", "info");
+    }
+  };
+
   const showToast = (message, type = "info") => {
     if (type === "error") {
       alert(`Error: ${message}`);
+    } else if (type === "warning") {
+      alert(`Warning: ${message}`);
+    } else if (type === "success") {
+      alert(`Success: ${message}`);
+    } else {
+      alert(`Info: ${message}`);
     }
   };
 
@@ -678,6 +729,44 @@ function App() {
     }
   };
 
+  // ✅ MainDashboard Wrapper Component - NO LAYOUT
+  const MainDashboardWrapper = () => {
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    if (!currentCompany || isLoadingCompanies) {
+      return (
+        <div className="d-flex justify-content-center align-items-center min-vh-100">
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading company...</span>
+            </div>
+            <h5 className="text-muted">Loading your dashboard...</h5>
+            <p className="text-muted small">Please wait...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ MainDashboard WITHOUT Layout wrapper
+    return (
+      <MainDashboard
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        companies={companies}
+        onNavigate={handleDashboardNavigation}
+        addToast={showToast}
+        isOnline={true}
+        onLogout={handleLogout}
+        onCompanyChange={handleCompanyChange}
+        onCompanyCreated={handleCompanyCreated}
+        onCompanyUpdated={handleCompanyUpdated}
+        isLoadingCompanies={isLoadingCompanies}
+      />
+    );
+  };
+
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -981,15 +1070,15 @@ function App() {
     );
   };
 
+  // ✅ Updated AutoRedirect to go to /dashboard instead of /home
   const AutoRedirect = () => {
     useEffect(() => {
       if (companies.length > 0 && currentCompany) {
-        const companyId = currentCompany.id || currentCompany._id;
-        window.location.replace(`/companies/${companyId}/dashboard`);
+        window.location.replace("/dashboard"); // ✅ Redirect to /dashboard
       }
     }, [companies, currentCompany]);
 
-    if (companies.length === 0) {
+    if (companies.length === 0 && !isLoadingCompanies) {
       return (
         <div className="container mt-5">
           <div className="text-center">
@@ -1038,7 +1127,7 @@ function App() {
             path="/auth"
             element={
               isLoggedIn ? (
-                <Navigate to="/" replace />
+                <Navigate to="/dashboard" replace />
               ) : (
                 <AuthPage onLogin={handleLogin} />
               )
@@ -1055,6 +1144,11 @@ function App() {
           />
 
           <Route path="/admin/*" element={<AdminDashboardWrapper />} />
+
+          {/* ✅ Main Dashboard Routes - Both /home and /dashboard */}
+          <Route path="/home" element={<MainDashboardWrapper />} />
+          <Route path="/dashboard" element={<MainDashboardWrapper />} />
+          <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
 
           <Route
             path="/companies/:companyId/community"
@@ -1163,6 +1257,7 @@ function App() {
             }
           />
 
+          {/* ✅ All company routes go to HomePage with Layout */}
           <Route
             path="/companies/:companyId/*"
             element={
@@ -1177,7 +1272,7 @@ function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </div>
     </Router>

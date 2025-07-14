@@ -29,6 +29,8 @@ import {
   faFileInvoiceDollar,
   faMoneyBillWave,
   faReceipt,
+  faCheckCircle, // ✅ NEW: For name verification
+  faExclamationTriangle, // ✅ NEW: For urgent items
 } from "@fortawesome/free-solid-svg-icons";
 
 function AdminSidebar({
@@ -44,6 +46,7 @@ function AdminSidebar({
   const [expandedSections, setExpandedSections] = useState({
     inventory: true,
     sales: true,
+    verification: true, // ✅ NEW: Add verification section
     system: false,
   });
 
@@ -51,6 +54,7 @@ function AdminSidebar({
   const [expandedDropdowns, setExpandedDropdowns] = useState({
     orders: false,
     invoices: false,
+    verification: false, // ✅ NEW: Add verification dropdown
   });
 
   // Toggle section expansion
@@ -121,6 +125,36 @@ function AdminSidebar({
           icon: faWarehouse,
           badge: null,
           description: "Inventory and stock levels",
+        },
+      ],
+    },
+    // ✅ NEW: Name Verification Section
+    {
+      section: "verification",
+      title: "Name Verification",
+      items: [
+        {
+          key: "name-verification",
+          label: "Item Verification",
+          icon: faCheckCircle,
+          badge: adminData?.pendingVerifications || 0,
+          badgeVariant:
+            adminData?.pendingVerifications > 0 ? "warning" : "success",
+          description: "Review and approve item names",
+        },
+        {
+          key: "verification-history",
+          label: "Verification History",
+          icon: faHistory,
+          badge: null,
+          description: "View verification audit trail",
+        },
+        {
+          key: "verification-stats",
+          label: "Verification Analytics",
+          icon: faChartLine,
+          badge: null,
+          description: "Verification performance metrics",
         },
       ],
     },
@@ -236,6 +270,43 @@ function AdminSidebar({
       ],
     },
   ];
+
+  // ✅ NEW: Enhanced badge styling for verification items
+  const getEnhancedBadge = (item) => {
+    if (
+      item.key === "name-verification" &&
+      adminData?.pendingVerifications > 0
+    ) {
+      return (
+        <div className="d-flex align-items-center">
+          <Badge
+            bg={item.badgeVariant || "primary"}
+            className="sidebar-badge me-1"
+          >
+            {item.badge > 99 ? "99+" : item.badge}
+          </Badge>
+          {adminData?.urgentVerifications > 0 && (
+            <FontAwesomeIcon
+              icon={faExclamationTriangle}
+              className="text-warning"
+              size="sm"
+              title={`${adminData.urgentVerifications} urgent items`}
+            />
+          )}
+        </div>
+      );
+    }
+
+    if (item.badge !== null && item.badge > 0) {
+      return (
+        <Badge bg={item.badgeVariant || "primary"} className="sidebar-badge">
+          {item.badge > 99 ? "99+" : item.badge}
+        </Badge>
+      );
+    }
+
+    return null;
+  };
 
   // Generate CSS styles
   const getStyles = () => `
@@ -375,6 +446,17 @@ function AdminSidebar({
       color: rgba(255, 255, 255, 0.8);
     }
 
+    /* ✅ NEW: Special styling for verification items */
+    .sidebar-nav-item[data-verification="true"] .sidebar-nav-link {
+      background: rgba(255, 193, 7, 0.1);
+      border-left: 3px solid #ffc107;
+    }
+
+    .sidebar-nav-item[data-verification="true"].active .sidebar-nav-link {
+      background: rgba(255, 193, 7, 0.2);
+      border-left-color: #ffc107;
+    }
+
     /* Hover Effects */
     .sidebar-nav-link:hover,
     .sidebar-dropdown-link:hover {
@@ -428,6 +510,16 @@ function AdminSidebar({
       text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
     }
 
+    /* ✅ NEW: Special icon styling for verification */
+    .sidebar-nav-item[data-verification="true"] .sidebar-icon {
+      color: #ffc107;
+    }
+
+    .sidebar-nav-item[data-verification="true"]:hover .sidebar-icon {
+      color: #fff;
+      text-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+    }
+
     .sidebar-label {
       flex-grow: 1;
       font-weight: 500;
@@ -437,6 +529,14 @@ function AdminSidebar({
       margin-right: 8px;
       font-size: 0.7rem;
       animation: pulse 2s infinite;
+    }
+
+    /* ✅ NEW: Enhanced badge styling for verification */
+    .sidebar-badge.bg-warning {
+      background: #ffc107 !important;
+      color: #000 !important;
+      font-weight: 700;
+      animation: pulse 1.5s infinite;
     }
 
     .sidebar-chevron {
@@ -477,6 +577,17 @@ function AdminSidebar({
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.5px;
+    }
+
+    /* ✅ NEW: Special section styling for verification */
+    .sidebar-section[data-verification="true"] .sidebar-section-header {
+      background: rgba(255, 193, 7, 0.15);
+      border-left: 3px solid #ffc107;
+    }
+
+    .sidebar-section[data-verification="true"] .sidebar-section-title {
+      color: #ffc107;
+      font-weight: 700;
     }
 
     .sidebar-section-chevron {
@@ -563,6 +674,26 @@ function AdminSidebar({
       }
     }
 
+    /* ✅ NEW: Enhanced pulse for verification badges */
+    @keyframes urgent-pulse {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+      }
+      70% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+      }
+    }
+
+    .sidebar-badge.bg-warning {
+      animation: urgent-pulse 2s infinite;
+    }
+
     /* Glow effect for active items */
     @keyframes glow {
       0% {
@@ -647,10 +778,15 @@ function AdminSidebar({
     const isActive = activeTab === item.key;
     const hasDropdown = item.hasDropdown;
     const isDropdownExpanded = expandedDropdowns[item.key];
+    const isVerificationItem =
+      item.key.includes("verification") || item.key === "name-verification";
 
     return (
       <div key={item.key}>
-        <li className={`sidebar-nav-item ${isActive ? "active" : ""}`}>
+        <li
+          className={`sidebar-nav-item ${isActive ? "active" : ""}`}
+          data-verification={isVerificationItem}
+        >
           <div
             className="sidebar-nav-link"
             onClick={(e) => {
@@ -667,14 +803,7 @@ function AdminSidebar({
             {!isCollapsed && (
               <>
                 <span className="sidebar-label">{item.label}</span>
-                {item.badge !== null && item.badge > 0 && (
-                  <Badge
-                    bg={item.badgeVariant || "primary"}
-                    className="sidebar-badge"
-                  >
-                    {item.badge > 99 ? "99+" : item.badge}
-                  </Badge>
-                )}
+                {getEnhancedBadge(item)}
                 {hasDropdown && (
                   <FontAwesomeIcon
                     icon={isDropdownExpanded ? faChevronDown : faChevronRight}
@@ -705,9 +834,14 @@ function AdminSidebar({
   // Render section
   const renderSection = (section) => {
     const isExpanded = expandedSections[section.section];
+    const isVerificationSection = section.section === "verification";
 
     return (
-      <div key={section.section} className="sidebar-section">
+      <div
+        key={section.section}
+        className="sidebar-section"
+        data-verification={isVerificationSection}
+      >
         {!isCollapsed && (
           <div
             className="sidebar-section-header"

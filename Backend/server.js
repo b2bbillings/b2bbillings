@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
+const http = require("http");
 
 // Load environment variables
 dotenv.config();
@@ -20,8 +21,21 @@ const purchaseRoutes = require("./src/routes/purchaseRoutes");
 const purchaseOrderRoutes = require("./src/routes/purchaseOrderRoutes");
 const bankAccountRoutes = require("./src/routes/bankAccountRoutes");
 const transactionRoutes = require("./src/routes/transactionRoutes");
+const chatRoutes = require("./src/routes/chatRoutes");
+
+// Import Socket.IO Manager
+const SocketManager = require("./src/socket/SocketManager");
 
 const app = express();
+
+// Create HTTP server for Socket.IO
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const socketManager = new SocketManager(server);
+
+// Make socket manager available globally
+app.set("socketManager", socketManager);
 
 // Middleware
 app.use(
@@ -43,6 +57,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Health check route (first)
 app.get("/api/health", (req, res) => {
+  const socketStats = socketManager.getStats();
+
   res.status(200).json({
     status: "success",
     message: "Shop Management API is running! 🚀",
@@ -61,6 +77,27 @@ app.get("/api/health", (req, res) => {
       payments: true,
       auth: true,
       userManagement: true,
+      chat: true,
+      realTimeMessaging: true,
+    },
+    socketIO: {
+      status: "active",
+      connectedClients: socketStats.totalConnections,
+      onlineUsers: socketStats.onlineUsers,
+      activeRooms: socketStats.activeRooms,
+    },
+  });
+});
+
+// Socket.IO status endpoint
+app.get("/api/socket/status", (req, res) => {
+  const stats = socketManager.getStats();
+  res.json({
+    success: true,
+    data: {
+      ...stats,
+      socketIOVersion: require("socket.io/package.json").version,
+      serverUptime: process.uptime(),
     },
   });
 });
@@ -73,6 +110,11 @@ app.use("/api/auth", authRoutes);
 
 // User management routes (admin panel)
 app.use("/api/users", userRoutes);
+
+// ================================
+// 💬 CHAT ROUTES
+// ================================
+app.use("/api/chat", chatRoutes);
 
 // ================================
 // 💰 PAYMENT ROUTES (PRIORITY)
@@ -127,6 +169,9 @@ app.use(
   transactionRoutes
 );
 
+// Company-specific chat routes
+app.use("/api/companies/:companyId/chat", chatRoutes);
+
 // ================================
 // 🔄 LEGACY ROUTES (BACKWARD COMPATIBILITY)
 // ================================
@@ -157,12 +202,21 @@ app.use("/api/transactions", transactionRoutes);
 // 📚 API DOCUMENTATION
 // ================================
 app.get("/api/docs", (req, res) => {
+  const socketStats = socketManager.getStats();
+
   res.json({
     title: "Shop Management System API",
     version: "2.0.0",
     description:
-      "Complete business management system with sales, purchases, inventory, and financial tracking",
+      "Complete business management system with sales, purchases, inventory, financial tracking, and real-time chat",
     baseUrl: `${req.protocol}://${req.get("host")}/api`,
+    socketIO: {
+      endpoint: `${req.protocol}://${req.get("host")}`,
+      status: "active",
+      connectedClients: socketStats.totalConnections,
+      onlineUsers: socketStats.onlineUsers,
+      description: "Real-time messaging and notifications",
+    },
     endpoints: {
       // Authentication
       auth: {
@@ -176,6 +230,60 @@ app.get("/api/docs", (req, res) => {
           "GET /profile - Get user profile",
           "PUT /profile - Update user profile",
         ],
+      },
+
+      // Chat System
+      chat: {
+        base: "/api/chat",
+        description: "Real-time messaging and chat functionality",
+        endpoints: [
+          "GET /history/:partyId - Get chat history for a party",
+          "POST /send/:partyId - Send message via HTTP",
+          "POST /read - Mark messages as read",
+          "DELETE /messages - Delete messages (soft delete)",
+          "GET /search - Search messages",
+          "GET /unread-count - Get unread message count",
+          "GET /summary/:partyId - Get conversation summary",
+          "GET /templates/:partyId - Get message templates",
+          "POST /templates/:partyId/:templateId - Send template message",
+        ],
+        socketEvents: [
+          "authenticate - Authenticate socket connection",
+          "join_chat - Join chat room",
+          "send_message - Send real-time message",
+          "mark_read - Mark message as read",
+          "typing_start - Start typing indicator",
+          "typing_stop - Stop typing indicator",
+          "get_chat_history - Request chat history",
+        ],
+        features: [
+          "Real-time messaging via Socket.IO",
+          "WhatsApp, SMS, Email message types",
+          "Message templates for common scenarios",
+          "Read receipts and delivery status",
+          "Typing indicators",
+          "Message search functionality",
+          "Conversation summaries",
+          "File attachments support",
+          "Message threading and replies",
+          "Automated message scheduling",
+        ],
+        messageTypes: ["whatsapp", "sms", "email", "internal", "notification"],
+        templateCategories: [
+          "payment",
+          "acknowledgment",
+          "invoice",
+          "statement",
+          "meeting",
+          "order",
+        ],
+      },
+
+      // Socket.IO Status
+      socketStatus: {
+        base: "/api/socket",
+        description: "Socket.IO connection and status monitoring",
+        endpoints: ["GET /status - Get Socket.IO server status and statistics"],
       },
 
       // User Management
@@ -272,6 +380,7 @@ app.get("/api/docs", (req, res) => {
           "Party balance management",
           "Payment history tracking",
           "Payment cancellation",
+          "Integration with chat for payment notifications",
         ],
       },
 
@@ -328,7 +437,7 @@ app.get("/api/docs", (req, res) => {
       // Party Management
       parties: {
         base: "/api/companies/:companyId/parties",
-        description: "Customer and supplier management",
+        description: "Customer and supplier management with chat integration",
         endpoints: [
           "GET / - List all parties",
           "POST / - Create new party",
@@ -339,6 +448,13 @@ app.get("/api/docs", (req, res) => {
           "GET /:id/orders - Party order history",
           "GET /:id/payments - Party payment history",
           "GET /summary - Party summary statistics",
+          "GET /:id/chat-summary - Party chat summary",
+        ],
+        chatIntegration: [
+          "Real-time messaging with parties",
+          "Payment reminders via chat",
+          "Order notifications",
+          "Statement requests",
         ],
       },
 
@@ -489,6 +605,11 @@ app.get("/api/docs", (req, res) => {
       bulkOperations: "Bulk data processing capabilities",
       dataExport: "CSV and Excel export functionality",
       bidirectionalIntegration: "Seamless sales-purchase order integration",
+      realTimeMessaging: "Socket.IO powered real-time chat system",
+      messageTemplates:
+        "Pre-built message templates for business communication",
+      multiChannelMessaging: "WhatsApp, SMS, Email support",
+      notificationSystem: "Real-time notifications and alerts",
     },
 
     // API Usage Guidelines
@@ -504,6 +625,8 @@ app.get("/api/docs", (req, res) => {
       userManagement:
         "User management endpoints support advanced filtering and bulk operations",
       adminAccess: "Admin routes require proper role-based authentication",
+      socketIO: "Connect to Socket.IO endpoint for real-time features",
+      chatIntegration: "Use chat endpoints for messaging functionality",
     },
 
     // Route Mounting Information
@@ -511,16 +634,40 @@ app.get("/api/docs", (req, res) => {
       note: "Routes are properly ordered to avoid conflicts",
       specificRoutes: {
         companies: "/api/companies (mounted first)",
+        chat: "/api/chat (new chat system)",
         adminSalesOrders: "/api/admin/sales-orders (specific path)",
         adminPurchaseOrders: "/api/admin/purchase-orders (specific path)",
+        socketStatus: "/api/socket/status (Socket.IO monitoring)",
       },
       companySpecific: {
         mount: "/api/companies/:companyId/*",
-        description: "Company-scoped operations",
+        description: "Company-scoped operations including chat",
       },
       legacy: {
         mount: "/api/sales-orders, /api/purchase-orders, etc.",
         description: "Backward compatibility routes",
+      },
+    },
+
+    // Real-time Features
+    realTimeFeatures: {
+      socketIO: {
+        version: require("socket.io/package.json").version,
+        description: "Real-time bidirectional event-based communication",
+        features: [
+          "Real-time messaging",
+          "Typing indicators",
+          "Online presence tracking",
+          "Message read receipts",
+          "Instant notifications",
+          "Connection management",
+        ],
+      },
+      connectionManagement: {
+        multiDevice: "Support for multiple device connections per user",
+        presence: "Online/offline status tracking",
+        roomBased: "Chat rooms for party-specific conversations",
+        cleanup: "Automatic cleanup of inactive connections",
       },
     },
   });
@@ -603,7 +750,6 @@ app.use((err, req, res, next) => {
 
 // 404 handler for unmatched routes
 app.use("*", (req, res) => {
-  console.log(`❌ Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     status: "error",
     message: `Route not found: ${req.method} ${req.originalUrl}`,
@@ -611,8 +757,10 @@ app.use("*", (req, res) => {
     availableEndpoints: {
       health: "GET /api/health",
       documentation: "GET /api/docs",
+      socketStatus: "GET /api/socket/status",
       authentication: "POST /api/auth/*",
       userManagement: "GET /api/users",
+      chat: "GET /api/chat/*",
       adminSalesOrders: "GET /api/admin/sales-orders",
       companies: "GET /api/companies",
       payments: "GET /api/payments",
@@ -626,9 +774,10 @@ app.use("*", (req, res) => {
         purchaseOrders: "GET /api/companies/:companyId/purchase-orders",
         bankAccounts: "GET /api/companies/:companyId/bank-accounts",
         transactions: "GET /api/companies/:companyId/transactions",
+        chat: "GET /api/companies/:companyId/chat/*",
       },
     },
-    hint: "Visit /api/docs for complete API documentation",
+    hint: "Visit /api/docs for complete API documentation including chat features",
   });
 });
 
@@ -659,41 +808,85 @@ mongoose
 // 🚀 SERVER START
 // ================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  // console.log("🚀 Shop Management System Backend Started!");
-  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  // console.log(`🌐 Server: http://localhost:${PORT}`);
-  // console.log(`📚 API Docs: http://localhost:${PORT}/api/docs`);
-  // console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
-  // console.log(`🏢 Companies: http://localhost:${PORT}/api/companies`);
-  // console.log(`💰 Payments: http://localhost:${PORT}/api/payments`);
-  // console.log(`👥 Users: http://localhost:${PORT}/api/users`);
-  // console.log(
-  //   `🔥 Admin Sales Orders: http://localhost:${PORT}/api/admin/sales-orders`
-  // );
-  // console.log(`📋 Sales Orders: http://localhost:${PORT}/api/sales-orders`);
-  // console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  // console.log("✅ Ready to handle requests!");
-  // console.log("🔧 Route order optimized to prevent conflicts!");
-  // console.log("");
+
+// Use server.listen instead of app.listen for Socket.IO
+server.listen(PORT, () => {
+  const socketStats = socketManager.getStats();
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🚀 Shop Management System Backend Started!");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(`🌐 Server: http://localhost:${PORT}`);
+  console.log(`📚 API Docs: http://localhost:${PORT}/api/docs`);
+  console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
+  console.log(
+    `🔌 Socket.IO: http://localhost:${PORT} (${socketStats.totalConnections} connections)`
+  );
+  console.log(`💬 Chat API: http://localhost:${PORT}/api/chat`);
+  console.log(`📊 Socket Status: http://localhost:${PORT}/api/socket/status`);
+  console.log(`🏢 Companies: http://localhost:${PORT}/api/companies`);
+  console.log(`💰 Payments: http://localhost:${PORT}/api/payments`);
+  console.log(`👥 Users: http://localhost:${PORT}/api/users`);
+  console.log(
+    `🔥 Admin Sales Orders: http://localhost:${PORT}/api/admin/sales-orders`
+  );
+  console.log(`📋 Sales Orders: http://localhost:${PORT}/api/sales-orders`);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("✅ Ready to handle requests!");
+  console.log("💬 Real-time chat system active!");
+  console.log("");
 });
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("🔄 SIGTERM received, shutting down gracefully...");
+
+  // Shutdown Socket.IO
+  if (socketManager && socketManager.shutdown) {
+    socketManager.shutdown();
+  }
+
+  // Close MongoDB connection
   mongoose.connection.close(() => {
     console.log("📁 MongoDB connection closed");
-    process.exit(0);
+
+    // Close HTTP server
+    server.close(() => {
+      console.log("🌐 HTTP server closed");
+      process.exit(0);
+    });
   });
 });
 
 process.on("SIGINT", () => {
   console.log("🔄 SIGINT received, shutting down gracefully...");
+
+  // Shutdown Socket.IO
+  if (socketManager && socketManager.shutdown) {
+    socketManager.shutdown();
+  }
+
+  // Close MongoDB connection
   mongoose.connection.close(() => {
     console.log("📁 MongoDB connection closed");
-    process.exit(0);
+
+    // Close HTTP server
+    server.close(() => {
+      console.log("🌐 HTTP server closed");
+      process.exit(0);
+    });
   });
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+  process.exit(1);
 });
 
 module.exports = app;

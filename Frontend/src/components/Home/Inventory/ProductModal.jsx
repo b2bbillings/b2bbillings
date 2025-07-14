@@ -210,18 +210,6 @@ function ProductModal({
     }
   };
 
-  // Show toast message
-  const showToastMessage = (message, type = "success") => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-
-    // Auto-hide toast after 4 seconds
-    setTimeout(() => {
-      setShowToast(false);
-    }, 4000);
-  };
-
   // Get ordered navigation refs based on current form state
   const getNavigationRefs = () => {
     const baseRefs = [
@@ -431,7 +419,7 @@ function ProductModal({
     });
   };
 
-  // 🚨 ENHANCED FORM SUBMISSION WITH DEBUG LOGGING
+  // 🚨 ENHANCED FORM SUBMISSION WITH NAME VERIFICATION AWARENESS
   const handleSubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -505,19 +493,32 @@ function ProductModal({
     try {
       // Call parent's onSaveProduct function
       if (onSaveProduct) {
-        const success = await onSaveProduct(dataToSend, false);
+        const result = await onSaveProduct(dataToSend, false);
 
-        if (success) {
-          showToastMessage(
-            `${formData.name} ${
-              mode === "edit" ? "updated" : "created"
-            } successfully!`
-          );
+        if (result && result.success) {
+          // ✅ ENHANCED: Check if item has verification status
+          const verificationStatus =
+            result.data?.item?.nameVerification?.status;
+
+          if (mode === "add" && verificationStatus === "pending") {
+            showToastMessage(
+              `✅ ${formData.name} created successfully! 
+            🔔 Item is pending name verification by admin.`,
+              "success"
+            );
+          } else {
+            showToastMessage(
+              `${formData.name} ${
+                mode === "edit" ? "updated" : "created"
+              } successfully!`,
+              "success"
+            );
+          }
 
           // Close modal after successful save
           setTimeout(() => {
             onHide();
-          }, 1000);
+          }, 2000); // Slightly longer to show verification message
         }
       }
     } catch (error) {
@@ -538,7 +539,7 @@ function ProductModal({
     }
   };
 
-  // Handle save and add another (only for add mode)
+  // ✅ ENHANCED: Handle save and add another with verification awareness
   const handleSaveAndAddAnother = async (e) => {
     if (mode === "edit") return; // Don't allow save and add in edit mode
 
@@ -554,13 +555,6 @@ function ProductModal({
 
     try {
       const currentProductName = formData.name;
-
-      // 🚨 DEBUG LOG - Save and add data
-      console.log("🚀 ProductModal - Save and add form data:", {
-        formData: formData,
-        buyPriceTaxInclusive: buyPriceTaxInclusive,
-        salePriceTaxInclusive: salePriceTaxInclusive,
-      });
 
       // Prepare the complete data to send to parent
       const dataToSend = {
@@ -610,13 +604,25 @@ function ProductModal({
 
       // Call parent's onSaveProduct function
       if (onSaveProduct) {
-        const success = await onSaveProduct(dataToSend, true);
+        const result = await onSaveProduct(dataToSend, true);
 
-        if (success) {
-          // Show success message
-          showToastMessage(
-            `${currentProductName} saved successfully! Ready to add another...`
-          );
+        if (result && result.success) {
+          // ✅ ENHANCED: Show verification-aware success message
+          const verificationStatus =
+            result.data?.item?.nameVerification?.status;
+
+          if (verificationStatus === "pending") {
+            showToastMessage(
+              `✅ ${currentProductName} saved successfully! 
+            🔔 Pending admin verification. Ready to add another...`,
+              "success"
+            );
+          } else {
+            showToastMessage(
+              `${currentProductName} saved successfully! Ready to add another...`,
+              "success"
+            );
+          }
 
           // Clear form for new product while keeping common fields
           clearFormForNext();
@@ -634,6 +640,23 @@ function ProductModal({
       setIsLoading(false);
       setIsSaveAndAdd(false);
     }
+  };
+
+  // ✅ ENHANCED: Show toast message with better formatting for verification
+  const showToastMessage = (message, type = "success") => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+
+    // Auto-hide toast after longer time for verification messages
+    const hideTimeout =
+      message.includes("verification") || message.includes("admin")
+        ? 6000
+        : 4000;
+
+    setTimeout(() => {
+      setShowToast(false);
+    }, hideTimeout);
   };
 
   // Custom onHide that checks for save and add
@@ -733,6 +756,12 @@ function ProductModal({
                 {mode === "add" &&
                   ", Ctrl+Shift+S: save & add, Ctrl+D: search database"}
                 , Ctrl+G: generate code)
+                {/* ✅ NEW: Verification info */}
+                {mode === "add" && (
+                  <span className="text-info d-block mt-1">
+                    📋 New items require admin name verification
+                  </span>
+                )}
               </small>
             </Modal.Title>
             <Button
@@ -746,7 +775,6 @@ function ProductModal({
           </Modal.Header>
 
           <Modal.Body className="px-4 pb-4">
-            {/* Enhanced Toast */}
             <ToastContainer
               position="top-end"
               className="p-3"
@@ -762,7 +790,12 @@ function ProductModal({
                 onClose={() => setShowToast(false)}
                 className={`${toastType}-toast`}
                 autohide
-                delay={4000}
+                delay={
+                  toastMessage.includes("verification") ||
+                  toastMessage.includes("admin")
+                    ? 6000
+                    : 4000
+                }
               >
                 <Toast.Header
                   className={`${
@@ -778,24 +811,38 @@ function ProductModal({
                   </strong>
                 </Toast.Header>
                 <Toast.Body className="bg-light border-0">
-                  <div className="d-flex align-items-center">
+                  <div className="d-flex align-items-start">
                     <FontAwesomeIcon
                       icon={toastType === "success" ? faCheck : faTimes}
                       className={`${
                         toastType === "success" ? "text-success" : "text-danger"
-                      } me-2`}
+                      } me-2 mt-1`}
                     />
-                    <span>{toastMessage}</span>
+                    <div>
+                      {/* ✅ ENHANCED: Multi-line message support */}
+                      {toastMessage.split("\n").map((line, index) => (
+                        <div key={index} className={index > 0 ? "mt-1" : ""}>
+                          {line.trim()}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {isSaveAndAdd && toastType === "success" && (
-                    <small className="text-muted mt-1 d-block">
+                    <small className="text-muted mt-2 d-block">
                       Ready to add another item...
                     </small>
                   )}
+                  {/* ✅ NEW: Verification info */}
+                  {toastMessage.includes("verification") &&
+                    toastType === "success" && (
+                      <small className="text-info mt-2 d-block">
+                        <FontAwesomeIcon icon={faSpinner} className="me-1" />
+                        Items will be available after admin approval
+                      </small>
+                    )}
                 </Toast.Body>
               </Toast>
             </ToastContainer>
-
             {/* Loading Overlay */}
             {isLoading && (
               <div
@@ -819,7 +866,6 @@ function ProductModal({
                 </div>
               </div>
             )}
-
             {/* Header Section with Type Toggle and Database Search */}
             <Row className="mb-4">
               <Col md={mode === "edit" ? 12 : 6}>
@@ -946,7 +992,6 @@ function ProductModal({
                 </Col>
               )}
             </Row>
-
             <Form onSubmit={handleSubmit} autoComplete="off">
               {/* First Row - Item Details */}
               <Row className="mb-4">

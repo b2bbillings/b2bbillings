@@ -43,7 +43,6 @@ function PartySidebar({
   formatCurrency,
   totalParties = 0,
 }) {
-  // ✅ Sort key mapping helper function
   const mapSortKey = (frontendKey) => {
     const sortKeyMapping = {
       balance: "currentBalance",
@@ -57,7 +56,6 @@ function PartySidebar({
     return sortKeyMapping[frontendKey] || frontendKey;
   };
 
-  // ✅ Enhanced sort icon helper with proper key mapping
   const getSortIcon = (frontendColumnKey) => {
     const backendKey = mapSortKey(frontendColumnKey);
     if (sortConfig.key !== backendKey) {
@@ -66,7 +64,6 @@ function PartySidebar({
     return sortConfig.direction === "asc" ? faSortUp : faSortDown;
   };
 
-  // ✅ Handle sort with key mapping
   const handleSort = (frontendKey) => {
     const backendKey = mapSortKey(frontendKey);
     onSort(frontendKey, backendKey);
@@ -79,7 +76,7 @@ function PartySidebar({
         background: "linear-gradient(135deg, #f5f2ff 0%, #ebe4ff 100%)",
       }}
     >
-      {/* ✅ Search Section - Using #7c5cfc Purple Theme */}
+      {/* Search Section */}
       <div
         className="p-3 border-bottom"
         style={{
@@ -118,7 +115,7 @@ function PartySidebar({
         </InputGroup>
       </div>
 
-      {/* ✅ List Header with Sorting - Using #7c5cfc Purple Theme */}
+      {/* List Header with Sorting */}
       <div
         className="border-bottom px-3 py-2"
         style={{
@@ -173,7 +170,7 @@ function PartySidebar({
         </Row>
       </div>
 
-      {/* ✅ Parties List - Using #7c5cfc Purple Theme */}
+      {/* Parties List */}
       <div
         className="flex-grow-1 overflow-auto"
         style={{
@@ -251,10 +248,11 @@ function PartySidebar({
                 selectedParty &&
                 (selectedParty.id === party.id ||
                   selectedParty._id === party._id);
+
               return (
                 <div
                   key={party.id || party._id}
-                  className="list-group-item list-group-item-action border-0 border-bottom px-3 py-3"
+                  className="list-group-item list-group-item-action border-0 border-bottom px-3 py-3 party-list-item"
                   style={{
                     cursor: "pointer",
                     transition: "all 0.3s ease",
@@ -263,10 +261,13 @@ function PartySidebar({
                       ? "linear-gradient(135deg, #7c5cfc 0%, #6a47e8 100%)"
                       : "rgba(255, 255, 255, 0.8)",
                     color: isSelected ? "white" : "inherit",
-                    borderLeft: isSelected
-                      ? "4px solid #ffffff"
-                      : "4px solid transparent",
-                    borderColor: "rgba(124, 92, 252, 0.1)",
+                    // ✅ FIXED: Use specific border properties instead of shorthand
+                    borderLeftWidth: "4px",
+                    borderLeftStyle: "solid",
+                    borderLeftColor: isSelected ? "#ffffff" : "transparent",
+                    borderTopColor: "rgba(124, 92, 252, 0.1)",
+                    borderRightColor: "rgba(124, 92, 252, 0.1)",
+                    borderBottomColor: "rgba(124, 92, 252, 0.1)",
                     boxShadow: isSelected
                       ? "0 2px 8px rgba(124, 92, 252, 0.3)"
                       : "none",
@@ -276,7 +277,7 @@ function PartySidebar({
                     if (!isSelected) {
                       e.currentTarget.style.background =
                         "linear-gradient(135deg, #ebe4ff 0%, #ddd0ff 100%)";
-                      e.currentTarget.style.borderLeft = "4px solid #7c5cfc";
+                      e.currentTarget.style.borderLeftColor = "#7c5cfc";
                       e.currentTarget.style.boxShadow =
                         "0 2px 4px rgba(124, 92, 252, 0.2)";
                     }
@@ -285,8 +286,7 @@ function PartySidebar({
                     if (!isSelected) {
                       e.currentTarget.style.background =
                         "rgba(255, 255, 255, 0.8)";
-                      e.currentTarget.style.borderLeft =
-                        "4px solid transparent";
+                      e.currentTarget.style.borderLeftColor = "transparent";
                       e.currentTarget.style.boxShadow = "none";
                     }
                   }}
@@ -338,7 +338,7 @@ function PartySidebar({
                           </div>
                         </div>
 
-                        {/* ✅ Party Actions - Using #7c5cfc Purple Theme */}
+                        {/* Party Actions */}
                         <div onClick={(e) => e.stopPropagation()}>
                           <Dropdown align="end">
                             <Dropdown.Toggle
@@ -422,7 +422,7 @@ function PartySidebar({
                         </div>
                       </div>
 
-                      {/* ✅ Balance Display - Using #7c5cfc Purple Theme */}
+                      {/* Balance Display */}
                       <div className="mt-2">
                         <span
                           className="fw-bold small"
@@ -460,7 +460,7 @@ function PartySidebar({
         )}
       </div>
 
-      {/* ✅ Pagination - Using #7c5cfc Purple Theme */}
+      {/* Pagination */}
       {totalPages > 1 && (
         <div
           className="p-3 border-top"
@@ -555,7 +555,7 @@ function PartySidebar({
         </div>
       )}
 
-      {/* ✅ Contact Info - Using #7c5cfc Purple Theme */}
+      {/* Contact Info */}
       <div
         className="p-3 border-top"
         style={{
@@ -601,6 +601,26 @@ function PartySidebar({
           </Card.Body>
         </Card>
       </div>
+
+      {/* ✅ ADDED: CSS to handle party list item styles */}
+      <style>{`
+        .party-list-item {
+          border-left-width: 4px !important;
+          border-left-style: solid !important;
+        }
+
+        .party-list-item.selected {
+          border-left-color: #ffffff !important;
+        }
+
+        .party-list-item:not(.selected) {
+          border-left-color: transparent !important;
+        }
+
+        .party-list-item:hover:not(.selected) {
+          border-left-color: #7c5cfc !important;
+        }
+      `}</style>
     </div>
   );
 }

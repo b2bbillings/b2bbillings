@@ -155,7 +155,7 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Create a new party with linking support
+   * Create a new party with linking support
    * @param {Object} partyData - Party data
    * @returns {Promise<Object>} Created party data
    */
@@ -172,7 +172,7 @@ class PartyService {
         throw new Error(companyValidation.error);
       }
 
-      // ✅ ENHANCED: Transform the form data to match backend schema with linking fields
+      // Transform the form data to match backend schema with linking fields
       const backendData = {
         partyType: partyData.partyType || "customer",
         name: partyData.name.trim(),
@@ -211,7 +211,7 @@ class PartyService {
             (phone) => phone.number && phone.number.trim()
           ) || [],
 
-        // ✅ NEW: Bidirectional linking fields
+        // Bidirectional linking fields
         linkedCompanyId: partyData.linkedCompanyId || null,
         isLinkedSupplier: partyData.isLinkedSupplier || false,
         enableBidirectionalOrders: partyData.enableBidirectionalOrders || false,
@@ -235,7 +235,7 @@ class PartyService {
         isVerified: partyData.isVerified || false,
         supplierCompanyData: partyData.supplierCompanyData || null,
 
-        // ✅ NEW: Additional business fields
+        // Additional business fields
         website: partyData.website?.trim() || "",
         businessType: partyData.businessType?.trim() || "",
         businessCategory: partyData.businessCategory?.trim() || "",
@@ -270,15 +270,6 @@ class PartyService {
         ];
       }
 
-      console.log("💾 Creating party with linking data:", {
-        name: backendData.name,
-        partyType: backendData.partyType,
-        linkedCompanyId: backendData.linkedCompanyId,
-        isLinkedSupplier: backendData.isLinkedSupplier,
-        enableBidirectionalOrders: backendData.enableBidirectionalOrders,
-        supplierCompanyData: !!backendData.supplierCompanyData,
-      });
-
       const response = await apiClient.post("/api/parties", backendData);
       return response.data;
     } catch (error) {
@@ -287,17 +278,12 @@ class PartyService {
   }
 
   /**
-   * ✅ NEW: Create party with enhanced linking support
+   * Create party with enhanced linking support
    * @param {Object} partyData - Party data with linking fields
    * @returns {Promise<Object>} Created party data with linking info
    */
   async createPartyWithLinking(partyData) {
     try {
-      console.log(
-        "🔗 Creating party with enhanced linking support:",
-        partyData
-      );
-
       // Use enhanced endpoint if available, fallback to regular
       const endpoint = "/api/parties/create-with-linking";
 
@@ -307,21 +293,17 @@ class PartyService {
       } catch (error) {
         // Fallback to regular creation if enhanced endpoint doesn't exist
         if (error.response?.status === 404) {
-          console.log(
-            "📝 Enhanced endpoint not available, using regular creation"
-          );
           return await this.createParty(partyData);
         }
         throw error;
       }
     } catch (error) {
-      console.error("❌ Error creating party with linking:", error);
       throw error;
     }
   }
 
   /**
-   * ✅ ENHANCED: Update party with linking support
+   * Update party with linking support
    * @param {string} partyId - Party ID
    * @param {Object} partyData - Updated party data
    * @returns {Promise<Object>} Updated party data
@@ -338,7 +320,7 @@ class PartyService {
         throw new Error(companyValidation.error);
       }
 
-      // ✅ ENHANCED: Transform the form data to match backend schema with linking fields
+      // Transform the form data to match backend schema with linking fields
       const backendData = {
         partyType: partyData.partyType,
         name: partyData.name?.trim(),
@@ -377,7 +359,7 @@ class PartyService {
             (phone) => phone.number && phone.number.trim()
           ) || [],
 
-        // ✅ NEW: Bidirectional linking fields
+        // Bidirectional linking fields
         linkedCompanyId: partyData.linkedCompanyId || null,
         isLinkedSupplier: partyData.isLinkedSupplier || false,
         enableBidirectionalOrders: partyData.enableBidirectionalOrders || false,
@@ -401,7 +383,7 @@ class PartyService {
         isVerified: partyData.isVerified || false,
         supplierCompanyData: partyData.supplierCompanyData || null,
 
-        // ✅ NEW: Additional business fields
+        // Additional business fields
         website: partyData.website?.trim() || "",
         businessType: partyData.businessType?.trim() || "",
         businessCategory: partyData.businessCategory?.trim() || "",
@@ -422,13 +404,6 @@ class PartyService {
         }
       });
 
-      console.log("📝 Updating party with linking data:", {
-        partyId,
-        linkedCompanyId: backendData.linkedCompanyId,
-        isLinkedSupplier: backendData.isLinkedSupplier,
-        enableBidirectionalOrders: backendData.enableBidirectionalOrders,
-      });
-
       const response = await apiClient.put(
         `/api/parties/${partyId}`,
         backendData
@@ -440,18 +415,13 @@ class PartyService {
   }
 
   /**
-   * ✅ NEW: Update party with enhanced linking support
+   * Update party with enhanced linking support
    * @param {string} partyId - Party ID
    * @param {Object} partyData - Updated party data with linking fields
    * @returns {Promise<Object>} Updated party data with linking info
    */
   async updatePartyWithLinking(partyId, partyData) {
     try {
-      console.log("🔗 Updating party with enhanced linking support:", {
-        partyId,
-        partyData,
-      });
-
       // Use enhanced endpoint if available, fallback to regular
       const endpoint = `/api/parties/${partyId}/update-with-linking`;
 
@@ -461,21 +431,17 @@ class PartyService {
       } catch (error) {
         // Fallback to regular update if enhanced endpoint doesn't exist
         if (error.response?.status === 404) {
-          console.log(
-            "📝 Enhanced endpoint not available, using regular update"
-          );
           return await this.updateParty(partyId, partyData);
         }
         throw error;
       }
     } catch (error) {
-      console.error("❌ Error updating party with linking:", error);
       throw error;
     }
   }
 
   /**
-   * ✅ NEW: Link supplier to company
+   * Link supplier to company
    * @param {string} supplierId - Supplier ID
    * @param {string} targetCompanyId - Target company ID to link to
    * @returns {Promise<Object>} Linking result
@@ -497,21 +463,341 @@ class PartyService {
         companyId: targetCompanyId,
       };
 
-      console.log("🔗 Linking supplier to company:", requestData);
-
       const response = await apiClient.post(
         "/api/parties/link-supplier",
         requestData
       );
       return response.data;
     } catch (error) {
-      console.error("❌ Error linking supplier to company:", error);
       throw error;
     }
   }
 
   /**
-   * ✅ NEW: Get suppliers with linked companies
+   * Get conversation summary for party's linked company
+   * @param {Object} partyData - Party data
+   * @returns {Promise<Object>} Conversation summary
+   */
+  async getConversationSummary(partyData) {
+    try {
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      // Check cache first
+      const cacheKey = `summary_${targetCompanyId}`;
+      const cachedSummary = this.getFromCache(cacheKey, "conversation");
+      if (cachedSummary) {
+        return cachedSummary;
+      }
+
+      const response = await chatAPI.get(
+        `/api/chat/summary/${targetCompanyId}`,
+        {
+          params: {
+            type: "company",
+            partyId,
+            partyName,
+          },
+        }
+      );
+
+      // Cache the result
+      this.setCache(cacheKey, response.data, "conversation");
+      return response.data;
+    } catch (error) {
+      // Return a default summary instead of throwing error
+      return {
+        success: false,
+        data: {
+          totalMessages: 0,
+          unreadCount: 0,
+          lastMessageAt: null,
+          participantCount: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * Get conversations list for current company
+   * @param {Object} options - Filter options
+   * @returns {Promise<Object>} Conversations list
+   */
+  async getConversations(options = {}) {
+    try {
+      const {page = 1, limit = 20, search = "", filter = "all"} = options;
+
+      // Auto-set company context if not available
+      if (!this.currentCompanyId) {
+        this.autoSetCompanyContext();
+      }
+
+      if (!this.currentCompanyId) {
+        throw new Error("Company context is required");
+      }
+
+      // Check cache first
+      const cacheKey = `conversations_${page}_${limit}_${search}_${filter}`;
+      const cachedConversations = this.getFromCache(cacheKey, "conversation");
+      if (cachedConversations) {
+        return cachedConversations;
+      }
+
+      const response = await chatAPI.get("/api/chat/conversations", {
+        params: {
+          page,
+          limit,
+          search,
+          filter,
+          type: "company",
+          companyId: this.currentCompanyId,
+        },
+      });
+
+      // Cache the result
+      this.setCache(cacheKey, response.data, "conversation");
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get active chats for current company
+   * @param {Object} options - Filter options
+   * @returns {Promise<Object>} Active chats
+   */
+  async getActiveChats(options = {}) {
+    try {
+      const {page = 1, limit = 10} = options;
+
+      // Auto-set company context if not available
+      if (!this.currentCompanyId) {
+        this.autoSetCompanyContext();
+      }
+
+      if (!this.currentCompanyId) {
+        throw new Error("Company context is required");
+      }
+
+      // Check cache first
+      const cacheKey = `active_chats_${page}_${limit}`;
+      const cachedActiveChats = this.getFromCache(cacheKey, "conversation");
+      if (cachedActiveChats) {
+        return cachedActiveChats;
+      }
+
+      const response = await chatAPI.get("/api/chat/active", {
+        params: {
+          page,
+          limit,
+          type: "company",
+          companyId: this.currentCompanyId,
+        },
+      });
+
+      // Cache the result
+      this.setCache(cacheKey, response.data, "conversation");
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Search messages in party's linked company chat
+   * @param {Object} partyData - Party data
+   * @param {string} searchQuery - Search query
+   * @param {Object} options - Search options
+   * @returns {Promise<Object>} Search results
+   */
+  async searchMessages(partyData, searchQuery, options = {}) {
+    try {
+      const {page = 1, limit = 20, messageType, startDate, endDate} = options;
+
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      if (!searchQuery || searchQuery.trim().length < 2) {
+        return {
+          success: true,
+          data: {
+            messages: [],
+            pagination: {totalMessages: 0, hasMore: false},
+          },
+        };
+      }
+
+      const response = await chatAPI.get(
+        `/api/chat/search/${targetCompanyId}`,
+        {
+          params: {
+            query: searchQuery.trim(),
+            page,
+            limit,
+            messageType,
+            startDate,
+            endDate,
+            type: "company",
+            partyId,
+            partyName,
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Mark messages as read for party's linked company
+   * @param {Object} partyData - Party data
+   * @param {Array} messageIds - Message IDs to mark as read
+   * @returns {Promise<Object>} Result
+   */
+  async markMessagesAsRead(partyData, messageIds = []) {
+    try {
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      const response = await chatAPI.post(
+        `/api/chat/mark-read/${targetCompanyId}`,
+        {
+          messageIds,
+          type: "company",
+          partyId,
+          partyName,
+        }
+      );
+
+      // Clear relevant caches
+      this.clearHistoryCache(targetCompanyId);
+      this.clearConversationCache();
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get chat analytics for party's linked company
+   * @param {Object} partyData - Party data
+   * @param {string} period - Analytics period
+   * @returns {Promise<Object>} Analytics data
+   */
+  async getChatAnalytics(partyData, period = "7d") {
+    try {
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      // Check cache first
+      const cacheKey = `analytics_${targetCompanyId}_${period}`;
+      const cachedAnalytics = this.getFromCache(cacheKey, "conversation");
+      if (cachedAnalytics) {
+        return cachedAnalytics;
+      }
+
+      const response = await chatAPI.get(
+        `/api/chat/analytics/${targetCompanyId}`,
+        {
+          params: {
+            period,
+            type: "company",
+            partyId,
+            partyName,
+          },
+        }
+      );
+
+      // Cache the result (longer cache for analytics)
+      this.setCache(cacheKey, response.data, "conversation");
+      return response.data;
+    } catch (error) {
+      // Return default analytics instead of throwing error
+      return {
+        success: false,
+        data: {
+          messageCount: 0,
+          responseTime: 0,
+          activeUsers: 0,
+          peakHours: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * Send template message to party's linked company
+   * @param {Object} partyData - Party data
+   * @param {string} templateId - Template ID
+   * @param {Object} customData - Custom template data
+   * @returns {Promise<Object>} Send result
+   */
+  async sendTemplateMessage(partyData, templateId, customData = {}) {
+    try {
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      const response = await chatAPI.post(
+        `/api/chat/template/${targetCompanyId}`,
+        {
+          templateId,
+          customData,
+          type: "company",
+          partyId,
+          partyName,
+        }
+      );
+
+      // Clear relevant caches
+      this.clearHistoryCache(targetCompanyId);
+      this.clearConversationCache();
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get message delivery status for party's linked company
+   * @param {Object} partyData - Party data
+   * @param {string} messageId - Message ID
+   * @returns {Promise<Object>} Message status
+   */
+  async getMessageStatus(partyData, messageId) {
+    try {
+      // Extract linked company ID from party data
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      const response = await chatAPI.get(
+        `/api/chat/status/${targetCompanyId}/${messageId}`,
+        {
+          params: {
+            type: "company",
+            partyId,
+            partyName,
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get suppliers with linked companies
    * @param {Object} params - Filter parameters
    * @returns {Promise<Object>} Linked suppliers data
    */
@@ -535,12 +821,9 @@ class PartyService {
       });
       return response.data;
     } catch (error) {
-      console.error("❌ Error getting linked suppliers:", error);
       throw error;
     }
   }
-
-  // ... keep all existing methods with enhancements ...
 
   /**
    * Create a quick party (minimal data)
@@ -604,10 +887,10 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Get all parties with linking information
-   * @param {string|Object} companyIdOrFilters - Company ID or filters object (for backward compatibility)
-   * @param {Object} filters - Filter options (when companyId is provided as first param)
-   * @returns {Promise<Object>} Parties data with pagination
+   * Enhanced getParties with proper linked company population
+   * @param {string|Object} companyIdOrFilters - Company ID or filters object
+   * @param {Object} filters - Filter options
+   * @returns {Promise<Object>} Parties data with chat capabilities
    */
   async getParties(companyIdOrFilters = {}, filters = {}) {
     try {
@@ -616,11 +899,9 @@ class PartyService {
 
       // Handle different parameter formats for backward compatibility
       if (typeof companyIdOrFilters === "string") {
-        // New format: getParties(companyId, filters)
         companyId = companyIdOrFilters;
         actualFilters = filters || {};
       } else {
-        // Old format: getParties(filters)
         actualFilters = companyIdOrFilters || {};
       }
 
@@ -630,10 +911,11 @@ class PartyService {
         limit = 10,
         search = "",
         partyType = null,
-        type = null, // Handle both partyType and type for compatibility
+        type = null,
         sortBy = "createdAt",
         sortOrder = "desc",
-        includeLinked = false, // ✅ NEW: Filter for linked suppliers only
+        includeLinked = false,
+        includeChatFields = true, // Always include chat fields
       } = actualFilters;
 
       // Validate company context if companyId not provided
@@ -646,39 +928,294 @@ class PartyService {
         companyId = companyValidation.companyId;
       }
 
-      // ✅ Map the sort key to backend expected format
       const mappedSortBy = this.mapSortKey(String(sortBy));
 
-      // Build request parameters
+      // Always include chat fields and populate linked companies
       const params = {
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
         type: partyType || type || "all",
-        sortBy: mappedSortBy, // Use mapped sort key
+        sortBy: mappedSortBy,
         sortOrder: String(sortOrder),
         companyId: companyId,
-        includeLinked: includeLinked, // ✅ NEW: Include linked filter
+        includeLinked: includeLinked,
+        includeChatFields: includeChatFields,
+        populate: "linkedCompanyId", // Always populate
       };
 
-      // Only add search if it's not empty and is a string
+      // Only add search if it's meaningful
       if (search && typeof search === "string" && search.trim() !== "") {
         params.search = search.trim();
-      } else if (search && typeof search !== "string") {
-        // Convert non-string search to string and check if it's meaningful
-        const searchString = String(search).trim();
-        if (
-          searchString !== "" &&
-          searchString !== "undefined" &&
-          searchString !== "null"
-        ) {
-          params.search = searchString;
-        }
       }
 
       const response = await apiClient.get("/api/parties", {params});
+
+      // Enhance all parties with chat capability info
+      if (response.data.success && response.data.data?.parties) {
+        const enhancedParties = response.data.data.parties.map((party) => ({
+          ...party,
+          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+          chatCompanyId:
+            party.linkedCompanyId?._id ||
+            party.linkedCompanyId ||
+            party.externalCompanyId,
+          chatCompanyName:
+            party.linkedCompanyId?.businessName ||
+            party.supplierCompanyData?.businessName ||
+            party.name,
+        }));
+
+        return {
+          ...response.data,
+          data: {
+            ...response.data.data,
+            parties: enhancedParties,
+          },
+        };
+      }
+
       return response.data;
     } catch (error) {
-      console.error("❌ PartyService.getParties error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Link party to company for chat
+   * @param {string} partyId - Party ID
+   * @param {string} targetCompanyId - Target company ID
+   * @param {boolean} isExternal - Whether it's an external company
+   * @returns {Promise<Object>} Linking result
+   */
+  async linkPartyToCompany(partyId, targetCompanyId, isExternal = false) {
+    try {
+      if (!partyId || !targetCompanyId) {
+        throw new Error("Party ID and target company ID are required");
+      }
+
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const requestData = {
+        targetCompanyId,
+        isExternal,
+      };
+
+      const response = await apiClient.post(
+        `/api/chat/link-party/${partyId}`,
+        requestData
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Unlink party from company
+   * @param {string} partyId - Party ID
+   * @returns {Promise<Object>} Unlinking result
+   */
+  async unlinkPartyFromCompany(partyId) {
+    try {
+      if (!partyId) {
+        throw new Error("Party ID is required");
+      }
+
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const response = await apiClient.delete(
+        `/api/chat/unlink-party/${partyId}`
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get companies available for linking
+   * @returns {Promise<Object>} Available companies
+   */
+  async getLinkableCompanies() {
+    try {
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const response = await apiClient.get("/api/chat/linkable-companies");
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get party's linked company information
+   * @param {string} partyId - Party ID
+   * @returns {Promise<Object>} Linked company info
+   */
+  async getPartyCompanyLink(partyId) {
+    try {
+      if (!partyId) {
+        throw new Error("Party ID is required");
+      }
+
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const response = await apiClient.get(
+        `/api/chat/party-company-link/${partyId}`
+      );
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get parties with chat capabilities
+   * @param {Object} params - Filter parameters
+   * @returns {Promise<Object>} Chat-enabled parties
+   */
+  async getChatEnabledParties(params = {}) {
+    try {
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const requestParams = {
+        page: params.page || 1,
+        limit: params.limit || 20,
+        search: params.search || "",
+        companyId: companyValidation.companyId,
+        includeLinked: true, // Only get parties with linked companies
+        includeChatFields: true,
+      };
+
+      const response = await apiClient.get("/api/parties", {
+        params: requestParams,
+      });
+
+      if (response.data.success && response.data.data?.parties) {
+        // Filter only parties that can chat
+        const chatEnabledParties = response.data.data.parties.filter(
+          (party) =>
+            party.canChat || party.linkedCompanyId || party.externalCompanyId
+        );
+
+        return {
+          ...response.data,
+          data: {
+            ...response.data.data,
+            parties: chatEnabledParties,
+          },
+        };
+      }
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Validate party chat capability
+   * @param {Object} party - Party object
+   * @returns {Object} Validation result
+   */
+  validatePartyChatCapability(party) {
+    if (!party) {
+      return {
+        canChat: false,
+        reason: "Party data is required",
+      };
+    }
+
+    const hasLinkedCompany = !!(
+      party.linkedCompanyId || party.externalCompanyId
+    );
+    const chatCompanyId =
+      party.linkedCompanyId?._id ||
+      party.linkedCompanyId ||
+      party.externalCompanyId;
+    const chatCompanyName =
+      party.linkedCompanyId?.businessName ||
+      party.supplierCompanyData?.businessName ||
+      party.name;
+
+    return {
+      canChat: hasLinkedCompany && !!chatCompanyId,
+      reason: hasLinkedCompany ? null : "Party is not linked to any company",
+      chatCompanyId,
+      chatCompanyName,
+      isLinkedSupplier: party.isLinkedSupplier || false,
+      enableBidirectionalOrders: party.enableBidirectionalOrders || false,
+    };
+  }
+
+  /**
+   * Get party with full linking context for frontend
+   * @param {string} partyId - Party ID
+   * @returns {Promise<Object>} Party with full context
+   */
+  async getPartyWithFullContext(partyId) {
+    try {
+      // First get the party with chat fields
+      const partyResponse = await this.getPartyForChat(partyId);
+
+      if (!partyResponse.success) {
+        throw new Error(partyResponse.message || "Failed to fetch party");
+      }
+
+      const party = partyResponse.data;
+
+      // Validate chat capability
+      const chatValidation = this.validatePartyChatCapability(party);
+
+      // Get linked company info if available
+      let linkedCompanyInfo = null;
+      if (chatValidation.canChat) {
+        try {
+          const linkResponse = await this.getPartyCompanyLink(partyId);
+          if (linkResponse.success) {
+            linkedCompanyInfo = linkResponse.data;
+          }
+        } catch (error) {
+          // Silent fail for linked company info
+        }
+      }
+
+      const fullContext = {
+        ...party,
+        ...chatValidation,
+        linkedCompanyInfo,
+        fullContextLoaded: true,
+      };
+
+      return {
+        success: true,
+        data: fullContext,
+      };
+    } catch (error) {
       throw error;
     }
   }
@@ -728,15 +1265,14 @@ class PartyService {
       });
       return response.data;
     } catch (error) {
-      console.error("❌ PartyService.deleteParty error:", error);
       throw error;
     }
   }
 
   /**
-   * ✅ ENHANCED: Get party by ID with linking information
+   * Get party by ID with chat fields populated
    * @param {string} partyId - Party ID
-   * @returns {Promise<Object>} Party data
+   * @returns {Promise<Object>} Party data with chat fields
    */
   async getPartyById(partyId) {
     try {
@@ -750,12 +1286,38 @@ class PartyService {
         throw new Error(companyValidation.error);
       }
 
-      // Add company ID as query param as fallback
+      // Always include chat fields and populate linked company
       const params = {
         companyId: companyValidation.companyId,
+        includeChatFields: true,
+        populate: "linkedCompanyId",
       };
 
       const response = await apiClient.get(`/api/parties/${partyId}`, {params});
+
+      if (response.data.success && response.data.data) {
+        const party = response.data.data;
+
+        // Ensure chat fields are properly set
+        const enhancedParty = {
+          ...party,
+          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+          chatCompanyId:
+            party.linkedCompanyId?._id ||
+            party.linkedCompanyId ||
+            party.externalCompanyId,
+          chatCompanyName:
+            party.linkedCompanyId?.businessName ||
+            party.supplierCompanyData?.businessName ||
+            party.name,
+        };
+
+        return {
+          ...response.data,
+          data: enhancedParty,
+        };
+      }
+
       return response.data;
     } catch (error) {
       throw error;
@@ -763,7 +1325,63 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Search parties with linking information
+   * Get party specifically for chat with all required fields
+   * @param {string} partyId - Party ID
+   * @returns {Promise<Object>} Party data optimized for chat
+   */
+  async getPartyForChat(partyId) {
+    try {
+      if (!partyId) {
+        throw new Error("Party ID is required");
+      }
+
+      // Validate company context
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(companyValidation.error);
+      }
+
+      const params = {
+        companyId: companyValidation.companyId,
+        includeChatFields: true,
+        populate: "linkedCompanyId",
+        select:
+          "name phoneNumber email linkedCompanyId externalCompanyId isExternalCompany supplierCompanyData partyType isLinkedSupplier enableBidirectionalOrders",
+      };
+
+      const response = await apiClient.get(`/api/parties/${partyId}`, {params});
+
+      if (response.data.success && response.data.data) {
+        const party = response.data.data;
+
+        // Ensure chat fields are properly set
+        const enhancedParty = {
+          ...party,
+          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+          chatCompanyId:
+            party.linkedCompanyId?._id ||
+            party.linkedCompanyId ||
+            party.externalCompanyId,
+          chatCompanyName:
+            party.linkedCompanyId?.businessName ||
+            party.supplierCompanyData?.businessName ||
+            party.name,
+        };
+
+        return {
+          ...response.data,
+          data: enhancedParty,
+        };
+      }
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced search parties with linking information
    * @param {Object} params - Search parameters
    * @returns {Promise<Object>} Search results
    */
@@ -795,7 +1413,7 @@ class PartyService {
         limit: parseInt(limit, 10),
         page: parseInt(page, 10),
         companyId: companyValidation.companyId,
-        includeLinked: includeLinked, // ✅ NEW: Include linked filter
+        includeLinked: includeLinked,
       };
 
       if (partyType && partyType !== "all") {
@@ -811,7 +1429,6 @@ class PartyService {
         data: response.data.data || response.data.parties || [],
       };
     } catch (error) {
-      console.error("❌ Error searching parties:", error);
       return {
         success: false,
         message: error.message,
@@ -860,7 +1477,6 @@ class PartyService {
         data: response.data.data || [],
       };
     } catch (error) {
-      console.error("❌ Error searching external database:", error);
       return {
         success: false,
         message: error.message,
@@ -902,7 +1518,6 @@ class PartyService {
         data: response.data.data || [],
       };
     } catch (error) {
-      console.error("❌ Error searching companies:", error);
       return {
         success: false,
         message: error.message,
@@ -911,7 +1526,11 @@ class PartyService {
     }
   }
 
-  // ✅ ENHANCED: Search external company databases with linking support
+  /**
+   * Search external company databases with linking support
+   * @param {Object} params - Search parameters
+   * @returns {Promise<Object>} Search results
+   */
   async searchExternalCompanies(params = {}) {
     try {
       const companyValidation = this.validateCompanyContext();
@@ -919,17 +1538,13 @@ class PartyService {
         throw new Error(companyValidation.error);
       }
 
-      console.log("🌐 Searching external companies with params:", params);
-
       const response = await apiClient.post("/api/companies/search/external", {
         ...params,
         companyId: companyValidation.companyId,
       });
 
-      console.log("📥 External companies search response:", response.data);
       return response.data;
     } catch (error) {
-      console.error("❌ Error searching external companies:", error);
       // Return empty results instead of throwing error for external searches
       return {
         success: true,
@@ -952,7 +1567,6 @@ class PartyService {
         data: response.data,
       };
     } catch (error) {
-      console.error("❌ Connection test failed:", error);
       throw new Error("Backend connection failed");
     }
   }
@@ -999,7 +1613,7 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Get party statistics with linking information
+   * Get party statistics with linking information
    * @returns {Promise<Object>} Party statistics
    */
   async getPartyStats() {
@@ -1078,7 +1692,7 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Validate party data with linking fields
+   * Validate party data with linking fields
    * @param {Object} partyData - Party data to validate
    * @returns {Object} Validation result
    */
@@ -1158,7 +1772,7 @@ class PartyService {
       errors.push("Delivery pincode must be exactly 6 digits");
     }
 
-    // ✅ NEW: Linking field validation
+    // Linking field validation
     if (
       partyData.linkedCompanyId &&
       !partyData.linkedCompanyId.match(/^[0-9a-fA-F]{24}$/)
@@ -1180,14 +1794,14 @@ class PartyService {
   }
 
   /**
-   * ✅ ENHANCED: Format party data for display with linking information
+   * Format party data for display with linking information
    * @param {Object} partyData - Raw party data from backend
    * @returns {Object} Normalized party data
    */
   formatPartyForDisplay(partyData) {
     if (!partyData) return null;
 
-    return {
+    const formatted = {
       id: partyData._id || partyData.id,
       name: partyData.name || "",
       partyType: partyData.partyType || "customer",
@@ -1221,7 +1835,7 @@ class PartyService {
       // Phone numbers array
       phoneNumbers: partyData.phoneNumbers || [],
 
-      // ✅ NEW: Linking fields
+      // Chat and linking fields
       linkedCompanyId: partyData.linkedCompanyId || null,
       isLinkedSupplier: partyData.isLinkedSupplier || false,
       enableBidirectionalOrders: partyData.enableBidirectionalOrders || false,
@@ -1241,7 +1855,22 @@ class PartyService {
       isExternalCompany: partyData.isExternalCompany || false,
       supplierCompanyData: partyData.supplierCompanyData || null,
 
-      // ✅ NEW: Additional business fields
+      // Chat capability fields
+      canChat:
+        partyData.canChat ||
+        !!(partyData.linkedCompanyId || partyData.externalCompanyId),
+      chatCompanyId:
+        partyData.chatCompanyId ||
+        partyData.linkedCompanyId?._id ||
+        partyData.linkedCompanyId ||
+        partyData.externalCompanyId,
+      chatCompanyName:
+        partyData.chatCompanyName ||
+        partyData.linkedCompanyId?.businessName ||
+        partyData.supplierCompanyData?.businessName ||
+        partyData.name,
+
+      // Additional business fields
       website: partyData.website || "",
       businessType: partyData.businessType || "",
       businessCategory: partyData.businessCategory || "",
@@ -1264,6 +1893,8 @@ class PartyService {
       importedFrom: partyData.importedFrom || null,
       importedAt: partyData.importedAt || null,
     };
+
+    return formatted;
   }
 
   /**

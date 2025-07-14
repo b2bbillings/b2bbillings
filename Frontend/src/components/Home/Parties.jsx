@@ -21,19 +21,22 @@ import {
   faArrowDown,
   faExclamationTriangle,
   faCheckCircle,
+  faComment,
+  faComments,
+  faLink,
+  faUnlink,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate} from "react-router-dom";
 import "./Parties.css";
 
-// ✅ Import components
 import PartyHeader from "./Party/PartyHeader";
 import PartySidebar from "./Party/PartySidebar";
 import AddNewParty from "./Party/AddNewParty";
 import PayIn from "./Party/PayIn";
 import PayOut from "./Party/PayOut";
 import TransactionTable from "./Party/TransactionTable";
+import PartyChat from "./Party/PartyChat";
 
-// ✅ Import services
 import partyService from "../../services/partyService";
 import paymentService from "../../services/paymentService";
 import purchaseService from "../../services/purchaseService";
@@ -43,7 +46,6 @@ function Parties() {
   const {companyId} = useParams();
   const navigate = useNavigate();
 
-  // ✅ State management
   const [parties, setParties] = useState([]);
   const [selectedParty, setSelectedParty] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,32 +53,28 @@ function Parties() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // ✅ Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingParty, setEditingParty] = useState(null);
   const [showPayIn, setShowPayIn] = useState(false);
   const [showPayOut, setShowPayOut] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [payInData, setPayInData] = useState(null);
   const [payOutData, setPayOutData] = useState(null);
 
-  // ✅ Search and filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [transactionSearchQuery, setTransactionSearchQuery] = useState("");
   const [partyTypeFilter, setPartyTypeFilter] = useState("all");
 
-  // ✅ Enhanced sorting state with mapping
   const [sortConfig, setSortConfig] = useState({
     key: "currentBalance",
     direction: "desc",
   });
 
-  // ✅ Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalParties, setTotalParties] = useState(0);
   const partiesPerPage = 20;
 
-  // ✅ Transaction states
   const [transactions, setTransactions] = useState([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [transactionsPagination, setTransactionsPagination] = useState({
@@ -86,7 +84,6 @@ function Parties() {
   });
   const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0);
 
-  // ✅ Payment summary state
   const [paymentSummary, setPaymentSummary] = useState({
     totalPaymentsIn: 0,
     totalPaymentsOut: 0,
@@ -94,18 +91,17 @@ function Parties() {
     totalTransactions: 0,
   });
 
-  // ✅ Enhanced bank accounts state
   const [bankAccounts, setBankAccounts] = useState([]);
   const [isLoadingBankAccounts, setIsLoadingBankAccounts] = useState(false);
 
-  // ✅ Company state
   const [currentCompany, setCurrentCompany] = useState({
     id: companyId,
     _id: companyId,
     name: "Your Company Name",
   });
 
-  // ✅ Update company when companyId changes
+  const [chatParty, setChatParty] = useState(null);
+
   useEffect(() => {
     if (companyId) {
       setCurrentCompany((prev) => ({
@@ -116,7 +112,41 @@ function Parties() {
     }
   }, [companyId]);
 
-  // ✅ Sort key mapping helper function
+  const handleChat = async () => {
+    if (!selectedParty) {
+      setError("Please select a party to start a chat");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const partyResponse = await partyService.getPartyForChat(
+        selectedParty._id || selectedParty.id
+      );
+
+      if (!partyResponse.success) {
+        throw new Error("Failed to fetch party data for chat");
+      }
+
+      const freshPartyData = partyResponse.data;
+      const chatValidation =
+        partyService.validatePartyChatCapability(freshPartyData);
+
+      if (!chatValidation.canChat) {
+        setError(`Cannot start chat: ${chatValidation.reason}`);
+        return;
+      }
+
+      setChatParty(freshPartyData);
+      setShowChat(true);
+    } catch (error) {
+      setError("Failed to open chat: " + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const mapSortKey = (frontendKey) => {
     const sortKeyMapping = {
       balance: "currentBalance",
@@ -130,7 +160,6 @@ function Parties() {
     return sortKeyMapping[frontendKey] || frontendKey;
   };
 
-  // ✅ Enhanced bank accounts loading
   const loadBankAccounts = async () => {
     if (!companyId) return;
 
@@ -138,9 +167,7 @@ function Parties() {
       setIsLoadingBankAccounts(true);
       let bankAccountsData = [];
 
-      // Try multiple sources for bank accounts
       try {
-        // First try payment service
         const paymentBankResponse = await paymentService.getBankAccounts?.(
           companyId
         );
@@ -148,13 +175,9 @@ function Parties() {
           bankAccountsData = paymentBankResponse.data;
         }
       } catch (err) {
-        console.warn(
-          "Could not load bank accounts from payment service:",
-          err.message
-        );
+        // Silent fail
       }
 
-      // If no data from payment service, try purchase service
       if (bankAccountsData.length === 0) {
         try {
           const purchaseBankResponse = await purchaseService.getBankAccounts?.(
@@ -164,17 +187,12 @@ function Parties() {
             bankAccountsData = purchaseBankResponse.data;
           }
         } catch (err) {
-          console.warn(
-            "Could not load bank accounts from purchase service:",
-            err.message
-          );
+          // Silent fail
         }
       }
 
-      // If still no data, try alternative methods
       if (bankAccountsData.length === 0) {
         try {
-          // Try getting bank accounts from party service if available
           const partyBankResponse = await partyService.getBankAccounts?.(
             companyId
           );
@@ -182,14 +200,10 @@ function Parties() {
             bankAccountsData = partyBankResponse.data;
           }
         } catch (err) {
-          console.warn(
-            "Could not load bank accounts from party service:",
-            err.message
-          );
+          // Silent fail
         }
       }
 
-      // Normalize bank account data
       const normalizedBankAccounts = bankAccountsData.map((account) => ({
         id: account._id || account.id,
         _id: account._id || account.id,
@@ -209,14 +223,12 @@ function Parties() {
 
       setBankAccounts(normalizedBankAccounts);
     } catch (error) {
-      console.error("Error loading bank accounts:", error);
       setBankAccounts([]);
     } finally {
       setIsLoadingBankAccounts(false);
     }
   };
 
-  // ✅ Currency formatter
   const formatCurrency = (amount) => {
     const numericAmount = parseFloat(amount) || 0;
     return numericAmount.toLocaleString("en-IN", {
@@ -225,9 +237,8 @@ function Parties() {
     });
   };
 
-  // ✅ Normalize party data
   const normalizeParty = (party) => {
-    return {
+    const baseParty = {
       id: party._id || party.id,
       _id: party._id || party.id,
       name: party.name || "",
@@ -270,13 +281,52 @@ function Parties() {
         party.deliveryAddress?.taluka || party.deliveryTaluka || "",
       sameAsHomeAddress: party.sameAsHomeAddress || false,
       phoneNumbers: party.phoneNumbers || [],
+      creditLimit: parseFloat(party.creditLimit) || 0,
+      gstType: party.gstType || "unregistered",
       isActive: party.isActive !== false,
       createdAt: party.createdAt,
       updatedAt: party.updatedAt,
+
+      linkedCompanyId: party.linkedCompanyId || null,
+      externalCompanyId: party.externalCompanyId || null,
+      isExternalCompany: party.isExternalCompany || false,
+      isLinkedSupplier: party.isLinkedSupplier || false,
+      enableBidirectionalOrders: party.enableBidirectionalOrders || false,
+      supplierCompanyData: party.supplierCompanyData || null,
+      autoLinkByGST:
+        party.autoLinkByGST !== undefined ? party.autoLinkByGST : true,
+      autoLinkByPhone:
+        party.autoLinkByPhone !== undefined ? party.autoLinkByPhone : true,
+      autoLinkByEmail:
+        party.autoLinkByEmail !== undefined ? party.autoLinkByEmail : true,
+
+      canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+      chatCompanyId:
+        party.linkedCompanyId?._id ||
+        party.linkedCompanyId ||
+        party.externalCompanyId,
+      chatCompanyName:
+        party.linkedCompanyId?.businessName ||
+        party.supplierCompanyData?.businessName ||
+        party.name,
+
+      website: party.website || "",
+      businessType: party.businessType || "",
+      businessCategory: party.businessCategory || "",
+      companyType: party.companyType || "",
+      incorporationDate: party.incorporationDate || null,
+      cinNumber: party.cinNumber || "",
+      description: party.description || "",
+      ownerInfo: party.ownerInfo || null,
+      source: party.source || "Manual Entry",
+      isVerified: party.isVerified || false,
+      importedFrom: party.importedFrom || null,
+      importedAt: party.importedAt || null,
     };
+
+    return baseParty;
   };
 
-  // ✅ Get transaction type
   const getTransactionType = (paymentType, paymentMethod) => {
     if (paymentType === "payment_in") {
       return "Receipt Voucher";
@@ -286,7 +336,6 @@ function Parties() {
     return paymentMethod === "cash" ? "Cash Transaction" : "Bank Transaction";
   };
 
-  // ✅ Toast notification handler
   const addToast = (message, type = "info") => {
     switch (type) {
       case "success":
@@ -303,7 +352,6 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced transaction handlers
   const handleTransactionUpdated = async (updatedTransactionData) => {
     try {
       if (selectedParty && companyId) {
@@ -348,7 +396,6 @@ function Parties() {
     }
   };
 
-  // ✅ Load transactions with allocations
   const loadTransactions = async (partyId, options = {}) => {
     if (!partyId || !companyId) {
       setTransactions([]);
@@ -461,7 +508,6 @@ function Parties() {
     }
   };
 
-  // ✅ Load payment summary
   const loadPaymentSummary = async (partyId) => {
     if (!partyId || !companyId) return;
 
@@ -474,11 +520,10 @@ function Parties() {
         setPaymentSummary(response.data);
       }
     } catch (error) {
-      // Silent fail for summary loading
+      // Silent fail
     }
   };
 
-  // ✅ Enhanced load parties with proper sort key mapping
   const loadParties = async (options = {}) => {
     if (!companyId) {
       setError("Company ID is required. Please select a company.");
@@ -497,32 +542,62 @@ function Parties() {
 
       const searchString = String(searchValue).trim();
 
-      // ✅ Map frontend sort key to backend key
       const frontendSortKey = sortConfig.key || "createdAt";
       const backendSortKey = mapSortKey(frontendSortKey);
 
       const filters = {
         page: parseInt(options.page || currentPage, 10),
         limit: parseInt(partiesPerPage, 10),
-        search: searchString,
-        partyType:
-          options.partyType ||
-          (partyTypeFilter === "all" ? null : partyTypeFilter),
         sortBy: String(backendSortKey),
         sortOrder: String(sortConfig.direction || "desc"),
+        populateLinkedCompany: true,
+        includeChatFields: true,
       };
 
-      // Clean up undefined values
-      Object.keys(filters).forEach((key) => {
-        if (filters[key] === undefined) {
-          delete filters[key];
-        }
-      });
+      if (searchString) {
+        filters.search = searchString;
+      }
+
+      const typeFilter = options.partyType || partyTypeFilter;
+      if (typeFilter && typeFilter !== "all") {
+        filters.type = typeFilter;
+      }
 
       const response = await partyService.getParties(companyId, filters);
 
       if (response.success) {
-        const normalizedParties = response.data.parties.map(normalizeParty);
+        const normalizedParties = response.data.parties.map((party) => {
+          const normalized = normalizeParty(party);
+
+          return {
+            ...normalized,
+            linkedCompanyId: party.linkedCompanyId || null,
+            externalCompanyId: party.externalCompanyId || null,
+            isExternalCompany: party.isExternalCompany || false,
+            supplierCompanyData: party.supplierCompanyData || null,
+
+            canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+            chatCompanyId:
+              party.linkedCompanyId?._id ||
+              party.linkedCompanyId ||
+              party.externalCompanyId ||
+              null,
+            chatCompanyName:
+              party.linkedCompanyId?.businessName ||
+              party.supplierCompanyData?.businessName ||
+              null,
+
+            linkingStatus: party.linkedCompanyId
+              ? "linked"
+              : party.externalCompanyId
+              ? "external"
+              : "unlinked",
+            hasLinkedCompany: !!party.linkedCompanyId,
+            hasExternalCompany: !!party.externalCompanyId,
+            isUnlinked: !party.linkedCompanyId && !party.externalCompanyId,
+          };
+        });
+
         setParties(normalizedParties);
 
         if (response.data.pagination) {
@@ -544,14 +619,12 @@ function Parties() {
         throw new Error(response.message || "Failed to load parties");
       }
     } catch (error) {
-      console.error("❌ Error loading parties:", error);
       setError("Failed to load parties: " + error.message);
     } finally {
       setIsLoadingParties(false);
     }
   };
 
-  // ✅ Enhanced sorting handler with proper key mapping
   const handleSort = (frontendKey, backendKey) => {
     let direction = "asc";
     if (sortConfig.key === backendKey && sortConfig.direction === "asc") {
@@ -560,7 +633,6 @@ function Parties() {
     setSortConfig({key: backendKey, direction});
   };
 
-  // ✅ Party selection handler
   const handlePartySelect = (party) => {
     const normalizedParty = normalizeParty(party);
     setSelectedParty(normalizedParty);
@@ -571,7 +643,6 @@ function Parties() {
     }
   };
 
-  // ✅ Delete party handler
   const handleDeleteParty = async (party) => {
     if (!window.confirm(`Are you sure you want to delete "${party.name}"?`)) {
       return;
@@ -621,7 +692,6 @@ function Parties() {
     }
   };
 
-  // ✅ Modal handlers
   const handleOpenModal = () => {
     setEditingParty(null);
     setShowAddModal(true);
@@ -637,7 +707,6 @@ function Parties() {
     setShowAddModal(true);
   };
 
-  // ✅ Save party handler
   const handleSaveParty = async (
     partyData,
     isQuickAdd = false,
@@ -682,7 +751,6 @@ function Parties() {
     }
   };
 
-  // ✅ Refresh parties handler
   const handleRefreshParties = () => {
     if (companyId) {
       setCurrentPage(1);
@@ -691,7 +759,6 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced PayIn/PayOut handlers with duplicate support
   const handlePayIn = (duplicateData = null) => {
     if (selectedParty) {
       if (duplicateData) {
@@ -710,7 +777,6 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced payment recorded handler
   const handlePaymentRecorded = (paymentData, updatedParty) => {
     if (updatedParty) {
       const normalizedUpdatedParty = normalizeParty(updatedParty);
@@ -733,39 +799,36 @@ function Parties() {
       }
     }
 
-    // Enhanced success message
     const paymentType = paymentData.type === "payment_in" ? "received" : "made";
-    let successMessage = `✅ Payment of ₹${paymentData.amount?.toLocaleString()} ${paymentType} successfully!`;
-    successMessage += `\n• Payment Number: ${paymentData.paymentNumber}`;
+    let successMessage = `Payment of ₹${paymentData.amount?.toLocaleString()} ${paymentType} successfully!`;
+    successMessage += `\nPayment Number: ${paymentData.paymentNumber}`;
 
-    // Bank transaction details
     if (paymentData.bankTransactionCreated && paymentData.bankTransaction) {
-      successMessage += `\n\n🏦 Bank Transaction:`;
-      successMessage += `\n• Transaction #: ${paymentData.bankTransaction.transactionNumber}`;
-      successMessage += `\n• Bank: ${paymentData.bankTransaction.bankName}`;
+      successMessage += `\n\nBank Transaction:`;
+      successMessage += `\nTransaction #: ${paymentData.bankTransaction.transactionNumber}`;
+      successMessage += `\nBank: ${paymentData.bankTransaction.bankName}`;
 
       if (paymentData.type === "payment_in") {
-        successMessage += `\n• Credit: +₹${paymentData.amount?.toLocaleString()}`;
+        successMessage += `\nCredit: +₹${paymentData.amount?.toLocaleString()}`;
       } else {
-        successMessage += `\n• Debit: -₹${paymentData.amount?.toLocaleString()}`;
+        successMessage += `\nDebit: -₹${paymentData.amount?.toLocaleString()}`;
       }
 
       if (paymentData.bankTransaction.balance !== undefined) {
-        successMessage += `\n• New Balance: ₹${paymentData.bankTransaction.balance?.toLocaleString()}`;
+        successMessage += `\nNew Balance: ₹${paymentData.bankTransaction.balance?.toLocaleString()}`;
       }
     } else if (paymentData.paymentMethod === "cash") {
-      successMessage += `\n\n💵 Cash Payment - No bank transaction created`;
+      successMessage += `\n\nCash Payment - No bank transaction created`;
     }
 
-    // Allocation details
     if (paymentData.invoicesUpdated > 0) {
-      successMessage += `\n\n📋 ${paymentData.invoicesUpdated} invoice(s) updated`;
+      successMessage += `\n\n${paymentData.invoicesUpdated} invoice(s) updated`;
 
       if (paymentData.allocations && paymentData.allocations.length > 0) {
         successMessage += `:\n${paymentData.allocations
           .map(
             (alloc) =>
-              `• ${
+              `${
                 alloc.invoiceNumber
               }: ₹${alloc.allocatedAmount.toLocaleString()}`
           )
@@ -773,10 +836,10 @@ function Parties() {
       }
 
       if (paymentData.remainingAmount > 0) {
-        successMessage += `\n\n💰 Remaining: ₹${paymentData.remainingAmount.toLocaleString()} credited to account`;
+        successMessage += `\n\nRemaining: ₹${paymentData.remainingAmount.toLocaleString()} credited to account`;
       }
     } else if (paymentData.paymentMethod !== "cash") {
-      successMessage += `\n\n💰 Advance payment processed via bank`;
+      successMessage += `\n\nAdvance payment processed via bank`;
     }
 
     setSuccess(successMessage);
@@ -784,11 +847,9 @@ function Parties() {
     setShowPayOut(false);
     setTransactionRefreshTrigger((prev) => prev + 1);
 
-    // Refresh bank accounts to show updated balances
     loadBankAccounts();
   };
 
-  // ✅ View payment allocations handler
   const handleViewPaymentAllocations = async (paymentId) => {
     try {
       const response = await paymentService.getPaymentAllocations(paymentId);
@@ -796,12 +857,12 @@ function Parties() {
       if (response.success) {
         const allocations = response.data.allocations || [];
         if (allocations.length > 0) {
-          let message = `💰 Payment Allocation Details:\n\n`;
+          let message = `Payment Allocation Details:\n\n`;
           message += `Payment Number: ${response.data.payment.paymentNumber}\n`;
           message += `Total Amount: ₹${response.data.payment.amount.toLocaleString()}\n`;
           message += `Allocated: ₹${response.data.totalAllocatedAmount.toLocaleString()}\n`;
           message += `Remaining: ₹${response.data.remainingAmount.toLocaleString()}\n\n`;
-          message += `📋 Invoices Updated:\n`;
+          message += `Invoices Updated:\n`;
 
           allocations.forEach((alloc) => {
             const invoiceNumber =
@@ -811,16 +872,16 @@ function Parties() {
             const currentPending =
               alloc.invoiceDetails?.currentPendingAmount || 0;
 
-            message += `• ${invoiceNumber}: ₹${allocatedAmount.toLocaleString()}\n`;
-            message += `  Status: ${
+            message += `${invoiceNumber}: ₹${allocatedAmount.toLocaleString()}\n`;
+            message += `Status: ${
               alloc.invoiceDetails?.paymentStatus || "updated"
             }\n`;
-            message += `  Paid: ₹${currentPaid.toLocaleString()}, Pending: ₹${currentPending.toLocaleString()}\n\n`;
+            message += `Paid: ₹${currentPaid.toLocaleString()}, Pending: ₹${currentPending.toLocaleString()}\n\n`;
           });
 
           alert(message);
         } else {
-          alert("ℹ️ No invoice allocations found for this payment.");
+          alert("No invoice allocations found for this payment.");
         }
       }
     } catch (error) {
@@ -828,7 +889,6 @@ function Parties() {
     }
   };
 
-  // ✅ Pagination handler
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
     if (companyId) {
@@ -836,7 +896,6 @@ function Parties() {
     }
   };
 
-  // ✅ ENHANCED: Connected handlers for Sales and Purchase Invoice buttons
   const handleAddSalesInvoice = async () => {
     try {
       if (!companyId) {
@@ -844,9 +903,7 @@ function Parties() {
         return;
       }
 
-      // Check if we have a selected party
       if (selectedParty) {
-        // Navigate to sales form with pre-selected customer
         const customerData = {
           id: selectedParty._id || selectedParty.id,
           _id: selectedParty._id || selectedParty.id,
@@ -859,7 +916,6 @@ function Parties() {
           partyType: selectedParty.partyType,
         };
 
-        // Navigate with customer pre-filled
         navigate(`/company/${companyId}/sales/create`, {
           state: {
             preSelectedCustomer: customerData,
@@ -868,7 +924,6 @@ function Parties() {
           },
         });
       } else {
-        // Navigate to sales form without pre-selection
         navigate(`/company/${companyId}/sales/create`, {
           state: {
             from: "parties",
@@ -890,13 +945,11 @@ function Parties() {
         return;
       }
 
-      // Check if we have a selected party and it's a vendor/supplier
       if (
         selectedParty &&
         (selectedParty.partyType === "vendor" ||
           selectedParty.partyType === "supplier")
       ) {
-        // Navigate to purchase form with pre-selected supplier
         const supplierData = {
           id: selectedParty._id || selectedParty.id,
           _id: selectedParty._id || selectedParty.id,
@@ -909,7 +962,6 @@ function Parties() {
           partyType: selectedParty.partyType,
         };
 
-        // Navigate with supplier pre-filled
         navigate(`/company/${companyId}/purchases/create`, {
           state: {
             preSelectedSupplier: supplierData,
@@ -918,12 +970,10 @@ function Parties() {
           },
         });
       } else if (selectedParty && selectedParty.partyType === "customer") {
-        // Show warning that customer is selected but purchase needs vendor
         setError(
           "Purchase invoices require vendors/suppliers. Please select a vendor or create a new purchase without pre-selection."
         );
 
-        // Still navigate but without pre-selection
         setTimeout(() => {
           navigate(`/company/${companyId}/purchases/create`, {
             state: {
@@ -934,7 +984,6 @@ function Parties() {
           });
         }, 2000);
       } else {
-        // Navigate to purchase form without pre-selection
         navigate(`/company/${companyId}/purchases/create`, {
           state: {
             from: "parties",
@@ -949,9 +998,7 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced More Options handler
   const handleMoreOptions = () => {
-    // Show a dropdown menu or modal with more options
     const moreOptionsMenu = [
       "Export Parties Data",
       "Import Parties",
@@ -960,7 +1007,6 @@ function Parties() {
       "Party Settings",
     ];
 
-    // For now, just show an alert with options
     alert(
       `More Options:\n\n${moreOptionsMenu
         .map((option, index) => `${index + 1}. ${option}`)
@@ -968,19 +1014,16 @@ function Parties() {
     );
   };
 
-  // ✅ Settings handler
   const handleSettings = () => {
-    // Navigate to party settings or show settings modal
     if (companyId) {
       navigate(`/company/${companyId}/settings/parties`);
     } else {
       alert(
-        "Party Settings:\n\n• Default Party Types\n• Custom Fields\n• Import/Export Settings\n• Auto-numbering\n\nThis feature is coming soon!"
+        "Party Settings:\n\nDefault Party Types\nCustom Fields\nImport/Export Settings\nAuto-numbering\n\nThis feature is coming soon!"
       );
     }
   };
 
-  // ✅ Export parties handler
   const handleExportParties = async () => {
     try {
       if (!companyId) {
@@ -991,7 +1034,6 @@ function Parties() {
       setIsLoading(true);
       setSuccess("Preparing parties export...");
 
-      // Call export service
       const response = await partyService.exportParties?.(companyId, {
         format: "csv",
         partyType: partyTypeFilter === "all" ? null : partyTypeFilter,
@@ -1004,7 +1046,6 @@ function Parties() {
           "Parties exported successfully! Download should start automatically."
         );
       } else {
-        // Fallback: Create CSV from current parties data
         const csvData = parties.map((party) => ({
           Name: party.name,
           Phone: party.phone,
@@ -1017,13 +1058,11 @@ function Parties() {
           "Created Date": new Date(party.createdAt).toLocaleDateString("en-IN"),
         }));
 
-        // Convert to CSV string
         const csvString = [
           Object.keys(csvData[0]).join(","),
           ...csvData.map((row) => Object.values(row).join(",")),
         ].join("\n");
 
-        // Download CSV
         const blob = new Blob([csvString], {type: "text/csv"});
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -1045,7 +1084,6 @@ function Parties() {
     }
   };
 
-  // ✅ Enhanced initial load effect with bank accounts
   useEffect(() => {
     if (companyId) {
       loadParties();
@@ -1053,7 +1091,6 @@ function Parties() {
     }
   }, [companyId]);
 
-  // ✅ Search effect
   useEffect(() => {
     if (companyId) {
       const searchTimeout = setTimeout(() => {
@@ -1072,7 +1109,6 @@ function Parties() {
     }
   }, [searchQuery, companyId]);
 
-  // ✅ Filter/sort effect
   useEffect(() => {
     if (companyId) {
       setCurrentPage(1);
@@ -1083,7 +1119,6 @@ function Parties() {
     }
   }, [partyTypeFilter, sortConfig, companyId]);
 
-  // ✅ Transaction search effect
   useEffect(() => {
     if (selectedParty && companyId && transactionSearchQuery !== undefined) {
       const searchTimeout = setTimeout(() => {
@@ -1093,7 +1128,6 @@ function Parties() {
     }
   }, [transactionSearchQuery, companyId]);
 
-  // ✅ Transaction refresh effect
   useEffect(() => {
     if (selectedParty && companyId && transactionRefreshTrigger > 0) {
       loadTransactions(selectedParty._id || selectedParty.id);
@@ -1102,7 +1136,6 @@ function Parties() {
     }
   }, [transactionRefreshTrigger, companyId]);
 
-  // ✅ Clear alerts effect
   useEffect(() => {
     if (error || success) {
       const timer = setTimeout(() => {
@@ -1113,7 +1146,32 @@ function Parties() {
     }
   }, [error, success]);
 
-  // ✅ Early return if no company ID
+  const getChatStatusBadge = () => {
+    if (!selectedParty) return null;
+
+    const validation = partyService.validatePartyChatCapability(selectedParty);
+
+    if (validation.canChat) {
+      return (
+        <Badge
+          bg="success"
+          className="ms-2"
+          title={`Chat available with ${validation.chatCompanyName}`}
+        >
+          <FontAwesomeIcon icon={faLink} className="me-1" />
+          Chat Ready
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge bg="secondary" className="ms-2" title={validation.reason}>
+        <FontAwesomeIcon icon={faUnlink} className="me-1" />
+        No Link
+      </Badge>
+    );
+  };
+
   if (!companyId) {
     return (
       <div
@@ -1159,13 +1217,12 @@ function Parties() {
       className="min-vh-100"
       style={{
         fontSize: "13px",
-        background: "#f5f5f5", // ✅ Grey background
+        background: "#f5f5f5",
         margin: "-1rem",
         marginTop: "-2rem",
         padding: "0",
       }}
     >
-      {/* ✅ Party Header */}
       <div style={{marginBottom: "0"}}>
         <PartyHeader
           companyId={companyId}
@@ -1185,7 +1242,6 @@ function Parties() {
         />
       </div>
 
-      {/* ✅ Alerts */}
       {error && (
         <Alert
           variant="danger"
@@ -1202,6 +1258,7 @@ function Parties() {
           <div style={{whiteSpace: "pre-line"}}>{error}</div>
         </Alert>
       )}
+
       {success && (
         <Alert
           variant="success"
@@ -1219,7 +1276,6 @@ function Parties() {
         </Alert>
       )}
 
-      {/* ✅ Bank Accounts Loading Alert */}
       {isLoadingBankAccounts && (
         <Alert
           variant="info"
@@ -1240,10 +1296,8 @@ function Parties() {
         </Alert>
       )}
 
-      {/* ✅ Main Content - No gaps, no padding */}
       <div className="w-100" style={{padding: "0", margin: "0"}}>
         <Row className="g-0 m-0" style={{height: "calc(100vh - 140px)"}}>
-          {/* ✅ Parties List Sidebar - No gaps */}
           <Col xl={3} lg={4} md={5} className="h-100 p-0">
             <PartySidebar
               parties={parties}
@@ -1265,17 +1319,15 @@ function Parties() {
             />
           </Col>
 
-          {/* ✅ Party Details with Transactions - No gaps */}
           <Col xl={9} lg={8} md={7} className="h-100 p-0">
             {selectedParty ? (
               <div className="h-100 bg-white">
-                {/* ✅ Party Header with Payment Summary - Increased height */}
                 <div
                   className="border-bottom p-4"
                   style={{
                     background: "#ffffff",
                     borderColor: "#dee2e6",
-                    minHeight: "120px", // Increased from implicit height
+                    minHeight: "120px",
                   }}
                 >
                   <Row className="align-items-center h-100">
@@ -1302,6 +1354,7 @@ function Parties() {
                             >
                               {selectedParty.partyType}
                             </Badge>
+                            {getChatStatusBadge()}
                             <Button
                               variant="link"
                               size="sm"
@@ -1314,7 +1367,6 @@ function Parties() {
                             </Button>
                           </h5>
 
-                          {/* ✅ Payment Summary */}
                           {paymentSummary.totalTransactions > 0 && (
                             <div className="mb-3">
                               <Row className="g-2">
@@ -1381,7 +1433,6 @@ function Parties() {
                             </div>
                           )}
 
-                          {/* ✅ Contact Information */}
                           <div
                             className="text-muted mb-2"
                             style={{fontSize: "12px"}}
@@ -1433,9 +1484,22 @@ function Parties() {
                               )}
                             </div>
                           )}
+                          {selectedParty.chatCompanyName &&
+                            selectedParty.canChat && (
+                              <div
+                                className="text-success mt-1"
+                                style={{fontSize: "12px"}}
+                              >
+                                <FontAwesomeIcon
+                                  icon={faComments}
+                                  className="me-1"
+                                />
+                                Chat enabled with:{" "}
+                                {selectedParty.chatCompanyName}
+                              </div>
+                            )}
                         </div>
 
-                        {/* ✅ Action Buttons */}
                         <div className="d-flex gap-2 flex-shrink-0 align-self-start">
                           <Button
                             variant="outline-success"
@@ -1471,13 +1535,45 @@ function Parties() {
                             />
                             Pay Out
                           </Button>
+                          <Button
+                            variant={
+                              selectedParty?.canChat
+                                ? "outline-success"
+                                : "outline-secondary"
+                            }
+                            size="sm"
+                            onClick={handleChat}
+                            className="px-3"
+                            disabled={!selectedParty?.canChat}
+                            title={
+                              selectedParty?.canChat
+                                ? `Chat with ${selectedParty.chatCompanyName}`
+                                : "Party not linked to any company"
+                            }
+                            style={{
+                              fontSize: "12px",
+                              color: selectedParty?.canChat
+                                ? "#28a745"
+                                : "#6c757d",
+                              borderColor: selectedParty?.canChat
+                                ? "#28a745"
+                                : "#6c757d",
+                            }}
+                          >
+                            <FontAwesomeIcon
+                              icon={
+                                selectedParty?.canChat ? faComments : faComment
+                              }
+                              className="me-1"
+                            />
+                            {selectedParty?.canChat ? "Chat" : "No Link"}
+                          </Button>
                         </div>
                       </div>
                     </Col>
                   </Row>
                 </div>
 
-                {/* ✅ Transaction Table */}
                 <div className="p-3 h-100 overflow-hidden">
                   <TransactionTable
                     selectedParty={selectedParty}
@@ -1549,7 +1645,6 @@ function Parties() {
         </Row>
       </div>
 
-      {/* ✅ Modals - All existing modals remain the same */}
       <AddNewParty
         show={showAddModal}
         onHide={handleCloseModal}
@@ -1589,7 +1684,21 @@ function Parties() {
         bankAccounts={bankAccounts}
       />
 
-      {/* ✅ Loading Overlay */}
+      <PartyChat
+        party={chatParty}
+        onClose={() => {
+          setShowChat(false);
+          setChatParty(null);
+        }}
+        show={showChat}
+        onHide={() => {
+          setShowChat(false);
+          setChatParty(null);
+        }}
+        paymentSummary={paymentSummary}
+        formatCurrency={formatCurrency}
+      />
+
       {isLoading && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
