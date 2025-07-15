@@ -45,7 +45,10 @@ import {
   faSms,
   faCalendarAlt,
   faGlobe,
-  faRocket, // ✅ Add this import
+  faRocket,
+  faShare,
+  faCopy,
+  faQrcode,
 } from "@fortawesome/free-solid-svg-icons";
 
 // Import services
@@ -128,70 +131,24 @@ const styles = `
   gap: 0.25rem;
 }
 
-/* Section Toggle - REDESIGNED WITH FULL WIDTH ADD BUTTON */
+/* Section Toggle - COMPACT LAYOUT */
 .section-toggle-container {
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.5rem 0.8rem 1.5rem;
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100px;
+  min-height: 85px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   overflow: visible;
   flex-shrink: 0;
 }
 
-/* Add Party Button - Full Width */
+/* Add Party Button - Compact */
 .section-toggle-container .add-party-button {
   width: 100%;
   font-size: 0.95rem;
   font-weight: 600;
-  padding: 0.875rem 1.5rem;
-  border-radius: 12px;
-  height: 48px;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-  border: none;
-  text-decoration: none;
-  box-sizing: border-box;
-  position: relative;
-  overflow: visible;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-}
-
-.section-toggle-container .add-party-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  color: white;
-  text-decoration: none;
-}
-
-.section-toggle-container .add-party-button:active {
-  transform: translateY(0);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-}
-
-/* Filter Buttons Container */
-.section-toggle-container .filter-buttons {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: nowrap;
-}
-
-/* Filter buttons */
-.section-toggle-container .filter-buttons .btn {
-  font-size: 0.875rem;
-  font-weight: 500;
   padding: 0.75rem 1.25rem;
   border-radius: 10px;
   height: 42px;
@@ -202,6 +159,55 @@ const styles = `
   gap: 0.5rem;
   transition: all 0.3s ease;
   white-space: nowrap;
+  border: none;
+  text-decoration: none;
+  box-sizing: border-box;
+  position: relative;
+  overflow: visible;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.25);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin: 0;
+}
+
+.section-toggle-container .add-party-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: white;
+  text-decoration: none;
+}
+
+.section-toggle-container .add-party-button:active {
+  transform: translateY(0);
+  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.25);
+}
+
+/* Filter Buttons Container - Same line layout */
+.section-toggle-container .filter-buttons {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+/* Filter buttons - Base styles */
+.section-toggle-container .filter-buttons .btn {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.65rem 1.25rem;
+  border-radius: 10px;
+  height: 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: all 0.3s ease;
+  white-space: nowrap;
   border: 2px solid transparent;
   line-height: 1.2;
   text-decoration: none;
@@ -209,8 +215,21 @@ const styles = `
   position: relative;
   overflow: visible;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  text-shadow: none;
+}
+
+/* Linked button - Regular size */
+.section-toggle-container .filter-buttons .btn:first-child {
   flex: 1;
-  max-width: 200px;
+  min-width: 110px;
+  max-width: 160px;
+}
+
+/* All Parties button - Wider */
+.section-toggle-container .filter-buttons .btn:last-child {
+  flex: 1.3;
+  min-width: 140px;
+  max-width: 220px;
 }
 
 .section-toggle-container .filter-buttons .btn:hover {
@@ -223,36 +242,41 @@ const styles = `
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   border-color: #2563eb;
   color: white;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 3px 12px rgba(37, 99, 235, 0.25);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .section-toggle-container .filter-buttons .btn-primary:hover {
   background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
   border-color: #1d4ed8;
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+  color: white;
 }
 
 .section-toggle-container .filter-buttons .btn-outline-primary {
   border-color: #cbd5e1;
-  color: #64748b;
+  color: #475569;
   background-color: white;
+  font-weight: 500;
 }
 
 .section-toggle-container .filter-buttons .btn-outline-primary:hover {
   background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  border-color: #94a3b8;
-  color: #475569;
+  border-color: #2563eb;
+  color: #2563eb;
+  font-weight: 600;
 }
 
-/* Icon styling */
+/* Icon styling - Compact */
 .section-toggle-container .btn svg {
-  font-size: 0.875rem;
-  margin-right: 0.375rem;
+  font-size: 0.9rem;
+  margin-right: 0.4rem;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
 }
 
-/* Search */
+/* Search - More compact */
 .search-chat {
-  padding: 0.8rem 1.2rem;
+  padding: 0.6rem 1.2rem;
   border-bottom: 1px solid #e2e8f0;
   background-color: #f8fafc;
   flex-shrink: 0;
@@ -262,12 +286,14 @@ const styles = `
   background-color: #ffffff;
   border-color: #cbd5e1;
   color: #64748b;
+  padding: 0.5rem 0.75rem;
 }
 
 .search-chat .form-control {
   border-color: #cbd5e1;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   background-color: #ffffff;
+  padding: 0.5rem 0.75rem;
 }
 
 .search-chat .form-control:focus {
@@ -283,15 +309,17 @@ const styles = `
   min-height: 0;
 }
 
+/* Chat Item - Compact layout */
 .chat-item {
-  padding: 1rem;
+  padding: 0.85rem 1rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.875rem;
   border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  min-height: 72px;
 }
 
 .chat-item:hover {
@@ -309,23 +337,23 @@ const styles = `
 }
 
 .chat-avatar {
-  width: 45px;
-  height: 45px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
-  font-size: 1.1rem;
+  font-size: 1rem;
   position: relative;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .online-indicator {
   position: absolute;
-  bottom: 2px;
-  right: 2px;
+  bottom: 1px;
+  right: 1px;
   width: 12px;
   height: 12px;
   background-color: #10b981;
@@ -334,16 +362,19 @@ const styles = `
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
 }
 
+/* Chat Info - Compact text handling */
 .chat-info {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-info-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 0.3rem;
+  gap: 0.5rem;
 }
 
 .chat-name {
@@ -352,50 +383,96 @@ const styles = `
   font-size: 0.95rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: calc(100% - 70px);
 }
 
 .linked-indicator {
   color: #10b981;
   opacity: 0.8;
+  flex-shrink: 0;
 }
 
 .chat-time {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #64748b;
   white-space: nowrap;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .chat-preview {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #64748b;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   overflow: hidden;
+  line-height: 1.3;
 }
 
 .chat-preview .company-name {
   font-weight: 500;
   color: #2563eb;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 130px;
 }
 
 .chat-preview .party-type {
   color: #6b7280;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: capitalize;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .unread-badge {
   position: absolute;
-  top: 0.75rem;
-  right: 1rem;
-  font-size: 0.7rem;
-  padding: 0.2rem 0.4rem;
-  min-width: 18px;
+  top: 0.65rem;
+  right: 0.85rem;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.35rem;
+  min-width: 16px;
   text-align: center;
+}
+
+/* Share button - Compact positioning */
+.chat-item .d-flex.align-items-center {
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+}
+
+.chat-item .btn-outline-primary {
+  border-color: #cbd5e1;
+  color: #64748b;
+  transition: all 0.2s ease;
+  border-width: 1.5px;
+  width: 30px;
+  height: 30px;
+}
+
+.chat-item:hover .btn-outline-primary {
+  border-color: #2563eb;
+  color: #2563eb;
+  background-color: rgba(37, 99, 235, 0.08);
+  transform: scale(1.05);
+}
+
+.chat-item .btn-outline-primary:hover {
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+  background-color: rgba(37, 99, 235, 0.1) !important;
+  transform: scale(1.08);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
 }
 
 /* No Chats */
@@ -482,6 +559,7 @@ const styles = `
   align-items: center;
   gap: 0.75rem;
   flex: 1;
+  min-width: 0;
 }
 
 .popup-avatar {
@@ -503,15 +581,17 @@ const styles = `
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .popup-user-name {
   font-weight: 600;
   font-size: 1rem;
   margin: 0;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .popup-user-status {
@@ -522,6 +602,7 @@ const styles = `
   gap: 0.25rem;
   margin: 0;
   flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .online-dot {
@@ -787,27 +868,58 @@ const styles = `
   }
 }
 
-/* Responsive Design */
-@media (max-width: 992px) {
-  .section-toggle-container {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
-    min-height: 120px;
-  }
-  
-  .section-toggle-container .filter-buttons {
-    justify-content: center;
-    width: 100%;
-  }
-  
-  .section-toggle-container .filter-buttons .btn {
+/* Responsive Design - Compact responsive with wider All Parties button */
+@media (max-width: 1200px) {
+  .section-toggle-container .filter-buttons .btn:first-child {
     flex: 1;
-    max-width: 160px;
+    min-width: 100px;
+    max-width: 150px;
+    font-size: 0.8rem;
+    padding: 0.6rem 1rem;
+    height: 36px;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:last-child {
+    flex: 1.2;
+    min-width: 130px;
+    max-width: 200px;
+    font-size: 0.8rem;
+    padding: 0.6rem 1rem;
+    height: 36px;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 992px) {
+  .section-toggle-container {
+    min-height: 80px;
+    padding: 0.85rem 1.25rem 0.65rem 1.25rem;
+    gap: 0.65rem;
+  }
+  
+  .section-toggle-container .add-party-button {
+    height: 38px;
+    font-size: 0.9rem;
+    padding: 0.65rem 1rem;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:first-child {
+    flex: 1;
+    min-width: 90px;
+    max-width: 130px;
+    font-size: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    height: 34px;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:last-child {
+    flex: 1.15;
+    min-width: 120px;
+    max-width: 180px;
+    font-size: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    height: 34px;
+  }
+  
   .chat-popup {
     width: 100%;
     right: 0;
@@ -823,25 +935,100 @@ const styles = `
     max-height: 500px;
     margin-top: 0.5rem;
   }
-  
+}
+
+@media (max-width: 768px) {
   .section-toggle-container {
-    min-height: 140px;
+    min-height: 75px;
+    padding: 0.75rem 1rem 0.55rem 1rem;
+    gap: 0.6rem;
   }
   
-  .section-toggle-container .filter-buttons {
-    flex-direction: column;
-    gap: 0.5rem;
+  .section-toggle-container .add-party-button {
+    height: 36px;
+    font-size: 0.85rem;
+    padding: 0.6rem 0.9rem;
   }
   
-  .section-toggle-container .filter-buttons .btn {
-    width: 100%;
-    max-width: none;
+  .section-toggle-container .filter-buttons .btn:first-child {
+    font-size: 0.7rem;
+    height: 32px;
+    padding: 0.5rem 0.75rem;
+    min-width: 80px;
+    max-width: 120px;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:last-child {
+    flex: 1.1;
+    font-size: 0.7rem;
+    height: 32px;
+    padding: 0.5rem 0.75rem;
+    min-width: 110px;
+    max-width: 160px;
+  }
+  
+  .chat-name {
+    font-size: 0.9rem;
+    max-width: calc(100% - 55px);
+  }
+  
+  .chat-preview .company-name {
+    max-width: 110px;
   }
 }
 
 @media (max-width: 576px) {
   .section-toggle-container {
-    padding: 1rem;
+    min-height: 70px;
+    padding: 0.65rem 0.85rem 0.45rem 0.85rem;
+    gap: 0.5rem;
+  }
+  
+  .section-toggle-container .add-party-button {
+    font-size: 0.8rem;
+    height: 34px;
+    padding: 0.55rem 0.8rem;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:first-child {
+    font-size: 0.65rem;
+    height: 30px;
+    padding: 0.45rem 0.65rem;
+    min-width: 70px;
+    max-width: 110px;
+  }
+  
+  .section-toggle-container .filter-buttons .btn:last-child {
+    flex: 1;
+    font-size: 0.65rem;
+    height: 30px;
+    padding: 0.45rem 0.65rem;
+    min-width: 90px;
+    max-width: 140px;
+  }
+  
+  .chat-item {
+    padding: 0.75rem 0.85rem;
+    min-height: 68px;
+  }
+  
+  .chat-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 0.95rem;
+  }
+  
+  .chat-name {
+    font-size: 0.85rem;
+    max-width: calc(100% - 45px);
+  }
+  
+  .chat-preview {
+    font-size: 0.8rem;
+  }
+  
+  .chat-preview .company-name {
+    max-width: 90px;
   }
 }
 
@@ -872,6 +1059,35 @@ const styles = `
 .messages-container::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
+
+/* Share Modal Animation */
+.modal.show {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-dialog {
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
 `;
 
 function TeamChats({
@@ -895,6 +1111,14 @@ function TeamChats({
   const [linkedParties, setLinkedParties] = useState([]); // Only linked parties
   const [activeSection, setActiveSection] = useState("linked"); // 'linked' or 'all'
 
+  // Add these states after line 897 (after existing states)
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedPartyForShare, setSelectedPartyForShare] = useState(null);
+  const [shareOptions, setShareOptions] = useState({
+    includeContact: true,
+    includeCompanyDetails: true,
+    generateQR: false,
+  });
   // Chat functionality states
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -1757,7 +1981,6 @@ function TeamChats({
     console.log("✅ Modal should open now");
   };
 
-  // Update the handleSaveParty function to refresh both lists
   const handleSaveParty = async (
     newParty,
     isQuickAdd = false,
@@ -1891,6 +2114,112 @@ function TeamChats({
     cleanup();
   };
 
+  const handleShareParty = (party, event) => {
+    event.stopPropagation(); // Prevent party click
+    setSelectedPartyForShare(party);
+    setShowShareModal(true);
+  };
+
+  const generateShareableLink = (party) => {
+    const baseUrl = window.location.origin;
+    const companyId = currentCompany?.id || currentCompany?._id;
+    return `${baseUrl}/companies/${companyId}/parties/${party.id}`;
+  };
+
+  const generateShareableData = (party) => {
+    const shareData = {
+      name: party.name,
+      type: formatPartyType(party.partyType),
+      phone: party.phoneNumber,
+      email: party.email,
+      address: party.address,
+      company: party.chatCompanyName,
+      link: generateShareableLink(party),
+      sharedBy: currentCompany?.businessName,
+      sharedAt: new Date().toLocaleString(),
+    };
+
+    if (!shareOptions.includeContact) {
+      delete shareData.phone;
+      delete shareData.email;
+    }
+
+    if (!shareOptions.includeCompanyDetails) {
+      delete shareData.company;
+      delete shareData.address;
+    }
+
+    return shareData;
+  };
+
+  const handleCopyToClipboard = async (party) => {
+    try {
+      const shareData = generateShareableData(party);
+      const shareText = `
+  🏢 ${shareData.name} (${shareData.type})
+  ${shareData.phone ? `📱 ${shareData.phone}` : ""}
+  ${shareData.email ? `📧 ${shareData.email}` : ""}
+  ${shareData.company ? `🏢 Company: ${shareData.company}` : ""}
+  ${shareData.address ? `📍 ${shareData.address}` : ""}
+  
+  🔗 View Details: ${shareData.link}
+  
+  Shared by ${shareData.sharedBy} on ${shareData.sharedAt}
+      `.trim();
+
+      await navigator.clipboard.writeText(shareText);
+      showToastMessage("Party details copied to clipboard!", "success");
+      setShowShareModal(false);
+    } catch (error) {
+      showToastMessage("Failed to copy to clipboard", "error");
+    }
+  };
+
+  const handleNativeShare = async (party) => {
+    if (!navigator.share) {
+      showToastMessage("Share not supported on this device", "error");
+      return;
+    }
+
+    try {
+      const shareData = generateShareableData(party);
+      await navigator.share({
+        title: `${shareData.name} - ${shareData.type}`,
+        text: `Check out ${shareData.name} (${shareData.type}) from ${shareData.sharedBy}`,
+        url: shareData.link,
+      });
+      setShowShareModal(false);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        showToastMessage("Failed to share", "error");
+      }
+    }
+  };
+
+  const handleEmailShare = (party) => {
+    const shareData = generateShareableData(party);
+    const subject = `${shareData.name} - ${shareData.type} Details`;
+    const body = `Hi,
+  
+  I'm sharing the details of ${shareData.name} (${shareData.type}) with you:
+  
+  ${shareData.phone ? `Phone: ${shareData.phone}` : ""}
+  ${shareData.email ? `Email: ${shareData.email}` : ""}
+  ${shareData.company ? `Company: ${shareData.company}` : ""}
+  ${shareData.address ? `Address: ${shareData.address}` : ""}
+  
+  View full details: ${shareData.link}
+  
+  Best regards,
+  ${shareData.sharedBy}`;
+
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
+    window.open(mailtoLink);
+    setShowShareModal(false);
+  };
+
   const getAvatarColor = (name) => {
     const colors = [
       "#2563eb",
@@ -1959,14 +2288,23 @@ function TeamChats({
             </div>
           </div>
 
-          {/* Section Toggle - REDESIGNED */}
+          {/* Section Toggle */}
           <div className="section-toggle-container">
-            <div className="button-group">
+            {/* Add Party Button - Full Width */}
+            <Button
+              className="add-party-button"
+              onClick={() => handleAddParty(true, "customer")}
+            >
+              <FontAwesomeIcon icon={faUser} />
+              Add New Party
+            </Button>
+
+            {/* Filter Buttons */}
+            <div className="filter-buttons">
               <Button
                 variant={
                   activeSection === "linked" ? "primary" : "outline-primary"
                 }
-                size="sm"
                 onClick={() => {
                   setActiveSection("linked");
                   setParties(linkedParties);
@@ -1981,7 +2319,6 @@ function TeamChats({
                 variant={
                   activeSection === "all" ? "primary" : "outline-primary"
                 }
-                size="sm"
                 onClick={() => {
                   setActiveSection("all");
                   setParties(allParties);
@@ -1992,21 +2329,8 @@ function TeamChats({
                 All Parties ({allParties.length})
               </Button>
             </div>
-
-            <Button
-              variant="success"
-              size="sm"
-              onClick={() => {
-                console.log("🚀 Add Party button clicked");
-                setIsQuickAdd(true);
-                setQuickAddType("customer");
-                setShowAddPartyModal(true);
-              }}
-            >
-              <FontAwesomeIcon icon={faUser} />
-              Add Party
-            </Button>
           </div>
+
           {/* Search */}
           <div className="search-chat">
             <InputGroup>
@@ -2025,6 +2349,7 @@ function TeamChats({
               />
             </InputGroup>
           </div>
+
           {/* Chat List */}
           <div className="chat-list">
             {loading ? (
@@ -2084,7 +2409,6 @@ function TeamChats({
                   className={`chat-item ${
                     !party.canChat || !party.chatCompanyId ? "opacity-75" : ""
                   }`}
-                  onClick={() => handlePartyClick(party)}
                   tabIndex={0}
                   role="button"
                   aria-label={`${party.canChat ? "Open chat with" : "View"} ${
@@ -2106,7 +2430,12 @@ function TeamChats({
                     )}
                   </div>
 
-                  <div className="chat-info">
+                  {/* Main clickable area */}
+                  <div
+                    className="chat-info"
+                    onClick={() => handlePartyClick(party)}
+                    style={{cursor: "pointer", flex: 1}}
+                  >
                     <div className="chat-info-top">
                       <div className="chat-name">
                         {party.name}
@@ -2156,6 +2485,26 @@ function TeamChats({
                       )}
                     </div>
                   </div>
+
+                  {/* Share button */}
+                  <div className="d-flex align-items-center">
+                    <Button
+                      variant="outline-primary"
+                      size="sm"
+                      onClick={(e) => handleShareParty(party, e)}
+                      title="Share party details"
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        padding: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faShare} size="sm" />
+                    </Button>
+                  </div>
                 </div>
               ))
             ) : (
@@ -2187,11 +2536,7 @@ function TeamChats({
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => {
-                          setIsQuickAdd(true);
-                          setQuickAddType("customer");
-                          setShowAddPartyModal(true);
-                        }}
+                        onClick={() => handleAddParty(true, "customer")}
                       >
                         <FontAwesomeIcon icon={faRocket} className="me-1" />
                         Quick Add Customer
@@ -2199,11 +2544,7 @@ function TeamChats({
                       <Button
                         variant="success"
                         size="sm"
-                        onClick={() => {
-                          setIsQuickAdd(true);
-                          setQuickAddType("supplier");
-                          setShowAddPartyModal(true);
-                        }}
+                        onClick={() => handleAddParty(true, "supplier")}
                       >
                         <FontAwesomeIcon icon={faRocket} className="me-1" />
                         Quick Add Supplier
@@ -2695,6 +3036,172 @@ function TeamChats({
             </div>
           </div>
         </>
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && selectedPartyForShare && (
+        <div
+          className="modal show d-block"
+          style={{zIndex: 2050, backgroundColor: "rgba(0,0,0,0.5)"}}
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <FontAwesomeIcon icon={faShare} className="me-2" />
+                  Share {selectedPartyForShare.name}
+                </h5>
+                <Button
+                  variant="link"
+                  className="btn-close"
+                  onClick={() => setShowShareModal(false)}
+                />
+              </div>
+
+              <div className="modal-body">
+                {/* Party Info Preview */}
+                <div className="card mb-3">
+                  <div className="card-body">
+                    <div className="d-flex align-items-center mb-2">
+                      <div
+                        className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          backgroundColor: getAvatarColor(
+                            selectedPartyForShare.name
+                          ),
+                          color: "white",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {generateInitials(selectedPartyForShare.name)}
+                      </div>
+                      <div>
+                        <h6 className="mb-0">{selectedPartyForShare.name}</h6>
+                        <small className="text-muted">
+                          {formatPartyType(selectedPartyForShare.partyType)}
+                        </small>
+                      </div>
+                    </div>
+
+                    {shareOptions.includeContact && (
+                      <div className="mb-2">
+                        {selectedPartyForShare.phoneNumber && (
+                          <div>📱 {selectedPartyForShare.phoneNumber}</div>
+                        )}
+                        {selectedPartyForShare.email && (
+                          <div>📧 {selectedPartyForShare.email}</div>
+                        )}
+                      </div>
+                    )}
+
+                    {shareOptions.includeCompanyDetails && (
+                      <div>
+                        {selectedPartyForShare.chatCompanyName && (
+                          <div>🏢 {selectedPartyForShare.chatCompanyName}</div>
+                        )}
+                        {selectedPartyForShare.address && (
+                          <div>📍 {selectedPartyForShare.address}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Share Options */}
+                <div className="mb-3">
+                  <h6>Share Options</h6>
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="includeContact"
+                      checked={shareOptions.includeContact}
+                      onChange={(e) =>
+                        setShareOptions((prev) => ({
+                          ...prev,
+                          includeContact: e.target.checked,
+                        }))
+                      }
+                    />
+                    <label
+                      className="form-check-label"
+                      htmlFor="includeContact"
+                    >
+                      Include contact information
+                    </label>
+                  </div>
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="includeCompanyDetails"
+                      checked={shareOptions.includeCompanyDetails}
+                      onChange={(e) =>
+                        setShareOptions((prev) => ({
+                          ...prev,
+                          includeCompanyDetails: e.target.checked,
+                        }))
+                      }
+                    />
+                    <label
+                      className="form-check-label"
+                      htmlFor="includeCompanyDetails"
+                    >
+                      Include company details
+                    </label>
+                  </div>
+                </div>
+
+                {/* Share Actions */}
+                <div className="d-grid gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={() => handleCopyToClipboard(selectedPartyForShare)}
+                  >
+                    <FontAwesomeIcon icon={faCopy} className="me-2" />
+                    Copy to Clipboard
+                  </Button>
+
+                  {navigator.share && (
+                    <Button
+                      variant="success"
+                      onClick={() => handleNativeShare(selectedPartyForShare)}
+                    >
+                      <FontAwesomeIcon icon={faShare} className="me-2" />
+                      Share via Device
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="outline-primary"
+                    onClick={() => handleEmailShare(selectedPartyForShare)}
+                  >
+                    <FontAwesomeIcon icon={faEnvelope} className="me-2" />
+                    Share via Email
+                  </Button>
+
+                  <Button
+                    variant="outline-secondary"
+                    onClick={() => {
+                      const link = generateShareableLink(selectedPartyForShare);
+                      navigator.clipboard.writeText(link);
+                      showToastMessage("Link copied to clipboard!", "success");
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faLink} className="me-2" />
+                    Copy Link Only
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add New Party Modal */}

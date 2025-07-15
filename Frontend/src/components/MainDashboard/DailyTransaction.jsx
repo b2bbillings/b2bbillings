@@ -1,5 +1,6 @@
 import React, {useState, useEffect} from "react";
-import {Card, Row, Col} from "react-bootstrap";
+import {Card} from "react-bootstrap";
+import {useNavigate} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faExchangeAlt,
@@ -13,11 +14,13 @@ import {
   faUsers,
   faBoxes,
   faCreditCard,
-  faPlus,
-  faEye,
-  faFileAlt,
   faChartLine,
 } from "@fortawesome/free-solid-svg-icons";
+
+// Import services for data fetching
+import transactionService from "../../services/transactionService";
+import salesService from "../../services/salesService";
+import paymentService from "../../services/paymentService";
 
 // Embedded CSS styles
 const styles = `
@@ -37,17 +40,17 @@ const styles = `
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin-top: 1rem; /* ✅ Added margin-top to fix spacing */
+  margin-top: 1rem;
 }
 
 /* Dashboard layout override */
 .dashboard-layout .daily-transactions .daily-section {
-  margin-top: 0; /* ✅ No margin when in dashboard layout */
+  margin-top: 0;
 }
 
 /* Single view layout */
 .single-view .daily-transactions .daily-section {
-  margin-top: 1rem; /* ✅ Add margin when in single view */
+  margin-top: 1rem;
 }
 
 .section-header {
@@ -83,6 +86,15 @@ const styles = `
 
 .stat-item {
   text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.stat-item:hover {
+  background-color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-1px);
 }
 
 .stat-value {
@@ -243,29 +255,42 @@ const styles = `
   transform: translateY(-4px);
 }
 
-.keyboard-shortcut {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  background-color: rgba(0, 0, 0, 0.1);
+/* Coming Soon styling for unimplemented features */
+.action-card.coming-soon {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.action-card.coming-soon .action-icon {
+  background-color: #e2e8f0;
   color: #64748b;
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-  font-size: 0.6rem;
-  font-weight: 500;
-  opacity: 0;
-  transition: opacity 0.3s ease;
 }
 
-.action-card:hover .keyboard-shortcut {
-  opacity: 1;
+.action-card.coming-soon h3 {
+  color: #64748b;
 }
 
-.action-card.primary .keyboard-shortcut,
-.action-card.success .keyboard-shortcut,
-.action-card.warning .keyboard-shortcut {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
+.action-card.coming-soon p {
+  color: #94a3b8;
+}
+
+.action-card.coming-soon:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+}
+
+.action-card.coming-soon:hover .action-icon {
+  background-color: #e2e8f0;
+  color: #64748b;
+  transform: none;
+}
+
+.action-card.coming-soon:hover h3 {
+  color: #64748b;
 }
 
 /* Responsive Design */
@@ -279,7 +304,7 @@ const styles = `
 @media (max-width: 992px) {
   .daily-section {
     max-height: 600px;
-    margin-top: 0.5rem; /* ✅ Reduced margin on tablet */
+    margin-top: 0.5rem;
   }
   
   .actions-grid {
@@ -313,7 +338,7 @@ const styles = `
   }
   
   .daily-section {
-    margin-top: 0.25rem; /* ✅ Minimal margin on mobile */
+    margin-top: 0.25rem;
   }
 }
 
@@ -387,7 +412,24 @@ function DailyTransaction({
   addToast,
   isOnline = true,
 }) {
+  const navigate = useNavigate();
   const [loadingAction, setLoadingAction] = useState(null);
+
+  // Helper function to build company-based routes
+  const buildRoute = (path) => {
+    if (!currentCompany?.id) {
+      console.warn("No company ID available for routing");
+      return path;
+    }
+    return `/companies/${currentCompany.id}${path}`;
+  };
+
+  const [quickStats, setQuickStats] = useState([
+    {label: "Today's Sales", value: "₹0", color: "#10b981", path: "/sales"},
+    {label: "Pending", value: "₹0", color: "#f59e0b", path: "/parties"},
+    {label: "Profit", value: "₹0", color: "#2563eb", path: "/transactions"},
+    {label: "Balance", value: "₹0", color: "#8b5cf6", path: "/bank-accounts"},
+  ]);
 
   // Inject styles into the document
   useEffect(() => {
@@ -401,79 +443,107 @@ function DailyTransaction({
     };
   }, []);
 
-  // Mock stats data - in real app, this would come from your API
-  const quickStats = [
-    {label: "Today's Sales", value: "₹12,450", color: "#10b981"},
-    {label: "Pending", value: "₹8,200", color: "#f59e0b"},
-    {label: "Expenses", value: "₹3,800", color: "#ef4444"},
-    {label: "Profit", value: "₹8,650", color: "#2563eb"},
-  ];
+  // Load dashboard stats
+  useEffect(() => {
+    loadDashboardStats();
+  }, [currentCompany]);
 
-  // ✅ Updated Action cards configuration with better shortcuts
+  const loadDashboardStats = async () => {
+    if (!currentCompany?.id) return;
+
+    try {
+      // You can implement these API calls based on your services
+      // const statsData = await transactionService.getDashboardStats(currentCompany.id);
+      // setQuickStats(statsData);
+
+      // For now, using mock data
+      setQuickStats([
+        {
+          label: "Today's Sales",
+          value: "₹12,450",
+          color: "#10b981",
+          path: "/sales",
+        },
+        {
+          label: "Pending",
+          value: "₹8,200",
+          color: "#f59e0b",
+          path: "/parties",
+        },
+        {
+          label: "Profit",
+          value: "₹8,650",
+          color: "#2563eb",
+          path: "/transactions",
+        },
+        {
+          label: "Balance",
+          value: "₹45,320",
+          color: "#8b5cf6",
+          path: "/bank-accounts",
+        },
+      ]);
+    } catch (error) {
+      console.error("Failed to load dashboard stats:", error);
+    }
+  };
+
+  // Action cards configuration - REORDERED with implemented features first
   const actionCards = [
+    // IMPLEMENTED FEATURES (TOP PRIORITY)
     {
-      id: "dailySummary",
+      id: "transactions",
       title: "Daily Transactions",
       description: "Record daily financial activities",
       icon: faExchangeAlt,
       variant: "primary",
-      shortcut: "Ctrl+D",
+      path: "/transactions",
+      implemented: true,
     },
     {
-      id: "paymentIn",
+      id: "payment-in",
       title: "Payment In",
       description: "Receive and record payments",
       icon: faDownload,
       variant: "success",
-      shortcut: "Ctrl+N", // ✅ Changed from Ctrl+R to Ctrl+N (iN)
+      path: "/parties",
+      implemented: true,
     },
     {
-      id: "paymentOut",
+      id: "payment-out",
       title: "Payment Out",
       description: "Make payments to vendors",
       icon: faUpload,
       variant: "warning",
-      shortcut: "Ctrl+O", // ✅ Changed from Ctrl+P to Ctrl+O (Out)
+      path: "/parties",
+      implemented: true,
     },
     {
-      id: "createInvoice",
+      id: "invoice",
       title: "Create Invoice",
       description: "Generate customer invoices",
       icon: faFileInvoiceDollar,
       variant: "default",
-      shortcut: "Ctrl+I",
+      path: "/sales/add",
+      implemented: true,
     },
     {
-      id: "createPurchaseOrder",
+      id: "purchase",
       title: "Create Purchase",
       description: "Record purchase orders",
       icon: faShoppingCart,
       variant: "default",
-      shortcut: "Ctrl+U",
+      path: "/purchases/add",
+      implemented: true,
     },
     {
-      id: "createQuotation",
+      id: "quotation",
       title: "Quotation",
       description: "Create price quotations",
       icon: faFileContract,
       variant: "default",
-      shortcut: "Ctrl+Q",
-    },
-    {
-      id: "reports",
-      title: "Reports",
-      description: "Generate financial reports",
-      icon: faChartBar,
-      variant: "default",
-      shortcut: "Ctrl+G", // ✅ Moved Reports to Ctrl+R (more logical)
-    },
-    {
-      id: "expenses",
-      title: "Expenses",
-      description: "Track business expenses",
-      icon: faCalculator,
-      variant: "default",
-      shortcut: "Ctrl+E",
+      path: "/sales-orders/add",
+      implemented: true,
     },
     {
       id: "parties",
@@ -481,88 +551,105 @@ function DailyTransaction({
       description: "Manage customers & vendors",
       icon: faUsers,
       variant: "default",
-      shortcut: "Ctrl+P", // ✅ Changed from Ctrl+M to Ctrl+P (Parties)
+      path: "/parties",
+      implemented: true,
     },
     {
-      id: "allProducts",
+      id: "products",
       title: "Products",
       description: "Manage product inventory",
       icon: faBoxes,
       variant: "default",
-      shortcut: "Ctrl+T",
+      path: "/products",
+      implemented: true,
     },
     {
-      id: "bankAccounts",
+      id: "bank-accounts",
       title: "Bank Accounts",
       description: "Manage bank transactions",
       icon: faCreditCard,
       variant: "default",
-      shortcut: "Ctrl+B",
+      path: "/bank-accounts",
+      implemented: true,
+    },
+
+    // NOT IMPLEMENTED YET (BOTTOM - COMING SOON)
+    {
+      id: "expenses",
+      title: "Expenses",
+      description: "Track business expenses (Coming Soon)",
+      icon: faCalculator,
+      variant: "coming-soon",
+      path: "/expenses",
+      implemented: false,
+    },
+    {
+      id: "reports",
+      title: "Reports",
+      description: "Generate financial reports (Coming Soon)",
+      icon: faChartBar,
+      variant: "coming-soon",
+      path: "/reports",
+      implemented: false,
     },
     {
       id: "insights",
       title: "Business Insights",
-      description: "View analytics & trends",
+      description: "View analytics & trends (Coming Soon)",
       icon: faChartLine,
-      variant: "default",
-      shortcut: "Ctrl+A",
+      variant: "coming-soon",
+      path: "/insights",
+      implemented: false,
     },
   ];
 
-  const handleActionClick = async (actionId) => {
+  const handleActionClick = async (actionId, path, implemented) => {
     if (loadingAction || !isOnline) return;
+
+    // If feature is not implemented, show coming soon message
+    if (!implemented) {
+      if (addToast) {
+        addToast(
+          `${
+            actionCards.find((card) => card.id === actionId)?.title
+          } feature is coming soon!`,
+          "info"
+        );
+      }
+      return;
+    }
 
     setLoadingAction(actionId);
 
     try {
-      // Simulate loading delay
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Simulate brief loading delay for UX
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      if (onNavigate) {
-        onNavigate(actionId);
-      }
+      // Build the complete route with company ID
+      const fullRoute = buildRoute(path);
 
-      addToast?.(
-        `Opening ${actionCards.find((card) => card.id === actionId)?.title}...`,
-        "info"
-      );
+      console.log(`Navigating to: ${fullRoute}`);
+
+      // Always use React Router navigation - bypass onNavigate
+      navigate(fullRoute);
     } catch (error) {
-      addToast?.("Failed to open feature", "error");
+      console.error(`Failed to navigate to ${actionId}:`, error);
+      // Show error toast if addToast is available
+      if (addToast) {
+        addToast("Navigation failed. Please try again.", "error");
+      }
     } finally {
       setLoadingAction(null);
     }
   };
 
-  // ✅ Updated Keyboard shortcuts with better mapping
-  useEffect(() => {
-    const handleKeyPress = (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-
-      const shortcuts = {
-        d: "dailySummary",
-        n: "paymentIn", // ✅ Changed from 'r' to 'n' for PaymeNt In
-        o: "paymentOut", // ✅ Changed from 'p' to 'o' for Payment Out
-        i: "createInvoice",
-        u: "createPurchaseOrder",
-        q: "createQuotation",
-        r: "reports", // ✅ Reports now uses Ctrl+R (more logical)
-        e: "expenses",
-        p: "parties", // ✅ Changed from 'm' to 'p' for Parties
-        t: "allProducts",
-        b: "bankAccounts",
-        a: "insights",
-      };
-
-      const actionId = shortcuts[e.key.toLowerCase()];
-      if (actionId) {
-        e.preventDefault();
-        handleActionClick(actionId);
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyPress);
-    return () => document.removeEventListener("keydown", handleKeyPress);
-  }, []);
+  const handleStatClick = (path) => {
+    if (path) {
+      const fullRoute = buildRoute(path);
+      console.log(`Navigating to stat: ${fullRoute}`);
+      navigate(fullRoute);
+    }
+  };
 
   return (
     <div className="daily-transactions">
@@ -573,10 +660,15 @@ function DailyTransaction({
           <p>Manage your financial operations efficiently</p>
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats - Updated to remove expenses */}
         <div className="quick-stats">
           {quickStats.map((stat, index) => (
-            <div key={index} className="stat-item">
+            <div
+              key={index}
+              className="stat-item"
+              onClick={() => handleStatClick(stat.path)}
+              title={`Click to view ${stat.label.toLowerCase()}`}
+            >
               <div className="stat-value" style={{color: stat.color}}>
                 {stat.value}
               </div>
@@ -585,7 +677,7 @@ function DailyTransaction({
           ))}
         </div>
 
-        {/* Actions Grid */}
+        {/* Actions Grid - Reordered with implemented features first */}
         <div className="actions-grid">
           {actionCards.map((card) => (
             <div
@@ -593,10 +685,23 @@ function DailyTransaction({
               className={`action-card ${card.variant} ${
                 loadingAction === card.id ? "loading" : ""
               }`}
-              onClick={() => handleActionClick(card.id)}
-              title={`${card.title} - ${card.shortcut}`}
+              onClick={() =>
+                handleActionClick(card.id, card.path, card.implemented)
+              }
+              title={
+                card.implemented
+                  ? `Navigate to ${card.title}`
+                  : `${card.title} - Coming Soon`
+              }
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleActionClick(card.id, card.path, card.implemented);
+                }
+              }}
             >
-              <div className="keyboard-shortcut">{card.shortcut}</div>
               <div className="action-icon">
                 <FontAwesomeIcon icon={card.icon} />
               </div>

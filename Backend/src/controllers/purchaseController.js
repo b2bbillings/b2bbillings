@@ -345,10 +345,10 @@ const purchaseController = {
         });
       }
 
-      // ✅ Get company details for response only (not for numbering)
+      // ✅ Get company details for GST state detection
       const Company = require("../models/Company");
       const currentCompany = await Company.findById(companyId).select(
-        "businessName code gstin"
+        "businessName code gstin address"
       );
 
       if (!currentCompany) {
@@ -358,7 +358,7 @@ const purchaseController = {
         });
       }
 
-      // ✅ Handle supplier validation (existing code)
+      // ✅ Handle supplier validation
       let supplierRecord = null;
       const finalSupplierId = supplier || supplierId;
 
@@ -403,17 +403,41 @@ const purchaseController = {
         });
       }
 
+      // ✅ ENHANCED: Determine if transaction is intra-state or inter-state
+      const getCompanyState = (gstin) => {
+        if (!gstin || gstin.length < 2) return null;
+        return gstin.substring(0, 2); // First 2 digits represent state code
+      };
+
+      const companyState = getCompanyState(currentCompany.gstin);
+      const supplierState = getCompanyState(
+        supplierRecord.gstNumber || supplierRecord.gstin
+      );
+
+      // ✅ Determine transaction type
+      const isIntraState =
+        companyState && supplierState && companyState === supplierState;
+      const isInterState =
+        companyState && supplierState && companyState !== supplierState;
+
+      console.log(
+        `🏢 GST Transaction Type: Company State: ${companyState}, Supplier State: ${supplierState}, Intra-State: ${isIntraState}, Inter-State: ${isInterState}`
+      );
+
       // FIXED: Sync tax mode fields
       const finalTaxMode =
         taxMode || (priceIncludesTax ? "with-tax" : "without-tax");
       const finalPriceIncludesTax = finalTaxMode === "with-tax";
 
-      // Process items (same as existing)
+      // ✅ FIXED: Process items with correct GST logic
       const processedItems = [];
       let subtotal = 0;
       let totalDiscount = 0;
       let totalTax = 0;
       let totalTaxableAmount = 0;
+      let totalCGST = 0;
+      let totalSGST = 0;
+      let totalIGST = 0;
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
@@ -461,7 +485,7 @@ const purchaseController = {
 
         const amountAfterDiscount = baseAmount - itemDiscountAmount;
 
-        // Calculate taxes
+        // ✅ FIXED: Calculate taxes with proper CGST/SGST vs IGST logic
         let cgst = 0;
         let sgst = 0;
         let igst = 0;
@@ -477,16 +501,36 @@ const purchaseController = {
             const taxMultiplier = 1 + taxRate / 100;
             itemTaxableAmount = amountAfterDiscount / taxMultiplier;
             const totalTaxAmount = amountAfterDiscount - itemTaxableAmount;
-            cgst = totalTaxAmount / 2;
-            sgst = totalTaxAmount / 2;
-            igst = totalTaxAmount;
+
+            // ✅ FIXED: Apply either CGST+SGST OR IGST, not both
+            if (isIntraState) {
+              // Intra-state: Use CGST + SGST
+              cgst = totalTaxAmount / 2;
+              sgst = totalTaxAmount / 2;
+              igst = 0;
+            } else {
+              // Inter-state or unknown: Use IGST
+              cgst = 0;
+              sgst = 0;
+              igst = totalTaxAmount;
+            }
             itemAmount = amountAfterDiscount;
           } else {
             // Tax added to price
             itemTaxableAmount = amountAfterDiscount;
-            cgst = (itemTaxableAmount * cgstRate) / 100;
-            sgst = (itemTaxableAmount * sgstRate) / 100;
-            igst = (itemTaxableAmount * taxRate) / 100;
+
+            // ✅ FIXED: Apply either CGST+SGST OR IGST, not both
+            if (isIntraState) {
+              // Intra-state: Use CGST + SGST
+              cgst = (itemTaxableAmount * cgstRate) / 100;
+              sgst = (itemTaxableAmount * sgstRate) / 100;
+              igst = 0;
+            } else {
+              // Inter-state or unknown: Use IGST
+              cgst = 0;
+              sgst = 0;
+              igst = (itemTaxableAmount * taxRate) / 100;
+            }
             itemAmount = itemTaxableAmount + cgst + sgst + igst;
           }
         } else {
@@ -498,6 +542,11 @@ const purchaseController = {
         subtotal += baseAmount;
         totalDiscount += itemDiscountAmount;
         totalTaxableAmount += itemTaxableAmount;
+        totalCGST += cgst;
+        totalSGST += sgst;
+        totalIGST += igst;
+
+        // ✅ FIXED: Total tax calculation
         const itemTotalTax = cgst + sgst + igst;
         totalTax += itemTotalTax;
 
@@ -548,7 +597,7 @@ const purchaseController = {
         adjustedFinalTotal = finalTotal + appliedRoundOff;
       }
 
-      // Prepare totals object
+      // ✅ FIXED: Prepare totals object with correct calculations
       const totals = {
         subtotal: parseFloat(subtotal.toFixed(2)),
         totalQuantity: processedItems.reduce(
@@ -557,24 +606,34 @@ const purchaseController = {
         ),
         totalDiscount: parseFloat(totalDiscount.toFixed(2)),
         totalTax: parseFloat(totalTax.toFixed(2)),
-        totalCGST: parseFloat(
-          processedItems.reduce((sum, item) => sum + item.cgst, 0).toFixed(2)
-        ),
-        totalSGST: parseFloat(
-          processedItems.reduce((sum, item) => sum + item.sgst, 0).toFixed(2)
-        ),
-        totalIGST: parseFloat(
-          processedItems.reduce((sum, item) => sum + item.igst, 0).toFixed(2)
-        ),
+        totalCGST: parseFloat(totalCGST.toFixed(2)),
+        totalSGST: parseFloat(totalSGST.toFixed(2)),
+        totalIGST: parseFloat(totalIGST.toFixed(2)),
         totalTaxableAmount: parseFloat(totalTaxableAmount.toFixed(2)),
         finalTotal: parseFloat(adjustedFinalTotal.toFixed(2)),
         roundOff: parseFloat(appliedRoundOff.toFixed(2)),
+        totalDiscountAmount: parseFloat(totalDiscount.toFixed(2)),
+        withTaxTotal: parseFloat((totalTaxableAmount + totalTax).toFixed(2)),
+        withoutTaxTotal: parseFloat(totalTaxableAmount.toFixed(2)),
       };
+
+      // ✅ Log the corrected totals
+      console.log(`✅ CORRECTED Purchase Totals:
+      Subtotal: ₹${totals.subtotal}
+      Tax Breakdown: CGST: ₹${totals.totalCGST}, SGST: ₹${
+        totals.totalSGST
+      }, IGST: ₹${totals.totalIGST}
+      Total Tax: ₹${totals.totalTax}
+      Final Total: ₹${totals.finalTotal}
+      Transaction Type: ${
+        isIntraState ? "Intra-State (CGST+SGST)" : "Inter-State (IGST)"
+      }
+    `);
 
       const rawPaymentMethod = payment?.method || "credit";
       const normalizedPaymentMethod = normalizePaymentMethod(rawPaymentMethod);
 
-      // ✅ ENHANCED PAYMENT DETAILS WITH PROPER DUE DATE CALCULATION (same as sales)
+      // ✅ ENHANCED PAYMENT DETAILS WITH PROPER DUE DATE CALCULATION
       const paymentDetails = {
         method: normalizedPaymentMethod,
         status: payment?.status || "pending",
@@ -591,7 +650,7 @@ const purchaseController = {
         bankAccountName: payment?.bankAccountName || null,
       };
 
-      // ✅ FIXED: Calculate due date properly (same as sales)
+      // ✅ FIXED: Calculate due date properly
       if (payment?.dueDate) {
         // If explicit due date is provided
         paymentDetails.dueDate = new Date(payment.dueDate);
@@ -610,6 +669,9 @@ const purchaseController = {
             paymentDetails.paymentDate.toISOString().split("T")[0]
           })`
         );
+      } else {
+        // Default to same day for immediate payment
+        paymentDetails.dueDate = paymentDetails.paymentDate;
       }
 
       const paidAmount = paymentDetails.paidAmount;
@@ -617,11 +679,11 @@ const purchaseController = {
         (adjustedFinalTotal - paidAmount).toFixed(2)
       );
 
-      // ✅ ENHANCED: Auto-determine payment status with proper due date handling (same as sales)
+      // ✅ ENHANCED: Auto-determine payment status with proper due date handling
       if (paidAmount >= adjustedFinalTotal) {
         paymentDetails.status = "paid";
         paymentDetails.pendingAmount = 0;
-        paymentDetails.dueDate = null; // Clear due date for fully paid purchases
+        // Keep due date even for paid purchases for record keeping
       } else if (paidAmount > 0) {
         paymentDetails.status = "partial";
         // Keep the calculated due date for partial payments
@@ -631,7 +693,7 @@ const purchaseController = {
         // Keep the calculated due date for pending payments
       }
 
-      // ✅ Check for overdue status (same as sales)
+      // ✅ Check for overdue status
       if (paymentDetails.dueDate && paymentDetails.pendingAmount > 0) {
         const now = new Date();
         if (now > paymentDetails.dueDate) {
@@ -648,7 +710,7 @@ const purchaseController = {
         paymentDetails.pendingAmount = 0;
       }
 
-      // ✅ FIXED: Initialize payment history with normalized method (same as sales)
+      // ✅ FIXED: Initialize payment history with normalized method
       let paymentHistory = [];
       if (paidAmount > 0) {
         paymentHistory.push({
@@ -683,12 +745,21 @@ const purchaseController = {
       const purchaseData = {
         purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         purchaseType: gstEnabled ? "gst" : "non-gst",
+        invoiceType: gstEnabled ? "gst" : "non-gst", // ✅ Add invoiceType field
         supplier: supplierRecord._id,
         supplierMobile: supplierRecord.mobile || supplierMobile,
         gstEnabled,
         taxMode: finalTaxMode,
         priceIncludesTax: finalPriceIncludesTax,
         companyId,
+
+        // ✅ Enhanced GST transaction metadata
+        gstTransactionType: isIntraState ? "intra_state" : "inter_state",
+        companyGSTIN: currentCompany.gstin,
+        supplierGSTIN: supplierRecord.gstNumber || supplierRecord.gstin,
+        isIntraState: isIntraState,
+        isInterState: isInterState,
+
         items: processedItems,
         totals,
         payment: paymentDetails, // ✅ Now includes properly calculated due date
@@ -753,9 +824,9 @@ const purchaseController = {
         "name mobile email address type companyId linkedCompanyId"
       );
 
-      // ===== ✅ ENHANCED STOCK UPDATE USING ITEMCONTROLLER =====
+      // ===== ✅ ENHANCED STOCK UPDATE =====
       console.log(
-        "📦 Updating stock for purchase using itemController functions..."
+        "📦 Updating stock for purchase using direct stock updates..."
       );
 
       const stockUpdateResults = await updateStockForPurchase(
@@ -773,7 +844,7 @@ const purchaseController = {
         `✅ Stock updates: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`
       );
 
-      // ===== ✅ SIMPLIFIED PAYMENT HANDLING (SAME AS SALES CONTROLLER) =====
+      // ===== ✅ SIMPLIFIED PAYMENT HANDLING =====
       if (paidAmount > 0) {
         console.log(
           `💰 Payment of ₹${paidAmount} recorded in purchase. Financial transaction will be handled by payment system.`
@@ -800,10 +871,11 @@ const purchaseController = {
         }
       }
 
-      // ✅ SIMPLIFIED RESPONSE (SAME AS SALES CONTROLLER)
+      // ✅ ENHANCED RESPONSE with GST transaction details
       res.status(201).json({
         success: true,
-        message: "Purchase created successfully with automatic stock tracking",
+        message:
+          "Purchase created successfully with automatic stock tracking and correct GST calculation",
         data: {
           purchase,
           bill: {
@@ -813,6 +885,7 @@ const purchaseController = {
               id: currentCompany._id,
               name: currentCompany.businessName,
               code: currentCompany.code,
+              gstin: currentCompany.gstin,
               prefix: purchase.purchaseNumber.split("-")[0],
             },
             supplier: {
@@ -821,13 +894,14 @@ const purchaseController = {
               mobile: supplierRecord.mobile,
               companyId: supplierRecord.companyId,
               linkedCompanyId: supplierRecord.linkedCompanyId,
+              gstin: supplierRecord.gstNumber || supplierRecord.gstin,
             },
             totals: purchase.totals,
             payment: {
               ...purchase.payment,
               dueDate: purchase.payment.dueDate,
               creditDays: purchase.payment.creditDays,
-              // ✅ Add due date information to response (same as sales)
+              // ✅ Add due date information to response
               dueDateInfo: purchase.payment.dueDate
                 ? {
                     dueDate: purchase.payment.dueDate,
@@ -847,6 +921,24 @@ const purchaseController = {
             taxMode: purchase.taxMode,
             priceIncludesTax: purchase.priceIncludesTax,
             gstEnabled: purchase.gstEnabled,
+
+            // ✅ NEW: GST transaction details
+            gstDetails: {
+              transactionType: isIntraState ? "intra_state" : "inter_state",
+              isIntraState: isIntraState,
+              isInterState: isInterState,
+              companyState: companyState,
+              supplierState: supplierState,
+              companyGSTIN: currentCompany.gstin,
+              supplierGSTIN: supplierRecord.gstNumber || supplierRecord.gstin,
+              totalCGST: totals.totalCGST,
+              totalSGST: totals.totalSGST,
+              totalIGST: totals.totalIGST,
+              note: isIntraState
+                ? "Intra-state transaction: CGST + SGST applied"
+                : "Inter-state transaction: IGST applied",
+            },
+
             numberingInfo: {
               isSequential: true,
               companySpecific: true,

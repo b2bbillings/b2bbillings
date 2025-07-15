@@ -2254,259 +2254,128 @@ function PurchaseInvoiceFormSection({
           </Button>
         </Modal.Footer>
       </Modal>
-      {/* ✅ FIXED: Purchase-specific PaymentModal */}
+
       <PaymentModal
         show={showPaymentModal}
         onHide={() => setShowPaymentModal(false)}
-        // ✅ FIXED: Purchase-specific configuration
+        // ✅ CORRECTED: Use the expected prop names
         currentConfig={{
-          ...currentConfig,
-          entityType: "supplier",
-          entityLabel: "Supplier",
-          formType: "purchase",
-          transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
-          paymentDirection: "outgoing", // Purchase payments are outgoing
-          mode: "purchase",
+          modalHeader: "bg-primary", // Header background class
+          modalTitle: isPurchaseOrdersMode
+            ? "Purchase Order Terms"
+            : "Purchase Payment",
+          paymentIcon: isPurchaseOrdersMode ? faShoppingCart : faMoneyBillWave,
+          partyLabel: "Supplier", // This should be "Supplier" for purchases
+          totalBgColor: "bg-primary",
+          saveButtonVariant: "primary",
+          buttonVariant: "primary",
         }}
-        // ✅ FIXED: Amount and totals
+        // ✅ CORRECTED: Amount props
         finalTotalWithRoundOff={displayTotal}
-        totalAmount={displayTotal}
-        // ✅ FIXED: Payment data with proper structure
+        // ✅ CORRECTED: Payment data structure
         paymentData={{
           ...paymentData,
-          // Ensure bankAccountId is properly set
-          bankAccountId: paymentData?.bankAccountId || null,
+          // ✅ IMPORTANT: Map supplier data to expected fields
+          partyId: formData.customer?.id || formData.customer?._id,
+          partyName:
+            formData.customer?.name || formData.customer?.businessName || "",
+          partyType: "supplier",
+          // Payment details
           amount: paymentData?.amount || 0,
-          paymentMethod: paymentData?.paymentMethod || "cash",
           paymentType: paymentData?.paymentType || "Cash",
-          dueDate: paymentData?.dueDate || null,
+          paymentMethod: paymentData?.paymentMethod || "cash",
+          bankAccountId: paymentData?.bankAccountId || "",
+          bankAccountName: paymentData?.bankAccountName || "",
+          dueDate: paymentData?.dueDate || "",
+          nextPaymentDate: paymentData?.nextPaymentDate || "",
           creditDays: paymentData?.creditDays || 0,
           notes: paymentData?.notes || "",
-          // Purchase-specific fields
-          supplier: formData.customer, // Supplier stored in customer field
-          supplierId: formData.customer?.id || formData.customer?._id,
-          supplierName:
-            formData.customer?.name || formData.customer?.businessName,
-          transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
+          chequeNumber: paymentData?.chequeNumber || "",
+          chequeDate: paymentData?.chequeDate || "",
+          transactionId: paymentData?.transactionId || "",
         }}
-        setPaymentData={(newPaymentData) => {
-          console.log("💳 Setting payment data:", newPaymentData);
-          setPaymentData(newPaymentData);
-        }}
-        // ✅ FIXED: Purchase-specific handlers
+        setPaymentData={setPaymentData}
+        // ✅ CORRECTED: Handler functions
         handlePaymentAmountChange={(amount) => {
-          console.log("💰 Payment amount change:", amount);
           setPaymentData((prev) => ({
             ...prev,
             amount: parseFloat(amount) || 0,
           }));
         }}
-        handlePaymentTypeChange={(paymentType, paymentMethod) => {
-          console.log("💳 Payment type change:", {paymentType, paymentMethod});
+        handlePaymentTypeChange={(paymentType) => {
           setPaymentData((prev) => ({
             ...prev,
             paymentType: paymentType,
-            paymentMethod:
-              paymentMethod || paymentType?.toLowerCase() || "cash",
-            // Reset bank account if switching to cash
-            bankAccountId:
-              (paymentMethod || paymentType)?.toLowerCase() === "cash"
-                ? null
-                : prev.bankAccountId,
+            paymentMethod: paymentType?.toLowerCase() || "cash",
+            // Reset bank account if switching to cash/UPI
+            bankAccountId: ["Cash", "UPI"].includes(paymentType)
+              ? ""
+              : prev.bankAccountId,
+            bankAccountName: ["Cash", "UPI"].includes(paymentType)
+              ? ""
+              : prev.bankAccountName,
           }));
         }}
-        handlePaymentSubmit={async () => {
-          try {
-            console.log("🔄 Purchase payment submit:", paymentData);
-
-            // ✅ Enhanced validation for purchase payments
-            if (!paymentData.amount || paymentData.amount <= 0) {
-              addToast?.("Please enter a valid payment amount", "error");
-              return;
-            }
-
-            if (paymentData.amount > displayTotal) {
-              addToast?.(
-                "Payment amount cannot exceed the total amount",
-                "error"
-              );
-              return;
-            }
-
-            // ✅ Bank account validation for non-cash payments
-            if (
-              paymentData.paymentMethod !== "cash" &&
-              !paymentData.bankAccountId
-            ) {
-              addToast?.(
-                "Please select a bank account for non-cash payments",
-                "error"
-              );
-              return;
-            }
-
-            // ✅ Supplier validation for purchase orders
-            if (!isPurchaseOrdersMode && !formData.customer) {
-              addToast?.(
-                "Please select a supplier before adding payment",
-                "error"
-              );
-              return;
-            }
-
-            const result = await handlePaymentSubmit();
-
-            if (result?.success) {
-              console.log("✅ Payment submitted successfully:", result);
-              return result;
-            } else {
-              throw new Error(result?.message || "Payment submission failed");
-            }
-          } catch (error) {
-            console.error("❌ Payment submission error:", error);
-            addToast?.(`Payment error: ${error.message}`, "error");
-            throw error;
-          }
-        }}
+        handlePaymentSubmit={handlePaymentSubmit}
         submittingPayment={submittingPayment}
-        // ✅ FIXED: Bank accounts with proper loading state
-        bankAccounts={bankAccounts || []}
+        // ✅ Bank accounts
+        bankAccounts={bankAccounts}
         loadingBankAccounts={loadingBankAccounts}
         retryLoadBankAccounts={retryLoadBankAccounts}
-        // ✅ Payment history (if available)
-        paymentHistory={paymentHistory || []}
-        // ✅ Invoice details
+        // ✅ Payment history
+        paymentHistory={paymentHistory}
+        // ✅ Totals and calculations
         totals={{
-          ...totals,
+          subtotal: totals.subtotal || 0,
+          totalTax: totals.totalTax || 0,
+          totalDiscount: totals.totalDiscount || 0,
           finalTotal: displayTotal,
-          grandTotal: displayTotal,
         }}
         gstEnabled={formData.gstEnabled}
         roundOffEnabled={roundOffEnabled}
         roundOffValue={roundOffValue}
-        invoiceNumber={formData.invoiceNumber}
-        invoiceDate={formData.invoiceDate}
-        companyId={companyId}
-        // ✅ FIXED: Purchase-specific form type
-        formType="purchase"
-        documentType={isPurchaseOrdersMode ? "purchase-order" : "purchase"}
-        // ✅ FIXED: Due date handlers with proper validation
+        // ✅ Invoice details
+        invoiceNumber={formData.invoiceNumber || `PB-${Date.now()}`}
+        invoiceDate={
+          formData.invoiceDate || new Date().toISOString().split("T")[0]
+        }
+        // ✅ Due date handlers
         handleDueDateToggle={(enabled) => {
-          console.log("📅 Due date toggle:", enabled);
           setPaymentData((prev) => ({
             ...prev,
             hasDueDate: enabled,
-            dueDate: enabled ? prev.dueDate : null,
-            creditDays: enabled ? prev.creditDays : 0,
+            dueDate: enabled ? prev.dueDate : "",
           }));
         }}
         handleCreditDaysChange={(days) => {
-          console.log("📅 Credit days change:", days);
           const creditDays = parseInt(days) || 0;
+          let dueDate = "";
 
-          // Calculate due date from credit days
-          let dueDate = null;
           if (creditDays > 0) {
             const today = new Date();
-            dueDate = new Date(today);
-            dueDate.setDate(today.getDate() + creditDays);
+            const dueDateCalc = new Date(today);
+            dueDateCalc.setDate(today.getDate() + creditDays);
+            dueDate = dueDateCalc.toISOString().split("T")[0];
           }
 
           setPaymentData((prev) => ({
             ...prev,
             creditDays: creditDays,
-            dueDate: dueDate ? dueDate.toISOString().split("T")[0] : null,
+            dueDate: dueDate,
           }));
         }}
         handleDueDateChange={(date) => {
-          console.log("📅 Due date change:", date);
           setPaymentData((prev) => ({
             ...prev,
             dueDate: date,
             creditDays: 0, // Reset credit days when manual date is set
           }));
         }}
-        handleBankAccountChange={(bankAccountId) => {
-          console.log("🏦 Bank account change:", bankAccountId);
-
-          // Find the selected bank account for additional details
-          const selectedAccount = bankAccounts.find(
-            (account) => (account.id || account._id) === bankAccountId
-          );
-
-          setPaymentData((prev) => ({
-            ...prev,
-            bankAccountId: bankAccountId,
-            bankAccountName:
-              selectedAccount?.accountName || selectedAccount?.name || "",
-            bankName: selectedAccount?.bankName || "",
-            accountNumber:
-              selectedAccount?.accountNumber ||
-              selectedAccount?.accountNo ||
-              "",
-            ifscCode: selectedAccount?.ifscCode || "",
-            branchName: selectedAccount?.branchName || "",
-          }));
-        }}
-        // ✅ FIXED: Entity information (supplier instead of customer)
-        entity={formData.customer} // Supplier data
-        entityType="supplier"
-        entityLabel="Supplier"
-        entityName={
-          formData.customer?.name || formData.customer?.businessName || ""
-        }
-        // ✅ Additional purchase-specific props
-        isPurchaseOrder={isPurchaseOrdersMode}
-        purchaseOrderMode={isPurchaseOrdersMode}
-        // ✅ User context
-        currentUser={currentUser}
-        // ✅ Validation helpers
-        validateBankAccount={(bankAccountId, paymentMethod) => {
-          if (paymentMethod === "cash") {
-            return {isValid: true};
-          }
-
-          if (!bankAccountId) {
-            return {
-              isValid: false,
-              error: "Please select a bank account for non-cash payments",
-            };
-          }
-
-          const account = bankAccounts.find(
-            (acc) => (acc.id || acc._id) === bankAccountId
-          );
-
-          if (!account) {
-            return {
-              isValid: false,
-              error: "Selected bank account not found",
-            };
-          }
-
-          if (account.isActive === false) {
-            return {
-              isValid: false,
-              error: "Selected bank account is inactive",
-            };
-          }
-
-          return {isValid: true, account};
-        }}
-        // ✅ Custom labels for purchase context
-        labels={{
-          modalTitle: isPurchaseOrdersMode
-            ? "Purchase Order Terms"
-            : "Purchase Payment",
-          amountLabel: isPurchaseOrdersMode ? "Order Amount" : "Payment Amount",
-          submitButton: isPurchaseOrdersMode
-            ? "Save Order Terms"
-            : "Save Payment",
-          bankAccountLabel: "Select Bank Account for Payment",
-          dueDateLabel: "Payment Due Date",
-          notesLabel: "Payment Notes",
-          paymentMethodLabel: "Payment Method",
-        }}
+        // ✅ Company and form details
+        companyId={companyId}
+        formType="purchase"
+        // ✅ OPTIONAL: Edit mode (if you support editing payments)
+        isEditMode={false} // Set to true if editing existing payment
       />
     </div>
   );
