@@ -1,17 +1,16 @@
-import {useState, useEffect} from "react";
+import React, {useState, useEffect} from "react";
 import {
   Tab,
   Tabs,
   Card,
-  Row,
-  Col,
   Form,
   InputGroup,
   Button,
-  Table,
   Badge,
-  Alert,
   Spinner,
+  Alert,
+  Row,
+  Col,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -19,34 +18,29 @@ import {
   faPlay,
   faCalendarAlt,
   faSearch,
-  faFilter,
   faPrint,
   faFileExport,
-  faEye,
-  faEdit,
   faMoneyBillWave,
   faHandHoldingUsd,
-  faExclamationTriangle,
-  faCheckCircle,
-  faClock,
-  faPhone,
-  faEnvelope,
   faFileInvoice,
   faBuilding,
-  faUser,
-  faArrowUp,
-  faArrowDown,
-  faRupeeSign,
-  faChartLine,
-  faArrowTrendUp,
-  faArrowTrendDown,
+  faRefresh,
+  faExclamationTriangle,
 } from "@fortawesome/free-solid-svg-icons";
-import "./DayBook.css";
 
-// Import services
+// Import DayBook components
+import DayBookSummary from "./DayBook/DayBookSummary";
+import ReceivablesTab from "./DayBook/ReceivablesTab";
+import PayablesTab from "./DayBook/PayablesTab";
+import DailyTransactionsTab from "./DayBook/DailyTransactionsTab";
+import CashBankTab from "./DayBook/CashBankTab";
+
+// ✅ Import correct services including bankAccountService
 import salesService from "../../services/salesService";
 import purchaseService from "../../services/purchaseService";
-import paymentService from "../../services/paymentService";
+import transactionService from "../../services/transactionService";
+import bankAccountService from "../../services/bankAccountService";
+import "./DayBook.css";
 
 function DayBook({
   companyId,
@@ -61,10 +55,15 @@ function DayBook({
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   // Financial data states
-  const [receivables, setReceivables] = useState([]);
-  const [payables, setPayables] = useState([]);
+  const [receivablesData, setReceivablesData] = useState([]);
+  const [payablesData, setPayablesData] = useState([]);
+  const [transactionsData, setTransactionsData] = useState([]);
+  const [bankAccountsData, setBankAccountsData] = useState([]);
+
+  // ✅ Enhanced summary data state
   const [summaryData, setSummaryData] = useState({
     totalReceivables: 0,
     totalPayables: 0,
@@ -73,9 +72,33 @@ function DayBook({
     dueTodayReceivables: 0,
     dueTodayPayables: 0,
     netPosition: 0,
+    totalCashIn: 0,
+    totalCashOut: 0,
+    netCashFlow: 0,
+    totalTransactions: 0,
+    lastUpdated: null,
   });
-  const [transactions, setTransactions] = useState([]);
-  const [bankBalances, setBankBalances] = useState([]);
+
+  // ✅ Data loading states for better UX
+  const [loadingStates, setLoadingStates] = useState({
+    receivables: false,
+    payables: false,
+    transactions: false,
+    bankAccounts: false,
+  });
+
+  // ✅ Set up refresh function for tabs to use
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.refreshDayBookData = handleRefresh;
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        delete window.refreshDayBookData;
+      }
+    };
+  }, []);
 
   // Load data on component mount and date change
   useEffect(() => {
@@ -84,255 +107,571 @@ function DayBook({
     }
   }, [companyId, date]);
 
-  // ✅ Enhanced data loading function
+  // ✅ Enhanced data loading with better error handling
   const loadDayBookData = async () => {
     try {
       setLoading(true);
-      const today = new Date(date);
-      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+      setError(null);
 
-      // Load receivables, payables, and summary data in parallel
-      const [receivablesData, payablesData, paymentsData, bankData] =
-        await Promise.all([
-          loadReceivables(),
-          loadPayables(),
-          loadDailyTransactions(startOfDay, endOfDay),
-          loadBankBalances(),
-        ]);
+      // ✅ Load all data in parallel with individual error handling
+      await Promise.all([
+        loadReceivablesData(),
+        loadPayablesData(),
+        loadTransactionsData(),
+        loadBankAccountsData(),
+      ]);
 
-      // Calculate summary
-      calculateSummary(receivablesData, payablesData);
+      // ✅ Calculate final summary after all data is loaded
+      calculateFinalSummary();
     } catch (error) {
-      console.error("Error loading day book data:", error);
+      setError(error.message || "Failed to load day book data");
       addToast?.("Failed to load day book data", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Load receivables (money to receive from customers)
-  const loadReceivables = async () => {
+  // ✅ Load receivables data with enhanced error handling
+  const loadReceivablesData = async () => {
     try {
-      const response = await salesService.getOverdueSales(companyId);
-      const dueTodayResponse = await salesService.getSalesDueToday(companyId);
+      setLoadingStates((prev) => ({...prev, receivables: true}));
+      let receivables = [];
 
-      let allReceivables = [];
-
-      // Add overdue sales
-      if (response?.success && response.data) {
-        allReceivables = [
-          ...allReceivables,
-          ...response.data.map((sale) => ({
-            ...sale,
-            type: "overdue",
-            priority: "high",
-          })),
-        ];
+      // Method 1: Try to get daybook summary
+      if (salesService.getDaybookSummary) {
+        try {
+          const daybookResponse = await salesService.getDaybookSummary(
+            companyId,
+            date
+          );
+          if (daybookResponse?.success && daybookResponse.data) {
+            receivables =
+              daybookResponse.data.receivables ||
+              daybookResponse.data.sales ||
+              [];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
       }
 
-      // Add sales due today
-      if (dueTodayResponse?.success && dueTodayResponse.data) {
-        allReceivables = [
-          ...allReceivables,
-          ...dueTodayResponse.data.map((sale) => ({
-            ...sale,
-            type: "due_today",
-            priority: "medium",
-          })),
-        ];
+      // Method 2: Fallback to overdue sales
+      if (receivables.length === 0 && salesService.getOverdueSales) {
+        try {
+          const overdueResponse = await salesService.getOverdueSales(companyId);
+          if (overdueResponse?.success) {
+            const overdueReceivables = (overdueResponse.data || []).map(
+              (sale) => ({
+                ...sale,
+                type: "overdue",
+                priority: "high",
+              })
+            );
+            receivables = [...receivables, ...overdueReceivables];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
       }
 
-      // Get all pending sales
-      const pendingResponse = await salesService.getSales(companyId, {
-        paymentStatus: "pending,partial",
-        limit: 100,
+      // Method 3: Add due today sales
+      if (salesService.getSalesDueToday) {
+        try {
+          const dueTodayResponse = await salesService.getSalesDueToday(
+            companyId
+          );
+          if (dueTodayResponse?.success) {
+            const dueTodayReceivables = (dueTodayResponse.data || []).map(
+              (sale) => ({
+                ...sale,
+                type: "due_today",
+                priority: "medium",
+              })
+            );
+            // Avoid duplicates
+            const existingIds = new Set(receivables.map((r) => r._id || r.id));
+            const newDueToday = dueTodayReceivables.filter(
+              (r) => !existingIds.has(r._id || r.id)
+            );
+            receivables = [...receivables, ...newDueToday];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // Method 4: Fallback to recent sales if still no data
+      if (receivables.length === 0 && salesService.getSales) {
+        try {
+          const recentSalesResponse = await salesService.getSales(companyId, {
+            limit: 50,
+            sortBy: "saleDate",
+            sortOrder: "desc",
+            status: "pending,partial",
+          });
+          if (recentSalesResponse?.success) {
+            receivables = (recentSalesResponse.data?.sales || []).map(
+              (sale) => ({
+                ...sale,
+                type: "pending",
+                priority: "low",
+              })
+            );
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      setReceivablesData(receivables);
+      return receivables;
+    } catch (error) {
+      setReceivablesData([]);
+      return [];
+    } finally {
+      setLoadingStates((prev) => ({...prev, receivables: false}));
+    }
+  };
+
+  // ✅ Load payables data with enhanced error handling
+  const loadPayablesData = async () => {
+    try {
+      setLoadingStates((prev) => ({...prev, payables: true}));
+      let payables = [];
+
+      // Method 1: Try to get daybook summary
+      if (purchaseService.getDaybookSummary) {
+        try {
+          const daybookResponse = await purchaseService.getDaybookSummary(
+            companyId,
+            date
+          );
+          if (daybookResponse?.success && daybookResponse.data) {
+            payables =
+              daybookResponse.data.payables ||
+              daybookResponse.data.purchases ||
+              [];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // Method 2: Fallback to overdue purchases
+      if (payables.length === 0) {
+        try {
+          const overdueResponse = await purchaseService.getOverduePurchases(
+            companyId
+          );
+          if (overdueResponse?.success) {
+            const overduePayables = (overdueResponse.data || []).map(
+              (purchase) => ({
+                ...purchase,
+                type: "overdue",
+                priority: "high",
+              })
+            );
+            payables = [...payables, ...overduePayables];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // Method 3: Add due today purchases
+      try {
+        const dueTodayResponse = await purchaseService.getPurchasesDueToday(
+          companyId
+        );
+        if (dueTodayResponse?.success) {
+          const dueTodayPayables = (dueTodayResponse.data || []).map(
+            (purchase) => ({
+              ...purchase,
+              type: "due_today",
+              priority: "medium",
+            })
+          );
+          // Avoid duplicates
+          const existingIds = new Set(payables.map((p) => p._id || p.id));
+          const newDueToday = dueTodayPayables.filter(
+            (p) => !existingIds.has(p._id || p.id)
+          );
+          payables = [...payables, ...newDueToday];
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+
+      // Method 4: Fallback to recent purchases if still no data
+      if (payables.length === 0 && purchaseService.getPurchases) {
+        try {
+          const recentPurchasesResponse = await purchaseService.getPurchases(
+            companyId,
+            {
+              limit: 50,
+              sortBy: "purchaseDate",
+              sortOrder: "desc",
+              status: "pending,partial",
+            }
+          );
+          if (recentPurchasesResponse?.success) {
+            payables = (recentPurchasesResponse.data?.purchases || []).map(
+              (purchase) => ({
+                ...purchase,
+                type: "pending",
+                priority: "low",
+              })
+            );
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      setPayablesData(payables);
+      return payables;
+    } catch (error) {
+      setPayablesData([]);
+      return [];
+    } finally {
+      setLoadingStates((prev) => ({...prev, payables: false}));
+    }
+  };
+
+  // ✅ Load transactions data with comprehensive approach
+  const loadTransactionsData = async () => {
+    try {
+      setLoadingStates((prev) => ({...prev, transactions: true}));
+      let allTransactions = [];
+
+      // Method 1: Use transaction service if available
+      if (
+        transactionService &&
+        typeof transactionService.getTransactions === "function"
+      ) {
+        try {
+          const transactionsResponse = await transactionService.getTransactions(
+            companyId,
+            {
+              date: date,
+              limit: 100,
+              sortBy: "transactionDate",
+              sortOrder: "desc",
+            }
+          );
+
+          if (transactionsResponse?.success) {
+            const transactions = transactionsResponse.data?.transactions || [];
+            allTransactions = [...allTransactions, ...transactions];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // Method 2: Get daily cash flow from sales service
+      if (salesService.getDailyCashFlow) {
+        try {
+          const cashInflowResponse = await salesService.getDailyCashFlow(
+            companyId,
+            date
+          );
+          if (cashInflowResponse?.success) {
+            const inflowTransactions = (
+              cashInflowResponse.data?.transactions || []
+            ).map((t) => ({
+              ...t,
+              direction: "in",
+              transactionType: "payment_in",
+              source: "sales",
+            }));
+
+            // Avoid duplicates
+            const existingIds = new Set(
+              allTransactions.map((t) => t._id || t.id)
+            );
+            const newInflowTransactions = inflowTransactions.filter(
+              (t) => !existingIds.has(t._id || t.id)
+            );
+            allTransactions = [...allTransactions, ...newInflowTransactions];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // Method 3: Get daily cash outflow from purchase service
+      if (purchaseService.getDailyCashOutflow) {
+        try {
+          const cashOutflowResponse = await purchaseService.getDailyCashOutflow(
+            companyId,
+            date
+          );
+          if (cashOutflowResponse?.success) {
+            const outflowTransactions = (
+              cashOutflowResponse.data?.transactions || []
+            ).map((t) => ({
+              ...t,
+              direction: "out",
+              transactionType: "payment_out",
+              source: "purchases",
+            }));
+
+            // Avoid duplicates
+            const existingIds = new Set(
+              allTransactions.map((t) => t._id || t.id)
+            );
+            const newOutflowTransactions = outflowTransactions.filter(
+              (t) => !existingIds.has(t._id || t.id)
+            );
+            allTransactions = [...allTransactions, ...newOutflowTransactions];
+          }
+        } catch (error) {
+          // Silent error handling
+        }
+      }
+
+      // ✅ Process and normalize transaction data
+      const processedTransactions = processTransactionData(allTransactions);
+
+      // Sort by date and time (most recent first)
+      processedTransactions.sort((a, b) => {
+        const dateA = new Date(a.transactionDate || a.createdAt);
+        const dateB = new Date(b.transactionDate || b.createdAt);
+        return dateB - dateA;
       });
 
-      if (pendingResponse?.success && pendingResponse.data) {
-        const pendingSales = pendingResponse.data
-          .filter(
-            (sale) =>
-              !allReceivables.some((existing) => existing._id === sale._id)
-          )
-          .map((sale) => ({
-            ...sale,
-            type: "pending",
-            priority: "low",
-          }));
-
-        allReceivables = [...allReceivables, ...pendingSales];
-      }
-
-      setReceivables(allReceivables);
-      return allReceivables;
+      setTransactionsData(processedTransactions);
+      return processedTransactions;
     } catch (error) {
-      console.error("Error loading receivables:", error);
-      setReceivables([]);
+      setTransactionsData([]);
       return [];
+    } finally {
+      setLoadingStates((prev) => ({...prev, transactions: false}));
     }
   };
 
-  // ✅ Load payables (money to pay to suppliers)
-  const loadPayables = async () => {
+  // ✅ Load bank accounts data using bankAccountService
+  const loadBankAccountsData = async () => {
     try {
-      const response = await purchaseService.getOverduePurchases(companyId);
-      const dueTodayResponse = await purchaseService.getPurchasesDueToday(
-        companyId
-      );
+      setLoadingStates((prev) => ({...prev, bankAccounts: true}));
 
-      let allPayables = [];
-
-      // Add overdue purchases
-      if (response?.success && response.data) {
-        allPayables = [
-          ...allPayables,
-          ...response.data.map((purchase) => ({
-            ...purchase,
-            type: "overdue",
-            priority: "high",
-          })),
-        ];
+      if (!companyId) {
+        setBankAccountsData([]);
+        return [];
       }
 
-      // Add purchases due today
-      if (dueTodayResponse?.success && dueTodayResponse.data) {
-        allPayables = [
-          ...allPayables,
-          ...dueTodayResponse.data.map((purchase) => ({
-            ...purchase,
-            type: "due_today",
-            priority: "medium",
-          })),
-        ];
+      // ✅ Use bankAccountService instead of transactionService
+      const bankAccountsResponse =
+        await bankAccountService.getAllAccountsWithBalances(companyId);
+
+      if (bankAccountsResponse?.success) {
+        const bankAccounts =
+          bankAccountsResponse.accounts ||
+          bankAccountsResponse.data?.accounts ||
+          [];
+        setBankAccountsData(bankAccounts);
+        return bankAccounts;
+      } else {
+        setBankAccountsData([]);
+        return [];
       }
-
-      // Get all pending purchases
-      const pendingResponse = await purchaseService.getPurchases(companyId, {
-        paymentStatus: "pending,partial",
-        limit: 100,
-      });
-
-      if (pendingResponse?.success && pendingResponse.data) {
-        const pendingPurchases = pendingResponse.data
-          .filter(
-            (purchase) =>
-              !allPayables.some((existing) => existing._id === purchase._id)
-          )
-          .map((purchase) => ({
-            ...purchase,
-            type: "pending",
-            priority: "low",
-          }));
-
-        allPayables = [...allPayables, ...pendingPurchases];
-      }
-
-      setPayables(allPayables);
-      return allPayables;
     } catch (error) {
-      console.error("Error loading payables:", error);
-      setPayables([]);
+      setBankAccountsData([]);
       return [];
+    } finally {
+      setLoadingStates((prev) => ({...prev, bankAccounts: false}));
     }
   };
 
-  // ✅ Load daily transactions
-  const loadDailyTransactions = async (startDate, endDate) => {
-    try {
-      const response = await paymentService.getPayments(companyId, {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-      });
+  // ✅ Enhanced transaction data processing
+  const processTransactionData = (transactions) => {
+    if (!Array.isArray(transactions)) return [];
 
-      if (response?.success && response.data) {
-        setTransactions(response.data);
-        return response.data;
-      }
+    return transactions.map((transaction) => {
+      // ✅ Normalize transaction data structure
+      const processedTransaction = {
+        // Core fields
+        _id:
+          transaction._id ||
+          transaction.id ||
+          `temp_${Date.now()}_${Math.random()}`,
+        amount: parseFloat(transaction.amount) || 0,
 
-      setTransactions([]);
-      return [];
-    } catch (error) {
-      console.error("Error loading transactions:", error);
-      setTransactions([]);
-      return [];
-    }
-  };
+        // Direction and type
+        direction:
+          transaction.direction ||
+          (transaction.transactionType === "payment_in" ||
+          transaction.type === "payment_in"
+            ? "in"
+            : "out"),
 
-  // ✅ Load bank balances
-  const loadBankBalances = async () => {
-    try {
-      const response = await paymentService.getBankAccounts(companyId);
+        transactionType:
+          transaction.transactionType || transaction.type || "payment",
+        type: transaction.type || transaction.transactionType || "payment",
 
-      if (response?.success && response.data) {
-        setBankBalances(response.data);
-        return response.data;
-      }
+        // Dates
+        transactionDate:
+          transaction.transactionDate ||
+          transaction.paymentDate ||
+          transaction.saleDate ||
+          transaction.purchaseDate ||
+          transaction.createdAt ||
+          new Date().toISOString(),
 
-      setBankBalances([]);
-      return [];
-    } catch (error) {
-      console.error("Error loading bank balances:", error);
-      setBankBalances([]);
-      return [];
-    }
-  };
+        paymentDate:
+          transaction.paymentDate ||
+          transaction.transactionDate ||
+          transaction.createdAt ||
+          new Date().toISOString(),
 
-  // ✅ Calculate summary data
-  const calculateSummary = (
-    receivablesData = receivables,
-    payablesData = payables
-  ) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+        // Party information
+        partyName:
+          transaction.partyName ||
+          transaction.partyId?.name ||
+          transaction.customer?.name ||
+          transaction.supplier?.name ||
+          transaction.customerName ||
+          transaction.supplierName ||
+          "Unknown Party",
 
-    const summary = {
-      totalReceivables: 0,
-      totalPayables: 0,
-      overdueReceivables: 0,
-      overduePayables: 0,
-      dueTodayReceivables: 0,
-      dueTodayPayables: 0,
-      netPosition: 0,
-    };
+        partyId: transaction.partyId ||
+          transaction.customer ||
+          transaction.supplier || {name: transaction.partyName || "Unknown"},
 
-    // Calculate receivables
-    receivablesData.forEach((sale) => {
-      const pendingAmount = sale.payment?.pendingAmount || 0;
-      summary.totalReceivables += pendingAmount;
+        // Payment details
+        paymentMethod: transaction.paymentMethod || "cash",
 
-      if (sale.type === "overdue") {
-        summary.overdueReceivables += pendingAmount;
-      } else if (sale.type === "due_today") {
-        summary.dueTodayReceivables += pendingAmount;
-      }
+        // Reference information
+        reference:
+          transaction.reference ||
+          transaction.referenceNumber ||
+          transaction.invoiceNumber ||
+          transaction.purchaseNumber ||
+          transaction.billNumber ||
+          transaction.description ||
+          "",
+
+        referenceNumber:
+          transaction.referenceNumber ||
+          transaction.reference ||
+          transaction.invoiceNumber ||
+          transaction.purchaseNumber ||
+          "",
+
+        // Additional fields
+        description: transaction.description || "",
+        status: transaction.status || "completed",
+        transactionId:
+          transaction.transactionId || transaction._id || transaction.id,
+
+        // Bank account info
+        bankAccountId: transaction.bankAccountId,
+
+        // Source tracking
+        source: transaction.source || "transaction_service",
+
+        // Original data for debugging
+        _original: transaction,
+      };
+
+      return processedTransaction;
     });
-
-    // Calculate payables
-    payablesData.forEach((purchase) => {
-      const pendingAmount =
-        purchase.payment?.pendingAmount || purchase.pendingAmount || 0;
-      summary.totalPayables += pendingAmount;
-
-      if (purchase.type === "overdue") {
-        summary.overduePayables += pendingAmount;
-      } else if (purchase.type === "due_today") {
-        summary.dueTodayPayables += pendingAmount;
-      }
-    });
-
-    // Calculate net position (positive = more to receive, negative = more to pay)
-    summary.netPosition = summary.totalReceivables - summary.totalPayables;
-
-    setSummaryData(summary);
   };
 
-  // ✅ Refresh data
+  // ✅ Calculate final summary from all loaded data
+  const calculateFinalSummary = () => {
+    try {
+      // Calculate receivables summary
+      const totalReceivables = receivablesData.reduce((sum, r) => {
+        const pending =
+          r.payment?.pendingAmount || r.pendingAmount || r.balanceAmount || 0;
+        return sum + parseFloat(pending);
+      }, 0);
+
+      const overdueReceivables = receivablesData
+        .filter((r) => r.type === "overdue")
+        .reduce((sum, r) => {
+          const pending =
+            r.payment?.pendingAmount || r.pendingAmount || r.balanceAmount || 0;
+          return sum + parseFloat(pending);
+        }, 0);
+
+      const dueTodayReceivables = receivablesData
+        .filter((r) => r.type === "due_today")
+        .reduce((sum, r) => {
+          const pending =
+            r.payment?.pendingAmount || r.pendingAmount || r.balanceAmount || 0;
+          return sum + parseFloat(pending);
+        }, 0);
+
+      // Calculate payables summary
+      const totalPayables = payablesData.reduce((sum, p) => {
+        const pending =
+          p.payment?.pendingAmount || p.pendingAmount || p.balanceAmount || 0;
+        return sum + parseFloat(pending);
+      }, 0);
+
+      const overduePayables = payablesData
+        .filter((p) => p.type === "overdue")
+        .reduce((sum, p) => {
+          const pending =
+            p.payment?.pendingAmount || p.pendingAmount || p.balanceAmount || 0;
+          return sum + parseFloat(pending);
+        }, 0);
+
+      const dueTodayPayables = payablesData
+        .filter((p) => p.type === "due_today")
+        .reduce((sum, p) => {
+          const pending =
+            p.payment?.pendingAmount || p.pendingAmount || p.balanceAmount || 0;
+          return sum + parseFloat(pending);
+        }, 0);
+
+      // Calculate transaction summary
+      const totalCashIn = transactionsData
+        .filter((t) => t.direction === "in")
+        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+
+      const totalCashOut = transactionsData
+        .filter((t) => t.direction === "out")
+        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+
+      const netCashFlow = totalCashIn - totalCashOut;
+      const netPosition = totalReceivables - totalPayables;
+
+      const finalSummary = {
+        totalReceivables,
+        totalPayables,
+        overdueReceivables,
+        overduePayables,
+        dueTodayReceivables,
+        dueTodayPayables,
+        netPosition,
+        totalCashIn,
+        totalCashOut,
+        netCashFlow,
+        totalTransactions: transactionsData.length,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      setSummaryData(finalSummary);
+    } catch (error) {
+      // Silent error handling
+    }
+  };
+
+  // ✅ Refresh data using correct services
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadDayBookData();
-    setRefreshing(false);
-    addToast?.("Day book data refreshed successfully", "success");
+    try {
+      await loadDayBookData();
+      addToast?.("Day book data refreshed successfully", "success");
+    } catch (error) {
+      addToast?.("Failed to refresh day book data", "error");
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // ✅ Format currency
@@ -388,741 +727,231 @@ function DayBook({
       window.open(`tel:${party.mobile}`);
     } else if (method === "email" && party.email) {
       window.open(`mailto:${party.email}`);
+    } else if (method === "reminder") {
+      // Handle payment reminder
+      addToast?.(`Payment reminder sent to ${party.name}`, "info");
     }
   };
 
-  // ✅ Handle payment actions
+  // ✅ Handle payment actions with proper DayBook context
   const handleReceivePayment = (sale) => {
-    onNavigate?.("paymentIn", {invoiceId: sale._id});
+    onNavigate?.("paymentIn", {
+      // ✅ Core navigation data
+      invoiceId: sale._id || sale.id,
+      saleId: sale._id || sale.id,
+      customerId: sale.customer?._id || sale.customer?.id || sale.customerId,
+      amount:
+        sale.payment?.pendingAmount ||
+        sale.pendingAmount ||
+        sale.balanceAmount ||
+        0,
+
+      // ✅ DayBook context data
+      initialSale: sale, // Pass the complete sale object
+      source: "daybook", // Indicate this is from DayBook
+      isDayBookContext: true, // Explicit flag
+
+      // ✅ Additional context for better integration
+      paymentType: "pending", // Force payment against invoice
+      autoSelectInvoice: true, // Flag to auto-select
+
+      // ✅ Party information for easier access
+      party: sale.customer || {
+        _id: sale.customerId,
+        id: sale.customerId,
+        name: sale.customerName || sale.customer?.name || "Unknown Customer",
+      },
+    });
   };
 
   const handleMakePayment = (purchase) => {
-    onNavigate?.("paymentOut", {invoiceId: purchase._id});
+    onNavigate?.("paymentOut", {
+      // ✅ Core navigation data
+      invoiceId: purchase._id || purchase.id,
+      purchaseId: purchase._id || purchase.id,
+      supplierId:
+        purchase.supplier?._id || purchase.supplier?.id || purchase.supplierId,
+      amount:
+        purchase.payment?.pendingAmount ||
+        purchase.pendingAmount ||
+        purchase.balanceAmount ||
+        0,
+
+      // ✅ DayBook context data
+      initialPurchase: purchase, // Pass the complete purchase object
+      source: "daybook", // Indicate this is from DayBook
+      isDayBookContext: true, // Explicit flag
+
+      // ✅ Additional context for better integration
+      paymentType: "pending", // Force payment against invoice
+      autoSelectInvoice: true, // Flag to auto-select
+
+      // ✅ Party information for easier access
+      party: purchase.supplier || {
+        _id: purchase.supplierId,
+        id: purchase.supplierId,
+        name:
+          purchase.supplierName ||
+          purchase.supplier?.name ||
+          "Unknown Supplier",
+      },
+    });
   };
 
-  // ✅ Filter data based on search
+  // ✅ Filter data based on search with better field matching
   const filterData = (data) => {
-    if (!searchQuery) return data;
+    if (!searchQuery || !data) return data;
 
-    return data.filter(
-      (item) =>
-        item.customer?.name
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        item.supplier?.name
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        item.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.purchaseNumber?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  };
+    return data.filter((item) => {
+      const searchLower = searchQuery.toLowerCase();
 
-  // ✅ Render receivables tab
-  const renderReceivables = () => {
-    const filteredReceivables = filterData(receivables);
-    const sortedReceivables = filteredReceivables.sort((a, b) => {
-      // Sort by priority: overdue > due_today > pending
-      const priorityOrder = {overdue: 0, due_today: 1, pending: 2};
-      return priorityOrder[a.type] - priorityOrder[b.type];
+      // Search in customer/supplier name
+      const partyName =
+        item.customer?.name ||
+        item.supplier?.name ||
+        item.customerName ||
+        item.supplierName ||
+        item.partyName ||
+        "";
+
+      // Search in invoice/purchase numbers
+      const invoiceNumber =
+        item.invoiceNumber ||
+        item.purchaseNumber ||
+        item.billNumber ||
+        item.number ||
+        "";
+
+      // Search in mobile numbers
+      const mobile =
+        item.customer?.mobile ||
+        item.supplier?.mobile ||
+        item.customerMobile ||
+        item.supplierMobile ||
+        item.partyPhone ||
+        item.mobileNumber ||
+        "";
+
+      return (
+        partyName.toLowerCase().includes(searchLower) ||
+        invoiceNumber.toLowerCase().includes(searchLower) ||
+        mobile.includes(searchQuery) ||
+        (item.status && item.status.toLowerCase().includes(searchLower))
+      );
     });
-
-    return (
-      <div>
-        {/* Receivables Summary Cards */}
-        <Row className="mb-4">
-          <Col md={3}>
-            <Card className="summary-card border-success">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faMoneyBillWave}
-                  size="2x"
-                  className="text-success mb-2"
-                />
-                <h4 className="mb-1 text-success">
-                  {formatCurrency(summaryData.totalReceivables)}
-                </h4>
-                <p className="text-muted mb-0">Total to Receive</p>
-                <small className="text-muted">
-                  {receivables.length} invoices
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-danger">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faExclamationTriangle}
-                  size="2x"
-                  className="text-danger mb-2"
-                />
-                <h4 className="mb-1 text-danger">
-                  {formatCurrency(summaryData.overdueReceivables)}
-                </h4>
-                <p className="text-muted mb-0">Overdue Amount</p>
-                <small className="text-muted">
-                  {receivables.filter((r) => r.type === "overdue").length}{" "}
-                  overdue
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-warning">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faClock}
-                  size="2x"
-                  className="text-warning mb-2"
-                />
-                <h4 className="mb-1 text-warning">
-                  {formatCurrency(summaryData.dueTodayReceivables)}
-                </h4>
-                <p className="text-muted mb-0">Due Today</p>
-                <small className="text-muted">
-                  {receivables.filter((r) => r.type === "due_today").length} due
-                  today
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-primary">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={
-                    summaryData.netPosition >= 0
-                      ? faArrowTrendUp
-                      : faArrowTrendDown
-                  }
-                  size="2x"
-                  className={`mb-2 ${
-                    summaryData.netPosition >= 0
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                />
-                <h4
-                  className={`mb-1 ${
-                    summaryData.netPosition >= 0
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                >
-                  {formatCurrency(Math.abs(summaryData.netPosition))}
-                </h4>
-                <p className="text-muted mb-0">Net Position</p>
-                <small className="text-muted">
-                  {summaryData.netPosition >= 0
-                    ? "Net Receivable"
-                    : "Net Payable"}
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Receivables Table */}
-        <div className="table-responsive">
-          <Table hover className="transaction-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Invoice</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Due Date</th>
-                <th className="text-end">Amount Due</th>
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-4">
-                    <Spinner animation="border" size="sm" className="me-2" />
-                    Loading receivables...
-                  </td>
-                </tr>
-              ) : sortedReceivables.length > 0 ? (
-                sortedReceivables.map((sale) => (
-                  <tr
-                    key={sale._id}
-                    className={sale.type === "overdue" ? "table-danger" : ""}
-                  >
-                    <td>{getPriorityBadge(sale.type)}</td>
-                    <td>
-                      <div>
-                        <strong>{sale.invoiceNumber}</strong>
-                        <br />
-                        <small className="text-muted">
-                          Total: {formatCurrency(sale.totals?.finalTotal || 0)}
-                        </small>
-                      </div>
-                    </td>
-                    <td>
-                      <div>
-                        <FontAwesomeIcon
-                          icon={faUser}
-                          className="me-2 text-primary"
-                        />
-                        <strong>{sale.customer?.name || "Unknown"}</strong>
-                        {sale.customer?.mobile && (
-                          <div>
-                            <small className="text-muted">
-                              {sale.customer.mobile}
-                            </small>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td>{formatDate(sale.invoiceDate)}</td>
-                    <td>
-                      <span
-                        className={
-                          sale.type === "overdue" ? "text-danger fw-bold" : ""
-                        }
-                      >
-                        {formatDate(sale.payment?.dueDate)}
-                      </span>
-                    </td>
-                    <td className="text-end">
-                      <strong className="text-success">
-                        {formatCurrency(sale.payment?.pendingAmount || 0)}
-                      </strong>
-                    </td>
-                    <td className="text-center">
-                      <div className="btn-group-sm">
-                        <Button
-                          variant="success"
-                          size="sm"
-                          className="me-1"
-                          onClick={() => handleReceivePayment(sale)}
-                          title="Receive Payment"
-                        >
-                          <FontAwesomeIcon icon={faMoneyBillWave} />
-                        </Button>
-                        {sale.customer?.mobile && (
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            className="me-1"
-                            onClick={() =>
-                              handleContact(sale.customer, "phone")
-                            }
-                            title="Call Customer"
-                          >
-                            <FontAwesomeIcon icon={faPhone} />
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline-secondary"
-                          size="sm"
-                          onClick={() =>
-                            onNavigate?.("salesInvoice", {id: sale._id})
-                          }
-                          title="View Invoice"
-                        >
-                          <FontAwesomeIcon icon={faEye} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="7" className="text-center py-4 text-muted">
-                    <FontAwesomeIcon
-                      icon={faCheckCircle}
-                      size="2x"
-                      className="mb-2 text-success"
-                    />
-                    <br />
-                    No receivables found. All payments are up to date!
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
-      </div>
-    );
   };
 
-  // ✅ Render payables tab
-  const renderPayables = () => {
-    const filteredPayables = filterData(payables);
-    const sortedPayables = filteredPayables.sort((a, b) => {
-      const priorityOrder = {overdue: 0, due_today: 1, pending: 2};
-      return priorityOrder[a.type] - priorityOrder[b.type];
-    });
+  // ✅ Export functions using correct service methods
+  const handleExportReceivables = async () => {
+    try {
+      if (salesService.exportCSV) {
+        const blob = await salesService.exportCSV(companyId, {
+          type: "receivables",
+          date: date,
+          format: "csv",
+        });
 
-    return (
-      <div>
-        {/* Payables Summary Cards */}
-        <Row className="mb-4">
-          <Col md={3}>
-            <Card className="summary-card border-primary">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faHandHoldingUsd}
-                  size="2x"
-                  className="text-primary mb-2"
-                />
-                <h4 className="mb-1 text-primary">
-                  {formatCurrency(summaryData.totalPayables)}
-                </h4>
-                <p className="text-muted mb-0">Total to Pay</p>
-                <small className="text-muted">{payables.length} bills</small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-danger">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faExclamationTriangle}
-                  size="2x"
-                  className="text-danger mb-2"
-                />
-                <h4 className="mb-1 text-danger">
-                  {formatCurrency(summaryData.overduePayables)}
-                </h4>
-                <p className="text-muted mb-0">Overdue Amount</p>
-                <small className="text-muted">
-                  {payables.filter((p) => p.type === "overdue").length} overdue
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-warning">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faClock}
-                  size="2x"
-                  className="text-warning mb-2"
-                />
-                <h4 className="mb-1 text-warning">
-                  {formatCurrency(summaryData.dueTodayPayables)}
-                </h4>
-                <p className="text-muted mb-0">Due Today</p>
-                <small className="text-muted">
-                  {payables.filter((p) => p.type === "due_today").length} due
-                  today
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3}>
-            <Card className="summary-card border-info">
-              <Card.Body className="text-center">
-                <FontAwesomeIcon
-                  icon={faChartLine}
-                  size="2x"
-                  className="text-info mb-2"
-                />
-                <h4 className="mb-1 text-info">
-                  {payables.length > 0
-                    ? formatCurrency(
-                        summaryData.totalPayables / payables.length
-                      )
-                    : formatCurrency(0)}
-                </h4>
-                <p className="text-muted mb-0">Average Bill</p>
-                <small className="text-muted">Per invoice</small>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
+        // Download the blob
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `receivables_${date}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
 
-        {/* Payables Table */}
-        <div className="table-responsive">
-          <Table hover className="transaction-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Bill/Invoice</th>
-                <th>Supplier</th>
-                <th>Date</th>
-                <th>Due Date</th>
-                <th className="text-end">Amount Due</th>
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-4">
-                    <Spinner animation="border" size="sm" className="me-2" />
-                    Loading payables...
-                  </td>
-                </tr>
-              ) : sortedPayables.length > 0 ? (
-                sortedPayables.map((purchase) => (
-                  <tr
-                    key={purchase._id}
-                    className={
-                      purchase.type === "overdue" ? "table-danger" : ""
-                    }
-                  >
-                    <td>{getPriorityBadge(purchase.type)}</td>
-                    <td>
-                      <div>
-                        <strong>
-                          {purchase.purchaseNumber || purchase.invoiceNumber}
-                        </strong>
-                        <br />
-                        <small className="text-muted">
-                          Total:{" "}
-                          {formatCurrency(
-                            purchase.totals?.finalTotal ||
-                              purchase.totalAmount ||
-                              0
-                          )}
-                        </small>
-                      </div>
-                    </td>
-                    <td>
-                      <div>
-                        <FontAwesomeIcon
-                          icon={faBuilding}
-                          className="me-2 text-primary"
-                        />
-                        <strong>{purchase.supplier?.name || "Unknown"}</strong>
-                        {purchase.supplier?.mobile && (
-                          <div>
-                            <small className="text-muted">
-                              {purchase.supplier.mobile}
-                            </small>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      {formatDate(
-                        purchase.purchaseDate || purchase.invoiceDate
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className={
-                          purchase.type === "overdue"
-                            ? "text-danger fw-bold"
-                            : ""
-                        }
-                      >
-                        {formatDate(
-                          purchase.payment?.dueDate || purchase.dueDate
-                        )}
-                      </span>
-                    </td>
-                    <td className="text-end">
-                      <strong className="text-primary">
-                        {formatCurrency(
-                          purchase.payment?.pendingAmount ||
-                            purchase.pendingAmount ||
-                            0
-                        )}
-                      </strong>
-                    </td>
-                    <td className="text-center">
-                      <div className="btn-group-sm">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="me-1"
-                          onClick={() => handleMakePayment(purchase)}
-                          title="Make Payment"
-                        >
-                          <FontAwesomeIcon icon={faHandHoldingUsd} />
-                        </Button>
-                        {purchase.supplier?.mobile && (
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            className="me-1"
-                            onClick={() =>
-                              handleContact(purchase.supplier, "phone")
-                            }
-                            title="Call Supplier"
-                          >
-                            <FontAwesomeIcon icon={faPhone} />
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline-secondary"
-                          size="sm"
-                          onClick={() =>
-                            onNavigate?.("purchaseInvoice", {id: purchase._id})
-                          }
-                          title="View Bill"
-                        >
-                          <FontAwesomeIcon icon={faEye} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="7" className="text-center py-4 text-muted">
-                    <FontAwesomeIcon
-                      icon={faCheckCircle}
-                      size="2x"
-                      className="mb-2 text-success"
-                    />
-                    <br />
-                    No payables found. All bills are paid!
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
-      </div>
-    );
+        addToast?.("Receivables exported successfully", "success");
+      } else {
+        addToast?.("Export feature not available for receivables", "warning");
+      }
+    } catch (error) {
+      addToast?.("Failed to export receivables", "error");
+    }
   };
 
-  // ✅ Render daily transactions tab
-  const renderDailyTransactions = () => (
-    <div>
-      <Row className="mb-4">
-        <Col md={4}>
-          <Card className="summary-card border-success">
-            <Card.Body className="text-center">
-              <FontAwesomeIcon
-                icon={faArrowDown}
-                size="2x"
-                className="text-success mb-2"
-              />
-              <h4 className="mb-1 text-success">
-                {formatCurrency(
-                  transactions
-                    .filter((t) => t.type === "payment_in")
-                    .reduce((sum, t) => sum + (t.amount || 0), 0)
-                )}
-              </h4>
-              <p className="text-muted mb-0">Money Received</p>
-              <small className="text-muted">
-                {transactions.filter((t) => t.type === "payment_in").length}{" "}
-                transactions
-              </small>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="summary-card border-danger">
-            <Card.Body className="text-center">
-              <FontAwesomeIcon
-                icon={faArrowUp}
-                size="2x"
-                className="text-danger mb-2"
-              />
-              <h4 className="mb-1 text-danger">
-                {formatCurrency(
-                  transactions
-                    .filter((t) => t.type === "payment_out")
-                    .reduce((sum, t) => sum + (t.amount || 0), 0)
-                )}
-              </h4>
-              <p className="text-muted mb-0">Money Paid</p>
-              <small className="text-muted">
-                {transactions.filter((t) => t.type === "payment_out").length}{" "}
-                transactions
-              </small>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="summary-card border-primary">
-            <Card.Body className="text-center">
-              <FontAwesomeIcon
-                icon={faRupeeSign}
-                size="2x"
-                className="text-primary mb-2"
-              />
-              <h4 className="mb-1 text-primary">
-                {formatCurrency(
-                  transactions
-                    .filter((t) => t.type === "payment_in")
-                    .reduce((sum, t) => sum + (t.amount || 0), 0) -
-                    transactions
-                      .filter((t) => t.type === "payment_out")
-                      .reduce((sum, t) => sum + (t.amount || 0), 0)
-                )}
-              </h4>
-              <p className="text-muted mb-0">Net Cash Flow</p>
-              <small className="text-muted">For {formatDate(date)}</small>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+  const handleExportPayables = async () => {
+    try {
+      if (purchaseService.exportCSV) {
+        const blob = await purchaseService.exportCSV(companyId, {
+          type: "payables",
+          date: date,
+          format: "csv",
+        });
 
-      <div className="table-responsive">
-        <Table hover className="transaction-table">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Type</th>
-              <th>Party</th>
-              <th>Method</th>
-              <th>Reference</th>
-              <th className="text-end">Amount</th>
-              <th className="text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan="7" className="text-center py-4">
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Loading transactions...
-                </td>
-              </tr>
-            ) : transactions.length > 0 ? (
-              transactions.map((transaction) => (
-                <tr key={transaction._id}>
-                  <td>
-                    {new Date(transaction.paymentDate).toLocaleTimeString(
-                      "en-IN",
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
-                    )}
-                  </td>
-                  <td>
-                    <Badge
-                      bg={
-                        transaction.type === "payment_in" ? "success" : "danger"
-                      }
-                      className="me-1"
-                    >
-                      {transaction.type === "payment_in"
-                        ? "Money In"
-                        : "Money Out"}
-                    </Badge>
-                  </td>
-                  <td>
-                    <strong>{transaction.partyName}</strong>
-                  </td>
-                  <td>
-                    <Badge variant="secondary">
-                      {transaction.paymentMethod || "Cash"}
-                    </Badge>
-                  </td>
-                  <td>{transaction.reference || "N/A"}</td>
-                  <td className="text-end">
-                    <strong
-                      className={
-                        transaction.type === "payment_in"
-                          ? "text-success"
-                          : "text-danger"
-                      }
-                    >
-                      {transaction.type === "payment_in" ? "+" : "-"}
-                      {formatCurrency(transaction.amount)}
-                    </strong>
-                  </td>
-                  <td className="text-center">
-                    <Button
-                      variant="outline-secondary"
-                      size="sm"
-                      onClick={() =>
-                        onNavigate?.("paymentDetails", {id: transaction._id})
-                      }
-                      title="View Details"
-                    >
-                      <FontAwesomeIcon icon={faEye} />
-                    </Button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="7" className="text-center py-4 text-muted">
-                  No transactions found for {formatDate(date)}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </div>
-    </div>
-  );
+        // Download the blob
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `payables_${date}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
 
-  // ✅ Render cash & bank tab
-  const renderCashBank = () => (
-    <div>
-      <Row className="mb-4">
-        {bankBalances.map((account, index) => (
-          <Col md={4} key={account._id || index}>
-            <Card className="summary-card border-info">
-              <Card.Body>
-                <div className="d-flex align-items-center mb-2">
-                  <FontAwesomeIcon
-                    icon={faBuilding}
-                    className="text-info me-2"
-                  />
-                  <h6 className="mb-0">{account.bankName}</h6>
-                </div>
-                <h4 className="mb-1 text-info">
-                  {formatCurrency(
-                    account.currentBalance || account.balance || 0
-                  )}
-                </h4>
-                <p className="text-muted mb-1">{account.accountName}</p>
-                <small className="text-muted">
-                  A/C:{" "}
-                  {account.accountNumber
-                    ?.slice(-4)
-                    .padStart(account.accountNumber?.length, "*")}
-                </small>
-              </Card.Body>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+        addToast?.("Payables exported successfully", "success");
+      } else {
+        addToast?.("Export feature not available for payables", "warning");
+      }
+    } catch (error) {
+      addToast?.("Failed to export payables", "error");
+    }
+  };
 
-      {bankBalances.length === 0 && (
+  // ✅ Handle new transaction navigation
+  const handleNewTransaction = () => {
+    onNavigate?.("saleInvoice");
+  };
+
+  // ✅ Loading screen
+  if (loading) {
+    return (
+      <div className="container-fluid px-4">
         <div className="text-center py-5">
-          <FontAwesomeIcon
-            icon={faBuilding}
-            size="3x"
-            className="text-muted mb-3"
-          />
-          <h5 className="text-muted">No bank accounts found</h5>
+          <Spinner animation="border" size="lg" />
+          <h5 className="mt-3">Loading DayBook...</h5>
           <p className="text-muted">
-            Add bank accounts to track your cash flow
+            Loading receivables, payables, and transactions...
           </p>
-          <Button
-            variant="primary"
-            onClick={() => onNavigate?.("bankAccounts")}
-          >
-            <FontAwesomeIcon icon={faPlus} className="me-2" />
-            Add Bank Account
-          </Button>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
 
   return (
     <div className="container-fluid px-4">
+      {/* Error Alert */}
+      {error && (
+        <Alert
+          variant="danger"
+          dismissible
+          onClose={() => setError(null)}
+          className="mb-4"
+        >
+          <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+          {error}
+        </Alert>
+      )}
+
       {/* Page Banner */}
       <div className="page-banner mb-4">
         <div className="banner-content">
           <div className="banner-icon">💼</div>
           <h5>Track your daily receivables, payables, and cash flow</h5>
-          <button
-            className="btn btn-light btn-sm ms-3"
+          <Button
+            variant="light"
+            size="sm"
+            className="ms-3"
             onClick={handleRefresh}
             disabled={refreshing}
           >
-            {refreshing ? <Spinner size="sm" className="me-1" /> : "🔄"}
+            {refreshing ? (
+              <Spinner size="sm" className="me-1" />
+            ) : (
+              <FontAwesomeIcon icon={faRefresh} className="me-1" />
+            )}
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1171,17 +1000,35 @@ function DayBook({
               <FontAwesomeIcon icon={faPrint} className="me-2" />
               Print
             </Button>
-            <Button variant="outline-secondary" size="sm" className="me-2">
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              className="me-2"
+              onClick={
+                activeTab === "receivables"
+                  ? handleExportReceivables
+                  : activeTab === "payables"
+                  ? handleExportPayables
+                  : handleExportReceivables
+              }
+            >
               <FontAwesomeIcon icon={faFileExport} className="me-2" />
               Export
             </Button>
-            <Button variant="primary" size="sm">
+            <Button variant="primary" size="sm" onClick={handleNewTransaction}>
               <FontAwesomeIcon icon={faPlus} className="me-2" />
               New Transaction
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Summary Cards */}
+      <DayBookSummary
+        summaryData={summaryData}
+        formatCurrency={formatCurrency}
+        loading={loading || Object.values(loadingStates).some(Boolean)}
+      />
 
       {/* Main Content */}
       <Card className="mb-4 border-0 shadow-sm">
@@ -1197,67 +1044,142 @@ function DayBook({
                 <span>
                   <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" />
                   Receivables
-                  {summaryData.totalReceivables > 0 && (
+                  {receivablesData.length > 0 && (
                     <Badge bg="success" className="ms-2">
-                      {receivables.length}
+                      {receivablesData.length}
                     </Badge>
+                  )}
+                  {loadingStates.receivables && (
+                    <Spinner size="sm" className="ms-2" />
                   )}
                 </span>
               }
             >
-              {renderReceivables()}
+              <ReceivablesTab
+                receivables={filterData(receivablesData)}
+                loading={loadingStates.receivables}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getPriorityBadge={getPriorityBadge}
+                handleReceivePayment={handleReceivePayment}
+                handleContact={handleContact}
+                onNavigate={onNavigate}
+                companyId={companyId}
+                currentCompany={currentCompany}
+                currentUser={currentUser}
+                addToast={addToast}
+                // ✅ Pass DayBook context flags
+                isDayBookContext={true}
+                source="daybook"
+              />
             </Tab>
+
             <Tab
               eventKey="payables"
               title={
                 <span>
                   <FontAwesomeIcon icon={faHandHoldingUsd} className="me-2" />
                   Payables
-                  {summaryData.totalPayables > 0 && (
+                  {payablesData.length > 0 && (
                     <Badge bg="primary" className="ms-2">
-                      {payables.length}
+                      {payablesData.length}
                     </Badge>
+                  )}
+                  {loadingStates.payables && (
+                    <Spinner size="sm" className="ms-2" />
                   )}
                 </span>
               }
             >
-              {renderPayables()}
+              <PayablesTab
+                payables={filterData(payablesData)}
+                loading={loadingStates.payables}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getPriorityBadge={getPriorityBadge}
+                handleMakePayment={handleMakePayment}
+                handleContact={handleContact}
+                onNavigate={onNavigate}
+                companyId={companyId}
+                currentCompany={currentCompany}
+                currentUser={currentUser}
+                addToast={addToast}
+                // ✅ Pass DayBook context flags
+                isDayBookContext={true}
+                source="daybook"
+              />
             </Tab>
+
             <Tab
               eventKey="transactions"
               title={
                 <span>
                   <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                   Daily Transactions
-                  {transactions.length > 0 && (
+                  {transactionsData.length > 0 && (
                     <Badge bg="info" className="ms-2">
-                      {transactions.length}
+                      {transactionsData.length}
                     </Badge>
+                  )}
+                  {loadingStates.transactions && (
+                    <Spinner size="sm" className="ms-2" />
                   )}
                 </span>
               }
             >
-              {renderDailyTransactions()}
+              <DailyTransactionsTab
+                transactions={transactionsData}
+                loading={loadingStates.transactions}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onNavigate={onNavigate}
+                date={date}
+                companyId={companyId}
+                addToast={addToast}
+              />
             </Tab>
+
             <Tab
               eventKey="cashbank"
               title={
                 <span>
                   <FontAwesomeIcon icon={faBuilding} className="me-2" />
                   Cash & Bank
-                  {bankBalances.length > 0 && (
+                  {bankAccountsData.length > 0 && (
                     <Badge bg="secondary" className="ms-2">
-                      {bankBalances.length}
+                      {bankAccountsData.length}
                     </Badge>
+                  )}
+                  {loadingStates.bankAccounts && (
+                    <Spinner size="sm" className="ms-2" />
                   )}
                 </span>
               }
             >
-              {renderCashBank()}
+              <CashBankTab
+                bankBalances={bankAccountsData}
+                formatCurrency={formatCurrency}
+                onNavigate={onNavigate}
+                companyId={companyId}
+                date={date}
+                addToast={addToast}
+              />
             </Tab>
           </Tabs>
         </Card.Body>
       </Card>
+
+      {/* Footer Information */}
+      {summaryData.lastUpdated && (
+        <Row>
+          <Col>
+            <small className="text-muted">
+              Last updated:{" "}
+              {new Date(summaryData.lastUpdated).toLocaleString("en-IN")}
+            </small>
+          </Col>
+        </Row>
+      )}
     </div>
   );
 }

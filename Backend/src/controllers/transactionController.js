@@ -2014,6 +2014,737 @@ const transactionController = {
       });
     }
   },
+
+  /**
+   * ✅ MISSING: Get transaction analytics for insights
+   */
+  getTransactionAnalytics: async (req, res) => {
+    try {
+      const companyId =
+        req.companyId || req.params.companyId || req.query.companyId;
+      const {period = "month"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      // Calculate date range based on period
+      const now = new Date();
+      let startDate;
+
+      switch (period) {
+        case "week":
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case "month":
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case "quarter":
+          const quarterStart = Math.floor(now.getMonth() / 3) * 3;
+          startDate = new Date(now.getFullYear(), quarterStart, 1);
+          break;
+        case "year":
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+
+      const filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        transactionDate: {$gte: startDate, $lte: now},
+      };
+
+      console.log("📊 Getting transaction analytics:", {
+        companyId,
+        period,
+        startDate,
+      });
+
+      // Parallel aggregation queries for analytics
+      const [
+        transactionTrends,
+        paymentMethodBreakdown,
+        topTransactionTypes,
+        dailyTrends,
+        monthlyComparison,
+      ] = await Promise.all([
+        // Transaction trends by direction
+        Transaction.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$direction",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$amount"},
+              avgAmount: {$avg: "$amount"},
+            },
+          },
+        ]),
+
+        // Payment method breakdown
+        Transaction.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$paymentMethod",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$amount"},
+              percentage: {$sum: 1},
+            },
+          },
+          {$sort: {totalAmount: -1}},
+        ]),
+
+        // Top transaction types
+        Transaction.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$transactionType",
+              count: {$sum: 1},
+              totalAmount: {$sum: "$amount"},
+              totalIn: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "in"]}, "$amount", 0],
+                },
+              },
+              totalOut: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "out"]}, "$amount", 0],
+                },
+              },
+            },
+          },
+          {$sort: {totalAmount: -1}},
+          {$limit: 10},
+        ]),
+
+        // Daily trends (last 30 days)
+        Transaction.aggregate([
+          {
+            $match: {
+              companyId: new mongoose.Types.ObjectId(companyId),
+              transactionDate: {
+                $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+                $lte: now,
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: {format: "%Y-%m-%d", date: "$transactionDate"},
+              },
+              count: {$sum: 1},
+              totalIn: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "in"]}, "$amount", 0],
+                },
+              },
+              totalOut: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "out"]}, "$amount", 0],
+                },
+              },
+              netFlow: {
+                $sum: {
+                  $cond: [
+                    {$eq: ["$direction", "in"]},
+                    "$amount",
+                    {$multiply: ["$amount", -1]},
+                  ],
+                },
+              },
+            },
+          },
+          {$sort: {_id: 1}},
+        ]),
+
+        // Monthly comparison (current vs previous month)
+        Transaction.aggregate([
+          {
+            $match: {
+              companyId: new mongoose.Types.ObjectId(companyId),
+              transactionDate: {
+                $gte: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+                $lte: now,
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                month: {$month: "$transactionDate"},
+                year: {$year: "$transactionDate"},
+              },
+              count: {$sum: 1},
+              totalAmount: {$sum: "$amount"},
+              totalIn: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "in"]}, "$amount", 0],
+                },
+              },
+              totalOut: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "out"]}, "$amount", 0],
+                },
+              },
+            },
+          },
+        ]),
+      ]);
+
+      console.log("✅ Transaction analytics calculated successfully");
+
+      res.status(200).json({
+        success: true,
+        data: {
+          trends: transactionTrends,
+          paymentMethodBreakdown,
+          topTransactionTypes,
+          dailyTrends,
+          monthlyComparison,
+          period,
+          dateRange: {
+            from: startDate,
+            to: now,
+          },
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          method: "getTransactionAnalytics",
+          period,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error getting transaction analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get transaction analytics",
+        error: {
+          message: error.message,
+          code: error.code || "INTERNAL_ERROR",
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ MISSING: Get cash flow summary for DayBook
+   */
+  getCashFlowSummary: async (req, res) => {
+    try {
+      const companyId =
+        req.companyId || req.params.companyId || req.query.companyId;
+      const {dateFrom, dateTo, bankAccountId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      // Default to current month if no dates provided
+      const now = new Date();
+      const startDate = dateFrom
+        ? new Date(dateFrom)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
+      const endDate = dateTo ? new Date(dateTo) : now;
+      endDate.setHours(23, 59, 59, 999);
+
+      const filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        transactionDate: {$gte: startDate, $lte: endDate},
+      };
+
+      if (bankAccountId && mongoose.Types.ObjectId.isValid(bankAccountId)) {
+        filter.bankAccountId = new mongoose.Types.ObjectId(bankAccountId);
+      }
+
+      console.log("💰 Getting cash flow summary:", {
+        companyId,
+        startDate,
+        endDate,
+      });
+
+      const cashFlowData = await Transaction.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: null,
+            totalInflow: {
+              $sum: {
+                $cond: [{$eq: ["$direction", "in"]}, "$amount", 0],
+              },
+            },
+            totalOutflow: {
+              $sum: {
+                $cond: [{$eq: ["$direction", "out"]}, "$amount", 0],
+              },
+            },
+            netFlow: {
+              $sum: {
+                $cond: [
+                  {$eq: ["$direction", "in"]},
+                  "$amount",
+                  {$multiply: ["$amount", -1]},
+                ],
+              },
+            },
+            totalTransactions: {$sum: 1},
+            inflowTransactions: {
+              $sum: {
+                $cond: [{$eq: ["$direction", "in"]}, 1, 0],
+              },
+            },
+            outflowTransactions: {
+              $sum: {
+                $cond: [{$eq: ["$direction", "out"]}, 1, 0],
+              },
+            },
+          },
+        },
+      ]);
+
+      // Get cash flow by payment method
+      const paymentMethodFlow = await Transaction.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: {
+              paymentMethod: "$paymentMethod",
+              direction: "$direction",
+            },
+            amount: {$sum: "$amount"},
+            count: {$sum: 1},
+          },
+        },
+        {
+          $group: {
+            _id: "$_id.paymentMethod",
+            inflow: {
+              $sum: {
+                $cond: [{$eq: ["$_id.direction", "in"]}, "$amount", 0],
+              },
+            },
+            outflow: {
+              $sum: {
+                $cond: [{$eq: ["$_id.direction", "out"]}, "$amount", 0],
+              },
+            },
+            netFlow: {
+              $sum: {
+                $cond: [
+                  {$eq: ["$_id.direction", "in"]},
+                  "$amount",
+                  {$multiply: ["$amount", -1]},
+                ],
+              },
+            },
+            totalTransactions: {$sum: "$count"},
+          },
+        },
+        {$sort: {netFlow: -1}},
+      ]);
+
+      // Get recent significant transactions
+      const recentTransactions = await Transaction.find(filter)
+        .sort({transactionDate: -1, amount: -1})
+        .limit(10)
+        .populate("bankAccountId", "accountName bankName")
+        .populate("partyId", "name businessName")
+        .lean();
+
+      const summary = cashFlowData[0] || {
+        totalInflow: 0,
+        totalOutflow: 0,
+        netFlow: 0,
+        totalTransactions: 0,
+        inflowTransactions: 0,
+        outflowTransactions: 0,
+      };
+
+      console.log("✅ Cash flow summary calculated:", summary);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          summary,
+          paymentMethodFlow,
+          recentTransactions,
+          dateRange: {
+            from: startDate,
+            to: endDate,
+          },
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          method: "getCashFlowSummary",
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error getting cash flow summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get cash flow summary",
+        error: {
+          message: error.message,
+          code: error.code || "INTERNAL_ERROR",
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ MISSING: Get daily cash flow for DayBook
+   */
+  getDailyCashFlow: async (req, res) => {
+    try {
+      const companyId =
+        req.companyId || req.params.companyId || req.query.companyId;
+      const {
+        date = new Date().toISOString().split("T")[0],
+        direction,
+        transactionType,
+      } = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const targetDate = new Date(date);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        transactionDate: {$gte: startOfDay, $lte: endOfDay},
+      };
+
+      if (direction && ["in", "out"].includes(direction)) {
+        filter.direction = direction;
+      }
+
+      if (transactionType) {
+        if (transactionType.includes(",")) {
+          const types = transactionType
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+          filter.transactionType = {$in: types};
+        } else {
+          filter.transactionType = transactionType.trim();
+        }
+      }
+
+      console.log("📅 Getting daily cash flow:", {
+        companyId,
+        date,
+        direction,
+        transactionType,
+      });
+
+      const [dailySummary, transactions] = await Promise.all([
+        // Daily summary
+        Transaction.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalInflow: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "in"]}, "$amount", 0],
+                },
+              },
+              totalOutflow: {
+                $sum: {
+                  $cond: [{$eq: ["$direction", "out"]}, "$amount", 0],
+                },
+              },
+              netFlow: {
+                $sum: {
+                  $cond: [
+                    {$eq: ["$direction", "in"]},
+                    "$amount",
+                    {$multiply: ["$amount", -1]},
+                  ],
+                },
+              },
+              totalTransactions: {$sum: 1},
+              cashTransactions: {
+                $sum: {
+                  $cond: [{$eq: ["$paymentMethod", "cash"]}, 1, 0],
+                },
+              },
+              bankTransactions: {
+                $sum: {
+                  $cond: [{$ne: ["$paymentMethod", "cash"]}, 1, 0],
+                },
+              },
+            },
+          },
+        ]),
+
+        // All transactions for the day
+        Transaction.find(filter)
+          .populate("bankAccountId", "accountName bankName accountNumber")
+          .populate("partyId", "name businessName mobile")
+          .sort({transactionDate: -1, createdAt: -1})
+          .lean(),
+      ]);
+
+      const summary = dailySummary[0] || {
+        totalInflow: 0,
+        totalOutflow: 0,
+        netFlow: 0,
+        totalTransactions: 0,
+        cashTransactions: 0,
+        bankTransactions: 0,
+      };
+
+      // Group transactions by hour for timeline
+      const hourlyBreakdown = transactions.reduce((acc, txn) => {
+        const hour = txn.transactionDate.getHours();
+        if (!acc[hour]) {
+          acc[hour] = {
+            hour,
+            transactions: [],
+            inflow: 0,
+            outflow: 0,
+            count: 0,
+          };
+        }
+
+        acc[hour].transactions.push(txn);
+        acc[hour].count++;
+
+        if (txn.direction === "in") {
+          acc[hour].inflow += txn.amount;
+        } else {
+          acc[hour].outflow += txn.amount;
+        }
+
+        return acc;
+      }, {});
+
+      console.log("✅ Daily cash flow calculated:", {
+        date,
+        totalTransactions: summary.totalTransactions,
+        netFlow: summary.netFlow,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          date,
+          summary,
+          transactions,
+          hourlyBreakdown: Object.values(hourlyBreakdown).sort(
+            (a, b) => a.hour - b.hour
+          ),
+          filters: {
+            direction,
+            transactionType,
+            applied: !!direction || !!transactionType,
+          },
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          method: "getDailyCashFlow",
+          transactionCount: transactions.length,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Error getting daily cash flow:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get daily cash flow",
+        error: {
+          message: error.message,
+          code: error.code || "INTERNAL_ERROR",
+        },
+      });
+    }
+  },
+
+  /**
+   * ✅ MISSING: Export transactions to CSV
+   */
+  exportTransactionsCSV: async (req, res) => {
+    try {
+      const companyId =
+        req.companyId || req.params.companyId || req.query.companyId;
+      const {
+        dateFrom,
+        dateTo,
+        bankAccountId,
+        transactionType,
+        direction,
+        format = "csv",
+      } = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+      };
+
+      // Add date filters if provided
+      if (dateFrom || dateTo) {
+        filter.transactionDate = {};
+        if (dateFrom) filter.transactionDate.$gte = new Date(dateFrom);
+        if (dateTo) {
+          const endDate = new Date(dateTo);
+          endDate.setHours(23, 59, 59, 999);
+          filter.transactionDate.$lte = endDate;
+        }
+      }
+
+      // Add other filters
+      if (bankAccountId && mongoose.Types.ObjectId.isValid(bankAccountId)) {
+        filter.bankAccountId = new mongoose.Types.ObjectId(bankAccountId);
+      }
+
+      if (transactionType) {
+        filter.transactionType = transactionType;
+      }
+
+      if (direction && ["in", "out"].includes(direction)) {
+        filter.direction = direction;
+      }
+
+      console.log("📄 Exporting transactions to CSV:", {
+        companyId,
+        format,
+        filterCount: Object.keys(filter).length,
+      });
+
+      const transactions = await Transaction.find(filter)
+        .populate("bankAccountId", "accountName bankName accountNumber")
+        .populate("partyId", "name businessName mobile email")
+        .sort({transactionDate: -1})
+        .lean();
+
+      if (transactions.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No transactions found for the specified criteria",
+          filters: filter,
+        });
+      }
+
+      // Convert to CSV format
+      const csvHeaders = [
+        "Date",
+        "Transaction ID",
+        "Type",
+        "Direction",
+        "Amount",
+        "Payment Method",
+        "Description",
+        "Party Name",
+        "Bank Account",
+        "Status",
+        "Reference Number",
+        "Balance After",
+        "Created At",
+      ].join(",");
+
+      const csvRows = transactions.map((txn) =>
+        [
+          txn.transactionDate
+            ? new Date(txn.transactionDate).toLocaleDateString()
+            : "",
+          txn.transactionId || "",
+          txn.transactionType || "",
+          txn.direction || "",
+          txn.amount || 0,
+          txn.paymentMethod || "",
+          `"${(txn.description || "").replace(/"/g, '""')}"`, // Escape quotes
+          `"${(txn.partyName || txn.partyId?.name || "").replace(/"/g, '""')}"`,
+          `"${(txn.bankAccountId?.accountName || "Cash").replace(/"/g, '""')}"`,
+          txn.status || "",
+          txn.referenceNumber || "",
+          txn.balanceAfter || "",
+          txn.createdAt ? new Date(txn.createdAt).toLocaleDateString() : "",
+        ].join(",")
+      );
+
+      const csvContent = [csvHeaders, ...csvRows].join("\n");
+
+      // Set CSV headers
+      const filename = `transactions_${companyId}_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+      res.setHeader("Content-Length", Buffer.byteLength(csvContent));
+
+      console.log("✅ CSV export completed:", {
+        transactionCount: transactions.length,
+        filename,
+      });
+
+      res.status(200).send(csvContent);
+    } catch (error) {
+      console.error("❌ Error exporting transactions CSV:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to export transactions CSV",
+        error: {
+          message: error.message,
+          code: error.code || "INTERNAL_ERROR",
+        },
+      });
+    }
+  },
 };
 
 module.exports = transactionController;

@@ -375,6 +375,14 @@ class TransactionService {
       if (filters.bankAccountId)
         queryParams.append("bankAccountId", filters.bankAccountId);
       if (filters.partyId) queryParams.append("partyId", filters.partyId);
+
+      // ✅ FIXED: Add support for 'date' filter (used by DayBook)
+      if (filters.date) {
+        const formattedDate = this.formatDateForAPI(filters.date);
+        queryParams.append("dateFrom", formattedDate);
+        queryParams.append("dateTo", formattedDate);
+      }
+
       if (filters.dateFrom)
         queryParams.append("dateFrom", this.formatDateForAPI(filters.dateFrom));
       if (filters.dateTo)
@@ -459,6 +467,45 @@ class TransactionService {
     }
   }
 
+  async getTransactionAnalytics(companyId, period = "month") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const queryParams = new URLSearchParams({
+        period,
+      });
+
+      const response = await this.apiCall(
+        `/companies/${companyId}/transactions/analytics?${queryParams}`,
+        {
+          headers: {
+            ...this.getAuthHeaders(),
+            "x-company-id": companyId,
+          },
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data || response,
+        message: "Transaction analytics retrieved successfully",
+      };
+    } catch (error) {
+      console.error("❌ Error getting transaction analytics:", error);
+      return {
+        success: false,
+        data: {
+          trends: [],
+          topTransactionTypes: [],
+          paymentMethodBreakdown: [],
+          cashFlowTrend: [],
+        },
+        message: error.message || "Failed to get transaction analytics",
+      };
+    }
+  }
   async searchTransactionsByReference(companyId, searchCriteria = {}) {
     try {
       if (!companyId) {
@@ -681,6 +728,148 @@ class TransactionService {
           total: 0,
         },
         message: error.message || "Failed to get transactions by reference",
+      };
+    }
+  }
+
+  async exportTransactionsCSV(companyId, filters = {}) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        format: "csv",
+        ...filters,
+      });
+
+      const response = await fetch(
+        `${this.baseURL}/companies/${companyId}/transactions/export?${queryParams}`,
+        {
+          headers: {
+            ...this.getAuthHeaders(),
+            "x-company-id": companyId,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to export transactions CSV");
+      }
+
+      return response.blob();
+    } catch (error) {
+      console.error("❌ Error exporting transactions CSV:", error);
+      throw error;
+    }
+  }
+
+  async getTodaysTransactionSummary(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+
+      const options = {
+        period: "day",
+        dateFrom: today,
+        dateTo: today,
+      };
+
+      const summaryResponse = await this.getTransactionSummary(
+        companyId,
+        options
+      );
+
+      if (summaryResponse.success) {
+        return {
+          success: true,
+          data: {
+            ...summaryResponse.data.summary,
+            date: today,
+          },
+          message: "Today's transaction summary retrieved successfully",
+        };
+      }
+
+      return summaryResponse;
+    } catch (error) {
+      console.error("❌ Error getting today's transaction summary:", error);
+      return {
+        success: false,
+        data: {
+          totalIn: 0,
+          totalOut: 0,
+          netAmount: 0,
+          totalTransactions: 0,
+          date: new Date().toISOString().split("T")[0],
+        },
+        message: error.message || "Failed to get today's transaction summary",
+      };
+    }
+  }
+  async getPendingTransactions(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const filters = {
+        status: "pending",
+        limit: 50,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      };
+
+      return await this.getTransactions(companyId, filters);
+    } catch (error) {
+      console.error("❌ Error getting pending transactions:", error);
+      return {
+        success: false,
+        data: {
+          transactions: [],
+          pagination: {page: 1, limit: 50, total: 0, totalPages: 0},
+          summary: {},
+        },
+        message: error.message || "Failed to get pending transactions",
+      };
+    }
+  }
+
+  async getTransactionsByDateRange(
+    companyId,
+    startDate,
+    endDate,
+    options = {}
+  ) {
+    try {
+      if (!companyId || !startDate || !endDate) {
+        throw new Error("Company ID, start date, and end date are required");
+      }
+
+      const filters = {
+        dateFrom: startDate,
+        dateTo: endDate,
+        limit: options.limit || 100,
+        sortBy: options.sortBy || "transactionDate",
+        sortOrder: options.sortOrder || "desc",
+        ...options,
+      };
+
+      return await this.getTransactions(companyId, filters);
+    } catch (error) {
+      console.error("❌ Error getting transactions by date range:", error);
+      return {
+        success: false,
+        data: {
+          transactions: [],
+          pagination: {page: 1, limit: 100, total: 0, totalPages: 0},
+          summary: {},
+        },
+        message: error.message || "Failed to get transactions by date range",
       };
     }
   }

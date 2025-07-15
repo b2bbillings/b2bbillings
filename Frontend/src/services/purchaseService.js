@@ -1531,25 +1531,93 @@ class PurchaseService {
       }
     }
   }
-
-  async getPaymentSummaryWithOverdue(companyId, dateFrom, dateTo) {
-    this.validateCompanyId(companyId);
-
-    const queryParams = new URLSearchParams({
-      companyId,
-      ...(dateFrom && {dateFrom: this.formatDateForAPI(dateFrom)}),
-      ...(dateTo && {dateTo: this.formatDateForAPI(dateTo)}),
-    });
-
+  async getPaymentSummaryWithOverdue(companyId, options = {}) {
     try {
-      return await this.apiCall(
+      this.validateCompanyId(companyId);
+
+      // ✅ Enhanced options handling with better date processing
+      const queryParams = new URLSearchParams({
+        companyId,
+      });
+
+      // ✅ FIXED: Safely handle date parameters
+      if (options.dateFrom) {
+        const formattedDateFrom = this.formatDateForAPI(options.dateFrom);
+        if (formattedDateFrom) {
+          queryParams.append("dateFrom", formattedDateFrom);
+        }
+      }
+
+      if (options.dateTo) {
+        const formattedDateTo = this.formatDateForAPI(options.dateTo);
+        if (formattedDateTo) {
+          queryParams.append("dateTo", formattedDateTo);
+        }
+      }
+
+      // ✅ Add other options
+      if (options.includeAging) {
+        queryParams.append("includeAging", "true");
+      }
+
+      if (options.includeTrends) {
+        queryParams.append("includeTrends", "true");
+      }
+
+      if (options.includeDetails) {
+        queryParams.append("includeDetails", "true");
+      }
+
+      if (options.includeOverdue) {
+        queryParams.append("includeOverdue", "true");
+      }
+
+      if (options.includeDueToday) {
+        queryParams.append("includeDueToday", "true");
+      }
+
+      console.log(
+        "📊 Fetching payment summary with params:",
+        queryParams.toString()
+      );
+
+      const response = await this.apiCall(
         `/purchases/payment-summary-overdue?${queryParams}`
       );
+
+      return response;
     } catch (error) {
-      return await this.getEnhancedPaymentSummary(companyId, {
-        dateFrom: dateFrom,
-        dateTo: dateTo,
-      });
+      console.error("❌ Error getting payment summary with overdue:", error);
+
+      // ✅ Enhanced fallback with better error handling
+      try {
+        console.log("🔄 Falling back to enhanced payment summary...");
+        return await this.getEnhancedPaymentSummary(companyId, {
+          dateFrom: options.dateFrom,
+          dateTo: options.dateTo,
+        });
+      } catch (fallbackError) {
+        console.error("❌ Fallback also failed:", fallbackError);
+
+        // ✅ Return safe fallback data structure
+        return {
+          success: false,
+          message: error.message || "Failed to get payment summary",
+          data: {
+            summary: {
+              totalPending: 0,
+              overdueAmount: 0,
+              dueTodayAmount: 0,
+              totalInvoices: 0,
+              overdueCount: 0,
+              dueTodayCount: 0,
+            },
+            details: [],
+            aging: [],
+            trends: [],
+          },
+        };
+      }
     }
   }
 
@@ -3102,6 +3170,646 @@ class PurchaseService {
         success: false,
         available: false,
         message: "Print endpoint not available",
+      };
+    }
+  }
+
+  // Daybook Services
+
+  /**
+   * ✅ FIXED: Get DayBook purchases summary for payables
+   */
+  async getDaybookSummary(
+    companyId,
+    date = new Date().toISOString().split("T")[0]
+  ) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Build query string properly
+      const queryParams = new URLSearchParams({
+        companyId,
+        date,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/daybook-summary?${queryParams}`
+      );
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting purchases daybook summary:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get overdue purchases
+   */
+  async getOverduePurchases(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Build query string properly
+      const response = await this.apiCall(
+        `/purchases/overdue?companyId=${companyId}`
+      );
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting overdue purchases:", error);
+      // ✅ Fallback to client-side filtering
+      try {
+        const purchasesResponse = await this.getPurchases(companyId);
+
+        if (!purchasesResponse.success) {
+          return {
+            success: false,
+            message: "Failed to fetch purchases data",
+            data: [],
+          };
+        }
+
+        const allPurchases = purchasesResponse.data.purchases || [];
+        const today = new Date();
+
+        const overduePurchases = allPurchases.filter((purchase) => {
+          const pendingAmount = purchase.payment?.pendingAmount || 0;
+          const dueDate = purchase.payment?.dueDate;
+
+          if (!dueDate || pendingAmount <= 0) return false;
+
+          const due = new Date(dueDate);
+          return due < today;
+        });
+
+        return {
+          success: true,
+          data: overduePurchases,
+          message: `Found ${overduePurchases.length} overdue purchases (client-side filtered)`,
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          message: "Unable to fetch overdue purchases",
+          data: [],
+        };
+      }
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get purchases due today
+   */
+  async getPurchasesDueToday(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Build query string properly
+      const response = await this.apiCall(
+        `/purchases/due-today?companyId=${companyId}`
+      );
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting purchases due today:", error);
+      // ✅ Fallback to client-side filtering
+      try {
+        const purchasesResponse = await this.getPurchases(companyId);
+
+        if (!purchasesResponse.success) {
+          return {
+            success: false,
+            message: "Failed to fetch purchases data",
+            data: [],
+          };
+        }
+
+        const allPurchases = purchasesResponse.data.purchases || [];
+        const today = new Date();
+        const todayString = today.toDateString();
+
+        const purchasesDueToday = allPurchases.filter((purchase) => {
+          const pendingAmount = purchase.payment?.pendingAmount || 0;
+          const dueDate = purchase.payment?.dueDate;
+
+          if (!dueDate || pendingAmount <= 0) return false;
+
+          const due = new Date(dueDate);
+          return due.toDateString() === todayString;
+        });
+
+        return {
+          success: true,
+          data: purchasesDueToday,
+          message: `Found ${purchasesDueToday.length} purchases due today (client-side filtered)`,
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          message: "Unable to fetch purchases due today",
+          data: [],
+        };
+      }
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get top creditors (suppliers with highest pending amounts)
+   */
+  async getTopCreditors(companyId, limit = 10) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Build query string properly
+      const queryParams = new URLSearchParams({
+        companyId,
+        limit: limit.toString(),
+      });
+
+      const response = await this.apiCall(
+        `/purchases/top-creditors?${queryParams}`
+      );
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting top creditors:", error);
+      // Fallback to client-side calculation
+      return await this.calculateTopCreditorsClientSide(companyId, limit);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get daily cash outflow from purchases
+   */
+  async getDailyCashOutflow(
+    companyId,
+    date = new Date().toISOString().split("T")[0]
+  ) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Build query string properly
+      const queryParams = new URLSearchParams({
+        companyId,
+        date,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/daily-cash-outflow?${queryParams}`
+      );
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting daily cash outflow:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ NEW: Get payment reminders for purchases
+   */
+  async getPaymentReminders(companyId, reminderType = "due_today") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await this.apiCall("/purchases/payment-reminders", {
+        method: "GET",
+        params: {companyId, reminderType},
+      });
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting payment reminders:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get purchase trends (matches /trends route)
+   */
+  async getPurchaseTrends(companyId, period = "7d") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await this.apiCall("/purchases/trends", {
+        method: "GET",
+        params: {companyId, period},
+      });
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting purchase trends:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get payment efficiency metrics (matches /payment-efficiency route)
+   */
+  async getPaymentEfficiency(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      // ✅ FIXED: Pass companyId as query parameter
+      const queryParams = new URLSearchParams({
+        companyId,
+      });
+
+      const response = await this.apiCall(
+        `/purchases/payment-efficiency?${queryParams}`,
+        {
+          method: "GET",
+        }
+      );
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting payment efficiency:", error);
+
+      // ✅ Return safe fallback data structure
+      return {
+        success: false,
+        message: error.message || "Failed to get payment efficiency",
+        data: {
+          efficiency: 0,
+          paymentRate: 0,
+          avgPaymentDays: 0,
+          averageDays: 0,
+          onTimePayments: 0,
+          latePayments: 0,
+          trends: [],
+        },
+      };
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get payment alerts (matches /payment-alerts route)
+   */
+  async getPaymentAlerts(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await this.apiCall("/purchases/payment-alerts", {
+        method: "GET",
+        params: {companyId},
+      });
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error getting payment alerts:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Mark payment alert as sent (matches /:purchaseId/alert-sent route)
+   */
+  async markAlertSent(purchaseId, companyId) {
+    try {
+      if (!purchaseId) {
+        throw new Error("Purchase ID is required");
+      }
+
+      const response = await this.apiCall(
+        `/purchases/${purchaseId}/alert-sent`,
+        {
+          method: "PUT",
+          params: {companyId},
+        }
+      );
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error marking alert as sent:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Search purchases (matches /search route)
+   */
+  async searchPurchases(companyId, searchTerm, filters = {}) {
+    try {
+      this.validateCompanyId(companyId);
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        search: searchTerm,
+        ...filters,
+      });
+
+      return await this.apiCall(`/purchases/search?${queryParams}`);
+    } catch (error) {
+      console.error("❌ Error searching purchases:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get purchases by supplier (matches /by-supplier/:supplierId route)
+   */
+  async getPurchasesBySupplier(companyId, supplierId, limit = 10) {
+    try {
+      this.validateCompanyId(companyId);
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        limit: limit.toString(),
+      });
+
+      return await this.apiCall(
+        `/purchases/by-supplier/${supplierId}?${queryParams}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting purchases by supplier:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Validate stock (matches /validate-stock route)
+   */
+  async validateStock(items) {
+    try {
+      return await this.apiCall("/purchases/validate-stock", {
+        method: "POST",
+        body: JSON.stringify({items}),
+      });
+    } catch (error) {
+      console.error("❌ Error validating stock:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Update payment due date (matches /:id/due-date route)
+   */
+  async updatePaymentDueDate(purchaseId, dueDate, creditDays) {
+    try {
+      return await this.apiCall(`/purchases/${purchaseId}/due-date`, {
+        method: "PUT",
+        body: JSON.stringify({
+          dueDate: dueDate,
+          creditDays: creditDays,
+        }),
+      });
+    } catch (error) {
+      console.error("❌ Error updating payment due date:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Mark purchase as ordered (matches /:id/order route)
+   */
+  async markAsOrdered(purchaseId) {
+    try {
+      return await this.apiCall(`/purchases/${purchaseId}/order`, {
+        method: "PATCH",
+      });
+    } catch (error) {
+      console.error("❌ Error marking as ordered:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Mark purchase as received (matches /:id/receive route)
+   */
+  async markAsReceived(purchaseId) {
+    try {
+      return await this.apiCall(`/purchases/${purchaseId}/receive`, {
+        method: "PATCH",
+      });
+    } catch (error) {
+      console.error("❌ Error marking as received:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Complete purchase (matches /:id/complete route)
+   */
+  async completePurchase(purchaseId) {
+    try {
+      return await this.apiCall(`/purchases/${purchaseId}/complete`, {
+        method: "PATCH",
+      });
+    } catch (error) {
+      console.error("❌ Error completing purchase:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get today's purchases (matches /reports/today route)
+   */
+  async getTodaysPurchases(companyId) {
+    try {
+      this.validateCompanyId(companyId);
+      return await this.apiCall(
+        `/purchases/reports/today?companyId=${companyId}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting today's purchases:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get dashboard data (matches /reports/dashboard route)
+   */
+  async getDashboardData(companyId) {
+    try {
+      this.validateCompanyId(companyId);
+      return await this.apiCall(
+        `/purchases/reports/dashboard?companyId=${companyId}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting dashboard data:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get monthly report (matches /reports/monthly route)
+   */
+  async getMonthlyReport(companyId, year, month) {
+    try {
+      this.validateCompanyId(companyId);
+      return await this.apiCall(
+        `/purchases/reports/monthly?companyId=${companyId}&year=${year}&month=${month}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting monthly report:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get supplier stats (matches /analytics/supplier-stats route)
+   */
+  async getSupplierStats(companyId, supplierId) {
+    try {
+      this.validateCompanyId(companyId);
+      return await this.apiCall(
+        `/purchases/analytics/supplier-stats?companyId=${companyId}&supplierId=${supplierId}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting supplier stats:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get top items (matches /analytics/top-items route)
+   */
+  async getTopItems(companyId, dateFrom, dateTo, limit = 10) {
+    try {
+      this.validateCompanyId(companyId);
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        limit: limit.toString(),
+        ...(dateFrom && {dateFrom: this.formatDateForAPI(dateFrom)}),
+        ...(dateTo && {dateTo: this.formatDateForAPI(dateTo)}),
+      });
+
+      return await this.apiCall(
+        `/purchases/analytics/top-items?${queryParams}`
+      );
+    } catch (error) {
+      console.error("❌ Error getting top items:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Get purchases report (matches /reports/summary route)
+   */
+  async getPurchasesReport(companyId, startDate, endDate) {
+    try {
+      this.validateCompanyId(companyId);
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        startDate: this.formatDateForAPI(startDate),
+        endDate: this.formatDateForAPI(endDate),
+      });
+
+      return await this.apiCall(`/purchases/reports/summary?${queryParams}`);
+    } catch (error) {
+      console.error("❌ Error getting purchases report:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ MISSING: Export CSV (matches /export/csv route)
+   */
+  async exportCSV(companyId, filters = {}) {
+    try {
+      this.validateCompanyId(companyId);
+
+      const queryParams = new URLSearchParams({
+        companyId,
+        ...filters,
+      });
+
+      const response = await fetch(
+        `${this.baseURL}/purchases/export/csv?${queryParams}`,
+        {
+          headers: this.getAuthHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to export CSV");
+      }
+
+      return response.blob();
+    } catch (error) {
+      console.error("❌ Error exporting CSV:", error);
+      throw this.handleError(error);
+    }
+  }
+  /**
+   * ✅ NEW: Calculate top creditors on client-side (fallback)
+   */
+  async calculateTopCreditorsClientSide(companyId, limit = 10) {
+    try {
+      const purchasesResponse = await this.getPurchases(companyId);
+
+      if (!purchasesResponse.success) {
+        throw new Error("Failed to fetch purchases for creditors calculation");
+      }
+
+      const purchases = purchasesResponse.data || [];
+      const supplierMap = new Map();
+
+      purchases.forEach((purchase) => {
+        const pendingAmount = purchase.payment?.pendingAmount || 0;
+
+        if (pendingAmount <= 0) return;
+
+        const supplierId =
+          purchase.supplier?._id ||
+          purchase.supplier?.id ||
+          purchase.supplierId;
+        const supplierName =
+          purchase.supplierName || purchase.supplier?.name || "Unknown";
+
+        if (!supplierMap.has(supplierId)) {
+          supplierMap.set(supplierId, {
+            supplierId,
+            supplierName,
+            supplierMobile: purchase.supplier?.mobile || "",
+            supplierEmail: purchase.supplier?.email || "",
+            totalPending: 0,
+            purchaseCount: 0,
+            purchases: [],
+          });
+        }
+
+        const creditor = supplierMap.get(supplierId);
+        creditor.totalPending += pendingAmount;
+        creditor.purchaseCount++;
+        creditor.purchases.push({
+          purchaseId: purchase._id,
+          purchaseNumber: purchase.purchaseNumber,
+          pendingAmount,
+        });
+      });
+
+      const creditors = Array.from(supplierMap.values())
+        .sort((a, b) => b.totalPending - a.totalPending)
+        .slice(0, limit);
+
+      return {
+        success: true,
+        data: creditors,
+        message: "Top creditors calculated on client-side",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Failed to calculate top creditors",
+        data: [],
       };
     }
   }

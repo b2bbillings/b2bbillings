@@ -50,7 +50,7 @@ router.get(
   "/next-invoice-number",
   authenticate,
   validateCompany,
-  purchaseController.getNextPurchaseNumber // ✅ FIXED: Use existing method
+  purchaseController.getNextPurchaseNumber
 );
 
 /**
@@ -62,7 +62,7 @@ router.get(
   "/generate-invoice-number",
   authenticate,
   validateCompany,
-  purchaseController.getNextPurchaseNumber // ✅ FIXED: Use existing method
+  purchaseController.getNextPurchaseNumber
 );
 
 /**
@@ -75,6 +75,92 @@ router.get(
   authenticate,
   validateRequest,
   purchaseController.checkPurchaseExists
+);
+
+// ==================== DAYBOOK ROUTES (PRIORITY - Before other routes) ====================
+
+/**
+ * @route   GET /api/purchases/daybook-summary
+ * @desc    Get purchases summary for daybook
+ * @access  Private
+ */
+router.get(
+  "/daybook-summary",
+  authenticate,
+  validateCompany,
+  purchaseController.getDaybookSummary
+);
+
+/**
+ * @route   GET /api/purchases/payables-aging
+ * @desc    Get payables aging analysis
+ * @access  Private
+ */
+router.get(
+  "/payables-aging",
+  authenticate,
+  validateCompany,
+  purchaseController.getPayablesAging
+);
+
+/**
+ * @route   GET /api/purchases/top-creditors
+ * @desc    Get top creditors list
+ * @access  Private
+ */
+router.get(
+  "/top-creditors",
+  authenticate,
+  validateCompany,
+  purchaseController.getTopCreditors
+);
+
+/**
+ * @route   GET /api/purchases/trends
+ * @desc    Get purchase trends for dashboard
+ * @access  Private
+ */
+router.get(
+  "/trends",
+  authenticate,
+  validateCompany,
+  purchaseController.getPurchaseTrends
+);
+
+/**
+ * @route   GET /api/purchases/payment-efficiency
+ * @desc    Get payment efficiency metrics
+ * @access  Private
+ */
+router.get(
+  "/payment-efficiency",
+  authenticate,
+  validateCompany,
+  purchaseController.getPaymentEfficiency
+);
+
+/**
+ * @route   GET /api/purchases/daily-cash-outflow
+ * @desc    Get daily cash outflow from purchases
+ * @access  Private
+ */
+router.get(
+  "/daily-cash-outflow",
+  authenticate,
+  validateCompany,
+  purchaseController.getDailyCashOutflow
+);
+
+/**
+ * @route   GET /api/purchases/payment-alerts
+ * @desc    Get payment alerts
+ * @access  Private
+ */
+router.get(
+  "/payment-alerts",
+  authenticate,
+  validateCompany,
+  purchaseController.getPaymentAlerts
 );
 
 // ==================== REPORTING ROUTES (SPECIFIC PATHS FIRST) ====================
@@ -229,6 +315,157 @@ router.post(
   authenticate,
   validateRequest,
   purchaseController.validateItems
+);
+
+// ==================== ADMIN ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/admin/all
+ * @desc    Get all purchases for admin (across all companies)
+ * @access  Admin
+ */
+router.get(
+  "/admin/all",
+  authenticate,
+  purchaseController.getAllPurchasesForAdmin
+);
+
+/**
+ * @route   GET /api/purchases/admin/stats
+ * @desc    Get purchase statistics for admin dashboard
+ * @access  Admin
+ */
+router.get(
+  "/admin/stats",
+  authenticate,
+  purchaseController.getPurchaseStatsForAdmin
+);
+
+/**
+ * @route   GET /api/purchases/admin/analytics
+ * @desc    Get admin analytics for purchases
+ * @access  Admin
+ */
+router.get(
+  "/admin/analytics",
+  authenticate,
+  purchaseController.getAdminPurchaseAnalytics
+);
+
+/**
+ * @route   GET /api/purchases/admin/dashboard
+ * @desc    Get admin dashboard summary for purchases
+ * @access  Admin
+ */
+router.get(
+  "/admin/dashboard",
+  authenticate,
+  purchaseController.getAdminPurchaseDashboardSummary
+);
+
+/**
+ * @route   GET /api/purchases/admin/overdue
+ * @desc    Get overdue purchases for admin (across all companies)
+ * @access  Admin
+ */
+router.get(
+  "/admin/overdue",
+  authenticate,
+  purchaseController.getOverduePurchasesForAdmin
+);
+
+/**
+ * @route   GET /api/purchases/admin/due-today
+ * @desc    Get purchases due today for admin (across all companies)
+ * @access  Admin
+ */
+router.get(
+  "/admin/due-today",
+  authenticate,
+  purchaseController.getPurchasesDueTodayForAdmin
+);
+
+/**
+ * @route   GET /api/purchases/admin/purchases/bidirectional-analytics
+ * @desc    Get admin bidirectional purchase analytics
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/purchases/bidirectional-analytics",
+  authenticate,
+  purchaseController.getAdminBidirectionalPurchaseAnalytics
+);
+
+/**
+ * @route   GET /api/purchases/admin/purchases/payment-analytics
+ * @desc    Get admin payment analytics for purchases
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/purchases/payment-analytics",
+  authenticate,
+  purchaseController.getAdminPurchasePaymentAnalytics
+);
+
+/**
+ * @route   GET /api/purchases/admin/purchases/supplier-analytics
+ * @desc    Get admin supplier analytics
+ * @access  Private (Admin only)
+ */
+router.get(
+  "/admin/purchases/supplier-analytics",
+  authenticate,
+  purchaseController.getAdminSupplierAnalytics
+);
+
+// ==================== SEARCH ROUTES ====================
+
+/**
+ * @route   GET /api/purchases/search
+ * @desc    Search purchases with advanced filters
+ * @access  Private
+ */
+router.get(
+  "/search",
+  authenticate,
+  validateCompany,
+  purchaseController.searchPurchases
+);
+
+/**
+ * @route   GET /api/purchases/by-supplier/:supplierId
+ * @desc    Get purchases by supplier with enhanced data
+ * @access  Private
+ */
+router.get(
+  "/by-supplier/:supplierId",
+  authenticate,
+  validateCompany,
+  purchaseController.getPurchasesBySupplier
+);
+
+/**
+ * @route   GET /api/purchases/payment-summary/enhanced
+ * @desc    Get enhanced payment summary with detailed breakdown
+ * @access  Private
+ */
+router.get(
+  "/payment-summary/enhanced",
+  authenticate,
+  validateCompany,
+  purchaseController.getEnhancedPaymentSummary
+);
+
+/**
+ * @route   GET /api/purchases/grouped-by-status
+ * @desc    Get purchases grouped by status with enhanced data
+ * @access  Private
+ */
+router.get(
+  "/grouped-by-status",
+  authenticate,
+  validateCompany,
+  purchaseController.getPurchasesGroupedByStatus
 );
 
 // ==================== BASIC CRUD ROUTES ====================
@@ -395,165 +632,21 @@ router.get(
   purchaseController.getPaymentStatus
 );
 
-// ==================== 📊 ADMIN ROUTES (ADD AFTER EXISTING ROUTES) ====================
+// ==================== DAYBOOK ALERT ROUTES (Must be after ID routes) ====================
 
 /**
- * @route   GET /api/purchases/admin/all
- * @desc    Get all purchases for admin (across all companies)
- * @access  Admin
- */
-router.get(
-  "/admin/all",
-  authenticate,
-  // validateAdmin, // Add admin validation middleware if you have one
-  purchaseController.getAllPurchasesForAdmin
-);
-
-/**
- * @route   GET /api/purchases/admin/stats
- * @desc    Get purchase statistics for admin dashboard
- * @access  Admin
- */
-router.get(
-  "/admin/stats",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getPurchaseStatsForAdmin
-);
-
-/**
- * @route   GET /api/purchases/admin/analytics
- * @desc    Get admin analytics for purchases
- * @access  Admin
- */
-router.get(
-  "/admin/analytics",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getAdminPurchaseAnalytics
-);
-
-/**
- * @route   GET /api/purchases/admin/dashboard
- * @desc    Get admin dashboard summary for purchases
- * @access  Admin
- */
-router.get(
-  "/admin/dashboard",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getAdminPurchaseDashboardSummary
-);
-
-/**
- * @route   GET /api/purchases/admin/overdue
- * @desc    Get overdue purchases for admin (across all companies)
- * @access  Admin
- */
-router.get(
-  "/admin/overdue",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getOverduePurchasesForAdmin
-);
-
-/**
- * @route   GET /api/purchases/admin/due-today
- * @desc    Get purchases due today for admin (across all companies)
- * @access  Admin
- */
-router.get(
-  "/admin/due-today",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getPurchasesDueTodayForAdmin
-);
-
-/**
- * @route   GET /api/purchases/admin/purchases/bidirectional-analytics
- * @desc    Get admin bidirectional purchase analytics
- * @access  Private (Admin only)
- */
-router.get(
-  "/admin/purchases/bidirectional-analytics",
-  authenticate,
-  // validateAdmin, // Add if you have admin validation
-  purchaseController.getAdminBidirectionalPurchaseAnalytics
-);
-
-/**
- * @route   GET /api/purchases/admin/purchases/payment-analytics
- * @desc    Get admin payment analytics for purchases
- * @access  Private (Admin only)
- */
-router.get(
-  "/admin/purchases/payment-analytics",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getAdminPurchasePaymentAnalytics
-);
-
-/**
- * @route   GET /api/purchases/admin/purchases/supplier-analytics
- * @desc    Get admin supplier analytics
- * @access  Private (Admin only)
- */
-router.get(
-  "/admin/purchases/supplier-analytics",
-  authenticate,
-  // validateAdmin,
-  purchaseController.getAdminSupplierAnalytics
-);
-
-// ==================== 🔍 ENHANCED SEARCH ROUTES ====================
-
-/**
- * @route   GET /api/purchases/search
- * @desc    Search purchases with advanced filters
+ * @route   PUT /api/purchases/:purchaseId/alert-sent
+ * @desc    Mark payment alert as sent
  * @access  Private
  */
-router.get(
-  "/search",
+router.put(
+  "/:purchaseId/alert-sent",
   authenticate,
   validateCompany,
-  purchaseController.searchPurchases
+  purchaseController.markAlertSent
 );
 
-/**
- * @route   GET /api/purchases/by-supplier/:supplierId
- * @desc    Get purchases by supplier with enhanced data
- * @access  Private
- */
-router.get(
-  "/by-supplier/:supplierId",
-  authenticate,
-  validateCompany,
-  purchaseController.getPurchasesBySupplier
-);
-
-/**
- * @route   GET /api/purchases/payment-summary/enhanced
- * @desc    Get enhanced payment summary with detailed breakdown
- * @access  Private
- */
-router.get(
-  "/payment-summary/enhanced",
-  authenticate,
-  validateCompany,
-  purchaseController.getEnhancedPaymentSummary
-);
-
-/**
- * @route   GET /api/purchases/grouped-by-status
- * @desc    Get purchases grouped by status with enhanced data
- * @access  Private
- */
-router.get(
-  "/grouped-by-status",
-  authenticate,
-  validateCompany,
-  purchaseController.getPurchasesGroupedByStatus
-);
+// ==================== PRINT ROUTES ====================
 
 /**
  * @route   GET /api/purchases/:id/print
@@ -563,18 +656,8 @@ router.get(
 router.get(
   "/:id/print",
   authenticate,
+  validateRequest,
   purchaseController.getPurchaseBillForPrint
 );
-
-/**
- * @route   GET /api/purchases/:id/print/pdf
- * @desc    Generate PDF of purchase bill
- * @access  Private
- */
-// router.get(
-//   "/:id/print/pdf",
-//   authenticate,
-//   purchaseController.generatePurchaseBillPDF
-// );
 
 module.exports = router;

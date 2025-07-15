@@ -5282,6 +5282,326 @@ class SalesService {
       message: "Invoice formatted for email",
     };
   }
+
+  // Frontend/src/services/salesService.js - ADD THESE METHODS
+  // ✅ DayBook-specific methods
+
+  handleError(error) {
+    console.error("🔥 SalesService Error:", error);
+
+    const errorResponse = {
+      success: false,
+      message: error.message || "An error occurred in sales service",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Add specific error context for DayBook operations
+    if (error.message?.includes("daybook")) {
+      errorResponse.context = "daybook_operation";
+      errorResponse.suggestion =
+        "Try refreshing the DayBook data or check your network connection";
+    } else if (error.message?.includes("aging")) {
+      errorResponse.context = "aging_calculation";
+      errorResponse.suggestion =
+        "Aging data will be calculated locally as fallback";
+    }
+
+    return errorResponse;
+  }
+
+  // ✅ REPLACE the existing DayBook methods with these corrected versions:
+
+  /**
+   * ✅ FIXED: Get DayBook sales summary for receivables
+   */
+  async getDaybookSummary(companyId, date) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/daybook-summary", {
+        params: {companyId, date},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "DayBook summary retrieved successfully",
+          };
+        }
+
+        if (responseData && responseData.success === false) {
+          throw new Error(
+            responseData.message || "Failed to get DayBook summary"
+          );
+        }
+
+        return {
+          success: true,
+          data: responseData || {summary: {}, receivables: []},
+          message: "DayBook summary retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales daybook summary:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get receivables aging analysis
+   */
+  async getReceivablesAging(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/receivables-aging", {
+        params: {companyId},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Receivables aging retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {},
+          message: "Receivables aging retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting receivables aging:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get top debtors (customers with highest pending amounts)
+   */
+  async getTopDebtors(companyId, limit = 10) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/top-debtors", {
+        params: {companyId, limit},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Top debtors retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || [],
+          message: "Top debtors retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting top debtors:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get sales trends for DayBook dashboard
+   */
+  async getSalesTrends(companyId, period = "7d") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/trends", {
+        params: {companyId, period},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Sales trends retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {period, trends: []},
+          message: "Sales trends retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting sales trends:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get collection efficiency metrics
+   */
+  async getCollectionEfficiency(companyId, dateFrom, dateTo) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const params = {companyId};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+
+      const response = await api.get("/sales/collection-efficiency", {
+        params,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Collection efficiency retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {overall: {}, paymentMethods: []},
+          message: "Collection efficiency retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting collection efficiency:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get daily cash flow from sales
+   */
+  async getDailyCashFlow(companyId, date) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/daily-cash-flow", {
+        params: {companyId, date},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message || "Daily cash flow retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {
+            date,
+            sales: {},
+            collections: {},
+            netCashFlow: 0,
+          },
+          message: "Daily cash flow retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting daily cash flow:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * ✅ FIXED: Get payment reminders
+   */
+  async getPaymentReminders(companyId, reminderType = "due_today") {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/sales/payment-reminders", {
+        params: {companyId, reminderType},
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        const responseData = response.data;
+
+        if (responseData && responseData.success === true) {
+          return {
+            success: true,
+            data: responseData.data,
+            message:
+              responseData.message ||
+              "Payment reminders retrieved successfully",
+          };
+        }
+
+        return {
+          success: true,
+          data: responseData || {reminderType, count: 0, reminders: []},
+          message: "Payment reminders retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting payment reminders:", error);
+      return this.handleError(error);
+    }
+  }
 }
 
 const salesService = new SalesService();

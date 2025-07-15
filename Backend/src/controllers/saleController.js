@@ -5773,6 +5773,1166 @@ const saleController = {
       });
     }
   },
+
+  // ==================== 📊 DAYBOOK SPECIFIC FUNCTIONS ====================
+
+  /**
+   * ✅ FIXED: Get DayBook sales summary for receivables (replace existing method)
+   */
+  getDaybookSummary: async (req, res) => {
+    try {
+      const {companyId, date = new Date().toISOString().split("T")[0]} =
+        req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      // ✅ Validate companyId format
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get all pending receivables for the company
+      const receivables = await Sale.find({
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      })
+        .populate("customer", "name mobile email")
+        .sort({"payment.dueDate": 1});
+
+      // Categorize receivables
+      const summary = {
+        totalReceivables: 0,
+        overdueReceivables: 0,
+        dueTodayReceivables: 0,
+        upcomingReceivables: 0,
+        overdueCount: 0,
+        dueTodayCount: 0,
+        upcomingCount: 0,
+        totalCount: receivables.length,
+      };
+
+      const categorizedReceivables = receivables.map((sale) => {
+        const pendingAmount = sale.payment?.pendingAmount || 0;
+        summary.totalReceivables += pendingAmount;
+
+        const dueDate = new Date(sale.payment?.dueDate);
+        let type = "pending";
+        let priority = "low";
+
+        if (dueDate < today) {
+          summary.overdueReceivables += pendingAmount;
+          summary.overdueCount++;
+          type = "overdue";
+          priority = "high";
+        } else if (dueDate.getTime() === today.getTime()) {
+          summary.dueTodayReceivables += pendingAmount;
+          summary.dueTodayCount++;
+          type = "due_today";
+          priority = "medium";
+        } else {
+          summary.upcomingReceivables += pendingAmount;
+          summary.upcomingCount++;
+          type = "pending";
+          priority = "low";
+        }
+
+        return {
+          ...sale.toObject(),
+          type,
+          priority,
+          daysOverdue:
+            type === "overdue"
+              ? Math.ceil((today - dueDate) / (1000 * 60 * 60 * 24))
+              : 0,
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          summary,
+          receivables: categorizedReceivables,
+        },
+        message: "Sales daybook summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting sales daybook summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales daybook summary",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get receivables aging analysis
+   */
+  getReceivablesAging: async (req, res) => {
+    try {
+      const {companyId} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const today = new Date();
+
+      const receivables = await Sale.find({
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      })
+        .populate("customer", "name mobile email")
+        .sort({"payment.dueDate": 1});
+
+      const agingBuckets = {
+        current: {count: 0, totalAmount: 0, sales: []},
+        "0-30": {count: 0, totalAmount: 0, sales: []},
+        "30-60": {count: 0, totalAmount: 0, sales: []},
+        "60-90": {count: 0, totalAmount: 0, sales: []},
+        "90+": {count: 0, totalAmount: 0, sales: []},
+      };
+
+      receivables.forEach((sale) => {
+        const pendingAmount = sale.payment?.pendingAmount || 0;
+        const dueDate = sale.payment?.dueDate;
+
+        if (!dueDate) return;
+
+        const due = new Date(dueDate);
+        const daysPastDue = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
+
+        let bucket = "current";
+        if (daysPastDue > 90) bucket = "90+";
+        else if (daysPastDue > 60) bucket = "60-90";
+        else if (daysPastDue > 30) bucket = "30-60";
+        else if (daysPastDue > 0) bucket = "0-30";
+
+        agingBuckets[bucket].count++;
+        agingBuckets[bucket].totalAmount += pendingAmount;
+        agingBuckets[bucket].sales.push({
+          ...sale.toObject(),
+          daysPastDue: Math.max(0, daysPastDue),
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        data: agingBuckets,
+        message: "Receivables aging analysis retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting receivables aging:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get receivables aging analysis",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get top debtors
+   */
+  getTopDebtors: async (req, res) => {
+    try {
+      const {companyId, limit = 10} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const topDebtors = await Sale.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            "payment.pendingAmount": {$gt: 0},
+            status: {$ne: "cancelled"},
+          },
+        },
+        {
+          $group: {
+            _id: "$customer",
+            customerName: {$first: "$customerName"},
+            customerMobile: {$first: "$customerMobile"},
+            totalPending: {$sum: "$payment.pendingAmount"},
+            salesCount: {$sum: 1},
+            oldestSaleDate: {$min: "$invoiceDate"},
+            newestSaleDate: {$max: "$invoiceDate"},
+          },
+        },
+        {
+          $lookup: {
+            from: "parties",
+            localField: "_id",
+            foreignField: "_id",
+            as: "customerDetails",
+          },
+        },
+        {
+          $addFields: {
+            customer: {$arrayElemAt: ["$customerDetails", 0]},
+          },
+        },
+        {
+          $sort: {totalPending: -1},
+        },
+        {
+          $limit: parseInt(limit),
+        },
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: topDebtors,
+        message: "Top debtors retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting top debtors:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get top debtors",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get sales trends
+   */
+  getSalesTrends: async (req, res) => {
+    try {
+      const {companyId, period = "7d"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      // Calculate date range based on period
+      const endDate = new Date();
+      const startDate = new Date();
+
+      switch (period) {
+        case "7d":
+          startDate.setDate(startDate.getDate() - 7);
+          break;
+        case "30d":
+          startDate.setDate(startDate.getDate() - 30);
+          break;
+        case "90d":
+          startDate.setDate(startDate.getDate() - 90);
+          break;
+        default:
+          startDate.setDate(startDate.getDate() - 7);
+      }
+
+      const trends = await Sale.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            invoiceDate: {$gte: startDate, $lte: endDate},
+            status: {$ne: "cancelled"},
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {format: "%Y-%m-%d", date: "$invoiceDate"},
+            },
+            totalSales: {$sum: "$totals.finalTotal"},
+            salesCount: {$sum: 1},
+            avgSaleValue: {$avg: "$totals.finalTotal"},
+          },
+        },
+        {
+          $sort: {_id: 1},
+        },
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {period, trends},
+        message: "Sales trends retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting sales trends:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales trends",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get collection efficiency
+   */
+  getCollectionEfficiency: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        status: {$ne: "cancelled"},
+      };
+
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const efficiency = await Sale.aggregate([
+        {$match: filter},
+        {
+          $group: {
+            _id: null,
+            totalInvoices: {$sum: 1},
+            totalAmount: {$sum: "$totals.finalTotal"},
+            totalCollected: {$sum: "$payment.paidAmount"},
+            totalPending: {$sum: "$payment.pendingAmount"},
+            paidInvoices: {
+              $sum: {$cond: [{$eq: ["$payment.status", "paid"]}, 1, 0]},
+            },
+            partialInvoices: {
+              $sum: {$cond: [{$eq: ["$payment.status", "partial"]}, 1, 0]},
+            },
+          },
+        },
+      ]);
+
+      const result = efficiency[0] || {
+        totalInvoices: 0,
+        totalAmount: 0,
+        totalCollected: 0,
+        totalPending: 0,
+        paidInvoices: 0,
+        partialInvoices: 0,
+      };
+
+      result.collectionRate =
+        result.totalAmount > 0
+          ? ((result.totalCollected / result.totalAmount) * 100).toFixed(2)
+          : 0;
+
+      res.status(200).json({
+        success: true,
+        data: {overall: result},
+        message: "Collection efficiency retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting collection efficiency:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get collection efficiency",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get daily cash flow
+   */
+  getDailyCashFlow: async (req, res) => {
+    try {
+      const {companyId, date} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const targetDate = date ? new Date(date) : new Date();
+
+      const startOfDay = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate()
+      );
+      const endOfDay = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate() + 1
+      );
+
+      const cashFlow = await Sale.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            invoiceDate: {$gte: startOfDay, $lt: endOfDay},
+            status: {$ne: "cancelled"},
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalSales: {$sum: "$totals.finalTotal"},
+            totalCollected: {$sum: "$payment.paidAmount"},
+            salesCount: {$sum: 1},
+            cashSales: {
+              $sum: {
+                $cond: [
+                  {$eq: ["$payment.method", "cash"]},
+                  "$payment.paidAmount",
+                  0,
+                ],
+              },
+            },
+            digitalSales: {
+              $sum: {
+                $cond: [
+                  {$ne: ["$payment.method", "cash"]},
+                  "$payment.paidAmount",
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]);
+
+      const result = cashFlow[0] || {
+        totalSales: 0,
+        totalCollected: 0,
+        salesCount: 0,
+        cashSales: 0,
+        digitalSales: 0,
+      };
+
+      result.netCashFlow = result.totalCollected;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          date,
+          sales: result,
+          collections: result,
+          netCashFlow: result.netCashFlow,
+        },
+        message: "Daily cash flow retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting daily cash flow:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get daily cash flow",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ FIXED: Get payment reminders
+   */
+  getPaymentReminders: async (req, res) => {
+    try {
+      const {companyId, reminderType = "due_today"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid company ID format",
+        });
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let filter = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      };
+
+      switch (reminderType) {
+        case "due_today":
+          const endOfDay = new Date(today);
+          endOfDay.setHours(23, 59, 59, 999);
+          filter["payment.dueDate"] = {$gte: today, $lte: endOfDay};
+          break;
+        case "overdue":
+          filter["payment.dueDate"] = {$lt: today};
+          break;
+        case "upcoming":
+          const nextWeek = new Date(today);
+          nextWeek.setDate(nextWeek.getDate() + 7);
+          filter["payment.dueDate"] = {$gt: today, $lte: nextWeek};
+          break;
+      }
+
+      const reminders = await Sale.find(filter)
+        .populate("customer", "name mobile email")
+        .sort({"payment.dueDate": 1});
+
+      res.status(200).json({
+        success: true,
+        data: {reminderType, count: reminders.length, reminders},
+        message: "Payment reminders retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting payment reminders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get payment reminders",
+        error: error.message,
+      });
+    }
+  },
+  /**
+   * ✅ NEW: Get top debtors (customers with highest pending amounts)
+   */
+  getTopDebtors: async (req, res) => {
+    try {
+      const {companyId, limit = 10} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const topDebtors = await Sale.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            "payment.pendingAmount": {$gt: 0},
+            status: {$ne: "cancelled"},
+          },
+        },
+        {
+          $group: {
+            _id: "$customer",
+            totalPending: {$sum: "$payment.pendingAmount"},
+            invoiceCount: {$sum: 1},
+            oldestInvoiceDate: {$min: "$invoiceDate"},
+            newestInvoiceDate: {$max: "$invoiceDate"},
+            avgInvoiceValue: {$avg: "$totals.finalTotal"},
+            invoices: {
+              $push: {
+                invoiceId: "$_id",
+                invoiceNumber: "$invoiceNumber",
+                invoiceDate: "$invoiceDate",
+                dueDate: "$payment.dueDate",
+                pendingAmount: "$payment.pendingAmount",
+              },
+            },
+          },
+        },
+        {$sort: {totalPending: -1}},
+        {$limit: parseInt(limit)},
+        {
+          $lookup: {
+            from: "parties",
+            localField: "_id",
+            foreignField: "_id",
+            as: "customerDetails",
+          },
+        },
+        {$unwind: "$customerDetails"},
+      ]);
+
+      const formattedDebtors = topDebtors.map((debtor) => ({
+        customerId: debtor._id,
+        customerName: debtor.customerDetails.name,
+        customerMobile: debtor.customerDetails.mobile,
+        customerEmail: debtor.customerDetails.email,
+        totalPending: debtor.totalPending,
+        invoiceCount: debtor.invoiceCount,
+        oldestInvoiceDate: debtor.oldestInvoiceDate,
+        newestInvoiceDate: debtor.newestInvoiceDate,
+        avgInvoiceValue: debtor.avgInvoiceValue,
+        invoices: debtor.invoices,
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: formattedDebtors,
+        message: "Top debtors retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting top debtors:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get top debtors",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get sales trends for DayBook dashboard
+   */
+  getSalesTrends: async (req, res) => {
+    try {
+      const {companyId, period = "7d"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      let startDate;
+      let groupBy;
+
+      switch (period) {
+        case "7d":
+          startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          groupBy = {$dateToString: {format: "%Y-%m-%d", date: "$invoiceDate"}};
+          break;
+        case "30d":
+          startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          groupBy = {$dateToString: {format: "%Y-%m-%d", date: "$invoiceDate"}};
+          break;
+        case "3m":
+          startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+          groupBy = {$dateToString: {format: "%Y-%m", date: "$invoiceDate"}};
+          break;
+        default:
+          startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          groupBy = {$dateToString: {format: "%Y-%m-%d", date: "$invoiceDate"}};
+      }
+
+      const trends = await Sale.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            invoiceDate: {$gte: startDate},
+            status: {$ne: "cancelled"},
+          },
+        },
+        {
+          $group: {
+            _id: groupBy,
+            totalSales: {$sum: "$totals.finalTotal"},
+            totalInvoices: {$sum: 1},
+            paidAmount: {$sum: "$payment.paidAmount"},
+            pendingAmount: {$sum: "$payment.pendingAmount"},
+            avgInvoiceValue: {$avg: "$totals.finalTotal"},
+          },
+        },
+        {$sort: {_id: 1}},
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          period,
+          trends: trends.map((trend) => ({
+            date: trend._id,
+            totalSales: trend.totalSales,
+            totalInvoices: trend.totalInvoices,
+            paidAmount: trend.paidAmount,
+            pendingAmount: trend.pendingAmount,
+            avgInvoiceValue: trend.avgInvoiceValue,
+            collectionRate:
+              trend.totalSales > 0
+                ? ((trend.paidAmount / trend.totalSales) * 100).toFixed(2)
+                : 0,
+          })),
+        },
+        message: "Sales trends retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting sales trends:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get sales trends",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get collection efficiency metrics
+   */
+  getCollectionEfficiency: async (req, res) => {
+    try {
+      const {companyId, dateFrom, dateTo} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const filter = {companyId, status: {$ne: "cancelled"}};
+      if (dateFrom || dateTo) {
+        filter.invoiceDate = {};
+        if (dateFrom) filter.invoiceDate.$gte = new Date(dateFrom);
+        if (dateTo) filter.invoiceDate.$lte = new Date(dateTo);
+      }
+
+      const [collectionMetrics, paymentMethodEfficiency] = await Promise.all([
+        // Overall collection efficiency
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: null,
+              totalInvoiced: {$sum: "$totals.finalTotal"},
+              totalCollected: {$sum: "$payment.paidAmount"},
+              totalPending: {$sum: "$payment.pendingAmount"},
+              totalInvoices: {$sum: 1},
+              paidInvoices: {
+                $sum: {$cond: [{$eq: ["$payment.status", "paid"]}, 1, 0]},
+              },
+              partialInvoices: {
+                $sum: {$cond: [{$eq: ["$payment.status", "partial"]}, 1, 0]},
+              },
+              pendingInvoices: {
+                $sum: {$cond: [{$eq: ["$payment.status", "pending"]}, 1, 0]},
+              },
+              avgDaysToCollection: {
+                $avg: {
+                  $cond: [
+                    {$eq: ["$payment.status", "paid"]},
+                    {
+                      $divide: [
+                        {$subtract: ["$payment.paymentDate", "$invoiceDate"]},
+                        86400000,
+                      ],
+                    },
+                    null,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+
+        // Payment method efficiency
+        Sale.aggregate([
+          {$match: filter},
+          {
+            $group: {
+              _id: "$payment.method",
+              totalAmount: {$sum: "$totals.finalTotal"},
+              collectedAmount: {$sum: "$payment.paidAmount"},
+              invoiceCount: {$sum: 1},
+              paidCount: {
+                $sum: {$cond: [{$eq: ["$payment.status", "paid"]}, 1, 0]},
+              },
+            },
+          },
+        ]),
+      ]);
+
+      const metrics = collectionMetrics[0] || {};
+      const collectionRate =
+        metrics.totalInvoiced > 0
+          ? ((metrics.totalCollected / metrics.totalInvoiced) * 100).toFixed(2)
+          : 0;
+
+      const paymentMethodStats = paymentMethodEfficiency.map((method) => ({
+        method: method._id || "unknown",
+        totalAmount: method.totalAmount,
+        collectedAmount: method.collectedAmount,
+        invoiceCount: method.invoiceCount,
+        paidCount: method.paidCount,
+        collectionRate:
+          method.totalAmount > 0
+            ? ((method.collectedAmount / method.totalAmount) * 100).toFixed(2)
+            : 0,
+        paymentRate:
+          method.invoiceCount > 0
+            ? ((method.paidCount / method.invoiceCount) * 100).toFixed(2)
+            : 0,
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          overall: {
+            totalInvoiced: metrics.totalInvoiced || 0,
+            totalCollected: metrics.totalCollected || 0,
+            totalPending: metrics.totalPending || 0,
+            collectionRate: parseFloat(collectionRate),
+            totalInvoices: metrics.totalInvoices || 0,
+            paidInvoices: metrics.paidInvoices || 0,
+            partialInvoices: metrics.partialInvoices || 0,
+            pendingInvoices: metrics.pendingInvoices || 0,
+            avgDaysToCollection: metrics.avgDaysToCollection || 0,
+          },
+          paymentMethods: paymentMethodStats,
+        },
+        message: "Collection efficiency metrics retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting collection efficiency:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get collection efficiency metrics",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get daily cash flow from sales
+   */
+  getDailyCashFlow: async (req, res) => {
+    try {
+      const {companyId, date = new Date().toISOString().split("T")[0]} =
+        req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const targetDate = new Date(date);
+      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+      const [dailySales, paymentTransactions] = await Promise.all([
+        // Sales created today
+        Sale.aggregate([
+          {
+            $match: {
+              companyId: new mongoose.Types.ObjectId(companyId),
+              invoiceDate: {$gte: startOfDay, $lte: endOfDay},
+              status: {$ne: "cancelled"},
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalSales: {$sum: "$totals.finalTotal"},
+              totalInvoices: {$sum: 1},
+              cashSales: {
+                $sum: {
+                  $cond: [
+                    {$eq: ["$payment.method", "cash"]},
+                    "$payment.paidAmount",
+                    0,
+                  ],
+                },
+              },
+              creditSales: {
+                $sum: {
+                  $cond: [
+                    {$ne: ["$payment.method", "cash"]},
+                    "$totals.finalTotal",
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+
+        // Payment collections today (from payment history)
+        Sale.aggregate([
+          {
+            $match: {
+              companyId: new mongoose.Types.ObjectId(companyId),
+              "paymentHistory.paymentDate": {$gte: startOfDay, $lte: endOfDay},
+            },
+          },
+          {$unwind: "$paymentHistory"},
+          {
+            $match: {
+              "paymentHistory.paymentDate": {$gte: startOfDay, $lte: endOfDay},
+            },
+          },
+          {
+            $group: {
+              _id: "$paymentHistory.method",
+              totalCollected: {$sum: "$paymentHistory.amount"},
+              transactionCount: {$sum: 1},
+            },
+          },
+        ]),
+      ]);
+
+      const salesData = dailySales[0] || {
+        totalSales: 0,
+        totalInvoices: 0,
+        cashSales: 0,
+        creditSales: 0,
+      };
+
+      const paymentCollections = paymentTransactions.reduce((acc, payment) => {
+        acc[payment._id || "unknown"] = {
+          amount: payment.totalCollected,
+          count: payment.transactionCount,
+        };
+        return acc;
+      }, {});
+
+      const totalCollections = paymentTransactions.reduce(
+        (sum, payment) => sum + payment.totalCollected,
+        0
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          date: date,
+          sales: salesData,
+          collections: {
+            total: totalCollections,
+            byMethod: paymentCollections,
+          },
+          netCashFlow: salesData.cashSales + totalCollections,
+          summary: {
+            totalCashIn: salesData.cashSales + totalCollections,
+            totalCreditSales: salesData.creditSales,
+            totalTransactions:
+              salesData.totalInvoices + paymentTransactions.length,
+          },
+        },
+        message: "Daily cash flow retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error getting daily cash flow:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get daily cash flow",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Get quick payment reminders data
+   */
+  getPaymentReminders: async (req, res) => {
+    try {
+      const {companyId, reminderType = "due_today"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+        });
+      }
+
+      const today = new Date();
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      let filter = {
+        companyId,
+        "payment.pendingAmount": {$gt: 0},
+        status: {$ne: "cancelled"},
+      };
+
+      switch (reminderType) {
+        case "overdue":
+          filter["payment.dueDate"] = {$lt: today};
+          break;
+        case "due_today":
+          filter["payment.dueDate"] = {
+            $gte: new Date(today.setHours(0, 0, 0, 0)),
+            $lt: new Date(today.setHours(23, 59, 59, 999)),
+          };
+          break;
+        case "due_tomorrow":
+          filter["payment.dueDate"] = {
+            $gte: new Date(tomorrow.setHours(0, 0, 0, 0)),
+            $lt: new Date(tomorrow.setHours(23, 59, 59, 999)),
+          };
+          break;
+        case "due_this_week":
+          filter["payment.dueDate"] = {
+            $gte: today,
+            $lte: nextWeek,
+          };
+          break;
+        default:
+          filter["payment.dueDate"] = {
+            $gte: new Date(today.setHours(0, 0, 0, 0)),
+            $lt: new Date(today.setHours(23, 59, 59, 999)),
+          };
+      }
+
+      const reminders = await Sale.find(filter)
+        .populate("customer", "name mobile email")
+        .sort({"payment.dueDate": 1})
+        .limit(50);
+
+      const reminderData = reminders.map((sale) => ({
+        invoiceId: sale._id,
+        invoiceNumber: sale.invoiceNumber,
+        customerName: sale.customer?.name || "Unknown",
+        customerMobile: sale.customer?.mobile,
+        customerEmail: sale.customer?.email,
+        pendingAmount: sale.payment.pendingAmount,
+        dueDate: sale.payment.dueDate,
+        daysOverdue:
+          reminderType === "overdue"
+            ? Math.ceil(
+                (today - new Date(sale.payment.dueDate)) / (1000 * 60 * 60 * 24)
+              )
+            : 0,
+        priority:
+          reminderType === "overdue"
+            ? "high"
+            : reminderType === "due_today"
+            ? "medium"
+            : "low",
+        reminderSent: false, // You can track this in your system
+        lastReminderDate: null, // You can track this in your system
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          reminderType,
+          count: reminderData.length,
+          totalPendingAmount: reminderData.reduce(
+            (sum, item) => sum + item.pendingAmount,
+            0
+          ),
+          reminders: reminderData,
+        },
+        message: `Payment reminders (${reminderType}) retrieved successfully`,
+      });
+    } catch (error) {
+      console.error("Error getting payment reminders:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get payment reminders",
+        error: error.message,
+      });
+    }
+  },
+
+  /**
+   * ✅ NEW: Mark payment reminder as sent
+   */
+  markReminderSent: async (req, res) => {
+    try {
+      const {invoiceId} = req.params;
+      const {reminderType, sentAt = new Date()} = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(invoiceId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid invoice ID",
+        });
+      }
+
+      const sale = await Sale.findByIdAndUpdate(
+        invoiceId,
+        {
+          $push: {
+            paymentReminders: {
+              type: reminderType,
+              sentAt: new Date(sentAt),
+              sentBy: req.user?.id || "system",
+            },
+          },
+        },
+        {new: true}
+      );
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          message: "Sale not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          invoiceId: sale._id,
+          invoiceNumber: sale.invoiceNumber,
+          reminderSent: true,
+          sentAt: sentAt,
+        },
+        message: "Payment reminder marked as sent",
+      });
+    } catch (error) {
+      console.error("Error marking reminder as sent:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to mark reminder as sent",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = saleController;

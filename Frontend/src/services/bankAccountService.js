@@ -166,14 +166,265 @@ const bankAccountService = {
     }
   },
 
+  // ✅ NEW: Add getAllAccountsWithBalances method used by DayBook and CashBankTab
+  async getAllAccountsWithBalances(companyId, options = {}) {
+    try {
+      if (!companyId) {
+        throw new Error(
+          "Company ID is required to fetch bank accounts with balances"
+        );
+      }
+
+      // Use existing getBankAccounts method with enhanced options
+      const response = await this.getBankAccounts(companyId, {
+        active: "true",
+        limit: options.limit || 100,
+        type: "all", // Get both bank and cash accounts
+        ...options,
+      });
+
+      if (!response.success) {
+        throw new Error(
+          response.message || "Failed to get bank accounts with balances"
+        );
+      }
+
+      // Get accounts from response
+      const accounts =
+        response.banks || response.data?.banks || response.data?.accounts || [];
+
+      // ✅ Enhance each account with balance information and additional fields
+      const accountsWithBalances = accounts.map((account) => ({
+        _id: account._id || account.id,
+        id: account._id || account.id,
+        accountName: account.accountName || account.name || "Unknown Account",
+        bankName: account.bankName || account.name || "Unknown Bank",
+        accountNumber: account.accountNumber || "N/A",
+        branch: account.branch || account.branchName || "Main Branch",
+        ifscCode: account.ifscCode || "",
+        type: account.type || account.accountType || "bank",
+        accountType: account.accountType || account.type || "bank",
+
+        // ✅ Balance information
+        currentBalance: account.currentBalance || account.balance || 0,
+        balance: account.currentBalance || account.balance || 0,
+        availableBalance: account.currentBalance || account.balance || 0,
+
+        // ✅ Status and flags
+        isActive: account.isActive !== false,
+        isCash: (account.type || account.accountType) === "cash",
+        isBank:
+          (account.type || account.accountType) === "bank" ||
+          !((account.type || account.accountType) === "cash"),
+
+        // ✅ Additional fields for UI
+        displayName: this.formatAccountDisplayName(account),
+        balanceLastUpdated:
+          account.updatedAt ||
+          account.balanceLastUpdated ||
+          new Date().toISOString(),
+
+        // ✅ Metadata
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      }));
+
+      // ✅ Sort accounts: Cash first, then banks by name
+      accountsWithBalances.sort((a, b) => {
+        // Cash accounts first
+        if (a.isCash && !b.isCash) return -1;
+        if (!a.isCash && b.isCash) return 1;
+
+        // Then by account name
+        return (a.accountName || "").localeCompare(b.accountName || "");
+      });
+
+      return {
+        success: true,
+        accounts: accountsWithBalances,
+        data: {
+          accounts: accountsWithBalances,
+          banks: accountsWithBalances,
+          bankAccounts: accountsWithBalances,
+        },
+        banks: accountsWithBalances,
+        total: accountsWithBalances.length,
+        message: `${accountsWithBalances.length} bank accounts with balances retrieved successfully`,
+        // ✅ Summary information
+        summary: {
+          totalAccounts: accountsWithBalances.length,
+          cashAccounts: accountsWithBalances.filter((acc) => acc.isCash).length,
+          bankAccounts: accountsWithBalances.filter((acc) => acc.isBank).length,
+          totalBalance: accountsWithBalances.reduce(
+            (sum, acc) => sum + (acc.currentBalance || 0),
+            0
+          ),
+          cashBalance: accountsWithBalances
+            .filter((acc) => acc.isCash)
+            .reduce((sum, acc) => sum + (acc.currentBalance || 0), 0),
+          bankBalance: accountsWithBalances
+            .filter((acc) => acc.isBank)
+            .reduce((sum, acc) => sum + (acc.currentBalance || 0), 0),
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        accounts: [],
+        data: {
+          accounts: [],
+          banks: [],
+          bankAccounts: [],
+        },
+        banks: [],
+        total: 0,
+        message: error.message || "Failed to get bank accounts with balances",
+        error: error.response?.data || error.message,
+        summary: {
+          totalAccounts: 0,
+          cashAccounts: 0,
+          bankAccounts: 0,
+          totalBalance: 0,
+          cashBalance: 0,
+          bankBalance: 0,
+        },
+      };
+    }
+  },
+
+  // ✅ NEW: Add getBankAccountBalance method used by service calls
+  async getBankAccountBalance(companyId, accountId) {
+    try {
+      if (!companyId || !accountId) {
+        throw new Error("Company ID and Account ID are required");
+      }
+
+      const response = await api.get(`/bank-accounts/${accountId}/balance`);
+
+      if (!response.data.success) {
+        throw new Error(
+          response.data.message || "Failed to get account balance"
+        );
+      }
+
+      return {
+        success: true,
+        data: response.data.data || response.data,
+        message:
+          response.data.message || "Account balance retrieved successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: {
+          accountId,
+          balance: 0,
+          availableBalance: 0,
+          clearedBalance: 0,
+          pendingAmount: 0,
+        },
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get account balance",
+      };
+    }
+  },
+
+  // ✅ NEW: Add getBankAccountTransactions method used by service calls
+  async getBankAccountTransactions(companyId, accountId, options = {}) {
+    try {
+      if (!companyId || !accountId) {
+        throw new Error("Company ID and Account ID are required");
+      }
+
+      const params = {
+        limit: options.limit || 50,
+        page: options.page || 1,
+        ...options,
+      };
+
+      const response = await api.get(
+        `/bank-accounts/${accountId}/transactions`,
+        {params}
+      );
+
+      if (!response.data.success) {
+        throw new Error(
+          response.data.message || "Failed to get account transactions"
+        );
+      }
+
+      return {
+        success: true,
+        data: response.data.data || response.data,
+        message:
+          response.data.message ||
+          "Account transactions retrieved successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: {
+          transactions: [],
+          pagination: {
+            page: options.page || 1,
+            limit: options.limit || 50,
+            total: 0,
+            totalPages: 0,
+          },
+        },
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get account transactions",
+      };
+    }
+  },
+
+  // ✅ NEW: Add getCashAccounts method used by service calls
+  async getCashAccounts(companyId) {
+    try {
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const response = await api.get("/bank-accounts/types/cash");
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to get cash accounts");
+      }
+
+      const cashAccounts = response.data.data || response.data.banks || [];
+
+      return {
+        success: true,
+        data: cashAccounts,
+        banks: cashAccounts,
+        total: cashAccounts.length,
+        message:
+          response.data.message || "Cash accounts retrieved successfully",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: [],
+        banks: [],
+        total: 0,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to get cash accounts",
+      };
+    }
+  },
+
   // Add this method if it doesn't exist
   async getBankAccountsByCompany(companyId) {
     try {
       if (!companyId) {
         throw new Error("Company ID is required");
       }
-
-      console.log("🏦 Getting bank accounts for company:", companyId);
 
       const response = await api.get(`/companies/${companyId}/bank-accounts`, {
         params: {
@@ -204,7 +455,6 @@ const bankAccountService = {
         );
       }
     } catch (error) {
-      console.error("❌ Error fetching bank accounts:", error);
       return {
         success: false,
         data: [],
@@ -562,58 +812,85 @@ const bankAccountService = {
 
   async getActiveAccountsForPayment(companyId, paymentType = "all") {
     try {
-      const response = await this.getBankAccounts(companyId, {
-        active: "true",
-        limit: 100,
+      // ✅ ENHANCED: Use the dedicated route from your backend
+      const response = await api.get("/bank-accounts/payment/active", {
+        params: {paymentType},
       });
 
-      if (!response.success) {
-        return response;
+      if (response.data && response.data.success !== false) {
+        const accounts = response.data.data || response.data.banks || [];
+
+        return {
+          success: true,
+          data: accounts,
+          banks: accounts,
+          total: accounts.length,
+          message:
+            response.data.message ||
+            `Active accounts for ${paymentType} payments retrieved successfully`,
+        };
+      } else {
+        throw new Error(
+          response.data?.message || "Failed to get active payment accounts"
+        );
       }
-
-      let filteredAccounts = response.banks || response.data?.banks || [];
-
-      switch (paymentType) {
-        case "bank_transfer":
-        case "Bank":
-          filteredAccounts = filteredAccounts.filter(
-            (account) =>
-              account.type === "bank" &&
-              account.accountNumber &&
-              account.ifscCode
-          );
-          break;
-        case "cash":
-        case "Cash":
-          filteredAccounts = filteredAccounts.filter(
-            (account) => account.type === "cash"
-          );
-          break;
-        default:
-          break;
-      }
-
-      return {
-        success: true,
-        data: filteredAccounts,
-        banks: filteredAccounts,
-        total: filteredAccounts.length,
-        message: `Active accounts for ${paymentType} payments retrieved successfully`,
-      };
     } catch (error) {
-      return {
-        success: false,
-        data: [],
-        banks: [],
-        total: 0,
-        message: error.message || "Failed to get active accounts for payment",
-      };
+      // ✅ Fallback to existing getBankAccounts method
+      try {
+        const response = await this.getBankAccounts(companyId, {
+          active: "true",
+          limit: 100,
+        });
+
+        if (!response.success) {
+          return response;
+        }
+
+        let filteredAccounts = response.banks || response.data?.banks || [];
+
+        switch (paymentType) {
+          case "bank_transfer":
+          case "Bank":
+            filteredAccounts = filteredAccounts.filter(
+              (account) =>
+                account.type === "bank" &&
+                account.accountNumber &&
+                account.ifscCode
+            );
+            break;
+          case "cash":
+          case "Cash":
+            filteredAccounts = filteredAccounts.filter(
+              (account) => account.type === "cash"
+            );
+            break;
+          default:
+            break;
+        }
+
+        return {
+          success: true,
+          data: filteredAccounts,
+          banks: filteredAccounts,
+          total: filteredAccounts.length,
+          message: `Active accounts for ${paymentType} payments retrieved successfully (fallback)`,
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          data: [],
+          banks: [],
+          total: 0,
+          message: error.message || "Failed to get active accounts for payment",
+        };
+      }
     }
   },
 };
 
 export default bankAccountService;
 
+// ✅ UPDATED: Export all methods including new ones
 export const {
   getBankAccounts,
   getBankAccount,
@@ -627,4 +904,10 @@ export const {
   formatAccountDisplayName,
   formatCurrency,
   getActiveAccountsForPayment,
+  getBankAccountsByCompany,
+  // ✅ NEW EXPORTS
+  getAllAccountsWithBalances,
+  getBankAccountBalance,
+  getBankAccountTransactions,
+  getCashAccounts,
 } = bankAccountService;

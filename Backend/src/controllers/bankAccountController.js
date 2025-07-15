@@ -40,7 +40,7 @@ class BankAccountController {
 
       const accounts = await BankAccount.find(query)
         .select(
-          "accountName bankName accountNumber ifscCode branchName type currentBalance isActive createdAt"
+          "accountName bankName accountNumber ifscCode branchName type currentBalance isActive createdAt updatedAt"
         )
         .sort({accountName: 1})
         .limit(parseInt(limit))
@@ -58,7 +58,12 @@ class BankAccountController {
         accountType: account.type || "bank",
         type: account.type || "bank",
         currentBalance: account.currentBalance || 0,
+        balance: account.currentBalance || 0,
         isActive: account.isActive !== false,
+        isCash: (account.type || "bank") === "cash",
+        isBank: (account.type || "bank") === "bank",
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
       }));
 
       const totalAccounts = await BankAccount.countDocuments(query);
@@ -73,60 +78,273 @@ class BankAccountController {
         message: "Bank accounts retrieved successfully",
       });
     } catch (error) {
-      const mockBankAccounts = [
-        {
-          _id: "mock_1",
-          id: "mock_1",
-          bankName: "State Bank of India",
-          name: "SBI Main Account",
-          accountName: "SBI Main Account",
-          accountNumber: "****1234",
-          branch: "Main Branch",
-          ifscCode: "SBIN0000123",
-          accountType: "current",
-          type: "bank",
-          currentBalance: 50000,
-          isActive: true,
-        },
-        {
-          _id: "mock_2",
-          id: "mock_2",
-          bankName: "HDFC Bank",
-          name: "HDFC Corporate",
-          accountName: "HDFC Corporate",
-          accountNumber: "****5678",
-          branch: "Corporate Branch",
-          ifscCode: "HDFC0000456",
-          accountType: "savings",
-          type: "bank",
-          currentBalance: 75000,
-          isActive: true,
-        },
-        {
-          _id: "mock_3",
-          id: "mock_3",
-          bankName: "Cash Account",
-          name: "Cash Account",
-          accountName: "Cash Account",
-          accountNumber: "CASH-001",
-          branch: "Main Office",
-          ifscCode: "",
-          accountType: "cash",
-          type: "cash",
-          currentBalance: 25000,
-          isActive: true,
-        },
-      ];
+      console.error("❌ Error fetching bank accounts:", error);
+      res.status(500).json({
+        success: false,
+        data: [],
+        banks: [],
+        bankAccounts: [],
+        total: 0,
+        count: 0,
+        message: "Failed to fetch bank accounts",
+        code: "FETCH_ERROR",
+        error:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : "Internal server error",
+      });
+    }
+  }
+
+  async getBankAccountBalance(req, res) {
+    try {
+      const companyId = req.companyId || req.params.companyId;
+      const {accountId} = req.params;
+
+      if (!companyId || !accountId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Account ID are required",
+          code: "MISSING_REQUIRED_IDS",
+        });
+      }
+
+      const account = await BankAccount.findOne({
+        _id: accountId,
+        companyId: mongoose.Types.ObjectId.isValid(companyId)
+          ? new mongoose.Types.ObjectId(companyId)
+          : companyId,
+        isActive: true,
+      }).lean();
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: "Bank account not found or inactive",
+          code: "ACCOUNT_NOT_FOUND",
+        });
+      }
+
+      const balanceData = {
+        accountId: account._id,
+        balance: account.currentBalance || 0,
+        availableBalance: account.currentBalance || 0,
+        clearedBalance: account.currentBalance || 0,
+        pendingAmount: 0,
+        lastUpdated:
+          account.updatedAt || account.createdAt || new Date().toISOString(),
+        currency: "INR",
+      };
 
       res.json({
         success: true,
-        data: mockBankAccounts,
-        banks: mockBankAccounts,
-        bankAccounts: mockBankAccounts,
-        total: mockBankAccounts.length,
-        count: mockBankAccounts.length,
-        message: "Bank accounts retrieved (fallback data)",
-        isMockData: true,
+        data: balanceData,
+        message: "Bank account balance retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting bank account balance:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get bank account balance",
+        code: "BALANCE_FETCH_ERROR",
+        error:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : "Internal server error",
+      });
+    }
+  }
+
+  async getBankAccountTransactions(req, res) {
+    try {
+      const companyId = req.companyId || req.params.companyId;
+      const {accountId} = req.params;
+      const {
+        dateFrom,
+        dateTo,
+        limit = 50,
+        page = 1,
+        transactionType = "all",
+      } = req.query;
+
+      if (!companyId || !accountId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Account ID are required",
+          code: "MISSING_REQUIRED_IDS",
+        });
+      }
+
+      const account = await BankAccount.findOne({
+        _id: accountId,
+        companyId: mongoose.Types.ObjectId.isValid(companyId)
+          ? new mongoose.Types.ObjectId(companyId)
+          : companyId,
+        isActive: true,
+      }).lean();
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: "Bank account not found or inactive",
+          code: "ACCOUNT_NOT_FOUND",
+        });
+      }
+
+      // TODO: Implement actual transaction history from Transaction model
+      // For now, return empty transactions until Transaction model is implemented
+      const transactions = [];
+
+      res.json({
+        success: true,
+        data: {
+          transactions,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: transactions.length,
+            totalPages: Math.ceil(transactions.length / parseInt(limit)),
+          },
+        },
+        message: "Account transactions retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting account transactions:", error);
+      res.status(500).json({
+        success: false,
+        data: {
+          transactions: [],
+          pagination: {page: 1, limit: 50, total: 0, totalPages: 0},
+        },
+        message: "Failed to get account transactions",
+        code: "TRANSACTIONS_FETCH_ERROR",
+      });
+    }
+  }
+
+  async getCashAccounts(req, res) {
+    try {
+      const companyId = req.companyId || req.params.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+          code: "MISSING_COMPANY_ID",
+        });
+      }
+
+      const cashAccounts = await BankAccount.find({
+        companyId: mongoose.Types.ObjectId.isValid(companyId)
+          ? new mongoose.Types.ObjectId(companyId)
+          : companyId,
+        type: "cash",
+        isActive: true,
+      }).lean();
+
+      const formattedCashAccounts = cashAccounts.map((account) => ({
+        _id: account._id,
+        id: account._id,
+        accountName: account.accountName,
+        bankName: account.bankName || "Cash",
+        accountNumber: account.accountNumber || "CASH",
+        type: "cash",
+        currentBalance: account.currentBalance || 0,
+        balance: account.currentBalance || 0,
+        isActive: account.isActive,
+        isCash: true,
+        isBank: false,
+      }));
+
+      res.json({
+        success: true,
+        data: formattedCashAccounts,
+        banks: formattedCashAccounts,
+        total: formattedCashAccounts.length,
+        message: "Cash accounts retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ Error getting cash accounts:", error);
+      res.status(500).json({
+        success: false,
+        data: [],
+        banks: [],
+        total: 0,
+        message: "Failed to get cash accounts",
+        code: "CASH_ACCOUNTS_ERROR",
+      });
+    }
+  }
+
+  async getActiveAccountsForPayment(req, res) {
+    try {
+      const companyId = req.companyId || req.params.companyId;
+      const {paymentType = "all"} = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+          code: "MISSING_COMPANY_ID",
+        });
+      }
+
+      let query = {
+        companyId: mongoose.Types.ObjectId.isValid(companyId)
+          ? new mongoose.Types.ObjectId(companyId)
+          : companyId,
+        isActive: true,
+      };
+
+      // Filter by payment type
+      switch (paymentType) {
+        case "bank_transfer":
+        case "Bank":
+          query.type = "bank";
+          break;
+        case "cash":
+        case "Cash":
+          query.type = "cash";
+          break;
+        default:
+          break;
+      }
+
+      const accounts = await BankAccount.find(query)
+        .select(
+          "accountName bankName accountNumber ifscCode type currentBalance"
+        )
+        .lean();
+
+      const formattedAccounts = accounts.map((account) => ({
+        _id: account._id,
+        id: account._id,
+        accountName: account.accountName,
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+        ifscCode: account.ifscCode,
+        type: account.type,
+        currentBalance: account.currentBalance || 0,
+        balance: account.currentBalance || 0,
+        isActive: true,
+      }));
+
+      res.json({
+        success: true,
+        data: formattedAccounts,
+        banks: formattedAccounts,
+        total: formattedAccounts.length,
+        message: `Active accounts for ${paymentType} payments retrieved successfully`,
+      });
+    } catch (error) {
+      console.error("❌ Error getting active payment accounts:", error);
+      res.status(500).json({
+        success: false,
+        data: [],
+        banks: [],
+        total: 0,
+        message: "Failed to get active payment accounts",
+        code: "PAYMENT_ACCOUNTS_ERROR",
       });
     }
   }
@@ -171,14 +389,17 @@ class BankAccountController {
         accountType: account.type || "bank",
         type: account.type || "bank",
         currentBalance: account.currentBalance || 0,
+        balance: account.currentBalance || 0,
         isActive: account.isActive !== false,
       };
 
       res.json({
         success: true,
         data: formattedAccount,
+        message: "Bank account retrieved successfully",
       });
     } catch (error) {
+      console.error("❌ Error fetching bank account:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch bank account",
@@ -211,6 +432,7 @@ class BankAccountController {
         ifscCode,
         branchName,
         accountType = "bank",
+        type,
         openingBalance = 0,
       } = req.body;
 
@@ -222,18 +444,20 @@ class BankAccountController {
         });
       }
 
-      if (!bankName?.trim()) {
+      const finalAccountType = type || accountType;
+
+      if (finalAccountType !== "cash" && !bankName?.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Bank name is required",
+          message: "Bank name is required for non-cash accounts",
           code: "VALIDATION_ERROR",
         });
       }
 
-      if (!accountNumber?.trim()) {
+      if (finalAccountType !== "cash" && !accountNumber?.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Account number is required",
+          message: "Account number is required for non-cash accounts",
           code: "VALIDATION_ERROR",
         });
       }
@@ -243,11 +467,13 @@ class BankAccountController {
           ? new mongoose.Types.ObjectId(companyId)
           : companyId,
         accountName: accountName.trim(),
-        bankName: bankName.trim(),
-        accountNumber: accountNumber.trim(),
+        bankName:
+          bankName?.trim() || (finalAccountType === "cash" ? "Cash" : ""),
+        accountNumber:
+          accountNumber?.trim() || (finalAccountType === "cash" ? "CASH" : ""),
         ifscCode: ifscCode?.trim() || "",
         branchName: branchName?.trim() || "Main Branch",
-        type: accountType,
+        type: finalAccountType,
         openingBalance: parseFloat(openingBalance) || 0,
         currentBalance: parseFloat(openingBalance) || 0,
         isActive: true,
@@ -275,6 +501,7 @@ class BankAccountController {
         accountType: bankAccount.type,
         type: bankAccount.type,
         currentBalance: bankAccount.currentBalance,
+        balance: bankAccount.currentBalance,
         isActive: bankAccount.isActive,
       };
 
@@ -284,6 +511,8 @@ class BankAccountController {
         data: formattedAccount,
       });
     } catch (error) {
+      console.error("❌ Error creating bank account:", error);
+
       if (error.code === 11000) {
         return res.status(400).json({
           success: false,
@@ -381,6 +610,7 @@ class BankAccountController {
         accountType: account.type,
         type: account.type,
         currentBalance: account.currentBalance,
+        balance: account.currentBalance,
         isActive: account.isActive,
       };
 
@@ -390,6 +620,7 @@ class BankAccountController {
         data: formattedAccount,
       });
     } catch (error) {
+      console.error("❌ Error updating bank account:", error);
       res.status(500).json({
         success: false,
         message: "Failed to update bank account",
@@ -439,6 +670,7 @@ class BankAccountController {
         });
       }
 
+      // Soft delete by setting isActive to false
       account.isActive = false;
       account.deletedAt = new Date();
       await account.save();
@@ -452,6 +684,7 @@ class BankAccountController {
         },
       });
     } catch (error) {
+      console.error("❌ Error deleting bank account:", error);
       res.status(500).json({
         success: false,
         message: "Failed to delete bank account",
@@ -493,6 +726,12 @@ class BankAccountController {
         bankAccounts: accounts.filter((acc) => acc.type === "bank" || !acc.type)
           .length,
         cashAccounts: accounts.filter((acc) => acc.type === "cash").length,
+        totalBankBalance: accounts
+          .filter((acc) => acc.type === "bank" || !acc.type)
+          .reduce((sum, acc) => sum + (acc.currentBalance || 0), 0),
+        totalCashBalance: accounts
+          .filter((acc) => acc.type === "cash")
+          .reduce((sum, acc) => sum + (acc.currentBalance || 0), 0),
       };
 
       res.json({
@@ -505,10 +744,13 @@ class BankAccountController {
             bankName: account.bankName,
             type: account.type || "bank",
             currentBalance: account.currentBalance || 0,
+            balance: account.currentBalance || 0,
           })),
         },
+        message: "Account summary retrieved successfully",
       });
     } catch (error) {
+      console.error("❌ Error fetching account summary:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch account summary",
@@ -583,6 +825,20 @@ class BankAccountController {
         newBalance = previousBalance + transactionAmount;
       } else {
         newBalance = previousBalance - transactionAmount;
+
+        // Check for negative balance
+        if (newBalance < 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Insufficient balance for this transaction",
+            code: "INSUFFICIENT_BALANCE",
+            data: {
+              currentBalance: previousBalance,
+              requestedAmount: transactionAmount,
+              shortfall: Math.abs(newBalance),
+            },
+          });
+        }
       }
 
       account.currentBalance = newBalance;
@@ -605,6 +861,7 @@ class BankAccountController {
         },
       });
     } catch (error) {
+      console.error("❌ Error updating account balance:", error);
       res.status(500).json({
         success: false,
         message: "Failed to update account balance",
@@ -743,6 +1000,7 @@ class BankAccountController {
         await session.endSession();
       }
     } catch (error) {
+      console.error("❌ Error processing transfer:", error);
       res.status(500).json({
         success: false,
         message: "Failed to process transfer",
@@ -820,10 +1078,17 @@ class BankAccountController {
         success: true,
         isValid: validationErrors.length === 0,
         errors: validationErrors,
+        message:
+          validationErrors.length === 0
+            ? "Validation passed"
+            : "Validation failed",
       });
     } catch (error) {
+      console.error("❌ Error validating account details:", error);
       res.status(500).json({
         success: false,
+        isValid: false,
+        errors: ["Validation check failed"],
         message: "Failed to validate account details",
         code: "VALIDATION_ERROR",
         error:
@@ -835,19 +1100,66 @@ class BankAccountController {
   }
 
   async getUPIAccounts(req, res) {
-    res.status(501).json({
-      success: false,
-      message: "UPI accounts feature not implemented yet",
-      code: "NOT_IMPLEMENTED",
-    });
+    try {
+      const companyId = req.companyId || req.params.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID is required",
+          code: "MISSING_COMPANY_ID",
+        });
+      }
+
+      // TODO: Implement UPI accounts functionality when UPI model is created
+      res.status(501).json({
+        success: false,
+        message: "UPI accounts feature not implemented yet",
+        code: "NOT_IMPLEMENTED",
+        data: [],
+        banks: [],
+        total: 0,
+      });
+    } catch (error) {
+      console.error("❌ Error getting UPI accounts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get UPI accounts",
+        code: "UPI_ACCOUNTS_ERROR",
+        data: [],
+        banks: [],
+        total: 0,
+      });
+    }
   }
 
   async adjustBalance(req, res) {
-    res.status(501).json({
-      success: false,
-      message: "Balance adjustment feature not implemented yet",
-      code: "NOT_IMPLEMENTED",
-    });
+    try {
+      const companyId = req.companyId || req.params.companyId;
+      const {accountId} = req.params;
+
+      if (!companyId || !accountId) {
+        return res.status(400).json({
+          success: false,
+          message: "Company ID and Account ID are required",
+          code: "MISSING_REQUIRED_IDS",
+        });
+      }
+
+      // TODO: Implement balance adjustment functionality
+      res.status(501).json({
+        success: false,
+        message: "Balance adjustment feature not implemented yet",
+        code: "NOT_IMPLEMENTED",
+      });
+    } catch (error) {
+      console.error("❌ Error adjusting balance:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to adjust balance",
+        code: "BALANCE_ADJUST_ERROR",
+      });
+    }
   }
 }
 
