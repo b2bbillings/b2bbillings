@@ -92,9 +92,11 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
   // ✅ Load initial data only once when component mounts
   useEffect(() => {
     let isMounted = true;
+    let hasLoaded = false; // Add this flag to prevent multiple loads
 
     const loadData = async () => {
-      if (isMounted && companyId && userId) {
+      if (isMounted && companyId && userId && !hasLoaded) {
+        hasLoaded = true; // Set flag immediately
         try {
           setIsLoading(true);
           setError(null);
@@ -102,6 +104,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           await Promise.all([loadStaffMembers(), loadTasks()]);
           console.log("✅ Initial data loaded successfully");
         } catch (error) {
+          hasLoaded = false; // Reset flag on error
           if (isMounted) {
             console.error("❌ Failed to load initial data:", error);
             setError("Failed to load initial data. Please try again.");
@@ -122,7 +125,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     };
   }, [companyId, userId]); // Only depend on stable IDs
 
-  // ✅ Load tasks when specific filter values change (with debounce)
+  // ✅ Load tasks when specific filter values change (with debounce) - FIXED
   useEffect(() => {
     let isMounted = true;
     let timeoutId;
@@ -130,15 +133,15 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     const debouncedLoadTasks = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
-        if (isMounted && companyId && userId) {
+        if (isMounted && companyId && userId && !isLoading) {
           console.log("📋 Loading tasks due to filter change...");
           await loadTasks();
         }
       }, 300); // 300ms debounce
     };
 
-    // Only load if we have initial data and not currently loading
-    if (companyId && userId && !isLoading) {
+    // Only load if we have initial data and filters have actually changed
+    if (companyId && userId) {
       debouncedLoadTasks();
     }
 
@@ -153,37 +156,14 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     filters.taskType,
     filters.dateRange,
     pagination.currentPage,
-    companyId,
-    userId,
-    // ❌ Remove filters.search from here - handle separately
+    // ❌ REMOVED: companyId, userId - these cause the infinite loop
   ]);
 
-  // ✅ Handle search separately with longer debounce
-  useEffect(() => {
-    let timeoutId;
-
-    const debouncedSearch = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        console.log("🔍 Applying search filter:", filters.search);
-        applyFilters(); // Only apply client-side filtering for search
-      }, 500); // 500ms debounce for search
-    };
-
-    if (filters.search.trim()) {
-      debouncedSearch();
-    } else {
-      applyFilters(); // Apply immediately when search is cleared
-    }
-
-    return () => clearTimeout(timeoutId);
-  }, [filters.search]); // Only depend on search
-
-  // ✅ Apply filters when tasks change (but not when filters change)
+  // ✅ Apply filters when tasks change (but not when filters change) - FIXED
   useEffect(() => {
     console.log("🔄 Applying filters to", tasks.length, "tasks");
     applyFilters();
-  }, [tasks]); // Only when tasks array changes
+  }, [tasks, filters.search]); // Only depend on tasks and search
 
   // ✅ Load staff members with proper error handling
   const loadStaffMembers = useCallback(async () => {
@@ -562,112 +542,122 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           </Alert>
         )}
 
-        {/* Filters and Actions */}
+        {/* Filters and Actions - UPDATED RESPONSIVE LAYOUT */}
         <div className="filters-section">
-          <div className="filters-row">
-            <div className="filters-left">
-              {/* Status Filter */}
-              <Form.Select
-                value={filters.status}
-                onChange={(e) => handleFilterChange("status", e.target.value)}
-                className="filter-select"
-                disabled={isLoading}
-              >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="in-progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="delayed">Delayed</option>
-                <option value="cancelled">Cancelled</option>
-              </Form.Select>
+          <div className="filters-container">
+            {/* Top Row - Status and Priority Filters */}
+            <div className="filters-row filters-row-1">
+              <div className="filter-group">
+                <Form.Select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange("status", e.target.value)}
+                  className="filter-select"
+                  disabled={isLoading}
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="delayed">Delayed</option>
+                  <option value="cancelled">Cancelled</option>
+                </Form.Select>
+              </div>
 
-              {/* Priority Filter */}
-              <Form.Select
-                value={filters.priority}
-                onChange={(e) => handleFilterChange("priority", e.target.value)}
-                className="filter-select"
-                disabled={isLoading}
-              >
-                <option value="all">All Priority</option>
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </Form.Select>
+              <div className="filter-group">
+                <Form.Select
+                  value={filters.priority}
+                  onChange={(e) =>
+                    handleFilterChange("priority", e.target.value)
+                  }
+                  className="filter-select"
+                  disabled={isLoading}
+                >
+                  <option value="all">All Priority</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </Form.Select>
+              </div>
 
-              {/* Staff Filter */}
-              <Form.Select
-                value={filters.assignedTo}
-                onChange={(e) =>
-                  handleFilterChange("assignedTo", e.target.value)
-                }
-                className="filter-select"
-                disabled={isLoading}
-              >
-                <option value="all">All Staff</option>
-                {Array.isArray(staffMembers) && staffMembers.length > 0 ? (
-                  staffMembers.map((member) => (
-                    <option
-                      key={member._id || member.id}
-                      value={member._id || member.id}
-                    >
-                      {member.name || "Unknown"}
-                    </option>
-                  ))
-                ) : (
-                  <option disabled>No staff members available</option>
-                )}
-              </Form.Select>
+              <div className="filter-group">
+                <Form.Select
+                  value={filters.assignedTo}
+                  onChange={(e) =>
+                    handleFilterChange("assignedTo", e.target.value)
+                  }
+                  className="filter-select"
+                  disabled={isLoading}
+                >
+                  <option value="all">All Staff</option>
+                  {Array.isArray(staffMembers) && staffMembers.length > 0 ? (
+                    staffMembers.map((member) => (
+                      <option
+                        key={member._id || member.id}
+                        value={member._id || member.id}
+                      >
+                        {member.name || "Unknown"}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>No staff available</option>
+                  )}
+                </Form.Select>
+              </div>
 
-              {/* Date Range Filter */}
-              <Form.Select
-                value={filters.dateRange}
-                onChange={(e) =>
-                  handleFilterChange("dateRange", e.target.value)
-                }
-                className="filter-select"
-                disabled={isLoading}
-              >
-                <option value="today">Today's Tasks</option>
-                <option value="overdue">Overdue Tasks</option>
-                <option value="all">All Tasks</option>
-              </Form.Select>
+              <div className="filter-group">
+                <Form.Select
+                  value={filters.dateRange}
+                  onChange={(e) =>
+                    handleFilterChange("dateRange", e.target.value)
+                  }
+                  className="filter-select"
+                  disabled={isLoading}
+                >
+                  <option value="today">Today's Tasks</option>
+                  <option value="overdue">Overdue Tasks</option>
+                  <option value="all">All Tasks</option>
+                </Form.Select>
+              </div>
             </div>
 
-            <div className="filters-right">
-              {/* Search */}
-              <Form.Control
-                type="text"
-                placeholder="Search tasks..."
-                value={filters.search}
-                onChange={(e) => handleFilterChange("search", e.target.value)}
-                className="search-input"
-                disabled={isLoading}
-              />
+            {/* Bottom Row - Search and Actions */}
+            <div className="filters-row filters-row-2">
+              <div className="search-group">
+                <Form.Control
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange("search", e.target.value)}
+                  className="search-input"
+                  disabled={isLoading}
+                />
+              </div>
 
-              {/* Refresh Button */}
-              <Button
-                variant="outline-primary"
-                onClick={loadTasks}
-                disabled={isLoading}
-                className="refresh-button"
-              >
-                <FontAwesomeIcon icon={faRefresh} />
-              </Button>
+              <div className="actions-group">
+                <Button
+                  variant="outline-primary"
+                  onClick={loadTasks}
+                  disabled={isLoading}
+                  className="refresh-button"
+                  title="Refresh tasks"
+                >
+                  <FontAwesomeIcon icon={faRefresh} />
+                </Button>
 
-              {/* Assign New Task Button */}
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setEditTask(null);
-                  setShowAssignModal(true);
-                }}
-                className="assign-button"
-                disabled={isLoading}
-              >
-                <FontAwesomeIcon icon={faPlus} className="me-2" />
-                Assign New Task
-              </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setEditTask(null);
+                    setShowAssignModal(true);
+                  }}
+                  className="assign-button"
+                  disabled={isLoading}
+                >
+                  <FontAwesomeIcon icon={faPlus} className="me-2" />
+                  Assign New Task
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -919,6 +909,56 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
             sans-serif;
         }
 
+        /* ✅ FIX: Modal z-index issues with filters */
+        .modal {
+          z-index: 1055 !important;
+        }
+
+        .modal-backdrop {
+          z-index: 1050 !important;
+        }
+
+        /* ✅ FIX: Ensure filter dropdowns stay behind modals */
+        .filters-section .dropdown-menu,
+        .filters-section .form-select,
+        .task-actions .dropdown-menu {
+          z-index: 1040 !important;
+        }
+
+        /* ✅ FIX: When modal is open, hide filter dropdowns */
+        body.modal-open .filters-section .dropdown-menu {
+          display: none !important;
+        }
+
+        /* ✅ FIX: Ensure task action dropdowns also stay behind modal */
+        .task-actions .dropdown-menu {
+          z-index: 1040 !important;
+        }
+
+        /* ✅ FIX: Bootstrap select dropdown z-index */
+        .form-select:focus {
+          z-index: 1040 !important;
+        }
+
+        /* ✅ FIX: Additional Bootstrap dropdown overrides */
+        .dropdown-menu {
+          z-index: 1035 !important;
+        }
+
+        .dropdown-toggle:focus,
+        .dropdown-toggle:active {
+          z-index: 1035 !important;
+        }
+
+        /* ✅ FIX: Select element specific fixes */
+        select.form-select {
+          z-index: 1030 !important;
+        }
+
+        select.form-select:focus {
+          z-index: 1030 !important;
+        }
+
         /* Header Section */
         .page-header {
           background: linear-gradient(135deg, #6f42c1 0%, #8e44ad 100%);
@@ -970,67 +1010,125 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           margin-bottom: 1.5rem;
         }
 
-        /* Filters Section */
+        /* Filters Section - Enhanced Responsive Layout */
         .filters-section {
           background: white;
           border-radius: 12px;
-          padding: 1.5rem;
+          padding: 1.25rem;
           margin-bottom: 1.5rem;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          position: relative;
+          z-index: 1030; /* ✅ Lower than modal */
+        }
+
+        .filters-container {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
         }
 
         .filters-row {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          gap: 1rem;
-        }
-
-        .filters-left {
-          display: flex;
           gap: 0.75rem;
           flex-wrap: wrap;
         }
 
-        .filters-right {
+        .filters-row-1 {
+          justify-content: flex-start;
+        }
+
+        .filters-row-2 {
+          justify-content: space-between;
+        }
+
+        .filter-group {
+          flex: 1;
+          min-width: 140px;
+          max-width: 180px;
+          position: relative;
+          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
+        }
+
+        .search-group {
+          flex: 1;
+          max-width: 300px;
+          position: relative;
+          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
+        }
+
+        .actions-group {
           display: flex;
           gap: 0.75rem;
-          align-items: center;
+          flex-shrink: 0;
+          position: relative;
+          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
         }
 
         .filter-select {
-          min-width: 150px;
+          width: 100%;
           font-size: 0.9rem;
           border: 1px solid #e2e8f0;
           border-radius: 8px;
           padding: 0.5rem 0.75rem;
           transition: all 0.2s ease;
+          background: white;
+          position: relative;
+          z-index: 1032; /* ✅ Lower than modal but higher than group */
+        }
+
+        .filter-select:focus {
+          border-color: #6f42c1;
+          box-shadow: 0 0 0 2px rgba(111, 66, 193, 0.1);
+          z-index: 1032 !important; /* ✅ Stay below modal */
         }
 
         .filter-select:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+          background: #f8f9fa;
         }
 
         .search-input {
-          width: 220px;
+          width: 100%;
           font-size: 0.9rem;
           border: 1px solid #e2e8f0;
           border-radius: 8px;
           padding: 0.5rem 0.75rem;
           transition: all 0.2s ease;
+          position: relative;
+          z-index: 1032; /* ✅ Lower than modal but higher than group */
+        }
+
+        .search-input:focus {
+          border-color: #6f42c1;
+          box-shadow: 0 0 0 2px rgba(111, 66, 193, 0.1);
+          z-index: 1032 !important; /* ✅ Stay below modal */
         }
 
         .search-input:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+          background: #f8f9fa;
         }
 
         .refresh-button {
           min-width: 44px;
+          height: 38px;
           border-radius: 8px;
           border: 1px solid #e2e8f0;
           transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          z-index: 1032; /* ✅ Lower than modal but higher than group */
+        }
+
+        .refresh-button:hover:not(:disabled) {
+          background: #f8f9fa;
+          border-color: #6f42c1;
+          color: #6f42c1;
         }
 
         .refresh-button:disabled {
@@ -1045,6 +1143,9 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           font-weight: 600;
           padding: 0.5rem 1rem;
           transition: all 0.3s ease;
+          white-space: nowrap;
+          position: relative;
+          z-index: 1032; /* ✅ Lower than modal but higher than group */
         }
 
         .assign-button:hover:not(:disabled) {
@@ -1066,6 +1167,8 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
           overflow: hidden;
+          position: relative;
+          z-index: 1020; /* ✅ Lower than filters */
         }
 
         .tasks-header {
@@ -1122,6 +1225,8 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           border-bottom: 1px solid #f1f5f9;
           transition: all 0.2s ease;
           background: white;
+          position: relative;
+          z-index: 1021; /* ✅ Lower than filters */
         }
 
         .task-item:last-child {
@@ -1233,6 +1338,22 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
 
         .task-actions {
           flex-shrink: 0;
+          position: relative;
+          z-index: 1022; /* ✅ Higher than task item but lower than filters */
+        }
+
+        /* ✅ FIX: Task actions dropdown specific z-index */
+        .task-actions .dropdown {
+          position: relative;
+          z-index: 1022;
+        }
+
+        .task-actions .dropdown-menu {
+          z-index: 1023 !important;
+        }
+
+        .task-actions .dropdown-toggle {
+          z-index: 1022 !important;
         }
 
         /* Empty State */
@@ -1266,6 +1387,8 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           align-items: center;
           gap: 1rem;
           margin-top: 1.5rem;
+          position: relative;
+          z-index: 1020; /* ✅ Lower than filters */
         }
 
         .pagination-info {
@@ -1273,7 +1396,35 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           color: #64748b;
         }
 
-        /* Responsive Design */
+        /* ✅ FIX: Additional global z-index overrides for modal safety */
+        body.modal-open .filter-select,
+        body.modal-open .search-input,
+        body.modal-open .dropdown-toggle {
+          z-index: 1040 !important;
+        }
+
+        body.modal-open .dropdown-menu {
+          display: none !important;
+        }
+
+        /* ✅ FIX: Ensure Toast notifications are above everything */
+        .toast-container {
+          z-index: 1060 !important;
+        }
+
+        /* Responsive Design for Filters */
+        @media (max-width: 992px) {
+          .filters-row-1 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+          }
+
+          .filter-group {
+            max-width: none;
+          }
+        }
+
         @media (max-width: 768px) {
           .page-header {
             padding: 1rem;
@@ -1283,21 +1434,30 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
             padding: 1rem;
           }
 
-          .filters-row {
+          .filters-container {
+            gap: 1.25rem;
+          }
+
+          .filters-row-1 {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+          }
+
+          .filters-row-2 {
             flex-direction: column;
             align-items: stretch;
+            gap: 0.75rem;
           }
 
-          .filters-left,
-          .filters-right {
-            width: 100%;
+          .filter-group,
+          .search-group {
+            max-width: none;
+            flex: none;
+          }
+
+          .actions-group {
             justify-content: center;
-          }
-
-          .filter-select,
-          .search-input {
-            min-width: auto;
-            flex: 1;
           }
 
           .task-item {
@@ -1364,10 +1524,14 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
             padding: 1rem;
           }
 
-          .filters-left,
-          .filters-right {
+          .actions-group {
             flex-direction: column;
             gap: 0.75rem;
+          }
+
+          .assign-button {
+            width: 100%;
+            justify-content: center;
           }
 
           .task-item {
@@ -1377,6 +1541,31 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           .tasks-header {
             padding: 1rem;
           }
+        }
+
+        /* ✅ FIX: Additional safety overrides for any missed elements */
+        .daily-task-assignment * {
+          position: relative;
+        }
+
+        .daily-task-assignment .modal,
+        .daily-task-assignment .modal-backdrop {
+          position: fixed !important;
+        }
+
+        /* ✅ FIX: Specific Bootstrap form control overrides */
+        .form-control:focus,
+        .form-select:focus {
+          z-index: 1040 !important;
+        }
+
+        /* ✅ FIX: Dropdown menu animation override to prevent z-index issues */
+        .dropdown-menu.show {
+          z-index: 1035 !important;
+        }
+
+        .dropdown-menu.show.modal-open {
+          display: none !important;
         }
       `}</style>
     </div>

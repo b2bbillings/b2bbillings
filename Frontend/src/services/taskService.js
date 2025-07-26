@@ -12,6 +12,39 @@ const api = axios.create({
   timeout: 10000, // 10 second timeout
 });
 
+// ✅ Request deduplication to prevent multiple simultaneous requests
+const pendingRequests = new Map();
+const requestCache = new Map();
+
+const deduplicateRequest = (key, requestFn, cacheTime = 3000) => {
+  // Check cache first
+  const cached = requestCache.get(key);
+  if (cached && Date.now() - cached.timestamp < cacheTime) {
+    return Promise.resolve(cached.data);
+  }
+
+  // Check if request is already pending
+  if (pendingRequests.has(key)) {
+    return pendingRequests.get(key);
+  }
+
+  const request = requestFn()
+    .then((result) => {
+      // Cache successful results
+      requestCache.set(key, {
+        data: result,
+        timestamp: Date.now(),
+      });
+      return result;
+    })
+    .finally(() => {
+      pendingRequests.delete(key);
+    });
+
+  pendingRequests.set(key, request);
+  return request;
+};
+
 // Request interceptor to add auth token and company ID (like staffService)
 api.interceptors.request.use(
   (config) => {
@@ -64,19 +97,29 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// ✅ Enhanced response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
     return response;
   },
   (error) => {
-    // Enhanced error handling
+    // Enhanced error handling with better logging
     if (error.response?.status === 401) {
-      // Handle unauthorized access
       console.warn("🔐 Unauthorized access - token may be expired");
-      // You can add logout logic here if needed
+      // Return empty data instead of throwing to prevent crashes
+      return Promise.resolve({
+        data: {
+          success: false,
+          data: [],
+          message: "Authentication required",
+        },
+      });
     } else if (error.response?.status >= 500) {
       console.error("🚨 Server error:", error.response.status);
+    } else if (error.code === "ECONNABORTED") {
+      console.error("⏱️ Request timeout");
+    } else if (!error.response) {
+      console.error("🌐 Network error - server might be down");
     }
 
     return Promise.reject(error);
@@ -101,18 +144,14 @@ class TaskService {
    */
   async createTask(taskData) {
     try {
-      console.log("🚀 Creating new task:", taskData);
-
       const response = await api.post(TASK_BASE_URL, taskData);
 
-      console.log("✅ Task created successfully:", response.data);
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Task created successfully",
       };
     } catch (error) {
-      console.error("❌ Error creating task:", error);
       this.handleError(error, "Failed to create task");
       throw error;
     }
@@ -124,24 +163,34 @@ class TaskService {
    * @returns {Promise<Object>} Tasks list with pagination
    */
   async getAllTasks(params = {}) {
-    try {
-      console.log("📋 Fetching tasks with params:", params);
+    const requestKey = `allTasks_${JSON.stringify(params)}`;
 
-      const response = await api.get(TASK_BASE_URL, {params});
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const response = await api.get(TASK_BASE_URL, {params});
 
-      console.log("✅ Tasks fetched successfully:", response.data.pagination);
-      return {
-        success: true,
-        data: response.data.data || response.data.tasks || [],
-        pagination: response.data.pagination || {},
-        count: response.data.count || response.data.data?.length || 0,
-        message: response.data.message || "Tasks fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching tasks:", error);
-      this.handleError(error, "Failed to fetch tasks");
-      throw error;
-    }
+          return {
+            success: true,
+            data: response.data.data || response.data.tasks || [],
+            pagination: response.data.pagination || {},
+            count: response.data.count || response.data.data?.length || 0,
+            message: response.data.message || "Tasks fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch tasks");
+          return {
+            success: false,
+            data: [],
+            pagination: {},
+            count: 0,
+            error: error.message || "Failed to fetch tasks",
+          };
+        }
+      },
+      2000
+    ); // 2 second cache
   }
 
   /**
@@ -150,25 +199,26 @@ class TaskService {
    * @returns {Promise<Object>} Task data
    */
   async getTaskById(taskId) {
-    try {
-      console.log("🔍 Fetching task by ID:", taskId);
+    const requestKey = `task_${taskId}`;
 
-      const response = await api.get(`${TASK_BASE_URL}/${taskId}`);
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const response = await api.get(`${TASK_BASE_URL}/${taskId}`);
 
-      console.log(
-        "✅ Task fetched successfully:",
-        response.data.data?.taskId || taskId
-      );
-      return {
-        success: true,
-        data: response.data.data || response.data,
-        message: response.data.message || "Task fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching task:", error);
-      this.handleError(error, "Failed to fetch task details");
-      throw error;
-    }
+          return {
+            success: true,
+            data: response.data.data || response.data,
+            message: response.data.message || "Task fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch task details");
+          throw error;
+        }
+      },
+      5000
+    ); // 5 second cache for individual tasks
   }
 
   /**
@@ -179,18 +229,17 @@ class TaskService {
    */
   async updateTask(taskId, updateData) {
     try {
-      console.log("📝 Updating task:", taskId, updateData);
-
       const response = await api.put(`${TASK_BASE_URL}/${taskId}`, updateData);
 
-      console.log("✅ Task updated successfully");
+      // Clear related cache entries
+      this.clearTaskCache(taskId);
+
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Task updated successfully",
       };
     } catch (error) {
-      console.error("❌ Error updating task:", error);
       this.handleError(error, "Failed to update task");
       throw error;
     }
@@ -205,8 +254,6 @@ class TaskService {
    */
   async deleteTask(taskId, permanent = false, reason = "") {
     try {
-      console.log("🗑️ Deleting task:", taskId, {permanent, reason});
-
       const params = permanent ? {permanent: "true"} : {};
       const body = reason ? {reason} : {};
 
@@ -215,14 +262,15 @@ class TaskService {
         data: body,
       });
 
-      console.log("✅ Task deleted successfully");
+      // Clear related cache entries
+      this.clearTaskCache(taskId);
+
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Task deleted successfully",
       };
     } catch (error) {
-      console.error("❌ Error deleting task:", error);
       this.handleError(error, "Failed to delete task");
       throw error;
     }
@@ -241,8 +289,6 @@ class TaskService {
    */
   async updateTaskStatus(taskId, status, resultData = null) {
     try {
-      console.log("🔄 Updating task status:", taskId, status);
-
       const body = {status};
       if (resultData) {
         body.resultData = resultData;
@@ -250,14 +296,15 @@ class TaskService {
 
       const response = await api.put(`${TASK_BASE_URL}/${taskId}/status`, body);
 
-      console.log("✅ Task status updated successfully");
+      // Clear related cache entries
+      this.clearTaskCache(taskId);
+
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Task status updated successfully",
       };
     } catch (error) {
-      console.error("❌ Error updating task status:", error);
       this.handleError(error, "Failed to update task status");
       throw error;
     }
@@ -271,20 +318,19 @@ class TaskService {
    */
   async updateTaskProgress(taskId, percentage) {
     try {
-      console.log("📈 Updating task progress:", taskId, `${percentage}%`);
-
       const response = await api.put(`${TASK_BASE_URL}/${taskId}/progress`, {
         percentage,
       });
 
-      console.log("✅ Task progress updated successfully");
+      // Clear related cache entries
+      this.clearTaskCache(taskId);
+
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Task progress updated successfully",
       };
     } catch (error) {
-      console.error("❌ Error updating task progress:", error);
       this.handleError(error, "Failed to update task progress");
       throw error;
     }
@@ -298,27 +344,26 @@ class TaskService {
    */
   async addTaskNote(taskId, note) {
     try {
-      console.log("📝 Adding note to task:", taskId);
-
       const response = await api.post(`${TASK_BASE_URL}/${taskId}/notes`, {
         note: note.trim(),
       });
 
-      console.log("✅ Note added successfully");
+      // Clear related cache entries
+      this.clearTaskCache(taskId);
+
       return {
         success: true,
         data: response.data.data || response.data,
         message: response.data.message || "Note added successfully",
       };
     } catch (error) {
-      console.error("❌ Error adding note:", error);
       this.handleError(error, "Failed to add note to task");
       throw error;
     }
   }
 
   // ========================================
-  // SPECIALIZED TASK QUERIES
+  // SPECIALIZED TASK QUERIES - FIXED
   // ========================================
 
   /**
@@ -327,24 +372,40 @@ class TaskService {
    * @returns {Promise<Object>} Today's tasks
    */
   async getTodaysTasks(assignedTo = null) {
-    try {
-      console.log("📅 Fetching today's tasks");
+    const requestKey = `todaysTasks_${assignedTo || "all"}`;
 
-      const params = assignedTo ? {assignedTo} : {};
-      const response = await api.get(`${TASK_BASE_URL}/today`, {params});
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const params = assignedTo ? {assignedTo} : {};
+          const response = await api.get(`${TASK_BASE_URL}/today`, {
+            params,
+            timeout: 5000, // 5 second timeout for this specific request
+          });
 
-      console.log("✅ Today's tasks fetched:", response.data.count);
-      return {
-        success: true,
-        data: response.data.data || response.data.tasks || [],
-        count: response.data.count || response.data.data?.length || 0,
-        message: response.data.message || "Today's tasks fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching today's tasks:", error);
-      this.handleError(error, "Failed to fetch today's tasks");
-      throw error;
-    }
+          const tasksData = response.data.data || response.data.tasks || [];
+
+          return {
+            success: true,
+            data: tasksData,
+            count: response.data.count || tasksData.length,
+            message:
+              response.data.message || "Today's tasks fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch today's tasks");
+          // Return empty data instead of throwing to prevent crashes
+          return {
+            success: false,
+            data: [],
+            count: 0,
+            error: error.message || "Failed to fetch today's tasks",
+          };
+        }
+      },
+      3000
+    ); // 3 second cache
   }
 
   /**
@@ -353,24 +414,36 @@ class TaskService {
    * @returns {Promise<Object>} Overdue tasks
    */
   async getOverdueTasks(assignedTo = null) {
-    try {
-      console.log("⏰ Fetching overdue tasks");
+    const requestKey = `overdueTasks_${assignedTo || "all"}`;
 
-      const params = assignedTo ? {assignedTo} : {};
-      const response = await api.get(`${TASK_BASE_URL}/overdue`, {params});
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const params = assignedTo ? {assignedTo} : {};
+          const response = await api.get(`${TASK_BASE_URL}/overdue`, {params});
 
-      console.log("✅ Overdue tasks fetched:", response.data.count);
-      return {
-        success: true,
-        data: response.data.data || response.data.tasks || [],
-        count: response.data.count || response.data.data?.length || 0,
-        message: response.data.message || "Overdue tasks fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching overdue tasks:", error);
-      this.handleError(error, "Failed to fetch overdue tasks");
-      throw error;
-    }
+          const tasksData = response.data.data || response.data.tasks || [];
+
+          return {
+            success: true,
+            data: tasksData,
+            count: response.data.count || tasksData.length,
+            message:
+              response.data.message || "Overdue tasks fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch overdue tasks");
+          return {
+            success: false,
+            data: [],
+            count: 0,
+            error: error.message || "Failed to fetch overdue tasks",
+          };
+        }
+      },
+      3000
+    ); // 3 second cache
   }
 
   /**
@@ -379,24 +452,39 @@ class TaskService {
    * @returns {Promise<Object>} Task reminders
    */
   async getTaskReminders(assignedTo = null) {
-    try {
-      console.log("🔔 Fetching task reminders");
+    const requestKey = `taskReminders_${assignedTo || "all"}`;
 
-      const params = assignedTo ? {assignedTo} : {};
-      const response = await api.get(`${TASK_BASE_URL}/reminders`, {params});
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const params = assignedTo ? {assignedTo} : {};
+          const response = await api.get(`${TASK_BASE_URL}/reminders`, {
+            params,
+          });
 
-      console.log("✅ Task reminders fetched:", response.data.count);
-      return {
-        success: true,
-        data: response.data.data || response.data.reminders || [],
-        count: response.data.count || response.data.data?.length || 0,
-        message: response.data.message || "Task reminders fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching task reminders:", error);
-      this.handleError(error, "Failed to fetch task reminders");
-      throw error;
-    }
+          const remindersData =
+            response.data.data || response.data.reminders || [];
+
+          return {
+            success: true,
+            data: remindersData,
+            count: response.data.count || remindersData.length,
+            message:
+              response.data.message || "Task reminders fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch task reminders");
+          return {
+            success: false,
+            data: [],
+            count: 0,
+            error: error.message || "Failed to fetch task reminders",
+          };
+        }
+      },
+      3000
+    ); // 3 second cache
   }
 
   /**
@@ -405,25 +493,33 @@ class TaskService {
    * @returns {Promise<Object>} Task statistics
    */
   async getTaskStatistics(filters = {}) {
-    try {
-      console.log("📊 Fetching task statistics");
+    const requestKey = `taskStats_${JSON.stringify(filters)}`;
 
-      const response = await api.get(`${TASK_BASE_URL}/statistics`, {
-        params: filters,
-      });
+    return deduplicateRequest(
+      requestKey,
+      async () => {
+        try {
+          const response = await api.get(`${TASK_BASE_URL}/statistics`, {
+            params: filters,
+          });
 
-      console.log("✅ Task statistics fetched successfully");
-      return {
-        success: true,
-        data: response.data.data || response.data,
-        message:
-          response.data.message || "Task statistics fetched successfully",
-      };
-    } catch (error) {
-      console.error("❌ Error fetching task statistics:", error);
-      this.handleError(error, "Failed to fetch task statistics");
-      throw error;
-    }
+          return {
+            success: true,
+            data: response.data.data || response.data,
+            message:
+              response.data.message || "Task statistics fetched successfully",
+          };
+        } catch (error) {
+          this.handleError(error, "Failed to fetch task statistics");
+          return {
+            success: false,
+            data: {},
+            error: error.message || "Failed to fetch task statistics",
+          };
+        }
+      },
+      5000
+    ); // 5 second cache for stats
   }
 
   // ========================================
@@ -437,13 +533,13 @@ class TaskService {
    */
   async bulkAssignTasks(tasks) {
     try {
-      console.log("📦 Bulk assigning tasks:", tasks.length);
-
       const response = await api.post(`${TASK_BASE_URL}/bulk-assign`, {
         tasks,
       });
 
-      console.log("✅ Bulk assignment completed:", response.data.data);
+      // Clear all task-related cache
+      this.clearAllTaskCache();
+
       return {
         success: true,
         data: response.data.data || response.data,
@@ -451,7 +547,6 @@ class TaskService {
           response.data.message || "Bulk assignment completed successfully",
       };
     } catch (error) {
-      console.error("❌ Error bulk assigning tasks:", error);
       this.handleError(error, "Failed to bulk assign tasks");
       throw error;
     }
@@ -659,8 +754,6 @@ class TaskService {
    */
   async getDashboardData(assignedTo = null) {
     try {
-      console.log("📊 Fetching task dashboard data");
-
       const [statistics, todaysTasks, overdueTasks, reminders] =
         await Promise.all([
           this.getTaskStatistics({assignedTo}),
@@ -681,10 +774,8 @@ class TaskService {
         },
       };
 
-      console.log("✅ Dashboard data fetched successfully");
       return {success: true, data: dashboardData};
     } catch (error) {
-      console.error("❌ Error fetching dashboard data:", error);
       this.handleError(error, "Failed to fetch dashboard data");
       throw error;
     }
@@ -716,11 +807,73 @@ class TaskService {
   }
 
   // ========================================
-  // ERROR HANDLING
+  // CACHE MANAGEMENT - NEW
   // ========================================
 
   /**
-   * Handle API errors
+   * Clear cache for specific task
+   * @param {string} taskId - Task ID
+   */
+  clearTaskCache(taskId) {
+    const keysToRemove = [];
+
+    for (const key of requestCache.keys()) {
+      if (
+        key.includes(taskId) ||
+        key.includes("todaysTasks") ||
+        key.includes("overdueTasks") ||
+        key.includes("allTasks") ||
+        key.includes("taskStats")
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => {
+      requestCache.delete(key);
+      pendingRequests.delete(key);
+    });
+  }
+
+  /**
+   * Clear all task-related cache
+   */
+  clearAllTaskCache() {
+    requestCache.clear();
+    pendingRequests.clear();
+  }
+
+  /**
+   * Check if the API is reachable
+   * @returns {Promise<boolean>} API reachability status
+   */
+  async checkApiHealth() {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        signal: controller.signal,
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      console.warn("⚠️ API health check failed:", error.message);
+      return false;
+    }
+  }
+
+  // ========================================
+  // ERROR HANDLING - ENHANCED
+  // ========================================
+
+  /**
+   * Handle API errors with better logging
    * @param {Error} error - Error object
    * @param {string} defaultMessage - Default error message
    */
@@ -728,10 +881,17 @@ class TaskService {
     if (error.response) {
       // Server responded with error status
       const {status, data} = error.response;
-      console.error(`❌ API Error ${status}:`, data.message || defaultMessage);
 
-      if (data.errors) {
-        console.error("❌ Validation errors:", data.errors);
+      // Only log actual errors, not expected 401s
+      if (status !== 401) {
+        console.error(
+          `❌ API Error ${status}:`,
+          data.message || defaultMessage
+        );
+
+        if (data.errors) {
+          console.error("❌ Validation errors:", data.errors);
+        }
       }
     } else if (error.request) {
       // Request was made but no response received

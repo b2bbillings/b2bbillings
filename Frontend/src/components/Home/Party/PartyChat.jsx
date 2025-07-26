@@ -76,10 +76,14 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
   const [targetCompanyId, setTargetCompanyId] = useState(null);
   const [mappingValidated, setMappingValidated] = useState(false);
 
+  // ✅ FIX: Store unsubscribe functions
+  const [socketUnsubscribeFns, setSocketUnsubscribeFns] = useState([]);
+
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
+  // ✅ FIX: Initialize company context
   useEffect(() => {
     const initializeCompanyContext = () => {
       try {
@@ -94,19 +98,24 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
           }
         }
       } catch (error) {
-        // Silent fail
+        console.error("Error initializing company context:", error);
       }
     };
 
     initializeCompanyContext();
   }, []);
 
+  // ✅ FIX: Validate party mapping when party changes
   useEffect(() => {
     if (party) {
       validatePartyCompanyMapping();
+    } else {
+      setMappingValidated(false);
+      setTargetCompanyId(null);
     }
   }, [party?._id]);
 
+  // ✅ FIX: Initialize chat when conditions are met
   useEffect(() => {
     if (show && party && currentCompany && mappingValidated) {
       initializeChat();
@@ -127,6 +136,8 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
         return;
       }
 
+      console.log("🔍 Validating party company mapping for:", party);
+
       const extractedCompanyId = chatService.extractTargetCompanyId(party);
 
       if (!extractedCompanyId) {
@@ -135,44 +146,78 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
         );
         setMappingValidated(false);
         setTargetCompanyId(null);
+        console.warn("❌ No company mapping found for party:", party);
         return;
       }
 
+      console.log("✅ Company mapping validated:", extractedCompanyId);
       setTargetCompanyId(extractedCompanyId);
       setMappingValidated(true);
       setError(null);
     } catch (error) {
+      console.error("❌ Party mapping validation error:", error);
       setError(error.message || "Failed to validate party-company mapping");
       setMappingValidated(false);
       setTargetCompanyId(null);
     }
   };
 
+  // ✅ FIX: Improved chat initialization
   const initializeChat = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
+      console.log("🚀 Initializing chat for party:", party?.name);
+
+      // ✅ FIX: Initialize socket first
       const socket = chatService.initializeSocket();
       if (socket) {
-        setIsConnected(true);
+        console.log("✅ Socket initialized");
+
+        // ✅ FIX: Wait for socket connection before proceeding
+        await new Promise((resolve) => {
+          if (chatService.isConnected) {
+            resolve();
+          } else {
+            const unsubscribe = chatService.on("socket_authenticated", () => {
+              unsubscribe();
+              resolve();
+            });
+
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              unsubscribe();
+              resolve();
+            }, 10000);
+          }
+        });
+
+        setIsConnected(chatService.isConnected);
         setupSocketListeners();
       }
 
-      await loadChatHistory();
-      await loadConversationSummary();
-      await loadTemplates();
+      // Load data in parallel
+      await Promise.allSettled([
+        loadChatHistory(),
+        loadConversationSummary(),
+        loadTemplates(),
+        loadChatParticipants(),
+      ]);
 
-      if (party) {
+      // ✅ FIX: Join chat room if socket is connected
+      if (party && chatService.isConnected) {
         try {
+          console.log("🚀 Joining chat room...");
           const joinResult = await chatService.joinChat(party);
+          console.log("✅ Joined chat room:", joinResult);
         } catch (joinError) {
-          showToastMessage("Failed to join chat room", "error");
+          console.warn("⚠️ Failed to join chat room:", joinError);
+          showToastMessage("Failed to join chat room", "warning");
         }
       }
-
-      await loadChatParticipants();
     } catch (error) {
+      console.error("❌ Failed to initialize chat:", error);
       setError("Failed to initialize chat. Please try again.");
       showToastMessage("Failed to initialize chat", "error");
     } finally {
@@ -180,47 +225,61 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
     }
   };
 
+  // ✅ FIX: Improved socket listeners setup
   const setupSocketListeners = () => {
     try {
+      console.log("🎧 Setting up socket listeners...");
+
+      // ✅ FIX: Clear existing listeners first
+      cleanupSocketListeners();
+
       const unsubscribeFunctions = [];
 
-      if (typeof chatService.on === "function") {
-        const unsubscribeNewMessage = chatService.on(
-          "new_message",
-          (message) => {
-            const formattedMessage = formatIncomingMessage(message);
-            setMessages((prev) => [...prev, formattedMessage]);
-            scrollToBottom();
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeNewMessage);
+      // ✅ FIX: Handle new messages
+      const unsubscribeNewMessage = chatService.on("new_message", (message) => {
+        console.log("📨 New message received:", message);
+        try {
+          const formattedMessage = formatIncomingMessage(message);
+          setMessages((prev) => {
+            // ✅ FIX: Avoid duplicate messages
+            const exists = prev.find((m) => m.id === formattedMessage.id);
+            if (exists) return prev;
+            return [...prev, formattedMessage];
+          });
+          scrollToBottom();
+        } catch (error) {
+          console.error("Error handling new message:", error);
+        }
+      });
+      unsubscribeFunctions.push(unsubscribeNewMessage);
 
-        const unsubscribeMessageSent = chatService.on(
-          "message_sent",
-          (data) => {
-            updateMessageStatus(data.messageId, "sent");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageSent);
+      // ✅ FIX: Handle message status updates
+      const unsubscribeMessageSent = chatService.on("message_sent", (data) => {
+        console.log("✅ Message sent confirmation:", data);
+        updateMessageStatus(data.messageId, "sent");
+      });
+      unsubscribeFunctions.push(unsubscribeMessageSent);
 
-        const unsubscribeMessageDelivered = chatService.on(
-          "message_delivered",
-          (data) => {
-            updateMessageStatus(data.messageId, "delivered");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageDelivered);
+      const unsubscribeMessageDelivered = chatService.on(
+        "message_delivered",
+        (data) => {
+          updateMessageStatus(data.messageId, "delivered");
+        }
+      );
+      unsubscribeFunctions.push(unsubscribeMessageDelivered);
 
-        const unsubscribeMessageRead = chatService.on(
-          "message_read",
-          (data) => {
-            updateMessageStatus(data.messageId, "read");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageRead);
+      const unsubscribeMessageRead = chatService.on("message_read", (data) => {
+        updateMessageStatus(data.messageId, "read");
+      });
+      unsubscribeFunctions.push(unsubscribeMessageRead);
 
-        const unsubscribeTypingStart = chatService.on("user_typing", (data) => {
-          if (data.companyId !== currentCompany?._id && data.isTyping) {
+      // ✅ FIX: Handle typing indicators
+      const unsubscribeTyping = chatService.on("user_typing", (data) => {
+        console.log("⌨️ User typing:", data);
+
+        // ✅ FIX: Only show typing from other companies
+        if (data.companyId !== currentCompany?._id) {
+          if (data.isTyping) {
             setTypingUsers((prev) => {
               const existing = prev.find((u) => u.userId === data.userId);
               if (!existing) {
@@ -229,178 +288,165 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
                   {
                     userId: data.userId,
                     username: data.username,
-                    companyName: data.companyName,
+                    companyName: data.companyName || "Other Company",
                   },
                 ];
               }
               return prev;
             });
-          } else if (!data.isTyping) {
+          } else {
             setTypingUsers((prev) =>
               prev.filter((u) => u.userId !== data.userId)
             );
           }
-        });
-        unsubscribeFunctions.push(unsubscribeTypingStart);
+        }
+      });
+      unsubscribeFunctions.push(unsubscribeTyping);
 
-        const unsubscribeUserJoined = chatService.on(
-          "user_joined_chat",
-          (data) => {
-            showToastMessage(
-              `${data.username} from ${data.companyName} joined the chat`,
-              "success"
-            );
-            setChatParticipants((prev) => {
-              const existing = prev.find((p) => p.userId === data.userId);
-              if (!existing) {
-                return [
-                  ...prev,
-                  {
-                    userId: data.userId,
-                    username: data.username,
-                    companyName: data.companyName,
-                    joinedAt: new Date(),
-                  },
-                ];
-              }
-              return prev;
-            });
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeUserJoined);
-
-        const unsubscribeUserLeft = chatService.on("user_left_chat", (data) => {
+      // ✅ FIX: Handle user join/leave events
+      const unsubscribeUserJoined = chatService.on(
+        "user_joined_chat",
+        (data) => {
+          console.log("👤 User joined chat:", data);
           showToastMessage(
-            `${data.username} from ${data.companyName} left the chat`,
-            "info"
+            `${data.username} from ${
+              data.companyName || "Other Company"
+            } joined the chat`,
+            "success"
           );
-          setChatParticipants((prev) =>
-            prev.filter((p) => p.userId !== data.userId)
-          );
-        });
-        unsubscribeFunctions.push(unsubscribeUserLeft);
-
-        const unsubscribeUserOnline = chatService.on("user_online", (data) => {
-          setOnlineUsers((prev) => {
-            const existing = prev.find((u) => u.userId === data.userId);
+          setChatParticipants((prev) => {
+            const existing = prev.find((p) => p.userId === data.userId);
             if (!existing) {
-              return [...prev, data];
+              return [
+                ...prev,
+                {
+                  userId: data.userId,
+                  username: data.username,
+                  companyName: data.companyName,
+                  joinedAt: new Date(),
+                },
+              ];
             }
             return prev;
           });
+        }
+      );
+      unsubscribeFunctions.push(unsubscribeUserJoined);
+
+      const unsubscribeUserLeft = chatService.on("user_left_chat", (data) => {
+        console.log("👋 User left chat:", data);
+        showToastMessage(
+          `${data.username} from ${
+            data.companyName || "Other Company"
+          } left the chat`,
+          "info"
+        );
+        setChatParticipants((prev) =>
+          prev.filter((p) => p.userId !== data.userId)
+        );
+      });
+      unsubscribeFunctions.push(unsubscribeUserLeft);
+
+      // ✅ FIX: Handle online/offline status
+      const unsubscribeUserOnline = chatService.on("user_online", (data) => {
+        console.log("🟢 User online:", data);
+        setOnlineUsers((prev) => {
+          const existing = prev.find((u) => u.userId === data.userId);
+          if (!existing) {
+            return [...prev, data];
+          }
+          return prev;
         });
-        unsubscribeFunctions.push(unsubscribeUserOnline);
+      });
+      unsubscribeFunctions.push(unsubscribeUserOnline);
 
-        const unsubscribeUserOffline = chatService.on(
-          "user_offline",
-          (data) => {
-            setOnlineUsers((prev) =>
-              prev.filter((u) => u.userId !== data.userId)
-            );
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeUserOffline);
+      const unsubscribeUserOffline = chatService.on("user_offline", (data) => {
+        console.log("🔴 User offline:", data);
+        setOnlineUsers((prev) => prev.filter((u) => u.userId !== data.userId));
+      });
+      unsubscribeFunctions.push(unsubscribeUserOffline);
 
-        const unsubscribeAuthenticated = chatService.on(
-          "socket_authenticated",
-          (data) => {
-            setIsConnected(true);
-            setConnectionStatus("authenticated");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeAuthenticated);
-
-        const unsubscribeAuthError = chatService.on(
-          "socket_auth_error",
-          (data) => {
-            setError("Authentication failed. Please refresh the page.");
-            showToastMessage("Authentication failed", "error");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeAuthError);
-
-        const unsubscribeConnected = chatService.on("socket_connected", () => {
+      // ✅ FIX: Handle connection events
+      const unsubscribeAuthenticated = chatService.on(
+        "socket_authenticated",
+        (data) => {
+          console.log("✅ Socket authenticated:", data);
           setIsConnected(true);
-          setConnectionStatus("connected");
-        });
-        unsubscribeFunctions.push(unsubscribeConnected);
+          setConnectionStatus("authenticated");
+        }
+      );
+      unsubscribeFunctions.push(unsubscribeAuthenticated);
 
-        const unsubscribeDisconnected = chatService.on(
-          "socket_disconnected",
-          () => {
-            setIsConnected(false);
-            setConnectionStatus("disconnected");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeDisconnected);
-      } else if (chatService.socket) {
-        chatService.socket.on("new_message", (message) => {
-          const formattedMessage = formatIncomingMessage(message);
-          setMessages((prev) => [...prev, formattedMessage]);
-          scrollToBottom();
-        });
+      const unsubscribeConnected = chatService.on("socket_connected", () => {
+        console.log("🔌 Socket connected");
+        setIsConnected(true);
+        setConnectionStatus("connected");
+      });
+      unsubscribeFunctions.push(unsubscribeConnected);
 
-        chatService.socket.on("user_typing", (data) => {
-          if (data.companyId !== currentCompany?._id && data.isTyping) {
-            setTypingUsers((prev) => {
-              const existing = prev.find((u) => u.userId === data.userId);
-              if (!existing) {
-                return [
-                  ...prev,
-                  {
-                    userId: data.userId,
-                    username: data.username,
-                    companyName: data.companyName,
-                  },
-                ];
-              }
-              return prev;
-            });
-          } else if (!data.isTyping) {
-            setTypingUsers((prev) =>
-              prev.filter((u) => u.userId !== data.userId)
-            );
-          }
-        });
-
-        chatService.socket.on("connect", () => {
-          setIsConnected(true);
-          setConnectionStatus("connected");
-        });
-
-        chatService.socket.on("disconnect", () => {
+      const unsubscribeDisconnected = chatService.on(
+        "socket_disconnected",
+        (data) => {
+          console.log("❌ Socket disconnected:", data);
           setIsConnected(false);
           setConnectionStatus("disconnected");
-        });
-      }
-
-      return () => {
-        try {
-          unsubscribeFunctions.forEach((unsubscribe) => {
-            if (typeof unsubscribe === "function") {
-              unsubscribe();
-            }
-          });
-        } catch (error) {
-          // Silent fail
         }
-      };
+      );
+      unsubscribeFunctions.push(unsubscribeDisconnected);
+
+      const unsubscribeAuthError = chatService.on("auth_failed", (data) => {
+        console.error("🚫 Authentication failed:", data);
+        setError("Authentication failed. Please refresh the page.");
+        showToastMessage("Authentication failed", "error");
+      });
+      unsubscribeFunctions.push(unsubscribeAuthError);
+
+      const unsubscribeSocketError = chatService.on("socket_error", (error) => {
+        console.error("🚨 Socket error:", error);
+        showToastMessage("Connection error occurred", "error");
+      });
+      unsubscribeFunctions.push(unsubscribeSocketError);
+
+      // ✅ FIX: Store unsubscribe functions for cleanup
+      setSocketUnsubscribeFns(unsubscribeFunctions);
+
+      console.log("✅ Socket listeners setup complete");
     } catch (error) {
-      return () => {};
+      console.error("❌ Error setting up socket listeners:", error);
     }
   };
 
+  // ✅ FIX: Cleanup socket listeners
+  const cleanupSocketListeners = () => {
+    try {
+      socketUnsubscribeFns.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+      setSocketUnsubscribeFns([]);
+    } catch (error) {
+      console.error("Error cleaning up socket listeners:", error);
+    }
+  };
+
+  // ✅ FIX: Improved load chat history
   const loadChatHistory = async (page = 1, append = false) => {
-    if (!party || !mappingValidated) return;
+    if (!party || !mappingValidated) {
+      console.warn("Cannot load chat history: party or mapping not validated");
+      return;
+    }
 
     try {
+      console.log("📚 Loading chat history...", {page, append});
+
       const response = await chatService.getChatHistory(party, {
         page,
         limit: 50,
         messageType: messageType !== "all" ? messageType : null,
       });
 
-      if (response.success) {
+      if (response && response.success && response.data) {
         const formattedMessages = response.data.messages.map(
           formatIncomingMessage
         );
@@ -412,25 +458,37 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
           scrollToBottom();
         }
 
-        setHasMoreMessages(response.data.pagination.hasMore);
+        setHasMoreMessages(response.data.pagination?.hasMore || false);
         setCurrentPage(page);
+
+        console.log(
+          "✅ Chat history loaded:",
+          formattedMessages.length,
+          "messages"
+        );
+      } else {
+        console.warn("No chat history data received");
       }
     } catch (error) {
+      console.error("❌ Failed to load chat history:", error);
       setError("Failed to load chat history");
       showToastMessage(error.message || "Failed to load chat history", "error");
     }
   };
 
+  // ✅ FIX: Improved load conversation summary
   const loadConversationSummary = async () => {
     if (!party || !mappingValidated) return;
 
     try {
-      if (typeof chatService.getConversationSummary === "function") {
-        const response = await chatService.getConversationSummary(party);
-        if (response.success) {
-          setConversationSummary(response.data);
-        }
+      console.log("📊 Loading conversation summary...");
+
+      const response = await chatService.getConversationSummary(party);
+      if (response && response.success && response.data) {
+        setConversationSummary(response.data);
+        console.log("✅ Conversation summary loaded:", response.data);
       } else {
+        // ✅ FIX: Set default summary if no data
         setConversationSummary({
           totalMessages: 0,
           unreadCount: 0,
@@ -439,6 +497,7 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
         });
       }
     } catch (error) {
+      console.warn("⚠️ Failed to load conversation summary:", error);
       setConversationSummary({
         totalMessages: 0,
         unreadCount: 0,
@@ -448,125 +507,143 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
     }
   };
 
+  // ✅ FIX: Improved load templates
   const loadTemplates = async () => {
     if (!party || !mappingValidated) return;
 
     try {
       setIsLoadingTemplates(true);
+      console.log("📋 Loading message templates...");
 
-      if (typeof chatService.getMessageTemplates === "function") {
-        const response = await chatService.getMessageTemplates(party);
-        if (response.success) {
-          setTemplates(response.data.templates || {});
-        }
+      const response = await chatService.getMessageTemplates(party);
+      if (response && response.success && response.data) {
+        setTemplates(response.data.templates || {});
+        console.log("✅ Templates loaded:", response.data.templates);
       } else {
         setTemplates({});
       }
     } catch (error) {
-      showToastMessage("Failed to load message templates", "error");
+      console.warn("⚠️ Failed to load message templates:", error);
+      showToastMessage("Failed to load message templates", "warning");
       setTemplates({});
     } finally {
       setIsLoadingTemplates(false);
     }
   };
 
+  // ✅ FIX: Improved load chat participants
   const loadChatParticipants = async () => {
     if (!party || !mappingValidated) return;
 
     try {
-      if (typeof chatService.getChatParticipants === "function") {
-        const response = await chatService.getChatParticipants(party);
-        if (response.success) {
-          setChatParticipants(response.data.participants || []);
-        }
+      console.log("👥 Loading chat participants...");
+
+      const response = await chatService.getChatParticipants(party);
+      if (response && response.success && response.data) {
+        setChatParticipants(response.data.participants || []);
+        console.log("✅ Chat participants loaded:", response.data.participants);
       } else {
         setChatParticipants([]);
       }
     } catch (error) {
+      console.warn("⚠️ Failed to load chat participants:", error);
       setChatParticipants([]);
     }
   };
 
+  // ✅ FIX: Improved typing handlers
   const handleTypingStart = () => {
     try {
-      if (isConnected && party && mappingValidated) {
-        if (typeof chatService.startTyping === "function") {
-          chatService.startTyping(party);
-        }
+      if (isConnected && party && mappingValidated && !isTyping) {
+        console.log("⌨️ Starting typing indicator...");
+        chatService.startTyping(party);
+        setIsTyping(true);
       }
     } catch (error) {
-      // Silent fail
+      console.error("Error starting typing:", error);
     }
   };
 
   const handleTypingStop = () => {
     try {
-      if (isConnected && party && mappingValidated) {
-        if (typeof chatService.stopTyping === "function") {
-          chatService.stopTyping(party);
-        }
+      if (isConnected && party && mappingValidated && isTyping) {
+        console.log("⏹️ Stopping typing indicator...");
+        chatService.stopTyping(party);
+        setIsTyping(false);
       }
     } catch (error) {
-      // Silent fail
+      console.error("Error stopping typing:", error);
     }
   };
 
+  // ✅ FIX: Improved cleanup
   const cleanup = () => {
     try {
+      console.log("🧹 Cleaning up chat...");
+
+      // Stop typing
+      if (isTyping) {
+        handleTypingStop();
+      }
+
+      // Leave chat room
       if (isConnected && party && mappingValidated) {
-        if (typeof chatService.leaveChat === "function") {
-          chatService.leaveChat();
-        }
+        chatService.leaveChat(party).catch(console.warn);
       }
 
-      if (typeof chatService.off === "function") {
-        const eventsToRemove = [
-          "new_message",
-          "message_sent",
-          "message_delivered",
-          "message_read",
-          "user_typing",
-          "user_joined_chat",
-          "user_left_chat",
-          "user_online",
-          "user_offline",
-          "socket_authenticated",
-          "socket_auth_error",
-          "socket_connected",
-          "socket_disconnected",
-        ];
+      // Cleanup socket listeners
+      cleanupSocketListeners();
 
-        eventsToRemove.forEach((eventName) => {
-          try {
-            chatService.off(eventName);
-          } catch (error) {
-            // Silent fail
-          }
-        });
-      }
+      // Reset state
+      setMessages([]);
+      setTypingUsers([]);
+      setChatParticipants([]);
+      setOnlineUsers([]);
+      setError(null);
     } catch (error) {
-      // Silent fail
+      console.error("Error during cleanup:", error);
     }
   };
 
+  // ✅ FIX: Improved message formatting
   const formatIncomingMessage = (message) => {
-    const isFromMyCompany =
-      message.senderCompanyId === currentCompany?._id ||
-      message.senderCompanyId === currentCompany?.id;
+    try {
+      const isFromMyCompany =
+        message.senderCompanyId === currentCompany?._id ||
+        message.senderCompanyId === currentCompany?.id ||
+        message.fromCompany === currentCompany?._id ||
+        message.fromCompany === currentCompany?.id;
 
-    return {
-      id: message._id || message.id,
-      type: isFromMyCompany ? "sent" : "received",
-      content: message.content,
-      timestamp: new Date(message.createdAt),
-      status: message.status,
-      sender: isFromMyCompany ? "You" : message.senderName || "User",
-      senderCompanyName: message.senderCompanyName,
-      senderCompanyId: message.senderCompanyId,
-      receiverCompanyId: message.receiverCompanyId,
-      messageType: message.messageType,
-      attachments: message.attachments || [],
-    };
+      return {
+        id: message._id || message.id || Date.now().toString(),
+        type: isFromMyCompany ? "sent" : "received",
+        content: message.content || "",
+        timestamp: new Date(
+          message.createdAt || message.timestamp || Date.now()
+        ),
+        status: message.status || "delivered",
+        sender: isFromMyCompany
+          ? "You"
+          : message.senderName || message.sender || "User",
+        senderCompanyName: message.senderCompanyName || message.fromCompanyName,
+        senderCompanyId: message.senderCompanyId || message.fromCompany,
+        receiverCompanyId: message.receiverCompanyId || message.toCompany,
+        messageType: message.messageType || "whatsapp",
+        attachments: message.attachments || [],
+      };
+    } catch (error) {
+      console.error("Error formatting message:", error);
+      return {
+        id: Date.now().toString(),
+        type: "received",
+        content: "Error loading message",
+        timestamp: new Date(),
+        status: "error",
+        sender: "System",
+        messageType: "system",
+        attachments: [],
+      };
+    }
   };
 
   const updateMessageStatus = (messageId, status) => {
@@ -575,14 +652,21 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
     );
   };
 
+  // ✅ FIX: Improved send message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || isSending || !party || !mappingValidated) return;
+    if (!newMessage.trim() || isSending || !party || !mappingValidated) {
+      console.warn("Cannot send message: conditions not met");
+      return;
+    }
 
     setIsSending(true);
     const messageContent = newMessage.trim();
-    const tempId = Date.now().toString();
+    const tempId = `temp_${Date.now()}`;
 
     try {
+      console.log("📤 Sending message:", messageContent);
+
+      // ✅ FIX: Create optimistic message
       const tempMessage = {
         id: tempId,
         type: "sent",
@@ -601,32 +685,51 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
       setNewMessage("");
       scrollToBottom();
 
+      // ✅ FIX: Send via HTTP API (primary method)
       const response = await chatService.sendMessage(
         party,
         messageContent,
         messageType
       );
 
-      if (response.success) {
+      if (response && response.success && response.data) {
+        // ✅ FIX: Update with real message data
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempId
               ? {
                   ...msg,
-                  id: response.data._id,
+                  id: response.data._id || response.data.id,
                   status: "sent",
-                  senderCompanyId: response.data.senderCompanyId,
-                  receiverCompanyId: response.data.receiverCompanyId,
+                  timestamp: new Date(
+                    response.data.createdAt || response.data.timestamp
+                  ),
+                  senderCompanyId:
+                    response.data.senderCompanyId || response.data.fromCompany,
+                  receiverCompanyId:
+                    response.data.receiverCompanyId || response.data.toCompany,
                 }
               : msg
           )
         );
 
         showToastMessage("Message sent successfully", "success");
+
+        // ✅ FIX: Also send via socket for real-time updates
+        if (isConnected) {
+          try {
+            chatService.sendSocketMessage(party, messageContent, messageType);
+          } catch (socketError) {
+            console.warn("Socket message failed:", socketError);
+          }
+        }
       } else {
-        throw new Error(response.message || "Failed to send message");
+        throw new Error(response?.message || "Failed to send message");
       }
     } catch (error) {
+      console.error("❌ Failed to send message:", error);
+
+      // ✅ FIX: Mark message as failed
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === tempId ? {...msg, status: "failed"} : msg
@@ -642,12 +745,16 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
     }
   };
 
+  // ✅ FIX: Improved template selection
   const handleTemplateSelect = async (templateCategory, templateKey) => {
     const template = templates[templateCategory]?.[templateKey];
-    if (!template) return;
+    if (!template) {
+      console.warn("Template not found:", templateCategory, templateKey);
+      return;
+    }
 
     try {
-      setIsLoadingTemplates(true);
+      console.log("📋 Using template:", template);
 
       if (template.content) {
         setNewMessage(template.content);
@@ -656,26 +763,30 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
         messageInputRef.current?.focus();
       }
     } catch (error) {
+      console.error("Error using template:", error);
       showToastMessage("Failed to use template", "error");
-    } finally {
-      setIsLoadingTemplates(false);
     }
   };
 
+  // ✅ FIX: Improved key press handler
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
       handleTypingStop();
     } else if (e.key === "Enter" && e.shiftKey) {
-      return;
+      return; // Allow new line
     } else {
+      // ✅ FIX: Debounced typing start
       handleTypingStart();
     }
   };
 
   const loadMoreMessages = async () => {
-    if (!hasMoreMessages || isLoading) return;
+    if (!hasMoreMessages || isLoading) {
+      console.warn("Cannot load more messages");
+      return;
+    }
 
     setIsLoading(true);
     await loadChatHistory(currentPage + 1, true);
@@ -776,7 +887,7 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
               disabled={isLoadingTemplates}
               style={{fontSize: "9px"}}
             >
-              {template.title}
+              {template.title || templateKey}
             </Button>
           ))}
         </div>
@@ -846,7 +957,13 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
         <Toast
           show={showToast}
           onClose={() => setShowToast(false)}
-          bg={toastType === "success" ? "success" : "danger"}
+          bg={
+            toastType === "success"
+              ? "success"
+              : toastType === "warning"
+              ? "warning"
+              : "danger"
+          }
           delay={3000}
           autohide
         >
@@ -951,7 +1068,10 @@ function PartyChat({show, onHide, party, paymentSummary, formatCurrency}) {
                 <FontAwesomeIcon icon={faSync} className="me-2" />
                 Refresh Chat
               </Dropdown.Item>
-              <Dropdown.Item onClick={() => loadMoreMessages()}>
+              <Dropdown.Item
+                onClick={() => loadMoreMessages()}
+                disabled={!hasMoreMessages || isLoading}
+              >
                 <FontAwesomeIcon icon={faHistory} className="me-2" />
                 Load More Messages
               </Dropdown.Item>

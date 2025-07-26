@@ -176,6 +176,7 @@ class ChatService {
       localStorage.getItem("token") || sessionStorage.getItem("token");
 
     if (!token) {
+      console.warn("No authentication token found for socket connection");
       return null;
     }
 
@@ -183,6 +184,8 @@ class ChatService {
       if (this.socket) {
         this.socket.disconnect();
       }
+
+      console.log("🔌 Initializing socket connection...");
 
       this.socket = io(API_BASE_URL, {
         auth: {
@@ -203,41 +206,47 @@ class ChatService {
       this.setupSocketListeners();
       return this.socket;
     } catch (error) {
+      console.error("Socket initialization error:", error);
       return null;
     }
   }
 
+  // ✅ FIXED: Setup socket listeners to match backend events exactly
   setupSocketListeners() {
     if (!this.socket) return;
 
+    console.log("🎧 Setting up socket event listeners...");
+
     this.socket.on("connect", () => {
+      console.log("🔌 Socket connected:", this.socket.id);
       this.isConnected = true;
       this.reconnectAttempts = 0;
       this.notifyListeners("socket_connected", {socketId: this.socket.id});
     });
 
-    this.socket.on("authenticated", (data) => {
+    // ✅ FIX: Handle backend connection confirmation event
+    this.socket.on("connection_confirmed", (data) => {
+      console.log("✅ Socket authenticated:", data);
       this.isConnected = true;
       this.currentCompanyId = data.companyId;
       this.currentCompanyName = data.companyName;
       this.notifyListeners("socket_authenticated", data);
     });
 
-    this.socket.on("auth_error", (data) => {
-      this.isConnected = false;
-      this.notifyListeners("socket_auth_error", data);
-    });
-
     this.socket.on("disconnect", (reason) => {
+      console.log("❌ Socket disconnected:", reason);
       this.isConnected = false;
       this.notifyListeners("socket_disconnected", {reason});
     });
 
     this.socket.on("connect_error", (error) => {
+      console.error("🚫 Socket connection error:", error);
+
       if (
         error.message === "Authentication failed" ||
         error.message === "Not authenticated"
       ) {
+        console.warn("Authentication failed, clearing tokens");
         localStorage.removeItem("token");
         sessionStorage.removeItem("token");
         this.notifyListeners("auth_failed", {error: error.message});
@@ -247,32 +256,72 @@ class ChatService {
       this.handleReconnect();
     });
 
+    // ✅ FIX: Handle backend message events
     this.socket.on("new_message", (message) => {
+      console.log("📨 New message received:", message);
       if (message.id || message._id) {
         this.setCache(message.id || message._id, message, "message");
       }
       this.notifyListeners("new_message", message);
     });
 
-    this.socket.on("message_sent", (data) => {
-      this.notifyListeners("message_sent", data);
-    });
-
+    // ✅ FIX: Handle backend typing events
     this.socket.on("user_typing", (data) => {
+      console.log("⌨️ User typing:", data);
       this.notifyListeners("user_typing", data);
     });
 
-    this.socket.on("joined_chat", (data) => {
-      this.currentChatRoom = data.chatRoomId;
+    // ✅ FIX: Handle backend chat room events with correct event names
+    this.socket.on("joined_company_chat", (data) => {
+      console.log("💬 Joined company chat:", data);
+      this.currentChatRoom = data.chatRoom;
       this.notifyListeners("joined_chat", data);
     });
 
-    this.socket.on("left_chat", (data) => {
-      this.currentChatRoom = null;
-      this.notifyListeners("left_chat", data);
+    this.socket.on("user_joined_chat", (data) => {
+      console.log("👤 User joined chat:", data);
+      this.notifyListeners("user_joined_chat", data);
+    });
+
+    this.socket.on("user_left_chat", (data) => {
+      console.log("👋 User left chat:", data);
+      this.notifyListeners("user_left_chat", data);
+    });
+
+    // ✅ FIX: Handle backend user status events
+    this.socket.on("user_online", (data) => {
+      console.log("🟢 User online:", data);
+      this.notifyListeners("user_online", data);
+    });
+
+    this.socket.on("user_offline", (data) => {
+      console.log("🔴 User offline:", data);
+      this.notifyListeners("user_offline", data);
+    });
+
+    // ✅ NEW: Handle backend message confirmations
+    this.socket.on("message_sent_confirmation", (data) => {
+      console.log("✅ Message sent confirmation:", data);
+      this.notifyListeners("message_sent", data);
+    });
+
+    this.socket.on("new_message_notification", (data) => {
+      console.log("🔔 New message notification:", data);
+      this.notifyListeners("message_notification", data);
+    });
+
+    this.socket.on("message_read_status", (data) => {
+      console.log("👁️ Message read status:", data);
+      this.notifyListeners("message_read", data);
+    });
+
+    this.socket.on("user_status_changed", (data) => {
+      console.log("🔄 User status changed:", data);
+      this.notifyListeners("user_status_changed", data);
     });
 
     this.socket.on("error", (error) => {
+      console.error("🚨 Socket error:", error);
       this.notifyListeners("socket_error", error);
     });
   }
@@ -282,18 +331,25 @@ class ChatService {
       this.reconnectAttempts++;
       const delay = Math.pow(2, this.reconnectAttempts) * 1000;
 
+      console.log(
+        `🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+      );
+
       setTimeout(() => {
         if (this.socket) {
           this.socket.connect();
         }
       }, delay);
     } else {
+      console.error("❌ Max reconnect attempts reached");
       this.notifyListeners("max_reconnect_attempts_reached");
     }
   }
 
+  // ✅ FIXED: Join chat using correct backend event name and payload
   async joinChat(partyData) {
     if (!this.socket || !this.isConnected) {
+      console.warn("Socket not connected, returning mock success");
       return {success: true, mock: true};
     }
 
@@ -301,47 +357,96 @@ class ChatService {
       const {partyId, partyName, targetCompanyId} =
         this.validateAndExtractPartyCompanyData(partyData);
 
+      console.log("🚀 Joining company chat:", {
+        partyId,
+        partyName,
+        targetCompanyId,
+      });
+
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error("Join chat timeout"));
         }, 10000);
 
-        this.socket.once("joined_chat", (response) => {
+        // ✅ FIX: Listen for correct backend event
+        this.socket.once("joined_company_chat", (response) => {
           clearTimeout(timeout);
+          this.currentChatRoom = response.chatRoom;
+          console.log("✅ Successfully joined chat room:", response.chatRoom);
           resolve(response);
         });
 
         this.socket.once("error", (error) => {
           clearTimeout(timeout);
+          console.error("❌ Failed to join chat:", error);
           reject(new Error(error.message || "Failed to join chat"));
         });
 
-        this.socket.emit("join_chat", {
-          partyId: targetCompanyId,
-          otherCompanyId: targetCompanyId,
-          type: "company",
-          partyData: {
-            id: partyId,
-            name: partyName,
-            linkedCompanyId: targetCompanyId,
-          },
+        // ✅ FIX: Use correct event name and payload structure
+        this.socket.emit("join_company_chat", {
+          otherCompanyId: targetCompanyId, // ✅ Backend expects this field name
         });
       });
     } catch (error) {
+      console.error("Join chat error:", error);
       throw error;
     }
   }
 
-  leaveChat() {
-    if (!this.socket?.connected && !this.isConnected) {
-      return;
+  // ✅ FIXED: Leave chat using correct backend event
+  async leaveChat(partyData) {
+    if (!this.socket || !this.isConnected) {
+      console.warn("Socket not connected, returning mock success");
+      return {success: true, mock: true};
     }
 
-    if (this.socket?.connected) {
-      this.socket.emit("leave_chat");
+    try {
+      if (partyData) {
+        const {partyId, partyName, targetCompanyId} =
+          this.validateAndExtractPartyCompanyData(partyData);
+
+        console.log("👋 Leaving company chat:", {
+          partyId,
+          partyName,
+          targetCompanyId,
+        });
+
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error("Leave chat timeout"));
+          }, 5000);
+
+          this.socket.once("user_left_chat", (response) => {
+            clearTimeout(timeout);
+            this.currentChatRoom = null;
+            console.log("✅ Successfully left chat");
+            resolve(response);
+          });
+
+          this.socket.once("error", (error) => {
+            clearTimeout(timeout);
+            console.error("❌ Failed to leave chat:", error);
+            reject(new Error(error.message || "Failed to leave chat"));
+          });
+
+          // ✅ FIX: Use correct event name and payload
+          this.socket.emit("leave_company_chat", {
+            otherCompanyId: targetCompanyId,
+          });
+        });
+      } else {
+        console.log("👋 Leaving all chats");
+        this.socket.emit("leave_company_chat");
+        this.currentChatRoom = null;
+        return {success: true};
+      }
+    } catch (error) {
+      console.error("Leave chat error:", error);
+      throw error;
     }
   }
 
+  // ✅ FIXED: Send socket message with company_message event
   sendSocketMessage(
     partyData,
     content,
@@ -349,6 +454,7 @@ class ChatService {
     attachments = []
   ) {
     if (!this.socket?.connected && !this.isConnected) {
+      console.warn("Socket not connected for message sending");
       return null;
     }
 
@@ -362,25 +468,129 @@ class ChatService {
       }
 
       const messageData = {
-        partyId: targetCompanyId,
         content,
         messageType,
         attachments,
         timestamp: new Date().toISOString(),
         tempId: Date.now().toString(),
-        originalPartyId: partyId,
-        originalPartyName: partyName,
+        toCompany: targetCompanyId,
         type: "company",
+        // Add party context for reference
+        partyId,
+        partyName,
       };
 
+      console.log("📤 Sending socket message:", messageData);
+
+      // ✅ FIX: Use company_message event (you'll need to add this to backend)
       if (this.socket?.connected) {
-        this.socket.emit("send_message", messageData);
+        this.socket.emit("company_message", messageData);
       }
+
       return messageData;
     } catch (error) {
+      console.error("Send socket message error:", error);
       throw error;
     }
   }
+
+  // ✅ FIXED: Typing events with correct backend event names
+  startTyping(partyData) {
+    if (!this.socket || !this.isConnected || this.isTyping) {
+      return;
+    }
+
+    try {
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      console.log("⌨️ Starting typing indicator for:", targetCompanyId);
+
+      this.isTyping = true;
+
+      // ✅ FIX: Use correct event name and payload
+      this.socket.emit("typing_start", {
+        otherCompanyId: targetCompanyId, // ✅ Backend expects this field
+      });
+
+      this.typingTimeout = setTimeout(() => {
+        this.stopTyping(partyData);
+      }, 5000);
+    } catch (error) {
+      console.error("Start typing error:", error);
+      // Silent fail
+    }
+  }
+
+  stopTyping(partyData) {
+    if (!this.socket || !this.isConnected || !this.isTyping) {
+      return;
+    }
+
+    try {
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      console.log("⏹️ Stopping typing indicator for:", targetCompanyId);
+
+      this.isTyping = false;
+
+      // ✅ FIX: Use correct event name and payload
+      this.socket.emit("typing_stop", {
+        otherCompanyId: targetCompanyId, // ✅ Backend expects this field
+      });
+
+      if (this.typingTimeout) {
+        clearTimeout(this.typingTimeout);
+        this.typingTimeout = null;
+      }
+    } catch (error) {
+      console.error("Stop typing error:", error);
+      // Silent fail
+    }
+  }
+
+  // ✅ FIXED: Mark message as read
+  markMessageAsRead(messageId, partyData) {
+    if (!this.socket || !this.isConnected) {
+      return;
+    }
+
+    try {
+      const {targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      console.log("👁️ Marking message as read:", messageId);
+
+      this.socket.emit("message_read", {
+        messageId,
+        otherCompanyId: targetCompanyId,
+      });
+    } catch (error) {
+      console.error("Mark message read error:", error);
+      // Silent fail
+    }
+  }
+
+  // ✅ FIXED: Update user status
+  updateUserStatus(status) {
+    if (!this.socket || !this.isConnected) {
+      return;
+    }
+
+    try {
+      console.log("🔄 Updating user status:", status);
+
+      this.socket.emit("status_update", {
+        status,
+      });
+    } catch (error) {
+      console.error("Update status error:", error);
+      // Silent fail
+    }
+  }
+
+  // ✅ HTTP API METHODS
 
   async getConversationSummary(partyData) {
     try {
@@ -407,15 +617,7 @@ class ChatService {
       this.setCache(cacheKey, response.data, "conversation");
       return response.data;
     } catch (error) {
-      return {
-        success: false,
-        data: {
-          totalMessages: 0,
-          unreadCount: 0,
-          lastMessageAt: null,
-          participantCount: 0,
-        },
-      };
+      return this.handleError(error);
     }
   }
 
@@ -448,12 +650,7 @@ class ChatService {
       this.setCache(cacheKey, response.data, "conversation");
       return response.data;
     } catch (error) {
-      return {
-        success: false,
-        data: {
-          templates: {},
-        },
-      };
+      return this.handleError(error);
     }
   }
 
@@ -482,257 +679,7 @@ class ChatService {
       this.setCache(cacheKey, response.data, "conversation");
       return response.data;
     } catch (error) {
-      return {
-        success: false,
-        data: {
-          participants: [],
-        },
-      };
-    }
-  }
-
-  startTyping(partyData) {
-    if (!this.socket || !this.isConnected) {
-      return;
-    }
-
-    try {
-      const {partyId, partyName, targetCompanyId} =
-        this.validateAndExtractPartyCompanyData(partyData);
-
-      this.socket.emit("start_typing", {
-        partyId: targetCompanyId,
-        otherCompanyId: targetCompanyId,
-        type: "company",
-        originalPartyId: partyId,
-        originalPartyName: partyName,
-      });
-    } catch (error) {
-      // Silent fail
-    }
-  }
-
-  stopTyping(partyData) {
-    if (!this.socket || !this.isConnected) {
-      return;
-    }
-
-    try {
-      const {partyId, partyName, targetCompanyId} =
-        this.validateAndExtractPartyCompanyData(partyData);
-
-      this.socket.emit("stop_typing", {
-        partyId: targetCompanyId,
-        otherCompanyId: targetCompanyId,
-        type: "company",
-        originalPartyId: partyId,
-        originalPartyName: partyName,
-      });
-    } catch (error) {
-      // Silent fail
-    }
-  }
-
-  async leaveChat(partyData) {
-    if (!this.socket || !this.isConnected) {
-      return {success: true, mock: true};
-    }
-
-    try {
-      if (partyData) {
-        const {partyId, partyName, targetCompanyId} =
-          this.validateAndExtractPartyCompanyData(partyData);
-
-        return new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error("Leave chat timeout"));
-          }, 5000);
-
-          this.socket.once("left_chat", (response) => {
-            clearTimeout(timeout);
-            resolve(response);
-          });
-
-          this.socket.once("error", (error) => {
-            clearTimeout(timeout);
-            reject(new Error(error.message || "Failed to leave chat"));
-          });
-
-          this.socket.emit("leave_chat", {
-            partyId: targetCompanyId,
-            otherCompanyId: targetCompanyId,
-            type: "company",
-            partyData: {
-              id: partyId,
-              name: partyName,
-              linkedCompanyId: targetCompanyId,
-            },
-          });
-        });
-      } else {
-        this.socket.emit("leave_chat", {
-          type: "company",
-        });
-
-        return {success: true};
-      }
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  on(eventName, callback) {
-    if (!this.socket) {
-      return () => {};
-    }
-
-    this.socket.on(eventName, callback);
-
-    return () => {
-      if (this.socket) {
-        this.socket.off(eventName, callback);
-      }
-    };
-  }
-
-  off(eventName, callback = null) {
-    if (!this.socket) {
-      return;
-    }
-
-    if (callback) {
-      this.socket.off(eventName, callback);
-    } else {
-      this.socket.removeAllListeners(eventName);
-    }
-  }
-
-  getFromCache(key, type = "message") {
-    try {
-      const cacheKey = `chat_${type}_${key}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const data = JSON.parse(cached);
-        const maxAge = type === "message" ? 5 * 60 * 1000 : 10 * 60 * 1000;
-        if (Date.now() - data.timestamp < maxAge) {
-          return data.value;
-        } else {
-          localStorage.removeItem(cacheKey);
-        }
-      }
-    } catch (error) {
-      // Silent fail
-    }
-    return null;
-  }
-
-  setCache(key, value, type = "message") {
-    try {
-      const cacheKey = `chat_${type}_${key}`;
-      const data = {
-        value,
-        timestamp: Date.now(),
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-    } catch (error) {
-      // Silent fail
-    }
-  }
-
-  clearHistoryCache(targetCompanyId = null) {
-    try {
-      if (targetCompanyId) {
-        const keys = Object.keys(localStorage).filter((key) =>
-          key.startsWith(`chat_message_history_${targetCompanyId}`)
-        );
-        keys.forEach((key) => localStorage.removeItem(key));
-      } else {
-        const keys = Object.keys(localStorage).filter((key) =>
-          key.startsWith("chat_message_")
-        );
-        keys.forEach((key) => localStorage.removeItem(key));
-      }
-    } catch (error) {
-      // Silent fail
-    }
-  }
-
-  clearConversationCache() {
-    try {
-      const keys = Object.keys(localStorage).filter((key) =>
-        key.startsWith("chat_conversation_")
-      );
-      keys.forEach((key) => localStorage.removeItem(key));
-    } catch (error) {
-      // Silent fail
-    }
-  }
-
-  startTyping(partyData) {
-    if (this.socket?.connected && !this.isTyping) {
-      try {
-        const {partyId, partyName, targetCompanyId} =
-          this.validateAndExtractPartyCompanyData(partyData);
-
-        this.isTyping = true;
-        this.socket.emit("typing_start", {
-          partyId: targetCompanyId,
-          otherCompanyId: targetCompanyId,
-          originalPartyId: partyId,
-        });
-
-        this.typingTimeout = setTimeout(() => {
-          this.stopTyping(partyData);
-        }, 5000);
-      } catch (error) {
-        // Silent fail
-      }
-    }
-  }
-
-  stopTyping(partyData) {
-    if (this.socket?.connected && this.isTyping) {
-      try {
-        const {partyId, partyName, targetCompanyId} =
-          this.validateAndExtractPartyCompanyData(partyData);
-
-        this.isTyping = false;
-        this.socket.emit("typing_stop", {
-          partyId: targetCompanyId,
-          otherCompanyId: targetCompanyId,
-          originalPartyId: partyId,
-        });
-
-        if (this.typingTimeout) {
-          clearTimeout(this.typingTimeout);
-          this.typingTimeout = null;
-        }
-      } catch (error) {
-        // Silent fail
-      }
-    }
-  }
-
-  disconnectSocket() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-    this.isConnected = false;
-    this.currentChatRoom = null;
-    this.isTyping = false;
-    if (this.typingTimeout) {
-      clearTimeout(this.typingTimeout);
-      this.typingTimeout = null;
-    }
-  }
-
-  async healthCheck() {
-    try {
-      const response = await chatAPI.get("/api/chat/health");
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
+      return this.handleError(error);
     }
   }
 
@@ -784,7 +731,7 @@ class ChatService {
       this.setCache(cacheKey, response.data, "message");
       return response.data;
     } catch (error) {
-      throw this.handleError(error);
+      return this.handleError(error);
     }
   }
 
@@ -803,6 +750,8 @@ class ChatService {
         throw new Error(contentValidation.message);
       }
 
+      console.log("📤 Sending HTTP message to:", targetCompanyId);
+
       const response = await chatAPI.post(`/api/chat/send/${targetCompanyId}`, {
         content,
         messageType,
@@ -812,30 +761,230 @@ class ChatService {
         partyName,
       });
 
+      // Clear relevant caches
       this.clearHistoryCache(targetCompanyId);
       this.clearConversationCache();
 
       return response.data;
     } catch (error) {
-      throw this.handleError(error);
+      return this.handleError(error);
     }
   }
 
-  clearHistoryCache(targetCompanyId) {
-    for (const key of this.messageCache.keys()) {
-      if (key.startsWith(`history_${targetCompanyId}`)) {
-        this.messageCache.delete(key);
-      }
+  // ✅ NEW: Get conversations list
+  async getConversations(options = {}) {
+    try {
+      const {page = 1, limit = 20, search, messageType} = options;
+
+      const response = await chatAPI.get("/api/chat/conversations", {
+        params: {
+          page,
+          limit,
+          search,
+          messageType,
+          type: "company",
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
     }
   }
 
-  clearConversationCache() {
-    for (const key of this.conversationCache.keys()) {
-      if (key.startsWith("conversations_") || key.startsWith("active_chats_")) {
-        this.conversationCache.delete(key);
-      }
+  // ✅ NEW: Get chat statistics
+  async getChatStats(period = "30d") {
+    try {
+      const response = await chatAPI.get("/api/chat/stats", {
+        params: {
+          period,
+          type: "company",
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
     }
   }
+
+  // ✅ NEW: Search messages
+  async searchMessages(query, options = {}) {
+    try {
+      const {
+        partyId,
+        messageType,
+        page = 1,
+        limit = 20,
+        startDate,
+        endDate,
+      } = options;
+
+      const response = await chatAPI.get("/api/chat/search", {
+        params: {
+          query,
+          partyId,
+          messageType,
+          page,
+          limit,
+          startDate,
+          endDate,
+          type: "company",
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Get unread count
+  async getUnreadCount(partyData = null) {
+    try {
+      let partyId = null;
+
+      if (partyData) {
+        const {targetCompanyId} =
+          this.validateAndExtractPartyCompanyData(partyData);
+        partyId = targetCompanyId;
+      }
+
+      const response = await chatAPI.get("/api/chat/unread-count", {
+        params: {
+          partyId,
+          type: "company",
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Mark messages as read (HTTP)
+  async markMessagesAsRead(messageIds) {
+    try {
+      if (!Array.isArray(messageIds) || messageIds.length === 0) {
+        throw new Error("Message IDs array is required");
+      }
+
+      const response = await chatAPI.post("/api/chat/read", {
+        messageIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Delete messages
+  async deleteMessages(messageIds) {
+    try {
+      if (!Array.isArray(messageIds) || messageIds.length === 0) {
+        throw new Error("Message IDs array is required");
+      }
+
+      const response = await chatAPI.delete("/api/chat/messages", {
+        data: {messageIds},
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Send template message
+  async sendTemplateMessage(
+    partyData,
+    templateId,
+    templateData = {},
+    customContent = null
+  ) {
+    try {
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      const response = await chatAPI.post(
+        `/api/chat/templates/${targetCompanyId}/${templateId}`,
+        {
+          templateData,
+          customContent,
+          type: "company",
+          partyId,
+          partyName,
+        }
+      );
+
+      // Clear relevant caches
+      this.clearHistoryCache(targetCompanyId);
+      this.clearConversationCache();
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Get active company chats
+  async getActiveChats(options = {}) {
+    try {
+      const {page = 1, limit = 20} = options;
+
+      const response = await chatAPI.get("/api/chat/active-chats", {
+        params: {
+          page,
+          limit,
+          type: "company",
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Get company chat analytics
+  async getChatAnalytics(partyData, period = "7d") {
+    try {
+      const {partyId, partyName, targetCompanyId} =
+        this.validateAndExtractPartyCompanyData(partyData);
+
+      const response = await chatAPI.get(
+        `/api/chat/analytics/${targetCompanyId}`,
+        {
+          params: {
+            period,
+            type: "company",
+            partyId,
+            partyName,
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ NEW: Get company status
+  async getCompanyStatus(companyId) {
+    try {
+      const response = await chatAPI.get(
+        `/api/chat/company-status/${companyId}`
+      );
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  // ✅ UTILITY METHODS
 
   on(event, callback) {
     if (!this.eventListeners.has(event)) {
@@ -865,9 +1014,49 @@ class ChatService {
         try {
           callback(data);
         } catch (error) {
-          // Silent fail
+          console.error(`Error in event listener for ${event}:`, error);
         }
       });
+    }
+  }
+
+  clearHistoryCache(targetCompanyId) {
+    for (const key of this.messageCache.keys()) {
+      if (key.startsWith(`history_${targetCompanyId}`)) {
+        this.messageCache.delete(key);
+      }
+    }
+  }
+
+  clearConversationCache() {
+    for (const key of this.conversationCache.keys()) {
+      if (key.startsWith("conversations_") || key.startsWith("active_chats_")) {
+        this.conversationCache.delete(key);
+      }
+    }
+  }
+
+  disconnectSocket() {
+    if (this.socket) {
+      console.log("🔌 Disconnecting socket");
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    this.isConnected = false;
+    this.currentChatRoom = null;
+    this.isTyping = false;
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+      this.typingTimeout = null;
+    }
+  }
+
+  async healthCheck() {
+    try {
+      const response = await chatAPI.get("/api/chat/health");
+      return response.data;
+    } catch (error) {
+      return this.handleError(error);
     }
   }
 
@@ -949,6 +1138,11 @@ class ChatService {
 
   async initializeWithCompany(companyId, companyName = null) {
     try {
+      console.log("🚀 Initializing chat service with company:", {
+        companyId,
+        companyName,
+      });
+
       this.setCompanyContext(companyId, companyName);
       this.initializeSocket();
 
@@ -966,6 +1160,7 @@ class ChatService {
         health,
       };
     } catch (error) {
+      console.error("Initialize with company error:", error);
       return {
         success: false,
         error: error.message,
@@ -975,6 +1170,8 @@ class ChatService {
 
   async quickSetup() {
     try {
+      console.log("⚡ Quick setup starting...");
+
       const contextSet = this.autoSetCompanyContext();
 
       if (!contextSet) {
@@ -984,13 +1181,21 @@ class ChatService {
       this.initializeSocket();
       const health = await this.healthCheck();
 
+      console.log("✅ Quick setup completed:", {
+        companyId: this.currentCompanyId,
+        companyName: this.currentCompanyName,
+        socketConnected: this.isConnected,
+      });
+
       return {
         success: true,
         companyId: this.currentCompanyId,
         companyName: this.currentCompanyName,
         socketConnected: this.isConnected,
+        health,
       };
     } catch (error) {
+      console.error("Quick setup error:", error);
       return {
         success: false,
         error: error.message,
