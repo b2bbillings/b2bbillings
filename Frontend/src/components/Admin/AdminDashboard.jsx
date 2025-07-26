@@ -34,8 +34,8 @@ import {
   faExchangeAlt,
   faChartBar,
   faWarehouse,
-  faCheckCircle, // ✅ NEW: For name verification
-  faHistory, // ✅ NEW: For verification history
+  faCheckCircle,
+  faHistory,
 } from "@fortawesome/free-solid-svg-icons";
 
 import AdminSidebar from "./AdminSidebar";
@@ -57,10 +57,10 @@ import SalesOrderManagement from "./SalesOrderManegment";
 import PurchaseInvoiceManagement from "./PurchaseInvoiceManegment";
 import PurchaseOrderManagement from "./PurchaseOrderManegment";
 
-// ✅ NEW: Import the name verification components
+// Import the name verification components
 import ItemNameVerification from "./ItemNameVerification";
 
-// ✅ NEW: Verification History Component
+// Verification History Component
 const VerificationHistory = ({adminData, currentUser, addToast}) => (
   <Container fluid>
     <div className="d-flex justify-content-between align-items-center mb-4">
@@ -140,7 +140,7 @@ const VerificationHistory = ({adminData, currentUser, addToast}) => (
   </Container>
 );
 
-// ✅ NEW: Verification Analytics Component
+// Verification Analytics Component
 const VerificationAnalytics = ({adminData, currentUser, addToast}) => (
   <Container fluid>
     <div className="d-flex justify-content-between align-items-center mb-4">
@@ -881,7 +881,6 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         totalPurchaseOrders: 1420,
         totalRevenue: 245680,
         monthlyGrowth: 23.5,
-        // ✅ NEW: Add verification data
         pendingVerifications: 12,
         urgentVerifications: 3,
         totalVerifications: 1245,
@@ -895,10 +894,9 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       };
 
       setAdminData(mockAdminData);
-      addToast?.("Admin dashboard loaded successfully", "success");
     } catch (error) {
       setError(error.message);
-      addToast?.("Failed to load admin dashboard", "error");
+      // Removed success/error toasts from auto-loading
     } finally {
       setIsLoading(false);
     }
@@ -1139,7 +1137,7 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
                 }
               />
 
-              {/* ✅ NEW: Name Verification Routes */}
+              {/* Name Verification Routes */}
               <Route
                 path="/name-verification"
                 element={

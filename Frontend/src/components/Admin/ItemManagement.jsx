@@ -237,7 +237,6 @@ function ItemManagement({adminData, currentUser, addToast}) {
         );
 
         if (currentPage === 1 && !isRefreshing) {
-          addToast?.("Global items loaded successfully", "success");
         }
       } else {
         throw new Error(response.message || "Failed to load global items");
@@ -364,7 +363,6 @@ function ItemManagement({adminData, currentUser, addToast}) {
       );
 
       if (response.success) {
-        addToast?.("Global items data exported successfully", "success");
       } else {
         throw new Error(response.message || "Failed to export items");
       }

@@ -1,8 +1,11 @@
 /* Staff Management Container */
+
 .staff-management-container {
-  padding: 1rem;
-  background-color: #f8f9fa;
+  padding: 0; /* ✅ Changed from 1rem to 0 */
+  background-color: transparent; /* ✅ Changed from #f8f9fa to transparent */
   min-height: 100vh;
+  width: 100%; /* ✅ Added to ensure full width */
+  margin: 0; /* ✅ Added to remove any default margin */
 }
 
 /* Staff Table Styles */

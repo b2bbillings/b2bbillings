@@ -149,10 +149,6 @@ function CompanyManagement({adminData, currentUser, addToast}) {
         setTotalCompanies(
           response.data.pagination?.totalItems || formattedCompanies.length
         );
-
-        if (currentPage === 1 && !isRefreshing) {
-          addToast?.("Companies loaded successfully", "success");
-        }
       } else {
         throw new Error(response.message || "Failed to load companies");
       }
@@ -259,8 +255,6 @@ function CompanyManagement({adminData, currentUser, addToast}) {
           userRole: "admin",
         },
       });
-
-      addToast?.(`Opening ${section} for ${company.businessName}`, "info");
     } catch (error) {
       console.error("Error navigating to company details:", error);
       addToast?.("Failed to open company details", "error");
@@ -362,11 +356,6 @@ function CompanyManagement({adminData, currentUser, addToast}) {
         setCompanies((prev) =>
           prev.map((c) => (c.id === company.id ? {...c, isActive} : c))
         );
-
-        addToast?.(
-          `Company ${isActive ? "activated" : "deactivated"} successfully`,
-          "success"
-        );
       } else {
         throw new Error(response.message || "Failed to update company status");
       }
@@ -392,7 +381,6 @@ function CompanyManagement({adminData, currentUser, addToast}) {
       const response = await companyService.resetCompanyAccess(company.id);
 
       if (response.success) {
-        addToast?.("Company access reset successfully", "success");
       } else {
         throw new Error(response.message || "Failed to reset company access");
       }

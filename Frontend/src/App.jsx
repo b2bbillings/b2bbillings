@@ -20,6 +20,12 @@ import AdminDashboard from "./components/Admin/AdminDashboard";
 // ✅ Import MainDashboard component - NO LAYOUT
 import MainDashboard from "./components/MainDashboard/MainDashboard";
 
+// ✅ Import DailyTaskAssignment component
+import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
+
+// ✅ Import StaffManagement component
+import StaffManagement from "./components/Home/StaffManagement";
+
 // Import services
 import companyService from "./services/companyService";
 import authService from "./services/authService";
@@ -360,7 +366,10 @@ function App() {
       allProducts: `/companies/${companyId}/products`,
       inventory: `/companies/${companyId}/inventory`,
       bankAccounts: `/companies/${companyId}/bank-accounts`,
+      // ✅ FIXED: Staff management routes
       staff: `/companies/${companyId}/staff`,
+      staffList: `/companies/${companyId}/staff`,
+      dailyTaskAssignment: `/companies/${companyId}/staff/daily-task-assignment`,
       insights: `/companies/${companyId}/insights`,
       settings: `/companies/${companyId}/settings`,
       community: `/companies/${companyId}/community`,
@@ -767,6 +776,91 @@ function App() {
     );
   };
 
+  // ✅ StaffManagement Wrapper Component
+  const StaffManagementWrapper = () => {
+    const {companyId} = useParams();
+
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <StaffManagement
+        companyData={currentCompany}
+        userData={currentUser}
+        addToast={showToast}
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        companyId={companyId}
+        onNavigate={(page) => {
+          const routeMap = {
+            dashboard: `/companies/${companyId}/dashboard`,
+            dailyTaskAssignment: `/companies/${companyId}/staff/daily-task-assignment`,
+          };
+          const targetRoute = routeMap[page];
+          if (targetRoute) {
+            window.location.href = targetRoute;
+          }
+        }}
+        isOnline={true}
+      />
+    );
+  };
+
+  // ✅ Daily Task Assignment Wrapper Component
+  const DailyTaskAssignmentWrapper = () => {
+    const {companyId} = useParams();
+
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    if (!currentCompany) {
+      return (
+        <div className="container mt-5 text-center">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading company...</span>
+          </div>
+          <p className="mt-3">Loading company information...</p>
+        </div>
+      );
+    }
+
+    return (
+      <DailyTaskAssignment
+        companyData={currentCompany}
+        userData={currentUser}
+        addToast={showToast}
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        companyId={companyId}
+        onNavigate={(page) => {
+          const routeMap = {
+            staff: `/companies/${companyId}/staff`,
+            staffList: `/companies/${companyId}/staff`,
+            dashboard: `/companies/${companyId}/dashboard`,
+          };
+          const targetRoute = routeMap[page];
+          if (targetRoute) {
+            window.location.href = targetRoute;
+          }
+        }}
+        isOnline={true}
+      />
+    );
+  };
+
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -1155,6 +1249,27 @@ function App() {
             element={<CommunityPageWrapper />}
           />
 
+          {/* ✅ STAFF MANAGEMENT ROUTES - BEFORE THE CATCH-ALL */}
+          <Route
+            path="/companies/:companyId/staff"
+            element={
+              <ProtectedRoute>
+                <StaffManagementWrapper />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ✅ Daily Task Assignment Route */}
+          <Route
+            path="/companies/:companyId/staff/daily-task-assignment"
+            element={
+              <ProtectedRoute>
+                <DailyTaskAssignmentWrapper />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Purchase Routes */}
           <Route
             path="/companies/:companyId/purchases/add"
             element={
@@ -1179,6 +1294,7 @@ function App() {
             }
           />
 
+          {/* Purchase Order Routes */}
           <Route
             path="/companies/:companyId/purchase-orders/add"
             element={
@@ -1197,6 +1313,7 @@ function App() {
             }
           />
 
+          {/* Sales Routes */}
           <Route
             path="/companies/:companyId/sales/add"
             element={
@@ -1218,6 +1335,7 @@ function App() {
             }
           />
 
+          {/* Quotation Routes */}
           <Route
             path="/companies/:companyId/quotations/add"
             element={
@@ -1239,6 +1357,7 @@ function App() {
             }
           />
 
+          {/* Sales Order Routes */}
           <Route
             path="/companies/:companyId/sales-orders/add"
             element={
@@ -1257,7 +1376,7 @@ function App() {
             }
           />
 
-          {/* ✅ All company routes go to HomePage with Layout */}
+          {/* ✅ CATCH-ALL ROUTE - MUST BE LAST */}
           <Route
             path="/companies/:companyId/*"
             element={

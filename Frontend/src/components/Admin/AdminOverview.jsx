@@ -79,7 +79,6 @@ function AdminOverview({adminData, addToast, onTabChange}) {
     companiesGrowth: [],
     stockSummary: {},
     partyStats: {},
-    // Admin-specific stats
     adminStats: {
       activeCompanies: 0,
       inactiveCompanies: 0,
@@ -176,14 +175,13 @@ function AdminOverview({adminData, addToast, onTabChange}) {
         },
       };
 
-      // ✅ PROCESS USER STATS FIRST
+      // Process user stats
       if (
         userStatsResponse.status === "fulfilled" &&
         userStatsResponse.value?.success
       ) {
         const userStatsData = userStatsResponse.value.data;
 
-        // Extract total users from various possible response formats
         realStatistics.totalUsers =
           userStatsData.totalUsers ||
           userStatsData.count ||
@@ -193,33 +191,27 @@ function AdminOverview({adminData, addToast, onTabChange}) {
             : 0) ||
           0;
 
-        // Process recent users if available
         if (userStatsData.recentUsers || userStatsData.users) {
           realStatistics.recentUsers =
             userStatsData.recentUsers || userStatsData.users || [];
 
-          // Calculate weekly activity from recent users
           realStatistics.userActivity.week = calculateWeeklyActivity(
             realStatistics.recentUsers
           );
         }
 
-        // Process users by role if available
         if (userStatsData.usersByRole) {
           realStatistics.usersByRole = userStatsData.usersByRole;
         }
 
-        // Process monthly growth if available
         if (userStatsData.monthlyGrowth) {
           realStatistics.monthlyGrowth = userStatsData.monthlyGrowth;
         }
       } else {
-        console.warn("⚠️ User stats failed:", userStatsResponse.reason);
-        // Set fallback user count
         realStatistics.totalUsers = 25;
       }
 
-      // ✅ PROCESS ADMIN COMPANY DATA
+      // Process admin company data
       if (
         adminCompaniesResponse.status === "fulfilled" &&
         adminCompaniesResponse.value?.success
@@ -231,11 +223,9 @@ function AdminOverview({adminData, addToast, onTabChange}) {
         realStatistics.totalCompanies = companies.length;
         realStatistics.recentCompanies = companies.slice(0, 5);
 
-        // Calculate companies growth from admin data
         const companiesGrowth = calculateCompaniesGrowth(companies);
         realStatistics.companiesGrowth = companiesGrowth;
 
-        // Process admin-specific company stats
         if (adminCompaniesData?.stats) {
           realStatistics.adminStats = {
             activeCompanies: adminCompaniesData.stats.activeCompanies || 0,
@@ -249,46 +239,33 @@ function AdminOverview({adminData, addToast, onTabChange}) {
           };
         }
       } else {
-        console.warn(
-          "⚠️ Admin companies data failed:",
-          adminCompaniesResponse.reason
-        );
-        // Set fallback company count
         realStatistics.totalCompanies = 5;
       }
 
-      // ✅ PROCESS ADMIN COMPANY STATS
+      // Process admin company stats
       if (
         adminCompanyStatsResponse.status === "fulfilled" &&
         adminCompanyStatsResponse.value?.success
       ) {
         const adminStats = adminCompanyStatsResponse.value.data;
 
-        // Merge additional admin stats
         realStatistics.adminStats = {
           ...realStatistics.adminStats,
           ...adminStats,
         };
 
-        // Update total companies if not already set
         if (!realStatistics.totalCompanies && adminStats.totalCompanies) {
           realStatistics.totalCompanies = adminStats.totalCompanies;
         }
-      } else {
-        console.warn(
-          "⚠️ Admin company stats failed:",
-          adminCompanyStatsResponse.reason
-        );
       }
 
-      // ✅ PROCESS ADMIN ITEM STATS
+      // Process admin item stats
       if (
         adminItemStatsResponse.status === "fulfilled" &&
         adminItemStatsResponse.value?.success
       ) {
         const itemStatsData = adminItemStatsResponse.value.data;
 
-        // Update item statistics
         setItemStats({
           totalItems: itemStatsData.totalItems || 0,
           totalProducts: itemStatsData.totalProducts || 0,
@@ -302,28 +279,21 @@ function AdminOverview({adminData, addToast, onTabChange}) {
           recentItems: itemStatsData.recentItems || 0,
         });
 
-        // Update main statistics with item data
         realStatistics.totalProducts = itemStatsData.totalProducts || 0;
         realStatistics.lowStockItems =
           itemStatsData.stockSummary?.lowStock || 0;
         realStatistics.outOfStockItems =
           itemStatsData.stockSummary?.outOfStock || 0;
         realStatistics.totalStock = itemStatsData.stockSummary?.inStock || 0;
-      } else {
-        console.warn(
-          "⚠️ Admin item stats failed:",
-          adminItemStatsResponse.reason
-        );
       }
 
-      // ✅ PROCESS LOW STOCK ITEMS
+      // Process low stock items
       if (
         adminLowStockResponse.status === "fulfilled" &&
         adminLowStockResponse.value?.success
       ) {
         const lowStockData = adminLowStockResponse.value.data;
 
-        // Update low stock count
         if (lowStockData.count) {
           realStatistics.lowStockItems = lowStockData.count;
           setItemStats((prev) => ({
@@ -331,15 +301,9 @@ function AdminOverview({adminData, addToast, onTabChange}) {
             lowStockItems: lowStockData.count,
           }));
         }
-      } else {
-        console.warn(
-          "⚠️ Low stock items failed:",
-          adminLowStockResponse.reason
-        );
       }
 
-      // ✅ APPLY FALLBACKS FOR MISSING DATA
-      // If totalUsers is still 0, calculate based on companies
+      // Apply fallbacks for missing data
       if (
         realStatistics.totalUsers === 0 &&
         realStatistics.totalCompanies > 0
@@ -350,15 +314,13 @@ function AdminOverview({adminData, addToast, onTabChange}) {
         );
       }
 
-      // If totalCompanies is still 0, use fallback
       if (realStatistics.totalCompanies === 0) {
         realStatistics.totalCompanies = 5;
         realStatistics.adminStats.activeCompanies = 4;
         realStatistics.adminStats.inactiveCompanies = 1;
       }
 
-      // ✅ GENERATE MOCK DATA FOR MISSING APIS
-      // Mock recent orders with more realistic data
+      // Generate mock data for missing APIs
       const mockOrders = generateMockOrders(
         realStatistics.totalUsers,
         realStatistics.totalCompanies
@@ -366,12 +328,10 @@ function AdminOverview({adminData, addToast, onTabChange}) {
       realStatistics.recentOrders = mockOrders;
       realStatistics.totalOrders = mockOrders.length;
 
-      // Calculate revenue from orders
       realStatistics.totalRevenue = mockOrders
         .filter((order) => order.status === "completed")
         .reduce((sum, order) => sum + order.amount, 0);
 
-      // Mock products/inventory data if not from API
       if (realStatistics.totalProducts === 0) {
         realStatistics.totalProducts = Math.max(
           150,
@@ -386,7 +346,6 @@ function AdminOverview({adminData, addToast, onTabChange}) {
         );
       }
 
-      // Mock parties data
       realStatistics.totalParties = Math.max(
         50,
         realStatistics.totalCompanies * 10
@@ -396,24 +355,12 @@ function AdminOverview({adminData, addToast, onTabChange}) {
       );
 
       setStatistics(realStatistics);
-
-      if (addToast) {
-        addToast("Admin dashboard loaded with comprehensive data!", "success");
-      }
     } catch (error) {
-      console.error("❌ Error loading admin overview data:", error);
       setError(error.message);
 
       // Fallback to mock data
       const fallbackData = generateFallbackData();
       setStatistics(fallbackData);
-
-      if (addToast) {
-        addToast(
-          "Using fallback data - some features may be limited",
-          "warning"
-        );
-      }
     } finally {
       setIsLoading(false);
     }
@@ -440,18 +387,16 @@ function AdminOverview({adminData, addToast, onTabChange}) {
       ) {
         const itemsData = itemsResponse.value.data;
 
-        // Update recent items in statistics
         setStatistics((prev) => ({
           ...prev,
           recentItems: itemsData.items || [],
         }));
       }
     } catch (error) {
-      console.warn("⚠️ Error loading item details:", error);
+      // Silent error handling
     }
   };
 
-  // ✅ NEW: Add function to get item stock health summary
   const getItemStockHealthSummary = () => {
     const total = itemStats.totalProducts;
     if (total === 0) return "No products";
@@ -470,25 +415,15 @@ function AdminOverview({adminData, addToast, onTabChange}) {
     };
   };
 
-  // ✅ NEW: Add function to handle item navigation
   const handleNavigateToItems = (filter = {}) => {
     if (onTabChange) {
-      // Store filter in session or state for the items tab
       sessionStorage.setItem("itemsFilter", JSON.stringify(filter));
       onTabChange("items");
     }
   };
+
   // Helper function to calculate weekly activity from recent users
   const calculateWeeklyActivity = (recentUsers) => {
-    const weekDays = [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-      "Sunday",
-    ];
     const weeklyData = new Array(7).fill(0);
 
     const now = new Date();
@@ -497,8 +432,8 @@ function AdminOverview({adminData, addToast, onTabChange}) {
     recentUsers.forEach((user) => {
       const createdDate = new Date(user.createdAt);
       if (createdDate >= oneWeekAgo) {
-        const dayOfWeek = createdDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert to Mon=0, Sun=6
+        const dayOfWeek = createdDate.getDay();
+        const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
         weeklyData[adjustedDay]++;
       }
     });
@@ -771,6 +706,7 @@ function AdminOverview({adminData, addToast, onTabChange}) {
     try {
       await loadRealData();
       await loadItemDetails();
+
       // Update chart if it exists
       if (chartInstance.current) {
         const newData =
@@ -783,11 +719,12 @@ function AdminOverview({adminData, addToast, onTabChange}) {
 
       setShowToast(true);
 
+      // Only show toast for manual refresh
       if (addToast) {
         addToast("Dashboard data refreshed successfully!", "success");
       }
     } catch (error) {
-      console.error("❌ Error refreshing data:", error);
+      // Only show error toast, not console logging
       if (addToast) {
         addToast("Failed to refresh data", "error");
       }

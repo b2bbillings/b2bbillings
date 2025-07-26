@@ -29,6 +29,15 @@ import {
   faBalanceScale,
   faChartBar,
   faPlus,
+  faTasks,
+  faCalendarCheck,
+  faUserClock,
+  faUsers,
+  faIdBadge,
+  faBusinessTime,
+  faUserCheck,
+  faCalendarAlt,
+  faClipboardCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import "./Sidebar.css";
 
@@ -75,6 +84,16 @@ function Sidebar({
       allProducts: "inventory",
       lowStock: "inventory",
       stockMovement: "inventory",
+
+      // Staff Management pages
+      staff: "staffManagement",
+      staffList: "staffManagement",
+      dailyTaskAssignment: "staffManagement",
+      "daily-task-assignment": "staffManagement", // Added kebab-case route
+      staffAttendance: "staffManagement",
+      staffPerformance: "staffManagement",
+      staffSchedule: "staffManagement",
+      employeeManagement: "staffManagement",
     };
 
     const accordionKey = pageToAccordionMap[activePage];
@@ -88,8 +107,15 @@ function Sidebar({
     setActiveKey(activeKey === eventKey ? null : eventKey);
   };
 
-  // Function to handle navigation with company validation
+  // ✅ UPDATED: Function to handle navigation with company validation and proper routing
   const handleNavigation = (page) => {
+    console.log("🔍 Navigation Debug:", {
+      page,
+      companyId,
+      currentCompanyId: currentCompany?.id,
+      currentCompanyName: currentCompany?.name || currentCompany?.businessName,
+    });
+
     const requiresCompany = [
       "inventory",
       "allProducts",
@@ -107,27 +133,121 @@ function Sidebar({
       "bankReconciliation",
       "cashFlow",
       "parties",
+      "staff",
+      "staffList",
+      "dailyTaskAssignment",
+      "staffAttendance",
+      "staffPerformance",
+      "staffSchedule",
+      "employeeManagement",
     ].includes(page);
 
-    if (
-      requiresCompany &&
-      !companyId &&
-      !currentCompany?.id &&
-      !currentCompany?._id
-    ) {
+    // Get the effective company ID
+    const effectiveCompanyId =
+      companyId || currentCompany?.id || currentCompany?._id;
+
+    if (requiresCompany && !effectiveCompanyId) {
       console.warn(
         "⚠️ Navigation blocked: No company selected for page:",
         page
       );
+      // Show toast if available
+      if (window.showToast) {
+        window.showToast("Please select a company first", "warning");
+      } else {
+        alert("Please select a company first");
+      }
       return;
     }
 
+    // ✅ ADDED: Direct route handling for staff management pages
+    if (page === "dailyTaskAssignment") {
+      console.log("✅ Navigating to Daily Task Assignment");
+      window.location.href = `/companies/${effectiveCompanyId}/staff/daily-task-assignment`;
+      return;
+    }
+
+    if (page === "staffList" || page === "staff") {
+      console.log("✅ Navigating to Staff List");
+      window.location.href = `/companies/${effectiveCompanyId}/staff`;
+      return;
+    }
+
+    if (page === "staffAttendance") {
+      console.log("✅ Navigating to Staff Attendance");
+      window.location.href = `/companies/${effectiveCompanyId}/staff/attendance`;
+      return;
+    }
+
+    if (page === "staffPerformance") {
+      console.log("✅ Navigating to Staff Performance");
+      window.location.href = `/companies/${effectiveCompanyId}/staff/performance`;
+      return;
+    }
+
+    if (page === "staffSchedule") {
+      console.log("✅ Navigating to Staff Schedule");
+      window.location.href = `/companies/${effectiveCompanyId}/staff/schedule`;
+      return;
+    }
+
+    if (page === "employeeManagement") {
+      console.log("✅ Navigating to Employee Management");
+      window.location.href = `/companies/${effectiveCompanyId}/staff/employees`;
+      return;
+    }
+
+    // ✅ ADDED: Direct route handling for other common pages
+    if (page === "parties") {
+      window.location.href = `/companies/${effectiveCompanyId}/parties`;
+      return;
+    }
+
+    if (page === "products") {
+      window.location.href = `/companies/${effectiveCompanyId}/products`;
+      return;
+    }
+
+    if (page === "inventory") {
+      window.location.href = `/companies/${effectiveCompanyId}/inventory`;
+      return;
+    }
+
+    if (page === "allProducts") {
+      window.location.href = `/companies/${effectiveCompanyId}/inventory`;
+      return;
+    }
+
+    if (page === "quotations") {
+      window.location.href = `/companies/${effectiveCompanyId}/quotations`;
+      return;
+    }
+
+    if (page === "invoices") {
+      window.location.href = `/companies/${effectiveCompanyId}/sales`;
+      return;
+    }
+
+    if (page === "purchaseBills") {
+      window.location.href = `/companies/${effectiveCompanyId}/purchases`;
+      return;
+    }
+
+    if (page === "purchaseOrders") {
+      window.location.href = `/companies/${effectiveCompanyId}/purchase-orders`;
+      return;
+    }
+
+    // ✅ Fallback to onNavigate prop for other pages
     if (onNavigate) {
+      console.log("📞 Calling onNavigate with:", page);
       onNavigate(page);
+    } else {
+      console.warn("⚠️ No navigation handler available for:", page);
     }
   };
 
-  // Update the isItemDisabled function - UPDATED: Removed expenses and purchaseReturn
+  // Update the isItemDisabled function
   const isItemDisabled = (page) => {
     const requiresCompany = [
       "inventory",
@@ -146,21 +266,29 @@ function Sidebar({
       "bankReconciliation",
       "cashFlow",
       "parties",
+      "staff",
+      "staffList",
+      "dailyTaskAssignment",
+      "staffAttendance",
+      "staffPerformance",
+      "staffSchedule",
+      "employeeManagement",
     ].includes(page);
 
-    return (
-      requiresCompany &&
-      !companyId &&
-      !currentCompany?.id &&
-      !currentCompany?._id
-    );
+    const effectiveCompanyId =
+      companyId || currentCompany?.id || currentCompany?._id;
+
+    return requiresCompany && !effectiveCompanyId;
   };
 
   // Get item class with disabled state
   const getItemClass = (page, baseClass = "submenu-item") => {
     let classes = [baseClass];
 
-    if (activePage === page) {
+    if (
+      activePage === page ||
+      activePage === page.replace(/([A-Z])/g, "-$1").toLowerCase()
+    ) {
       classes.push("active");
     }
 
@@ -175,7 +303,10 @@ function Sidebar({
   const getSidebarLinkClass = (page) => {
     let classes = ["sidebar-link"];
 
-    if (activePage === page) {
+    if (
+      activePage === page ||
+      activePage === page.replace(/([A-Z])/g, "-$1").toLowerCase()
+    ) {
       classes.push("active");
     }
 
@@ -322,7 +453,7 @@ function Sidebar({
             </Accordion.Item>
           </div>
 
-          {/* Purchase & Expense - UPDATED: Removed expenses and purchaseReturn */}
+          {/* Purchase & Expense */}
           <div className="sidebar-item">
             <Accordion.Item
               eventKey="purchaseExpense"
@@ -363,7 +494,6 @@ function Sidebar({
                     />
                     Purchase Bills
                   </Nav.Link>
-                  {/* ✅ UPDATED: Fixed Purchase Orders navigation - now routes to 'purchase-orders' */}
                   <Nav.Link
                     onClick={() => handleNavigation("purchaseOrders")}
                     className={getItemClass("purchaseOrders")}
@@ -560,22 +690,122 @@ function Sidebar({
             </Accordion.Item>
           </div>
 
-          {/* Staff Management */}
+          {/* ✅ STAFF MANAGEMENT - With proper navigation handling */}
           <div className="sidebar-item">
-            <Nav.Link
-              onClick={() => handleNavigation("staff")}
-              className={getSidebarLinkClass("staff")}
-              title={
-                isItemDisabled("staff")
-                  ? "Select a company to access Staff Management"
-                  : ""
-              }
+            <Accordion.Item
+              eventKey="staffManagement"
+              className="sidebar-accordion-item"
             >
-              <div className="sidebar-link-content">
-                <FontAwesomeIcon icon={faUserTie} className="sidebar-icon" />
-                <span className="sidebar-text">Staff Management</span>
-              </div>
-            </Nav.Link>
+              <Accordion.Header
+                onClick={() => handleToggle("staffManagement")}
+                className="sidebar-header"
+              >
+                <div className="sidebar-link-content">
+                  <FontAwesomeIcon icon={faUserTie} className="sidebar-icon" />
+                  <span className="sidebar-text">Staff Management</span>
+                </div>
+                <FontAwesomeIcon
+                  icon={faAngleRight}
+                  className={`chevron-icon ${
+                    activeKey === "staffManagement" ? "rotated" : ""
+                  }`}
+                />
+              </Accordion.Header>
+              <Accordion.Body className="sidebar-submenu">
+                <Nav className="flex-column">
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Staff List");
+                      handleNavigation("staffList");
+                    }}
+                    className={getItemClass("staffList")}
+                    title={
+                      isItemDisabled("staffList")
+                        ? "Select a company to access Staff List"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faUsers} className="me-2" />
+                    Staff List
+                  </Nav.Link>
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Daily Task Assignment");
+                      handleNavigation("dailyTaskAssignment");
+                    }}
+                    className={getItemClass("dailyTaskAssignment")}
+                    title={
+                      isItemDisabled("dailyTaskAssignment")
+                        ? "Select a company to access Daily Task Assignment"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faTasks} className="me-2" />
+                    Daily Task Assignment
+                  </Nav.Link>
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Staff Attendance");
+                      handleNavigation("staffAttendance");
+                    }}
+                    className={getItemClass("staffAttendance")}
+                    title={
+                      isItemDisabled("staffAttendance")
+                        ? "Select a company to access Staff Attendance"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faCalendarCheck} className="me-2" />
+                    Staff Attendance
+                  </Nav.Link>
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Staff Performance");
+                      handleNavigation("staffPerformance");
+                    }}
+                    className={getItemClass("staffPerformance")}
+                    title={
+                      isItemDisabled("staffPerformance")
+                        ? "Select a company to access Staff Performance"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faChartLine} className="me-2" />
+                    Staff Performance
+                  </Nav.Link>
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Staff Schedule");
+                      handleNavigation("staffSchedule");
+                    }}
+                    className={getItemClass("staffSchedule")}
+                    title={
+                      isItemDisabled("staffSchedule")
+                        ? "Select a company to access Staff Schedule"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                    Staff Schedule
+                  </Nav.Link>
+                  <Nav.Link
+                    onClick={() => {
+                      console.log("🎯 Clicked Employee Management");
+                      handleNavigation("employeeManagement");
+                    }}
+                    className={getItemClass("employeeManagement")}
+                    title={
+                      isItemDisabled("employeeManagement")
+                        ? "Select a company to access Employee Management"
+                        : ""
+                    }
+                  >
+                    <FontAwesomeIcon icon={faIdBadge} className="me-2" />
+                    Employee Management
+                  </Nav.Link>
+                </Nav>
+              </Accordion.Body>
+            </Accordion.Item>
           </div>
 
           {/* Insights */}

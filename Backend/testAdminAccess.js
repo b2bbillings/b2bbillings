@@ -45,12 +45,6 @@ async function testAdminAccess() {
         validateStatus: (status) => status < 500,
       }
     );
-    console.log("✅ Admin endpoint response:", {
-      status: adminResponse.status,
-      success: adminResponse.data.success,
-      companiesCount: adminResponse.data.data?.companies?.length || 0,
-      message: adminResponse.data.message,
-    });
 
     // Test 4: Regular companies endpoint with admin flag
     console.log("🧪 Testing regular companies endpoint with admin flag...");

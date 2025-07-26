@@ -148,15 +148,12 @@ function UserManagement({adminData, currentUser, addToast}) {
         setTotalPages(response.data.pagination.totalPages);
         setTotalUsers(response.data.pagination.totalUsers);
 
-        if (currentPage === 1 && !isRefreshing) {
-          addToast?.("Users loaded successfully", "success");
-        }
+        // Removed toast notification for automatic loading
       }
     } catch (error) {
-      console.error("Error loading users:", error);
+      // Silent error handling for production
       const errorMessage = handleUserServiceError(error);
       setError(errorMessage);
-      addToast?.(errorMessage, "error");
     } finally {
       setIsLoading(false);
     }
@@ -206,10 +203,9 @@ function UserManagement({adminData, currentUser, addToast}) {
         },
       });
 
-      addToast?.(`Opening ${section} for ${user.name}`, "info");
+      // Removed toast notification for navigation
     } catch (error) {
-      console.error("Error navigating to user details:", error);
-      addToast?.("Failed to open user details", "error");
+      // Silent error handling
     }
   };
 
@@ -313,11 +309,12 @@ function UserManagement({adminData, currentUser, addToast}) {
             u._id === user._id ? {...u, isActive: response.data.isActive} : u
           )
         );
-        addToast?.(response.message, "success");
+        // Removed toast notification
       }
     } catch (error) {
+      // Silent error handling
       const errorMessage = handleUserServiceError(error);
-      addToast?.(errorMessage, "error");
+      setError(errorMessage);
     } finally {
       setIsActionLoading(false);
     }
@@ -329,7 +326,7 @@ function UserManagement({adminData, currentUser, addToast}) {
     if (!newPassword) return;
 
     if (newPassword.length < 6) {
-      addToast?.("Password must be at least 6 characters long", "error");
+      setError("Password must be at least 6 characters long");
       return;
     }
 
@@ -338,11 +335,11 @@ function UserManagement({adminData, currentUser, addToast}) {
       const response = await changeUserPassword(user._id, newPassword);
 
       if (response.success) {
-        addToast?.(response.message, "success");
+        // Silent success - no toast notification
       }
     } catch (error) {
       const errorMessage = handleUserServiceError(error);
-      addToast?.(errorMessage, "error");
+      setError(errorMessage);
     } finally {
       setIsActionLoading(false);
     }
@@ -363,11 +360,11 @@ function UserManagement({adminData, currentUser, addToast}) {
       if (response.success) {
         // Remove from local state or reload
         await loadUsers();
-        addToast?.(response.message, "success");
+        // Removed toast notification
       }
     } catch (error) {
       const errorMessage = handleUserServiceError(error);
-      addToast?.(errorMessage, "error");
+      setError(errorMessage);
     } finally {
       setIsActionLoading(false);
     }
@@ -409,11 +406,11 @@ function UserManagement({adminData, currentUser, addToast}) {
         });
         setFormErrors({});
         await loadUsers();
-        addToast?.(response.message, "success");
+        // Removed toast notification
       }
     } catch (error) {
       const errorMessage = handleUserServiceError(error);
-      addToast?.(errorMessage, "error");
+      setError(errorMessage);
     } finally {
       setIsActionLoading(false);
     }
@@ -426,11 +423,11 @@ function UserManagement({adminData, currentUser, addToast}) {
       const response = await exportUsers(format);
 
       if (response.success) {
-        addToast?.(response.message, "success");
+        // Silent success - no toast notification
       }
     } catch (error) {
       const errorMessage = handleUserServiceError(error);
-      addToast?.(errorMessage, "error");
+      setError(errorMessage);
     } finally {
       setIsActionLoading(false);
     }
