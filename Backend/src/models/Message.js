@@ -136,13 +136,13 @@ const messageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ["whatsapp", "sms", "email", "internal", "notification"],
+      enum: ["whatsapp", "sms", "email", "internal", "notification", "website"], // ✅ FIXED: Added "website"
       required: true,
       default: "internal",
     },
     platform: {
       type: String,
-      enum: ["whatsapp", "sms", "email", "internal"],
+      enum: ["whatsapp", "sms", "email", "internal", "website"], // ✅ FIXED: Added "website"
       required: true,
       default: "internal",
     },
@@ -527,6 +527,11 @@ messageSchema.pre("save", function (next) {
     this.partyId = this.receiverCompanyId;
   }
 
+  // ✅ NEW: Auto-set platform based on messageType for website messages
+  if (this.messageType === "website" && !this.platform) {
+    this.platform = "website";
+  }
+
   next();
 });
 
@@ -736,7 +741,7 @@ messageSchema.statics.createCompanyMessage = function (messageData) {
     toCompanyId,
     senderId,
     content,
-    messageType = "internal",
+    messageType = "website", // ✅ UPDATED: Default to "website" for web messages
     originalPartyId = null,
     originalPartyName = null,
     attachments = [],
@@ -750,6 +755,7 @@ messageSchema.statics.createCompanyMessage = function (messageData) {
     senderType: "company",
     content,
     messageType,
+    platform: messageType === "website" ? "website" : "internal", // ✅ NEW: Set platform based on messageType
     chatType: "company-to-company",
     originalPartyId,
     originalPartyName,

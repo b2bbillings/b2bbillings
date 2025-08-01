@@ -1,5 +1,5 @@
-import React, {useState} from "react";
-import {Table, Badge, Dropdown, Modal} from "react-bootstrap";
+import React from "react";
+import {Table, Badge, Dropdown} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faUser,
@@ -16,19 +16,18 @@ import {
   faExclamationTriangle,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ NEW: Import chat components and services
-import PartyChat from "./PartyChat";
+// ✅ UPDATED: Import chat context instead of PartyChat component
+import {useChatContext} from "../../../context/chatContext";
 import partyService from "../../../services/partyService";
 
 function PartiesList({parties, onViewDetails, onEditParty, onDeleteParty}) {
-  // ✅ NEW: State for chat functionality
-  const [selectedPartyForChat, setSelectedPartyForChat] = useState(null);
-  const [chatModalOpen, setChatModalOpen] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
+  // ✅ UPDATED: Use chat context instead of local state
+  const {openChat, setLoading, chatState, isChatOpen} = useChatContext();
 
-  // ✅ NEW: Chat button component
+  // ✅ UPDATED: Chat button component using context
   const ChatButton = ({party}) => {
     const chatValidation = partyService.validatePartyChatCapability(party);
+    const isThisChatOpen = isChatOpen(party._id || party.id);
 
     const handleOpenChat = async (e) => {
       e.stopPropagation(); // Prevent row click
@@ -38,10 +37,15 @@ function PartiesList({parties, onViewDetails, onEditParty, onDeleteParty}) {
         return;
       }
 
-      try {
-        setChatLoading(true);
+      // ✅ If chat is already open for this party, don't open again
+      if (isThisChatOpen) {
+        return;
+      }
 
-        // ✅ FIXED: Get fresh party data with chat fields
+      try {
+        setLoading(true);
+
+        // ✅ Get fresh party data with chat fields
         const partyResponse = await partyService.getPartyForChat(
           party._id || party.id
         );
@@ -52,64 +56,73 @@ function PartiesList({parties, onViewDetails, onEditParty, onDeleteParty}) {
 
         const freshPartyData = partyResponse.data;
 
-        console.log("🎯 Opening chat with party data:", {
-          partyId: freshPartyData._id,
-          partyName: freshPartyData.name,
-          canChat: freshPartyData.canChat,
-          chatCompanyId: freshPartyData.chatCompanyId,
-        });
-
-        setSelectedPartyForChat(freshPartyData);
-        setChatModalOpen(true);
+        // ✅ UPDATED: Use context to open chat instead of local state
+        openChat(freshPartyData, "modal");
       } catch (error) {
         console.error("❌ Error opening chat:", error);
         alert("Failed to open chat. Please try again.");
       } finally {
-        setChatLoading(false);
+        setLoading(false);
       }
     };
 
     return (
       <Dropdown.Item
         onClick={handleOpenChat}
-        disabled={!chatValidation.canChat || chatLoading}
+        disabled={
+          !chatValidation.canChat || chatState.loading || isThisChatOpen
+        }
         className={chatValidation.canChat ? "text-primary" : "text-muted"}
       >
         <FontAwesomeIcon
-          icon={chatValidation.canChat ? faComments : faExclamationTriangle}
+          icon={
+            isThisChatOpen
+              ? faComments
+              : chatValidation.canChat
+              ? faComments
+              : faExclamationTriangle
+          }
           className="me-2"
         />
-        {chatLoading
+        {chatState.loading && chatState.party?._id === party._id
           ? "Loading..."
+          : isThisChatOpen
+          ? "Chat Open"
           : chatValidation.canChat
           ? "Start Chat"
           : "No Chat Link"}
-        {chatValidation.canChat && (
+        {chatValidation.canChat && !isThisChatOpen && (
           <div className="small text-muted mt-1">
             with {chatValidation.chatCompanyName}
           </div>
+        )}
+        {isThisChatOpen && (
+          <div className="small text-success mt-1">Currently active</div>
         )}
       </Dropdown.Item>
     );
   };
 
-  // ✅ NEW: Chat status indicator component
+  // ✅ Chat status indicator component (unchanged)
   const ChatStatusIndicator = ({party}) => {
     const chatValidation = partyService.validatePartyChatCapability(party);
+    const isThisChatOpen = isChatOpen(party._id || party.id);
 
     if (!chatValidation.canChat) return null;
 
     return (
       <div className="mt-1">
-        <small className="text-success">
+        <small
+          className={isThisChatOpen ? "text-success fw-bold" : "text-success"}
+        >
           <FontAwesomeIcon icon={faLink} className="me-1" />
-          Chat Available
+          {isThisChatOpen ? "Chat Active" : "Chat Available"}
         </small>
       </div>
     );
   };
 
-  // ✅ NEW: Enhanced party type badge with chat indicator
+  // ✅ Enhanced party type badge with chat indicator (unchanged)
   const PartyTypeBadge = ({party}) => {
     const chatValidation = partyService.validatePartyChatCapability(party);
 
@@ -131,10 +144,10 @@ function PartiesList({parties, onViewDetails, onEditParty, onDeleteParty}) {
           </div>
         )}
 
-        {/* ✅ NEW: Chat availability indicator */}
+        {/* Chat availability indicator */}
         <ChatStatusIndicator party={party} />
 
-        {/* ✅ NEW: Linked company info */}
+        {/* Linked company info */}
         {chatValidation.canChat && chatValidation.chatCompanyName && (
           <div className="mt-1">
             <small className="text-info">
@@ -162,213 +175,180 @@ function PartiesList({parties, onViewDetails, onEditParty, onDeleteParty}) {
             </tr>
           </thead>
           <tbody>
-            {parties.map((party) => (
-              <tr
-                key={party.id}
-                className="party-row-clickable"
-                style={{cursor: "pointer"}}
-              >
-                <td onClick={() => onViewDetails(party)}>
-                  <div className="d-flex align-items-center">
-                    <div className="party-avatar me-3">
-                      <FontAwesomeIcon
-                        icon={
-                          party.isRunningCustomer
-                            ? faRocket
-                            : party.partyType === "customer"
-                            ? faUser
-                            : faBuilding
-                        }
-                        className={
-                          party.isRunningCustomer
-                            ? "text-warning"
-                            : "text-muted"
-                        }
-                      />
-                    </div>
-                    <div>
-                      <div className="fw-semibold">
-                        {party.name}
-                        {party.isRunningCustomer && (
-                          <Badge bg="warning" className="ms-2 text-dark">
-                            Running
-                          </Badge>
-                        )}
-                        {/* ✅ NEW: Chat enabled indicator */}
-                        {party.canChat && (
-                          <Badge bg="success" className="ms-2">
-                            💬
-                          </Badge>
-                        )}
-                      </div>
-                      {party.email && (
-                        <small className="text-muted">
-                          <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                          {party.email}
-                        </small>
-                      )}
-                    </div>
-                  </div>
-                </td>
+            {parties.map((party) => {
+              const isThisChatOpen = isChatOpen(party._id || party.id);
 
-                <td onClick={() => onViewDetails(party)}>
-                  {/* ✅ UPDATED: Enhanced party type badge with chat info */}
-                  <PartyTypeBadge party={party} />
-                </td>
-
-                <td onClick={() => onViewDetails(party)}>
-                  <div className="contact-info">
-                    {party.whatsappNumber && (
-                      <div className="text-muted mb-1">
+              return (
+                <tr
+                  key={party.id}
+                  className={`party-row-clickable ${
+                    isThisChatOpen ? "table-success" : ""
+                  }`}
+                  style={{cursor: "pointer"}}
+                >
+                  <td onClick={() => onViewDetails(party)}>
+                    <div className="d-flex align-items-center">
+                      <div className="party-avatar me-3">
                         <FontAwesomeIcon
-                          icon={faPhone}
-                          className="me-1 text-success"
+                          icon={
+                            party.isRunningCustomer
+                              ? faRocket
+                              : party.partyType === "customer"
+                              ? faUser
+                              : faBuilding
+                          }
+                          className={
+                            party.isRunningCustomer
+                              ? "text-warning"
+                              : "text-muted"
+                          }
                         />
-                        <small className="text-success">WhatsApp:</small>{" "}
-                        {party.whatsappNumber}
                       </div>
-                    )}
-                    {party.phoneNumbers &&
-                      party.phoneNumbers.length > 0 &&
-                      party.phoneNumbers.slice(0, 2).map(
-                        (phone, index) =>
-                          phone.number && (
-                            <div key={index} className="text-muted">
-                              <FontAwesomeIcon
-                                icon={faPhone}
-                                className="me-1"
-                              />
-                              {phone.label && <small>{phone.label}:</small>}{" "}
-                              {phone.number}
-                            </div>
-                          )
-                      )}
-                    {party.phoneNumbers && party.phoneNumbers.length > 2 && (
-                      <small className="text-muted">
-                        +{party.phoneNumbers.length - 2} more
-                      </small>
-                    )}
-                  </div>
-                </td>
-
-                <td onClick={() => onViewDetails(party)}>
-                  <div>
-                    {party.city && (
-                      <span className="text-muted">{party.city}</span>
-                    )}
-                    {party.taluka && party.city && (
-                      <span className="text-muted">, </span>
-                    )}
-                    {party.taluka && (
-                      <span className="text-muted">{party.taluka}</span>
-                    )}
-                    {party.state && (party.city || party.taluka) && (
-                      <div className="small text-muted">{party.state}</div>
-                    )}
-                    {!party.city && !party.taluka && !party.state && (
-                      <span className="text-muted">-</span>
-                    )}
-                    {party.pincode && (
                       <div>
-                        <small className="text-muted">
-                          PIN: {party.pincode}
-                        </small>
+                        <div className="fw-semibold">
+                          {party.name}
+                          {party.isRunningCustomer && (
+                            <Badge bg="warning" className="ms-2 text-dark">
+                              Running
+                            </Badge>
+                          )}
+                          {/* ✅ UPDATED: Enhanced chat indicator */}
+                          {party.canChat && (
+                            <Badge
+                              bg={isThisChatOpen ? "success" : "secondary"}
+                              className="ms-2"
+                            >
+                              💬 {isThisChatOpen ? "Active" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        {party.email && (
+                          <small className="text-muted">
+                            <FontAwesomeIcon
+                              icon={faEnvelope}
+                              className="me-1"
+                            />
+                            {party.email}
+                          </small>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </td>
+                    </div>
+                  </td>
 
-                <td onClick={() => onViewDetails(party)}>
-                  <span className="text-muted">{party.gstNumber || "-"}</span>
-                </td>
+                  <td onClick={() => onViewDetails(party)}>
+                    <PartyTypeBadge party={party} />
+                  </td>
 
-                <td>
-                  <Dropdown>
-                    <Dropdown.Toggle
-                      variant="link"
-                      className="p-0 border-0 text-muted"
-                      id={`dropdown-${party.id}`}
-                    >
-                      <FontAwesomeIcon icon={faEllipsisV} />
-                    </Dropdown.Toggle>
-                    <Dropdown.Menu>
-                      <Dropdown.Item onClick={() => onViewDetails(party)}>
-                        <FontAwesomeIcon icon={faEye} className="me-2" />
-                        View Details
-                      </Dropdown.Item>
+                  <td onClick={() => onViewDetails(party)}>
+                    <div className="contact-info">
+                      {party.whatsappNumber && (
+                        <div className="text-muted mb-1">
+                          <FontAwesomeIcon
+                            icon={faPhone}
+                            className="me-1 text-success"
+                          />
+                          <small className="text-success">WhatsApp:</small>{" "}
+                          {party.whatsappNumber}
+                        </div>
+                      )}
+                      {party.phoneNumbers &&
+                        party.phoneNumbers.length > 0 &&
+                        party.phoneNumbers.slice(0, 2).map(
+                          (phone, index) =>
+                            phone.number && (
+                              <div key={index} className="text-muted">
+                                <FontAwesomeIcon
+                                  icon={faPhone}
+                                  className="me-1"
+                                />
+                                {phone.label && <small>{phone.label}:</small>}{" "}
+                                {phone.number}
+                              </div>
+                            )
+                        )}
+                      {party.phoneNumbers && party.phoneNumbers.length > 2 && (
+                        <small className="text-muted">
+                          +{party.phoneNumbers.length - 2} more
+                        </small>
+                      )}
+                    </div>
+                  </td>
 
-                      <Dropdown.Item onClick={() => onEditParty(party)}>
-                        <FontAwesomeIcon icon={faEdit} className="me-2" />
-                        Edit
-                      </Dropdown.Item>
+                  <td onClick={() => onViewDetails(party)}>
+                    <div>
+                      {party.city && (
+                        <span className="text-muted">{party.city}</span>
+                      )}
+                      {party.taluka && party.city && (
+                        <span className="text-muted">, </span>
+                      )}
+                      {party.taluka && (
+                        <span className="text-muted">{party.taluka}</span>
+                      )}
+                      {party.state && (party.city || party.taluka) && (
+                        <div className="small text-muted">{party.state}</div>
+                      )}
+                      {!party.city && !party.taluka && !party.state && (
+                        <span className="text-muted">-</span>
+                      )}
+                      {party.pincode && (
+                        <div>
+                          <small className="text-muted">
+                            PIN: {party.pincode}
+                          </small>
+                        </div>
+                      )}
+                    </div>
+                  </td>
 
-                      {/* ✅ NEW: Chat button in dropdown */}
-                      <Dropdown.Divider />
-                      <ChatButton party={party} />
-                      <Dropdown.Divider />
+                  <td onClick={() => onViewDetails(party)}>
+                    <span className="text-muted">{party.gstNumber || "-"}</span>
+                  </td>
 
-                      <Dropdown.Item
-                        onClick={() => onDeleteParty(party.id)}
-                        className="text-danger"
+                  <td>
+                    <Dropdown>
+                      <Dropdown.Toggle
+                        variant="link"
+                        className="p-0 border-0 text-muted"
+                        id={`dropdown-${party.id}`}
                       >
-                        <FontAwesomeIcon icon={faTrash} className="me-2" />
-                        Delete
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown>
-                </td>
-              </tr>
-            ))}
+                        <FontAwesomeIcon icon={faEllipsisV} />
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu>
+                        <Dropdown.Item onClick={() => onViewDetails(party)}>
+                          <FontAwesomeIcon icon={faEye} className="me-2" />
+                          View Details
+                        </Dropdown.Item>
+
+                        <Dropdown.Item onClick={() => onEditParty(party)}>
+                          <FontAwesomeIcon icon={faEdit} className="me-2" />
+                          Edit
+                        </Dropdown.Item>
+
+                        {/* ✅ UPDATED: Chat button using context */}
+                        <Dropdown.Divider />
+                        <ChatButton party={party} />
+                        <Dropdown.Divider />
+
+                        <Dropdown.Item
+                          onClick={() => onDeleteParty(party.id)}
+                          className="text-danger"
+                        >
+                          <FontAwesomeIcon icon={faTrash} className="me-2" />
+                          Delete
+                        </Dropdown.Item>
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       </div>
 
-      {/* ✅ NEW: Chat Modal */}
-      <Modal
-        show={chatModalOpen}
-        onHide={() => {
-          setChatModalOpen(false);
-          setSelectedPartyForChat(null);
-        }}
-        size="lg"
-        centered
-        className="chat-modal"
-      >
-        <Modal.Body className="p-0">
-          {selectedPartyForChat && (
-            <PartyChat
-              party={selectedPartyForChat}
-              onClose={() => {
-                setChatModalOpen(false);
-                setSelectedPartyForChat(null);
-              }}
-            />
-          )}
-        </Modal.Body>
-      </Modal>
-
-      {/* ✅ NEW: Chat loading overlay */}
-      {chatLoading && (
-        <div
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-          style={{
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 9999,
-          }}
-        >
-          <div className="bg-white p-4 rounded shadow">
-            <div className="d-flex align-items-center">
-              <div
-                className="spinner-border spinner-border-sm me-3"
-                role="status"
-              >
-                <span className="visually-hidden">Loading...</span>
-              </div>
-              <span>Preparing chat...</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ✅ REMOVED: No need for local chat modal or loading overlay */}
+      {/* Chat modal and loading are now handled by ChatContext */}
     </div>
   );
 }

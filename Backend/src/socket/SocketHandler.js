@@ -1,7 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Message = require("../models/Message");
 
-// Helper function to safely get models
 const getModel = (modelName) => {
   try {
     return require(`../models/${modelName}`);
@@ -17,10 +16,9 @@ class SocketHandler {
     this.connectionHandler = connectionHandler;
     this.messageHandler = messageHandler;
 
-    // Fallback if connectionHandler not provided
     if (!this.connectionHandler) {
-      this.connectedUsers = new Map(); // userId -> socketId
-      this.userSockets = new Map(); // socketId -> userId
+      this.connectedUsers = new Map();
+      this.userSockets = new Map();
     }
 
     this.initializeSocketEvents();
@@ -30,38 +28,38 @@ class SocketHandler {
     this.io.on("connection", (socket) => {
       console.log(`🔌 Socket connected: ${socket.id}`);
 
-      // ✅ NEW: Handle authentication from token in handshake (from SocketManager middleware)
       if (socket.user && socket.userId) {
-        // User is already authenticated via middleware
         this.handleAuthenticatedConnection(socket);
       }
 
-      // ✅ KEEP: Legacy authentication for backward compatibility
       socket.on("authenticate", async (data) => {
         await this.handleAuthentication(socket, data);
       });
 
-      // Join specific chat rooms
       socket.on("join_chat", async (data) => {
         await this.handleJoinChat(socket, data);
       });
 
-      // Leave chat rooms
+      socket.on("join_company_chat", async (data) => {
+        await this.handleJoinCompanyChat(socket, data);
+      });
+
+      socket.on("leave_company_chat", async (data) => {
+        await this.handleLeaveCompanyChat(socket, data);
+      });
+
       socket.on("leave_chat", () => {
         this.handleLeaveChat(socket);
       });
 
-      // Send message
       socket.on("send_message", async (data) => {
         await this.handleSendMessage(socket, data);
       });
 
-      // Mark message as read
       socket.on("mark_read", async (data) => {
         await this.handleMarkRead(socket, data);
       });
 
-      // ✅ FIXED: Typing indicators with validation
       socket.on("typing_start", (data) => {
         this.handleTypingStart(socket, data);
       });
@@ -70,12 +68,10 @@ class SocketHandler {
         this.handleTypingStop(socket, data);
       });
 
-      // Get chat history
       socket.on("get_chat_history", async (data) => {
         await this.handleGetChatHistory(socket, data);
       });
 
-      // ✅ NEW: Handle connection health check
       socket.on("ping", () => {
         socket.emit("pong");
         if (this.connectionHandler) {
@@ -83,12 +79,10 @@ class SocketHandler {
         }
       });
 
-      // Handle disconnection
       socket.on("disconnect", (reason) => {
         this.handleDisconnection(socket, reason);
       });
 
-      // Handle errors
       socket.on("error", (error) => {
         console.error("❌ Socket error:", {
           socketId: socket.id,
@@ -99,20 +93,17 @@ class SocketHandler {
     });
   }
 
-  // ✅ UPDATED: Handle pre-authenticated connections (from SocketManager middleware)
   handleAuthenticatedConnection(socket) {
     try {
       const userId = socket.userId;
       const companyId = socket.companyId;
 
-      // ✅ FIXED: Validate required data
       if (!userId) {
         console.error("❌ Missing userId in authenticated connection");
         socket.emit("auth_error", {message: "Missing user ID"});
         return;
       }
 
-      // Store connections using connectionHandler or fallback
       if (this.connectionHandler) {
         this.connectionHandler.addConnection(socket);
       } else {
@@ -120,24 +111,21 @@ class SocketHandler {
         this.userSockets.set(socket.id, userId.toString());
       }
 
-      // ✅ FIXED: Join company room only if companyId exists
       if (companyId) {
         socket.join(`company_${companyId}`);
       }
 
-      // ✅ NEW: Join user's personal room
       socket.join(`user_${userId}`);
 
-      // Notify client of successful connection
-      socket.emit("authenticated", {
+      socket.emit("connection_confirmed", {
         userId,
         socketId: socket.id,
         companyId: companyId || null,
         companyName: socket.company?.businessName || null,
+        username: socket.user?.username || socket.user?.name,
         message: "Successfully authenticated via token",
       });
 
-      // ✅ FIXED: Notify other company members only if companyId exists
       if (companyId) {
         socket.to(`company_${companyId}`).emit("user_online", {
           userId,
@@ -159,7 +147,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ UPDATED: Legacy authentication method
   async handleAuthentication(socket, data) {
     try {
       const {token, companyId} = data;
@@ -172,19 +159,15 @@ class SocketHandler {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = decoded.userId || decoded.id;
 
-      // ✅ FIXED: Validate decoded data
       if (!userId) {
         socket.emit("auth_error", {message: "Invalid token - no user ID"});
         return;
       }
 
-      // Store user info in socket
       socket.userId = userId;
       socket.companyId = companyId;
 
-      // Store connections using connectionHandler or fallback
       if (this.connectionHandler) {
-        // Create mock socket object for connectionHandler
         const mockSocket = {
           id: socket.id,
           userId: userId,
@@ -197,10 +180,8 @@ class SocketHandler {
         this.userSockets.set(socket.id, userId.toString());
       }
 
-      // Join user's personal room
       socket.join(`user_${userId}`);
 
-      // Join company room for company-wide notifications (only if companyId exists)
       if (companyId) {
         socket.join(`company_${companyId}`);
       }
@@ -212,7 +193,6 @@ class SocketHandler {
         message: "Successfully authenticated",
       });
 
-      // Notify others that user is online
       socket.broadcast.emit("user_online", {userId});
 
       console.log(
@@ -224,7 +204,218 @@ class SocketHandler {
     }
   }
 
-  // ✅ UPDATED: Join company-to-company chat with validation
+  generateCompanyChatRoomId(companyId1, companyId2) {
+    try {
+      if (!companyId1 || !companyId2) {
+        console.error("❌ generateCompanyChatRoomId: Missing company IDs", {
+          companyId1,
+          companyId2,
+        });
+        return null;
+      }
+
+      const id1 = companyId1.toString();
+      const id2 = companyId2.toString();
+      const sortedIds = [id1, id2].sort();
+      const roomId = `company_chat_${sortedIds[0]}_${sortedIds[1]}`;
+
+      console.log("🏠 SOCKET: Generated consistent room ID:", {
+        input: {companyId1: id1, companyId2: id2},
+        sorted: sortedIds,
+        roomId,
+        timestamp: new Date().toISOString(),
+      });
+
+      return roomId;
+    } catch (error) {
+      console.error("❌ generateCompanyChatRoomId error:", error);
+      return null;
+    }
+  }
+
+  async handleJoinCompanyChat(socket, data) {
+    try {
+      console.log("🏠 BACKEND: join_company_chat initiated:", {
+        socketId: socket.id,
+        userId: socket.userId,
+        companyId: socket.companyId,
+        rawData: data,
+        existingRooms: Array.from(socket.rooms),
+      });
+
+      const myCompanyId = data.myCompanyId || socket.companyId;
+      const targetCompanyId =
+        data.targetCompanyId || data.otherCompanyId || data.partyId;
+      const partyId = data.partyId;
+      const partyName = data.partyName;
+
+      console.log("🏠 BACKEND: Extracted and validated data:", {
+        myCompanyId,
+        targetCompanyId,
+        partyId,
+        partyName,
+      });
+
+      const validationErrors = [];
+
+      if (!socket.userId) {
+        validationErrors.push("Missing user ID");
+      }
+
+      if (!myCompanyId) {
+        validationErrors.push("Missing myCompanyId");
+      }
+
+      if (!targetCompanyId) {
+        validationErrors.push("Missing targetCompanyId");
+      }
+
+      if (myCompanyId === targetCompanyId) {
+        validationErrors.push("Cannot chat with same company");
+      }
+
+      if (validationErrors.length > 0) {
+        console.error("❌ BACKEND: Validation failed:", validationErrors);
+        socket.emit("company_chat_error", {
+          error: `Validation failed: ${validationErrors.join(", ")}`,
+          code: "VALIDATION_FAILED",
+          details: {
+            validationErrors,
+            receivedData: data,
+          },
+        });
+        return;
+      }
+
+      console.log("✅ BACKEND: All validations passed");
+
+      socket.activeChatCompanyId = myCompanyId;
+      socket.currentTargetCompanyId = targetCompanyId;
+      socket.currentPartyId = partyId;
+
+      const chatRoomId = this.generateCompanyChatRoomId(
+        myCompanyId,
+        targetCompanyId
+      );
+      const myCompanyRoom = `company_${myCompanyId}`;
+
+      if (!chatRoomId) {
+        console.error("❌ BACKEND: Failed to generate chat room ID");
+        socket.emit("company_chat_error", {
+          error: "Failed to generate chat room ID",
+          code: "ROOM_GENERATION_FAILED",
+        });
+        return;
+      }
+
+      const roomsToJoin = [chatRoomId, myCompanyRoom];
+      const joinedRooms = [];
+
+      for (const room of roomsToJoin) {
+        try {
+          await socket.join(room);
+          joinedRooms.push(room);
+          console.log(`✅ BACKEND: Successfully joined room: ${room}`);
+        } catch (joinError) {
+          console.error(`❌ BACKEND: Failed to join room ${room}:`, joinError);
+        }
+      }
+
+      socket.currentChatRoom = chatRoomId;
+
+      console.log("🏠 BACKEND: Room joining summary:", {
+        chatRoomId,
+        myCompanyRoom,
+        joinedRooms,
+        allSocketRooms: Array.from(socket.rooms),
+        socketContext: {
+          activeChatCompanyId: socket.activeChatCompanyId,
+          currentTargetCompanyId: socket.currentTargetCompanyId,
+          currentChatRoom: socket.currentChatRoom,
+        },
+      });
+
+      socket.emit("company_chat_joined", {
+        success: true,
+        roomId: chatRoomId,
+        myCompanyId,
+        targetCompanyId,
+        partyId,
+        joinedRooms,
+        allRooms: Array.from(socket.rooms),
+        message: "Successfully joined company chat",
+        timestamp: new Date().toISOString(),
+      });
+
+      socket.to(chatRoomId).emit("user_joined_chat", {
+        userId: socket.userId,
+        username:
+          socket.user?.username || socket.user?.name || `User ${socket.userId}`,
+        companyId: myCompanyId,
+        socketId: socket.id,
+        joinedAt: new Date().toISOString(),
+      });
+
+      console.log("✅ BACKEND: company_chat_joined event emitted successfully");
+    } catch (error) {
+      console.error("❌ BACKEND: handleJoinCompanyChat critical error:", error);
+      socket.emit("company_chat_error", {
+        error: "Critical error joining company chat",
+        code: "CRITICAL_ERROR",
+        details: error.message,
+        stack: error.stack,
+      });
+    }
+  }
+
+  async handleLeaveCompanyChat(socket, data) {
+    try {
+      const {myCompanyId, targetCompanyId} = data || {};
+
+      let roomToLeave = socket.currentChatRoom;
+
+      if (myCompanyId && targetCompanyId) {
+        roomToLeave = this.generateCompanyChatRoomId(
+          myCompanyId,
+          targetCompanyId
+        );
+      }
+
+      if (roomToLeave) {
+        console.log(
+          `👋 User ${socket.userId} leaving company chat room: ${roomToLeave}`
+        );
+
+        socket.leave(roomToLeave);
+
+        if (this.connectionHandler && this.connectionHandler.leaveRoom) {
+          this.connectionHandler.leaveRoom(socket.id, roomToLeave);
+        }
+
+        if (socket.userId && socket.companyId) {
+          socket.to(roomToLeave).emit("user_left_chat", {
+            userId: socket.userId,
+            username: socket.user?.username || socket.user?.name,
+            companyId: socket.companyId,
+            companyName: socket.company?.businessName,
+            roomId: roomToLeave,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        if (socket.currentChatRoom === roomToLeave) {
+          socket.currentChatRoom = null;
+          socket.currentTargetCompany = null;
+          socket.activeChatCompanyId = null;
+        }
+
+        console.log(`✅ User ${socket.userId} left room ${roomToLeave}`);
+      }
+    } catch (error) {
+      console.error("❌ Error handling leave company chat:", error);
+    }
+  }
+
   async handleJoinChat(socket, data) {
     try {
       const {chatId, partyId, otherCompanyId} = data;
@@ -247,7 +438,6 @@ class SocketHandler {
         return;
       }
 
-      // ✅ FIXED: Create company-to-company chat room with validation
       const chatRoomId =
         chatId ||
         this.generateCompanyChatRoomId(socket.companyId, targetCompanyId);
@@ -260,15 +450,14 @@ class SocketHandler {
       socket.join(chatRoomId);
       socket.currentChatRoom = chatRoomId;
 
-      socket.emit("joined_chat", {
-        chatRoomId,
+      socket.emit("joined_company_chat", {
+        chatRoom: chatRoomId,
         myCompanyId: socket.companyId,
         otherCompanyId: targetCompanyId,
         success: true,
         message: "Successfully joined company chat",
       });
 
-      // ✅ NEW: Notify other company about user joining
       socket.to(chatRoomId).emit("user_joined_chat", {
         userId: socket.userId,
         username: socket.user?.username || `User ${socket.userId}`,
@@ -286,7 +475,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Leave chat room with validation
   handleLeaveChat(socket) {
     try {
       if (socket.currentChatRoom) {
@@ -294,7 +482,6 @@ class SocketHandler {
           `🚪 User ${socket.userId} leaving chat room: ${socket.currentChatRoom}`
         );
 
-        // ✅ FIXED: Notify other company about user leaving (with validation)
         if (socket.userId && socket.companyId) {
           socket.to(socket.currentChatRoom).emit("user_left_chat", {
             userId: socket.userId,
@@ -320,77 +507,122 @@ class SocketHandler {
     }
   }
 
-  // ✅ UPDATED: Send message between companies with better validation
   async handleSendMessage(socket, data) {
     try {
       const {
-        partyId, // This is the other company ID
+        partyId,
         content,
-        messageType = "whatsapp",
+        messageType = "website",
         templateId,
         attachments = [],
-        tempId, // For frontend tracking
+        tempId,
       } = data;
 
-      // ✅ FIXED: Enhanced validation
+      console.log("📤 SOCKET: Processing send message:", {
+        socketId: socket.id,
+        userId: socket.userId,
+        companyId: socket.companyId,
+        activeChatCompanyId: socket.activeChatCompanyId,
+        partyId,
+        messageType,
+        contentLength: content?.length || 0,
+        tempId,
+        socketRooms: Array.from(socket.rooms),
+      });
+
       if (!socket.userId) {
-        socket.emit("error", {message: "Not authenticated - missing user ID"});
+        console.error("❌ SOCKET: Missing user ID");
+        socket.emit("message_error", {
+          tempId,
+          error: "Not authenticated - missing user ID",
+        });
         return;
       }
 
-      if (!socket.companyId) {
-        socket.emit("error", {
-          message: "Not authenticated - missing company ID",
+      const senderCompanyId = socket.activeChatCompanyId || socket.companyId;
+
+      if (!senderCompanyId) {
+        console.error("❌ SOCKET: Missing company context");
+        socket.emit("message_error", {
+          tempId,
+          error: "Missing company context",
         });
         return;
       }
 
       if (!partyId) {
-        socket.emit("error", {message: "Missing target company ID"});
+        console.error("❌ SOCKET: Missing target company ID");
+        socket.emit("message_error", {
+          tempId,
+          error: "Missing target company ID",
+        });
         return;
       }
 
       if (!content || content.trim() === "") {
-        socket.emit("error", {message: "Message content cannot be empty"});
+        console.error("❌ SOCKET: Empty message content");
+        socket.emit("message_error", {
+          tempId,
+          error: "Message content cannot be empty",
+        });
         return;
       }
 
-      console.log(`📤 Company-to-company message:`, {
-        fromCompany: socket.company?.businessName || socket.companyId,
-        fromUser: socket.user?.username || socket.userId,
-        toCompany: partyId,
-        content: content.substring(0, 50) + (content.length > 50 ? "..." : ""),
-        type: messageType,
-        socketId: socket.id,
-      });
+      const validMessageTypes = [
+        "whatsapp",
+        "sms",
+        "email",
+        "internal",
+        "notification",
+        "website",
+      ];
+      if (!validMessageTypes.includes(messageType)) {
+        console.error("❌ SOCKET: Invalid message type:", messageType);
+        socket.emit("message_error", {
+          tempId,
+          error: `Invalid message type. Must be one of: ${validMessageTypes.join(
+            ", "
+          )}`,
+          code: "INVALID_MESSAGE_TYPE",
+        });
+        return;
+      }
 
-      // ✅ FIXED: Create message data for company-to-company chat
+      console.log("✅ SOCKET: Validation passed, proceeding with message");
+
       const messageData = {
-        senderCompanyId: socket.companyId,
+        senderCompanyId: senderCompanyId,
         receiverCompanyId: partyId,
-        companyId: socket.companyId, // For backward compatibility
-        partyId: partyId,
         senderId: socket.userId,
         senderType: "company",
-        content,
+        content: content.trim(),
         messageType,
+        platform: messageType === "website" ? "internal" : messageType,
         templateId,
         attachments,
         status: "sent",
         direction: "outbound",
+        chatType: "company-to-company",
         createdBy: socket.userId,
+        senderName:
+          socket.user?.username ||
+          socket.user?.fullName ||
+          `User ${socket.userId}`,
+        senderCompanyName:
+          socket.company?.businessName || `Company ${senderCompanyId}`,
+        metadata: {
+          socketId: socket.id,
+          timestamp: new Date(),
+          userAgent: socket.handshake.headers["user-agent"],
+          originalMessageType: messageType,
+        },
       };
 
-      // Save to database
       let savedMessage;
       try {
-        // Use messageHandler if available, otherwise direct Message model
-        if (this.messageHandler && this.messageHandler.handleMessage) {
-          const result = await this.messageHandler.handleMessage(messageData);
-          savedMessage = result.success ? result.message : null;
-        } else if (this.messageHandler && this.messageHandler.processMessage) {
+        if (this.messageHandler && this.messageHandler.processMessage) {
           const result = await this.messageHandler.processMessage(messageData);
-          savedMessage = result.message;
+          savedMessage = result.success ? result.message : null;
         } else {
           savedMessage = await Message.create(messageData);
         }
@@ -398,82 +630,143 @@ class SocketHandler {
         if (!savedMessage) {
           throw new Error("Failed to save message");
         }
+
+        console.log("✅ SOCKET: Message saved successfully:", {
+          messageId: savedMessage._id,
+          senderCompanyId,
+          receiverCompanyId: partyId,
+          messageType: savedMessage.messageType,
+          platform: savedMessage.platform,
+        });
       } catch (dbError) {
-        console.error("❌ Database save failed:", dbError);
+        console.error("❌ SOCKET: Database save failed:", dbError);
         socket.emit("message_error", {
           tempId,
           error: "Failed to save message",
-          success: false,
         });
         return;
       }
 
-      // ✅ FIXED: Emit to company-to-company chat room with validation
-      const chatRoomId =
-        socket.currentChatRoom ||
-        this.generateCompanyChatRoomId(socket.companyId, partyId);
+      const chatRoomId = this.generateCompanyChatRoomId(
+        senderCompanyId,
+        partyId
+      );
 
-      if (!chatRoomId) {
-        console.error(
-          "❌ Failed to generate chat room ID for message emission"
-        );
-        socket.emit("message_error", {
-          tempId,
-          error: "Failed to deliver message",
-          success: false,
-        });
-        return;
-      }
-
-      const messageToEmit = {
-        ...(savedMessage.toObject ? savedMessage.toObject() : savedMessage),
+      const broadcastData = {
+        _id: savedMessage._id,
         id: savedMessage._id,
-        senderName:
-          socket.user?.username ||
-          socket.user?.fullName ||
-          `User ${socket.userId}`,
-        senderCompanyName:
-          socket.company?.businessName || `Company ${socket.companyId}`,
-        senderCompanyId: socket.companyId,
-        receiverCompanyId: partyId,
-        tempId,
+        senderCompanyId: savedMessage.senderCompanyId,
+        receiverCompanyId: savedMessage.receiverCompanyId,
+        senderId: savedMessage.senderId,
+        senderName: messageData.senderName,
+        senderCompanyName: messageData.senderCompanyName,
+        content: savedMessage.content,
+        messageType: savedMessage.messageType,
+        platform: savedMessage.platform,
+        createdAt: savedMessage.createdAt,
+        status: savedMessage.status,
+        direction: savedMessage.direction,
+        chatType: "company-to-company",
+        tempId: tempId,
+        timestamp: savedMessage.createdAt || new Date(),
       };
 
-      // Emit to chat room (both companies will receive)
-      this.io.to(chatRoomId).emit("new_message", messageToEmit);
+      console.log("📡 SOCKET: Broadcasting to MULTIPLE channels:", {
+        chatRoomId,
+        senderCompanyRoom: `company_${senderCompanyId}`,
+        receiverCompanyRoom: `company_${partyId}`,
+        messageId: savedMessage._id,
+      });
 
-      // Send delivery confirmation to sender
+      if (chatRoomId) {
+        this.io.to(chatRoomId).emit("new_message", broadcastData);
+        console.log("📡 Method 1: Chat room broadcast completed");
+      }
+
+      this.io
+        .to(`company_${senderCompanyId}`)
+        .emit("new_message", broadcastData);
+      this.io.to(`company_${partyId}`).emit("new_message", broadcastData);
+      console.log("📡 Method 2: Company room broadcasts completed");
+
+      try {
+        const allSockets = await this.io.fetchSockets();
+        let directEmissions = 0;
+
+        allSockets.forEach((targetSocket) => {
+          if (targetSocket.id === socket.id) return;
+
+          const socketCompanyId =
+            targetSocket.activeChatCompanyId || targetSocket.companyId;
+          const shouldReceive =
+            socketCompanyId === senderCompanyId || socketCompanyId === partyId;
+
+          if (shouldReceive) {
+            targetSocket.emit("new_message", broadcastData);
+            directEmissions++;
+            console.log(
+              `📡 Direct emit to socket ${targetSocket.id} (company: ${socketCompanyId})`
+            );
+          }
+        });
+
+        console.log(
+          `📡 Method 3: Direct emissions completed (${directEmissions} sockets)`
+        );
+      } catch (socketFetchError) {
+        console.warn(
+          "⚠️ SOCKET: Direct socket emission failed:",
+          socketFetchError.message
+        );
+      }
+
+      console.log("✅ SOCKET: All broadcasting methods completed");
+
       socket.emit("message_sent", {
         messageId: savedMessage._id,
         tempId,
         status: "sent",
         success: true,
         timestamp: savedMessage.createdAt || new Date(),
+        messageType: savedMessage.messageType,
+        platform: savedMessage.platform,
       });
 
-      console.log(
-        `✅ Company message sent from ${socket.companyId} to ${partyId}`
-      );
+      console.log(`✅ SOCKET: Message sent successfully`);
 
-      // ✅ NEW: Simulate message delivery status
       setTimeout(() => {
-        this.io.to(chatRoomId).emit("message_delivered", {
+        if (chatRoomId) {
+          this.io.to(chatRoomId).emit("message_delivered", {
+            messageId: savedMessage._id,
+            status: "delivered",
+            platform: savedMessage.platform,
+            timestamp: new Date(),
+          });
+        }
+
+        this.io.to(`company_${senderCompanyId}`).emit("message_delivered", {
           messageId: savedMessage._id,
           status: "delivered",
+          platform: savedMessage.platform,
+          timestamp: new Date(),
+        });
+        this.io.to(`company_${partyId}`).emit("message_delivered", {
+          messageId: savedMessage._id,
+          status: "delivered",
+          platform: savedMessage.platform,
           timestamp: new Date(),
         });
       }, 1000);
     } catch (error) {
-      console.error("❌ Send message error:", error);
+      console.error("❌ SOCKET: Send message error:", error);
       socket.emit("message_error", {
         tempId: data.tempId,
-        error: "Failed to send message",
-        success: false,
+        error: error.message || "Failed to send message",
+        timestamp: new Date(),
       });
     }
   }
 
-  // ✅ UPDATED: Mark message as read with validation
   async handleMarkRead(socket, data) {
     try {
       const {messageId, messageIds, chatRoomId} = data;
@@ -490,14 +783,12 @@ class SocketHandler {
       }
 
       try {
-        // Update message read status in database
         if (this.messageHandler && this.messageHandler.markMessagesAsRead) {
           await this.messageHandler.markMessagesAsRead(
             idsToMark,
             socket.userId
           );
         } else {
-          // Fallback to direct model update
           await Message.updateMany(
             {_id: {$in: idsToMark}},
             {
@@ -511,7 +802,6 @@ class SocketHandler {
         console.error("❌ Failed to update read status in database:", dbError);
       }
 
-      // Notify others in the chat
       const roomId = chatRoomId || socket.currentChatRoom;
       if (roomId) {
         socket.to(roomId).emit("message_read", {
@@ -528,19 +818,20 @@ class SocketHandler {
     }
   }
 
-  // ✅ UPDATED: Get chat history for company-to-company chat with validation
   async handleGetChatHistory(socket, data) {
     try {
-      const {partyId, page = 1, limit = 50} = data;
+      const {partyId, page = 1, limit = 50, messageType} = data;
 
       if (!socket.userId) {
         socket.emit("error", {message: "Not authenticated - missing user ID"});
         return;
       }
 
-      if (!socket.companyId) {
+      const queryCompanyId = socket.activeChatCompanyId || socket.companyId;
+
+      if (!queryCompanyId) {
         socket.emit("error", {
-          message: "Not authenticated - missing company ID",
+          message: "Not authenticated - missing company context",
         });
         return;
       }
@@ -551,24 +842,31 @@ class SocketHandler {
       }
 
       try {
-        // Get chat history using messageHandler or direct query
         let chatHistory;
         if (this.messageHandler && this.messageHandler.getChatHistory) {
           chatHistory = await this.messageHandler.getChatHistory({
-            companyId: socket.companyId,
+            companyId: queryCompanyId,
             partyId,
             page,
             limit,
+            messageType: messageType || "website",
           });
         } else {
-          // ✅ FIXED: Query for company-to-company messages
-          const messages = await Message.find({
+          const matchQuery = {
             $or: [
-              {senderCompanyId: socket.companyId, receiverCompanyId: partyId},
-              {senderCompanyId: partyId, receiverCompanyId: socket.companyId},
+              {senderCompanyId: queryCompanyId, receiverCompanyId: partyId},
+              {senderCompanyId: partyId, receiverCompanyId: queryCompanyId},
             ],
             isDeleted: false,
-          })
+          };
+
+          if (messageType) {
+            matchQuery.messageType = messageType;
+          } else {
+            matchQuery.messageType = "website";
+          }
+
+          const messages = await Message.find(matchQuery)
             .sort({createdAt: -1})
             .limit(limit)
             .skip((page - 1) * limit)
@@ -582,6 +880,7 @@ class SocketHandler {
               limit,
               total: messages.length,
             },
+            messageType: messageType || "website",
           };
         }
 
@@ -589,10 +888,13 @@ class SocketHandler {
           success: true,
           data: chatHistory,
           partyId,
+          messageType: messageType || "website",
         });
 
         console.log(
-          `📚 Company chat history sent to user ${socket.userId} for company ${partyId}`
+          `📚 Chat history sent to user ${
+            socket.userId
+          } for company ${partyId} (messageType: ${messageType || "website"})`
         );
       } catch (dbError) {
         console.error("❌ Failed to load chat history:", dbError);
@@ -608,20 +910,20 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Typing indicators for company chat with validation
   handleTypingStart(socket, data) {
     try {
-      const {partyId, otherCompanyId} = data; // partyId is the other company ID
+      const {partyId, otherCompanyId} = data;
       const targetCompanyId = otherCompanyId || partyId;
 
-      // ✅ FIXED: Comprehensive validation
       if (!socket.userId) {
         console.warn("⚠️ Typing start: Missing user ID");
         return;
       }
 
-      if (!socket.companyId) {
-        console.warn("⚠️ Typing start: Missing company ID");
+      const senderCompanyId = socket.activeChatCompanyId || socket.companyId;
+
+      if (!senderCompanyId) {
+        console.warn("⚠️ Typing start: Missing company context");
         return;
       }
 
@@ -630,13 +932,12 @@ class SocketHandler {
         return;
       }
 
-      // Update activity if connectionHandler is available
       if (this.connectionHandler) {
         this.connectionHandler.updateActivity(socket.id);
       }
 
       const roomId = this.generateCompanyChatRoomId(
-        socket.companyId,
+        senderCompanyId,
         targetCompanyId
       );
       if (!roomId) {
@@ -647,16 +948,18 @@ class SocketHandler {
       socket.to(roomId).emit("user_typing", {
         userId: socket.userId,
         username: socket.user?.username || `User ${socket.userId}`,
-        companyId: socket.companyId,
+        companyId: senderCompanyId,
         companyName:
-          socket.company?.businessName || `Company ${socket.companyId}`,
+          socket.company?.businessName || `Company ${senderCompanyId}`,
         otherCompanyId: targetCompanyId,
         isTyping: true,
+        platform: "website",
+        messageType: "website",
         timestamp: new Date(),
       });
 
       console.log(
-        `⌨️ User ${socket.userId} from company ${socket.companyId} started typing to company ${targetCompanyId}`
+        `⌨️ User ${socket.userId} from company ${senderCompanyId} started typing to company ${targetCompanyId} (website)`
       );
     } catch (error) {
       console.error("❌ Typing start error:", error);
@@ -665,17 +968,18 @@ class SocketHandler {
 
   handleTypingStop(socket, data) {
     try {
-      const {partyId, otherCompanyId} = data; // partyId is the other company ID
+      const {partyId, otherCompanyId} = data;
       const targetCompanyId = otherCompanyId || partyId;
 
-      // ✅ FIXED: Comprehensive validation
       if (!socket.userId) {
         console.warn("⚠️ Typing stop: Missing user ID");
         return;
       }
 
-      if (!socket.companyId) {
-        console.warn("⚠️ Typing stop: Missing company ID");
+      const senderCompanyId = socket.activeChatCompanyId || socket.companyId;
+
+      if (!senderCompanyId) {
+        console.warn("⚠️ Typing stop: Missing company context");
         return;
       }
 
@@ -684,13 +988,12 @@ class SocketHandler {
         return;
       }
 
-      // Update activity if connectionHandler is available
       if (this.connectionHandler) {
         this.connectionHandler.updateActivity(socket.id);
       }
 
       const roomId = this.generateCompanyChatRoomId(
-        socket.companyId,
+        senderCompanyId,
         targetCompanyId
       );
       if (!roomId) {
@@ -701,30 +1004,37 @@ class SocketHandler {
       socket.to(roomId).emit("user_typing", {
         userId: socket.userId,
         username: socket.user?.username || `User ${socket.userId}`,
-        companyId: socket.companyId,
+        companyId: senderCompanyId,
         companyName:
-          socket.company?.businessName || `Company ${socket.companyId}`,
+          socket.company?.businessName || `Company ${senderCompanyId}`,
         otherCompanyId: targetCompanyId,
         isTyping: false,
+        platform: "website",
+        messageType: "website",
         timestamp: new Date(),
       });
 
       console.log(
-        `⌨️ User ${socket.userId} from company ${socket.companyId} stopped typing to company ${targetCompanyId}`
+        `⌨️ User ${socket.userId} from company ${senderCompanyId} stopped typing to company ${targetCompanyId} (website)`
       );
     } catch (error) {
       console.error("❌ Typing stop error:", error);
     }
   }
 
-  // ✅ UPDATED: Handle disconnection with validation
   handleDisconnection(socket, reason) {
     try {
       const userId = socket.userId;
       const companyId = socket.companyId;
 
+      if (socket.currentChatRoom || socket.currentTargetCompany) {
+        this.handleLeaveCompanyChat(socket, {
+          myCompanyId: companyId,
+          targetCompanyId: socket.currentTargetCompany,
+        });
+      }
+
       if (userId) {
-        // Remove connection using connectionHandler or fallback
         if (this.connectionHandler) {
           this.connectionHandler.removeConnection(socket.id);
         } else {
@@ -732,24 +1042,11 @@ class SocketHandler {
           this.userSockets.delete(socket.id);
         }
 
-        // ✅ FIXED: Notify company members that user is offline (only if companyId exists)
         if (companyId) {
           socket.to(`company_${companyId}`).emit("user_offline", {
             userId,
             username: socket.user?.username || `User ${userId}`,
             companyId,
-          });
-        }
-
-        // ✅ FIXED: Notify chat room about user leaving (with validation)
-        if (socket.currentChatRoom) {
-          socket.to(socket.currentChatRoom).emit("user_left_chat", {
-            userId,
-            username: socket.user?.username || `User ${userId}`,
-            companyId: companyId || "Unknown",
-            companyName:
-              socket.company?.businessName ||
-              `Company ${companyId || "Unknown"}`,
           });
         }
       }
@@ -764,7 +1061,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Helper method to send message to specific user with validation
   sendToUser(userId, event, data) {
     try {
       if (!userId) {
@@ -794,7 +1090,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Send message to company-to-company chat room with validation
   sendToChatRoom(companyId, partyId, event, data) {
     try {
       if (!companyId || !partyId) {
@@ -819,7 +1114,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Send message to company with validation
   sendToCompany(companyId, event, data) {
     try {
       if (!companyId) {
@@ -835,57 +1129,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Generate consistent room ID for company-to-company chat with validation
-  generateCompanyChatRoomId(companyId1, companyId2) {
-    try {
-      // ✅ FIXED: Comprehensive validation
-      if (!companyId1 || !companyId2) {
-        console.warn("⚠️ GenerateCompanyChatRoomId: Missing company IDs", {
-          companyId1,
-          companyId2,
-        });
-        return null;
-      }
-
-      // ✅ FIXED: Handle different data types and ensure toString() works
-      const id1 = companyId1?.toString
-        ? companyId1.toString()
-        : String(companyId1);
-      const id2 = companyId2?.toString
-        ? companyId2.toString()
-        : String(companyId2);
-
-      if (!id1 || !id2 || id1 === "undefined" || id2 === "undefined") {
-        console.warn(
-          "⚠️ GenerateCompanyChatRoomId: Invalid company IDs after conversion",
-          {
-            id1,
-            id2,
-            originalId1: companyId1,
-            originalId2: companyId2,
-          }
-        );
-        return null;
-      }
-
-      // Sort company IDs to ensure consistent room naming
-      const sortedIds = [id1, id2].sort();
-      const roomId = `company_chat_${sortedIds[0]}_${sortedIds[1]}`;
-
-      console.log(
-        `🏠 Generated chat room ID: ${roomId} for companies ${id1} and ${id2}`
-      );
-      return roomId;
-    } catch (error) {
-      console.error("❌ GenerateCompanyChatRoomId error:", error, {
-        companyId1,
-        companyId2,
-      });
-      return null;
-    }
-  }
-
-  // ✅ FIXED: Helper method to get online users with error handling
   getOnlineUsers() {
     try {
       if (this.connectionHandler) {
@@ -898,7 +1141,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Helper method to check if user is online with validation
   isUserOnline(userId) {
     try {
       if (!userId) {
@@ -915,7 +1157,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Get connection statistics with error handling
   getConnectionStats() {
     try {
       if (this.connectionHandler) {
@@ -938,7 +1179,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Get all connected users for a company with validation
   getCompanyUsers(companyId) {
     try {
       if (!companyId) {
@@ -953,7 +1193,6 @@ class SocketHandler {
     }
   }
 
-  // ✅ FIXED: Check if companies are in active chat with validation
   areCompaniesInChat(companyId1, companyId2) {
     try {
       if (!companyId1 || !companyId2) {
@@ -971,6 +1210,76 @@ class SocketHandler {
       console.error("❌ AreCompaniesInChat error:", error);
       return false;
     }
+  }
+
+  emitToCompany(companyId, event, data) {
+    try {
+      if (!companyId) {
+        console.warn("⚠️ emitToCompany: Missing company ID");
+        return false;
+      }
+
+      this.io.to(`company_${companyId}`).emit(event, data);
+
+      const companyRoom = this.io.sockets.adapter.rooms.get(
+        `company_${companyId}`
+      );
+      if (companyRoom) {
+        console.log(
+          `📡 emitToCompany: Emitted ${event} to company ${companyId} (${companyRoom.size} sockets)`
+        );
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("❌ emitToCompany error:", error);
+      return false;
+    }
+  }
+
+  getMessageHandler() {
+    return this.messageHandler;
+  }
+
+  debugBroadcast(message = "Test message") {
+    console.log("🧪 DEBUG: Broadcasting test message to all sockets");
+
+    const testData = {
+      _id: "test_" + Date.now(),
+      content: message,
+      senderCompanyId: "test_sender",
+      receiverCompanyId: "test_receiver",
+      messageType: "website",
+      platform: "internal",
+      timestamp: new Date(),
+      isTestMessage: true,
+    };
+
+    this.io.emit("new_message", testData);
+    console.log("🧪 DEBUG: Test message broadcasted to all sockets");
+  }
+
+  getSocketDebugInfo() {
+    const rooms = Array.from(this.io.sockets.adapter.rooms.entries());
+    const sockets = Array.from(this.io.sockets.sockets.entries());
+
+    return {
+      totalSockets: sockets.length,
+      totalRooms: rooms.length,
+      rooms: rooms.map(([roomName, socketSet]) => ({
+        name: roomName,
+        socketCount: socketSet.size,
+        sockets: Array.from(socketSet),
+      })),
+      sockets: sockets.map(([socketId, socket]) => ({
+        id: socketId,
+        userId: socket.userId,
+        companyId: socket.companyId,
+        activeChatCompanyId: socket.activeChatCompanyId,
+        rooms: Array.from(socket.rooms),
+      })),
+    };
   }
 }
 

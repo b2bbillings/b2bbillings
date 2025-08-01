@@ -1,5 +1,6 @@
 import axios from "axios";
 import apiConfig from "../config/api";
+import chatService from "./chatService";
 
 const API_BASE_URL = apiConfig.baseURL;
 
@@ -12,87 +13,285 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token and company context
-apiClient.interceptors.request.use(
-  (config) => {
-    // Add authentication token
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+const chatAPI = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-    // Add current company context
-    const currentCompany = localStorage.getItem("currentCompany");
-    if (currentCompany) {
-      try {
-        const company = JSON.parse(currentCompany);
-        const companyId = company.id || company._id || company.companyId;
-
-        if (companyId) {
-          config.headers["X-Company-ID"] = companyId;
-        }
-      } catch (e) {
-        // Silent error handling
+const setupInterceptors = (client) => {
+  client.interceptors.request.use(
+    (config) => {
+      // Add authentication token
+      const token = localStorage.getItem("token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
       }
-    }
 
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+      // Add current company context
+      const currentCompany = localStorage.getItem("currentCompany");
+      if (currentCompany) {
+        try {
+          const company = JSON.parse(currentCompany);
+          const companyId = company.id || company._id || company.companyId;
 
-// Response interceptor for global error handling
-apiClient.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    // Handle common errors
-    if (error.response) {
-      // Server responded with error status
-      const {status, data} = error.response;
-
-      switch (status) {
-        case 401:
-          // Clear all authentication data
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          localStorage.removeItem("currentCompany");
-
-          // Only redirect if not already on login page
-          if (
-            !window.location.pathname.includes("/login") &&
-            !window.location.pathname.includes("/auth")
-          ) {
-            window.location.href = "/login";
+          if (companyId) {
+            config.headers["X-Company-ID"] = companyId;
           }
-          break;
+        } catch (e) {
+          // Silent error handling
+        }
       }
 
-      // Throw error with server message and code
-      const errorMessage = data.message || `HTTP Error: ${status}`;
-      const apiError = new Error(errorMessage);
-      apiError.code = data.code;
-      apiError.status = status;
-      apiError.debug = data.debug;
-      throw apiError;
-    } else if (error.request) {
-      // Network error
-      const networkError = new Error(
-        "Unable to connect to server. Please check your internet connection."
-      );
-      networkError.code = "NETWORK_ERROR";
-      throw networkError;
-    } else {
-      // Other error
-      throw new Error(error.message || "An unexpected error occurred.");
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
     }
-  }
-);
+  );
+
+  // Response interceptor for global error handling
+  client.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error) => {
+      // Handle common errors
+      if (error.response) {
+        // Server responded with error status
+        const {status, data} = error.response;
+
+        switch (status) {
+          case 401:
+            // Clear all authentication data
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            localStorage.removeItem("currentCompany");
+
+            // Only redirect if not already on login page
+            if (
+              !window.location.pathname.includes("/login") &&
+              !window.location.pathname.includes("/auth")
+            ) {
+              window.location.href = "/login";
+            }
+            break;
+        }
+
+        // Throw error with server message and code
+        const errorMessage = data.message || `HTTP Error: ${status}`;
+        const apiError = new Error(errorMessage);
+        apiError.code = data.code;
+        apiError.status = status;
+        apiError.debug = data.debug;
+        throw apiError;
+      } else if (error.request) {
+        // Network error
+        const networkError = new Error(
+          "Unable to connect to server. Please check your internet connection."
+        );
+        networkError.code = "NETWORK_ERROR";
+        throw networkError;
+      } else {
+        // Other error
+        throw new Error(error.message || "An unexpected error occurred.");
+      }
+    }
+  );
+};
+
+// Setup interceptors for both clients
+setupInterceptors(apiClient);
+setupInterceptors(chatAPI);
 
 class PartyService {
+  constructor() {
+    // ✅ ADDED: Simple in-memory cache
+    this.cache = new Map();
+    this.cacheTimeouts = new Map();
+    this.currentCompanyId = null;
+    this.currentCompanyName = null;
+  }
+
+  // ✅ ADDED: Cache management methods
+  getFromCache(key, type = "default") {
+    const cacheKey = `${type}_${key}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() < cached.expires) {
+      return cached.data;
+    }
+    this.cache.delete(cacheKey);
+    return null;
+  }
+
+  setCache(key, data, type = "default", ttlMinutes = 5) {
+    const cacheKey = `${type}_${key}`;
+    const expires = Date.now() + ttlMinutes * 60 * 1000;
+    this.cache.set(cacheKey, {data, expires});
+
+    // Clear expired cache entries periodically
+    if (this.cacheTimeouts.has(cacheKey)) {
+      clearTimeout(this.cacheTimeouts.get(cacheKey));
+    }
+
+    const timeout = setTimeout(() => {
+      this.cache.delete(cacheKey);
+      this.cacheTimeouts.delete(cacheKey);
+    }, ttlMinutes * 60 * 1000);
+
+    this.cacheTimeouts.set(cacheKey, timeout);
+  }
+
+  clearCache(type = null) {
+    if (type) {
+      const keysToDelete = [];
+      for (const key of this.cache.keys()) {
+        if (key.startsWith(`${type}_`)) {
+          keysToDelete.push(key);
+        }
+      }
+      keysToDelete.forEach((key) => {
+        this.cache.delete(key);
+        if (this.cacheTimeouts.has(key)) {
+          clearTimeout(this.cacheTimeouts.get(key));
+          this.cacheTimeouts.delete(key);
+        }
+      });
+    } else {
+      this.cache.clear();
+      this.cacheTimeouts.forEach((timeout) => clearTimeout(timeout));
+      this.cacheTimeouts.clear();
+    }
+  }
+
+  clearHistoryCache(targetCompanyId) {
+    this.clearCache(`history_${targetCompanyId}`);
+  }
+
+  clearConversationCache() {
+    this.clearCache("conversation");
+  }
+
+  // ✅ ADDED: Auto-set company context
+  autoSetCompanyContext() {
+    try {
+      const currentCompany = localStorage.getItem("currentCompany");
+      if (currentCompany) {
+        const company = JSON.parse(currentCompany);
+        this.currentCompanyId = company.id || company._id || company.companyId;
+        this.currentCompanyName = company.businessName || company.name;
+      }
+    } catch (error) {
+      console.warn("Failed to auto-set company context:", error);
+    }
+  }
+
+  handleError(error) {
+    if (error.response?.status === 404) {
+      // Return empty result for 404s instead of throwing
+      return {
+        success: false,
+        message: "Resource not found",
+        data: null,
+      };
+    }
+    throw error;
+  }
+
+  validateAndExtractPartyCompanyData(partyData) {
+    try {
+      if (!partyData) {
+        throw new Error("Party data is required");
+      }
+
+      // ✅ CRITICAL: Get YOUR authenticated company ID first
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        throw new Error(
+          "No authenticated company found. Please refresh and try again."
+        );
+      }
+
+      const myCompanyId = companyValidation.companyId; // ✅ YOUR company ID
+
+      // ✅ Extract target company ID from party data
+      let targetCompanyId = null;
+
+      // Check multiple possible fields for target company
+      if (partyData.chatCompanyId) {
+        targetCompanyId = partyData.chatCompanyId;
+      } else if (partyData.externalCompanyId) {
+        targetCompanyId = partyData.externalCompanyId;
+      } else if (partyData.linkedCompanyId) {
+        if (
+          typeof partyData.linkedCompanyId === "object" &&
+          partyData.linkedCompanyId._id
+        ) {
+          targetCompanyId = partyData.linkedCompanyId._id;
+        } else if (typeof partyData.linkedCompanyId === "string") {
+          targetCompanyId = partyData.linkedCompanyId;
+        }
+      }
+
+      if (!targetCompanyId) {
+        throw new Error("Party is not linked to any company for chat");
+      }
+
+      // ✅ VALIDATE: Ensure you're not trying to chat with yourself
+      if (myCompanyId === targetCompanyId) {
+        throw new Error("Cannot chat with your own company");
+      }
+
+      console.log("🔍 Extracted company data:", {
+        myCompanyId, // ✅ YOUR company (e.g., IT Solution)
+        targetCompanyId, // ✅ PARTY's company (e.g., Sai Computer)
+        partyId: partyData._id || partyData.id,
+        partyName: partyData.name,
+      });
+
+      return {
+        myCompanyId, // ✅ CRITICAL: Added YOUR company ID
+        targetCompanyId, // ✅ Party's linked company ID
+        partyId: partyData._id || partyData.id,
+        partyName: partyData.name,
+        chatCompanyName:
+          partyData.chatCompanyName ||
+          partyData.linkedCompanyId?.businessName ||
+          partyData.supplierCompanyData?.businessName ||
+          partyData.name,
+      };
+    } catch (error) {
+      console.error("❌ Error extracting party company data:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get authenticated company data
+   * @returns {Object} Authenticated company info
+   */
+  getAuthenticatedCompany() {
+    try {
+      const companyValidation = this.validateCompanyContext();
+      if (!companyValidation.isValid) {
+        return null;
+      }
+
+      return {
+        companyId: companyValidation.companyId,
+        company: companyValidation.company,
+        name:
+          companyValidation.company?.businessName ||
+          companyValidation.company?.name,
+      };
+    } catch (error) {
+      console.error("❌ Error getting authenticated company:", error);
+      return null;
+    }
+  }
+
   /**
    * Map frontend sort keys to backend expected keys
    * @param {string} frontendKey - Frontend sort key
@@ -153,7 +352,6 @@ class PartyService {
       };
     }
   }
-
   /**
    * Create a new party with linking support
    * @param {Object} partyData - Party data
@@ -474,7 +672,7 @@ class PartyService {
   }
 
   /**
-   * Get conversation summary for party's linked company
+   * ✅ FIXED: Get conversation summary for party's linked company
    * @param {Object} partyData - Party data
    * @returns {Promise<Object>} Conversation summary
    */
@@ -491,11 +689,11 @@ class PartyService {
         return cachedSummary;
       }
 
+      // ✅ FIXED: Use proper chat endpoint
       const response = await chatAPI.get(
-        `/api/chat/summary/${targetCompanyId}`,
+        `/api/chat/conversations/${targetCompanyId}/summary`,
         {
           params: {
-            type: "company",
             partyId,
             partyName,
           },
@@ -520,7 +718,7 @@ class PartyService {
   }
 
   /**
-   * Get conversations list for current company
+   * ✅ FIXED: Get conversations list for current company
    * @param {Object} options - Filter options
    * @returns {Promise<Object>} Conversations list
    */
@@ -550,7 +748,6 @@ class PartyService {
           limit,
           search,
           filter,
-          type: "company",
           companyId: this.currentCompanyId,
         },
       });
@@ -559,10 +756,9 @@ class PartyService {
       this.setCache(cacheKey, response.data, "conversation");
       return response.data;
     } catch (error) {
-      throw this.handleError(error);
+      return this.handleError(error);
     }
   }
-
   /**
    * Get active chats for current company
    * @param {Object} options - Filter options
@@ -887,7 +1083,7 @@ class PartyService {
   }
 
   /**
-   * Enhanced getParties with proper linked company population
+   * ✅ ENHANCED: Get parties with proper chat field population
    * @param {string|Object} companyIdOrFilters - Company ID or filters object
    * @param {Object} filters - Filter options
    * @returns {Promise<Object>} Parties data with chat capabilities
@@ -950,20 +1146,16 @@ class PartyService {
 
       const response = await apiClient.get("/api/parties", {params});
 
-      // Enhance all parties with chat capability info
+      // ✅ ENHANCED: Better chat field enhancement
       if (response.data.success && response.data.data?.parties) {
-        const enhancedParties = response.data.data.parties.map((party) => ({
-          ...party,
-          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
-          chatCompanyId:
-            party.linkedCompanyId?._id ||
-            party.linkedCompanyId ||
-            party.externalCompanyId,
-          chatCompanyName:
-            party.linkedCompanyId?.businessName ||
-            party.supplierCompanyData?.businessName ||
-            party.name,
-        }));
+        const enhancedParties = response.data.data.parties.map((party) => {
+          const chatCapability = this.validatePartyChatCapability(party);
+
+          return {
+            ...party,
+            ...chatCapability,
+          };
+        });
 
         return {
           ...response.data,
@@ -979,7 +1171,6 @@ class PartyService {
       throw error;
     }
   }
-
   /**
    * Link party to company for chat
    * @param {string} partyId - Party ID
@@ -1138,7 +1329,7 @@ class PartyService {
   }
 
   /**
-   * Validate party chat capability
+   * ✅ ENHANCED: Validate party chat capability with correct field checking
    * @param {Object} party - Party object
    * @returns {Object} Validation result
    */
@@ -1150,17 +1341,30 @@ class PartyService {
       };
     }
 
-    const hasLinkedCompany = !!(
-      party.linkedCompanyId || party.externalCompanyId
-    );
-    const chatCompanyId =
-      party.linkedCompanyId?._id ||
-      party.linkedCompanyId ||
-      party.externalCompanyId;
-    const chatCompanyName =
-      party.linkedCompanyId?.businessName ||
-      party.supplierCompanyData?.businessName ||
-      party.name;
+    // ✅ FIXED: Check the correct fields in the right order
+    let chatCompanyId = null;
+    let chatCompanyName = null;
+
+    if (party.chatCompanyId) {
+      chatCompanyId = party.chatCompanyId;
+      chatCompanyName = party.chatCompanyName || party.name;
+    } else if (party.externalCompanyId) {
+      chatCompanyId = party.externalCompanyId;
+      chatCompanyName = party.supplierCompanyData?.businessName || party.name;
+    } else if (party.linkedCompanyId) {
+      if (
+        typeof party.linkedCompanyId === "object" &&
+        party.linkedCompanyId._id
+      ) {
+        chatCompanyId = party.linkedCompanyId._id;
+        chatCompanyName = party.linkedCompanyId.businessName || party.name;
+      } else if (typeof party.linkedCompanyId === "string") {
+        chatCompanyId = party.linkedCompanyId;
+        chatCompanyName = party.name;
+      }
+    }
+
+    const hasLinkedCompany = !!chatCompanyId;
 
     return {
       canChat: hasLinkedCompany && !!chatCompanyId,
@@ -1658,7 +1862,7 @@ class PartyService {
   }
 
   /**
-   * Get current company context
+   * ✅ Get current company context
    * @returns {Object|null} Current company data
    */
   getCurrentCompany() {
@@ -1667,7 +1871,7 @@ class PartyService {
   }
 
   /**
-   * Get current company ID
+   * ✅ Get current company ID
    * @returns {string|null} Current company ID
    */
   getCurrentCompanyId() {

@@ -9,8 +9,15 @@ const {authenticate} = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// Message types for validation
-const messageTypes = ["whatsapp", "sms", "email", "internal", "notification"];
+// ✅ UPDATED: Message types for validation - Added "website"
+const messageTypes = [
+  "whatsapp",
+  "sms",
+  "email",
+  "internal",
+  "notification",
+  "website",
+];
 
 // Template categories for validation
 const templateCategories = [
@@ -51,7 +58,7 @@ const handleValidationErrors = (req, res, next) => {
 // VALIDATION RULES
 // =============================================================================
 
-// Validation for sending messages
+// ✅ UPDATED: Validation for sending messages - includes "website"
 const sendMessageValidation = [
   body("content")
     .notEmpty()
@@ -62,7 +69,7 @@ const sendMessageValidation = [
 
   body("messageType")
     .optional()
-    .isIn(messageTypes)
+    .isIn(messageTypes) // ✅ Now includes "website"
     .withMessage("Invalid message type"),
 
   body("templateId")
@@ -100,7 +107,7 @@ const deleteMessagesValidation = [
     .withMessage("Each message ID must be a valid MongoDB ObjectId"),
 ];
 
-// Validation for search
+// ✅ UPDATED: Validation for search - includes "website"
 const searchValidation = [
   query("query")
     .notEmpty()
@@ -116,7 +123,7 @@ const searchValidation = [
 
   query("messageType")
     .optional()
-    .isIn(messageTypes)
+    .isIn(messageTypes) // ✅ Now includes "website"
     .withMessage("Invalid message type"),
 
   query("page")
@@ -142,7 +149,7 @@ const searchValidation = [
   query("type").optional().isIn(["company"]).withMessage("Invalid chat type"),
 ];
 
-// Validation for chat history
+// ✅ UPDATED: Validation for chat history - includes "website"
 const chatHistoryValidation = [
   query("page")
     .optional()
@@ -156,7 +163,7 @@ const chatHistoryValidation = [
 
   query("messageType")
     .optional()
-    .isIn(messageTypes)
+    .isIn(messageTypes) // ✅ Now includes "website"
     .withMessage("Invalid message type"),
 
   query("startDate")
@@ -172,7 +179,7 @@ const chatHistoryValidation = [
   query("type").optional().isIn(["company"]).withMessage("Invalid chat type"),
 ];
 
-// Validation for template message
+// ✅ UPDATED: Validation for template message - includes "website"
 const templateMessageValidation = [
   body("customContent")
     .optional()
@@ -182,7 +189,7 @@ const templateMessageValidation = [
 
   body("messageType")
     .optional()
-    .isIn(messageTypes)
+    .isIn(messageTypes) // ✅ Now includes "website"
     .withMessage("Invalid message type"),
 
   body("templateData")
@@ -216,6 +223,42 @@ const activeChatsValidation = [
     .withMessage("Limit must be between 1 and 50"),
 
   query("type").optional().isIn(["company"]).withMessage("Invalid chat type"),
+];
+
+// ✅ NEW: Validation for notification endpoints
+const notificationValidation = [
+  query("page")
+    .optional()
+    .isInt({min: 1})
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({min: 1, max: 100})
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("unreadOnly")
+    .optional()
+    .isBoolean()
+    .withMessage("unreadOnly must be a boolean"),
+];
+
+// ✅ NEW: Validation for bulk notification operations
+const bulkNotificationValidation = [
+  body("notificationIds")
+    .optional()
+    .isArray()
+    .withMessage("Notification IDs must be an array"),
+
+  body("notificationIds.*")
+    .optional()
+    .isMongoId()
+    .withMessage("Each notification ID must be a valid MongoDB ObjectId"),
+
+  body("markAll")
+    .optional()
+    .isBoolean()
+    .withMessage("markAll must be a boolean"),
 ];
 
 // ✅ FIXED: More robust MongoDB ObjectId validation
@@ -629,6 +672,98 @@ router.post(
 );
 
 // =============================================================================
+// 🔔 NOTIFICATION ROUTES - ✅ NEW: Chat notification management
+// =============================================================================
+
+// @route   GET /api/chat/notifications/summary
+// @desc    Get chat notification summary (unread count, conversation summaries)
+// @access  Private (requires authentication)
+router.get(
+  "/notifications/summary",
+  validateCompanyChat,
+  (req, res, next) => {
+    console.log(
+      "🔔 Getting chat notification summary for user:",
+      req.user?.id,
+      "company:",
+      req.user?.companyId
+    );
+    next();
+  },
+  chatController.getChatNotificationSummary
+);
+
+// @route   GET /api/chat/notifications/details
+// @desc    Get detailed list of chat notifications
+// @access  Private (requires authentication)
+router.get(
+  "/notifications/details",
+  notificationValidation,
+  handleValidationErrors,
+  validateCompanyChat,
+  (req, res, next) => {
+    console.log(
+      "📋 Getting chat notification details for user:",
+      req.user?.id,
+      "company:",
+      req.user?.companyId,
+      "page:",
+      req.query.page,
+      "unreadOnly:",
+      req.query.unreadOnly
+    );
+    next();
+  },
+  chatController.getChatNotificationDetails
+);
+
+// @route   PUT /api/chat/notifications/mark-read
+// @desc    Bulk mark chat notifications as read
+// @access  Private (requires authentication)
+router.put(
+  "/notifications/mark-read",
+  bulkNotificationValidation,
+  handleValidationErrors,
+  validateCompanyChat,
+  (req, res, next) => {
+    console.log(
+      "✅ Bulk marking chat notifications as read for user:",
+      req.user?.id,
+      "company:",
+      req.user?.companyId,
+      "markAll:",
+      req.body.markAll,
+      "notificationIds count:",
+      req.body.notificationIds?.length || 0
+    );
+    next();
+  },
+  chatController.bulkMarkChatNotificationsAsRead
+);
+
+// @route   PUT /api/chat/conversations/:partyId/read
+// @desc    Mark all notifications for a specific conversation as read
+// @access  Private (requires authentication)
+router.put(
+  "/conversations/:partyId/read",
+  validatePartyId,
+  validateCompanyChat,
+  (req, res, next) => {
+    console.log(
+      "✅ Marking conversation as read:",
+      "partyId:",
+      req.params.partyId,
+      "user:",
+      req.user?.id,
+      "company:",
+      req.user?.companyId
+    );
+    next();
+  },
+  chatController.markConversationAsRead
+);
+
+// =============================================================================
 // 🏢 COMPANY-SPECIFIC ROUTES - ✅ NEW: Company interaction routes
 // =============================================================================
 
@@ -982,6 +1117,12 @@ router.use("*", (req, res) => {
       "GET /api/chat/templates/:partyId",
       "POST /api/chat/templates/:partyId/:templateId",
 
+      // ✅ NEW: Notification routes
+      "GET /api/chat/notifications/summary",
+      "GET /api/chat/notifications/details",
+      "PUT /api/chat/notifications/mark-read",
+      "PUT /api/chat/conversations/:partyId/read",
+
       // ✅ NEW: Company-specific routes
       "GET /api/chat/participants/:partyId",
       "GET /api/chat/active-chats",
@@ -1009,6 +1150,8 @@ router.use("*", (req, res) => {
     userAuthenticated: !!req.user,
     companyContext: !!req.user?.companyId,
     chatType: req.chatType || "unknown",
+    // ✅ UPDATED: Show supported message types including "website"
+    supportedMessageTypes: messageTypes,
   });
 });
 

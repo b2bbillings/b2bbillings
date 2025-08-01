@@ -1,5 +1,5 @@
 import React, {useState, useMemo, useEffect} from "react";
-import {Badge, Button, Nav, Modal} from "react-bootstrap";
+import {Badge, Button, Nav} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
   faUserCheck,
@@ -26,7 +26,8 @@ import PartyAnalytics from "./PartyAnalytics";
 import PartyPayments from "./PartyPayments";
 import PartyTransactions from "./PartyTransactions";
 
-// ✅ NEW: Import chat components and services
+// ✅ UPDATED: Import chat context instead of PartyChat component
+import {useChatContext} from "../../../context/chatContext";
 import PartyChat from "./PartyChat";
 import partyService from "../../../services/partyService";
 import paymentService from "../../../services/paymentService";
@@ -47,10 +48,13 @@ function PartyDetails({
 }) {
   const [activeTab, setActiveTab] = useState("analytics");
 
-  // ✅ NEW: State for chat functionality
-  const [chatModalOpen, setChatModalOpen] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatPartyData, setChatPartyData] = useState(null);
+  // ✅ UPDATED: Use chat context instead of local chat state
+  const {openChat, setLoading, chatState, isChatOpen} = useChatContext();
+
+  // ✅ REMOVED: Local chat state (no longer needed)
+  // const [chatModalOpen, setChatModalOpen] = useState(false);
+  // const [chatLoading, setChatLoading] = useState(false);
+  // const [chatPartyData, setChatPartyData] = useState(null);
 
   // Add these new states for payment data
   const [actualPayments, setActualPayments] = useState([]);
@@ -69,13 +73,11 @@ function PartyDetails({
     if (!show) {
       setActualPayments([]);
       setPaymentError("");
-      // ✅ NEW: Clear chat data when modal is hidden
-      setChatModalOpen(false);
-      setChatPartyData(null);
+      // ✅ UPDATED: No need to clear local chat state anymore
     }
   }, [show]);
 
-  // ✅ NEW: Chat functionality methods
+  // ✅ UPDATED: Simplified chat functionality methods
   const getChatValidation = () => {
     if (!party) return {canChat: false, reason: "No party data"};
     return partyService.validatePartyChatCapability(party);
@@ -84,10 +86,23 @@ function PartyDetails({
   const handleOpenChat = async () => {
     if (!party) return;
 
-    try {
-      setChatLoading(true);
+    const chatValidation = getChatValidation();
+    if (!chatValidation.canChat) {
+      alert(`Cannot start chat: ${chatValidation.reason}`);
+      return;
+    }
 
-      // ✅ FIXED: Get fresh party data with chat fields
+    // ✅ Check if chat is already open for this party
+    const isAlreadyOpen = isChatOpen(party._id || party.id);
+    if (isAlreadyOpen) {
+      // Chat is already open, just show a message or do nothing
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // ✅ Get fresh party data with chat fields
       const partyResponse = await partyService.getPartyForChat(
         party._id || party.id
       );
@@ -97,29 +112,21 @@ function PartyDetails({
       }
 
       const freshPartyData = partyResponse.data;
-      const chatValidation =
+      const freshChatValidation =
         partyService.validatePartyChatCapability(freshPartyData);
 
-      if (!chatValidation.canChat) {
-        alert(`Cannot start chat: ${chatValidation.reason}`);
+      if (!freshChatValidation.canChat) {
+        alert(`Cannot start chat: ${freshChatValidation.reason}`);
         return;
       }
 
-      console.log("🎯 Opening chat from PartyDetails:", {
-        partyId: freshPartyData._id,
-        partyName: freshPartyData.name,
-        canChat: chatValidation.canChat,
-        chatCompanyId: chatValidation.chatCompanyId,
-        chatCompanyName: chatValidation.chatCompanyName,
-      });
-
-      setChatPartyData(freshPartyData);
-      setChatModalOpen(true);
+      // ✅ UPDATED: Use context to open chat instead of local state
+      openChat(freshPartyData, "modal");
     } catch (error) {
       console.error("❌ Error opening chat from PartyDetails:", error);
       alert("Failed to open chat. Please try again.");
     } finally {
-      setChatLoading(false);
+      setLoading(false);
     }
   };
 
@@ -515,16 +522,17 @@ function PartyDetails({
     }
   };
 
-  // ✅ NEW: Chat status component for header
+  // ✅ UPDATED: Chat status component for header
   const ChatStatusIndicator = () => {
     const chatValidation = getChatValidation();
+    const isThisChatOpen = isChatOpen(party?._id || party?.id);
 
     if (!chatValidation.canChat) return null;
 
     return (
-      <Badge bg="success" className="ms-2">
+      <Badge bg={isThisChatOpen ? "success" : "info"} className="ms-2">
         <FontAwesomeIcon icon={faLink} className="me-1" />
-        Chat Available
+        {isThisChatOpen ? "Chat Active" : "Chat Available"}
       </Badge>
     );
   };
@@ -544,6 +552,7 @@ function PartyDetails({
   };
 
   const chatValidation = getChatValidation();
+  const isThisChatOpen = isChatOpen(party._id || party.id);
 
   return (
     <>
@@ -583,7 +592,7 @@ function PartyDetails({
                           Running Customer
                         </Badge>
                       )}
-                      {/* ✅ NEW: Chat status indicator */}
+                      {/* ✅ UPDATED: Enhanced chat status indicator */}
                       <ChatStatusIndicator />
                     </h5>
                     <div className="text-muted">
@@ -594,16 +603,23 @@ function PartyDetails({
                           party.createdAt || Date.now()
                         ).toLocaleDateString("en-IN")}
                       </small>
-                      {/* ✅ NEW: Linked company info */}
+                      {/* ✅ UPDATED: Enhanced linked company info */}
                       {chatValidation.canChat &&
                         chatValidation.chatCompanyName && (
                           <div className="mt-1">
-                            <small className="text-info">
+                            <small
+                              className={
+                                isThisChatOpen
+                                  ? "text-success fw-bold"
+                                  : "text-info"
+                              }
+                            >
                               <FontAwesomeIcon
                                 icon={faBuilding}
                                 className="me-1"
                               />
-                              Linked to: {chatValidation.chatCompanyName}
+                              {isThisChatOpen ? "Chatting with" : "Linked to"}:{" "}
+                              {chatValidation.chatCompanyName}
                             </small>
                           </div>
                         )}
@@ -611,32 +627,46 @@ function PartyDetails({
                   </div>
                 </div>
                 <div className="d-flex gap-2">
-                  {/* ✅ NEW: Chat button */}
+                  {/* ✅ UPDATED: Chat button with enhanced status */}
                   <Button
                     variant={
-                      chatValidation.canChat ? "success" : "outline-secondary"
+                      isThisChatOpen
+                        ? "success"
+                        : chatValidation.canChat
+                        ? "outline-success"
+                        : "outline-secondary"
                     }
                     size="sm"
                     onClick={handleOpenChat}
-                    disabled={!chatValidation.canChat || chatLoading}
+                    disabled={
+                      !chatValidation.canChat ||
+                      chatState.loading ||
+                      isThisChatOpen
+                    }
                     title={
-                      chatValidation.canChat
+                      isThisChatOpen
+                        ? "Chat is already open"
+                        : chatValidation.canChat
                         ? `Start chat with ${chatValidation.chatCompanyName}`
                         : chatValidation.reason
                     }
                   >
                     <FontAwesomeIcon
                       icon={
-                        chatValidation.canChat
+                        isThisChatOpen
+                          ? faComments
+                          : chatValidation.canChat
                           ? faComments
                           : faExclamationTriangle
                       }
                       className="me-1"
                     />
-                    {chatLoading
+                    {chatState.loading && chatState.party?._id === party._id
                       ? "Loading..."
+                      : isThisChatOpen
+                      ? "Chat Open"
                       : chatValidation.canChat
-                      ? "Chat"
+                      ? "Start Chat"
                       : "No Link"}
                   </Button>
 
@@ -752,18 +782,28 @@ function PartyDetails({
                       Statement
                     </Nav.Link>
                   </Nav.Item>
-                  {/* ✅ NEW: Chat tab (if chat is available) */}
+                  {/* ✅ UPDATED: Enhanced chat tab */}
                   {chatValidation.canChat && (
                     <Nav.Item>
                       <Nav.Link
                         active={activeTab === "chat"}
                         onClick={() => setActiveTab("chat")}
-                        className="d-flex align-items-center text-success"
+                        className={`d-flex align-items-center ${
+                          isThisChatOpen
+                            ? "text-success fw-bold"
+                            : "text-success"
+                        }`}
                       >
                         <FontAwesomeIcon icon={faComments} className="me-2" />
                         Chat
-                        <Badge bg="success" className="ms-2">
-                          {chatValidation.chatCompanyName?.substring(0, 10)}...
+                        <Badge
+                          bg={isThisChatOpen ? "success" : "secondary"}
+                          className="ms-2"
+                        >
+                          {isThisChatOpen
+                            ? "Active"
+                            : chatValidation.chatCompanyName?.substring(0, 10) +
+                              "..."}
                         </Badge>
                       </Nav.Link>
                     </Nav.Item>
@@ -823,13 +863,14 @@ function PartyDetails({
                   <PartyStatement {...commonProps} />
                 )}
 
-                {/* ✅ NEW: Chat tab content */}
+                {/* ✅ UPDATED: Enhanced chat tab content */}
                 {activeTab === "chat" && chatValidation.canChat && (
-                  <div className="p-0">
+                  <div className="p-0 h-100">
                     <PartyChat
-                      party={chatPartyData || party}
+                      party={party}
                       onClose={() => setActiveTab("analytics")}
                       isEmbedded={true}
+                      show={true}
                     />
                   </div>
                 )}
@@ -839,55 +880,8 @@ function PartyDetails({
         </div>
       </div>
 
-      {/* ✅ NEW: Separate Chat Modal (for button click) */}
-      <Modal
-        show={chatModalOpen}
-        onHide={() => {
-          setChatModalOpen(false);
-          setChatPartyData(null);
-        }}
-        size="lg"
-        centered
-        className="chat-modal"
-      >
-        <Modal.Body className="p-0">
-          {chatPartyData && (
-            <PartyChat
-              party={chatPartyData}
-              onClose={() => {
-                setChatModalOpen(false);
-                setChatPartyData(null);
-              }}
-              isEmbedded={false}
-            />
-          )}
-        </Modal.Body>
-      </Modal>
-
-      {/* ✅ NEW: Chat loading overlay */}
-      {chatLoading && (
-        <div
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-          style={{
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 10000,
-          }}
-        >
-          <div className="bg-white p-4 rounded shadow">
-            <div className="d-flex align-items-center">
-              <div
-                className="spinner-border spinner-border-sm me-3"
-                role="status"
-              >
-                <span className="visually-hidden">Loading...</span>
-              </div>
-              <span>
-                Preparing chat with {chatValidation.chatCompanyName}...
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ✅ REMOVED: No need for separate chat modal or loading overlay */}
+      {/* Chat modal and loading are now handled by ChatContext */}
     </>
   );
 }

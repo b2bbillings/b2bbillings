@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Message = require("../models/Message");
-
+const notificationService = require("../services/notificationService"); // ✅ ADD THIS IMPORT
+const Company = require("../models/Company");
 // ✅ UPDATED: Helper function to safely get models
 const getModel = (modelName) => {
   try {
@@ -11,67 +12,10 @@ const getModel = (modelName) => {
   }
 };
 
-// ✅ NEW: Add party context validation helper
-const validatePartyCompanyMapping = async (partyId, companyId) => {
-  try {
-    // Get Party model to verify the mapping
-    const Party = getModel("Party");
-    if (!Party) {
-      console.warn("Party model not available for validation");
-      return {valid: true, warning: "Party model not available"};
-    }
-
-    // Check if this company ID actually corresponds to a linked company from a party
-    const party = await Party.findOne({
-      $or: [
-        {linkedCompanyId: partyId},
-        {externalCompanyId: partyId},
-        {companyId: partyId},
-      ],
-      companyId: companyId, // This party should belong to the requesting company
-    })
-      .select("_id name linkedCompanyId externalCompanyId")
-      .lean();
-
-    if (!party) {
-      console.warn("⚠️ Company ID might not be linked to any party:", {
-        targetCompanyId: partyId,
-        requestingCompanyId: companyId,
-      });
-      return {
-        valid: true,
-        warning: "No party found for this company mapping",
-        direct: true, // Direct company-to-company communication
-      };
-    }
-
-    console.log("✅ Validated party-to-company mapping:", {
-      partyId: party._id,
-      partyName: party.name,
-      linkedCompanyId: party.linkedCompanyId || party.externalCompanyId,
-      requestingCompanyId: companyId,
-    });
-
-    return {
-      valid: true,
-      party: party,
-      mapping: "valid",
-    };
-  } catch (error) {
-    console.error("Party-company mapping validation error:", error);
-    return {
-      valid: true,
-      warning: "Validation failed but allowing communication",
-      error: error.message,
-    };
-  }
-};
-
 // =============================================================================
 // UTILITY & HEALTH CHECK ENDPOINTS
 // =============================================================================
 
-// ✅ ENHANCED: Health check endpoint with more comprehensive checks
 const healthCheck = async (req, res) => {
   try {
     // Check database connection
@@ -94,7 +38,7 @@ const healthCheck = async (req, res) => {
       success: true,
       message: "Chat service is healthy",
       timestamp: new Date().toISOString(),
-      version: "2.0.0", // ✅ UPDATED: Version bump for company chat
+      version: "2.0.0",
       database: {
         status: dbStates[dbState],
         readyState: dbState,
@@ -104,7 +48,7 @@ const healthCheck = async (req, res) => {
         messaging: "operational",
         websocket: socketManager ? "operational" : "disabled",
         storage: "operational",
-        companyChat: "operational", // ✅ NEW: Company chat service
+        companyChat: "operational",
       },
       socket: socketStats,
     });
@@ -117,7 +61,6 @@ const healthCheck = async (req, res) => {
     });
   }
 };
-
 // ✅ ENHANCED: Get chat statistics with company-specific metrics
 const getChatStats = async (req, res) => {
   try {
@@ -369,6 +312,94 @@ const getChatStats = async (req, res) => {
   }
 };
 
+const sendMessageNotifications = async (
+  message,
+  senderCompanyId,
+  receiverCompanyId,
+  originalPartyId,
+  partyName
+) => {
+  try {
+    const [senderCompany, receiverCompany] = await Promise.all([
+      getModel("Company")
+        ?.findById(senderCompanyId)
+        .select("businessName email"),
+      getModel("Company")
+        ?.findById(receiverCompanyId)
+        .select("businessName email"),
+    ]);
+
+    if (!senderCompany || !receiverCompany) {
+      console.warn("⚠️ Companies not found for notification");
+      return;
+    }
+
+    // Check if this is the first message between these companies
+    const existingMessagesCount = await Message.countDocuments({
+      $or: [
+        {senderCompanyId, receiverCompanyId},
+        {
+          senderCompanyId: receiverCompanyId,
+          receiverCompanyId: senderCompanyId,
+        },
+      ],
+    });
+
+    // Prepare original party info if available
+    const originalPartyInfo = originalPartyId
+      ? {
+          partyId: originalPartyId,
+          partyName: partyName,
+        }
+      : null;
+
+    // Check if message is urgent
+    const isUrgent = notificationService.isUrgentMessage(message.content);
+
+    if (existingMessagesCount === 1) {
+      // First message - notify about new conversation
+      const conversationResult =
+        await notificationService.notifyNewBusinessConversation(
+          senderCompany,
+          receiverCompany,
+          message,
+          originalPartyInfo
+        );
+      console.log(
+        "📧 New conversation notification:",
+        conversationResult.success ? "✅ Sent" : "❌ Failed"
+      );
+    } else if (isUrgent) {
+      // Urgent message notification
+      const urgentResult = await notificationService.notifyUrgentChatMessage(
+        message,
+        senderCompany,
+        receiverCompany,
+        "urgent_keywords"
+      );
+      console.log(
+        "🚨 Urgent message notification:",
+        urgentResult.success ? "✅ Sent" : "❌ Failed"
+      );
+    } else {
+      // Regular message notification
+      const messageResult =
+        await notificationService.notifyNewCompanyChatMessage(
+          message,
+          senderCompany,
+          receiverCompany,
+          originalPartyInfo
+        );
+      console.log(
+        "💬 Regular message notification:",
+        messageResult.success ? "✅ Sent" : "❌ Failed"
+      );
+    }
+  } catch (error) {
+    console.error("❌ Notification error:", error.message);
+  }
+};
+
 // =============================================================================
 // CONVERSATION MANAGEMENT
 // =============================================================================
@@ -546,7 +577,7 @@ const getConversations = async (req, res) => {
 
 const getChatHistory = async (req, res) => {
   try {
-    const {partyId} = req.params; // This is the other company ID (from linkedCompanyId)
+    const {partyId} = req.params; // This is the other company ID
     const {companyId, userId} = req.user;
     const {
       page = 1,
@@ -555,109 +586,58 @@ const getChatHistory = async (req, res) => {
       startDate,
       endDate,
       type,
-      partyId: originalPartyId, // ✅ Original party ID from query params
-      partyName, // ✅ Party name from query params
+      partyId: originalPartyId,
+      partyName,
     } = req.query;
 
-    // ✅ ENHANCED: Better validation and logging
-    console.log("📚 Getting company chat history - Full Request Details:", {
-      params: {
-        partyId,
-        partyIdType: typeof partyId,
-        partyIdLength: partyId?.length,
-      },
-      user: {
-        companyId,
-        userId,
-      },
-      query: {
-        page,
-        limit,
-        messageType,
-        startDate,
-        endDate,
-        type,
-        originalPartyId,
-        partyName,
-      },
-      headers: {
-        "x-company-id": req.headers["x-company-id"],
-        authorization: req.headers.authorization ? "Present" : "Missing",
-      },
-    });
-
-    // ✅ FIXED: Additional validation before mongoose check
+    // ✅ ENHANCED: Comprehensive validation
     if (!partyId) {
-      console.error("❌ PartyId is undefined or null");
       return res.status(400).json({
         success: false,
         message: "Party ID is required in URL params",
+        code: "MISSING_PARTY_ID",
       });
     }
 
-    if (typeof partyId !== "string") {
-      console.error("❌ PartyId is not a string:", typeof partyId);
+    if (!mongoose.Types.ObjectId.isValid(partyId)) {
       return res.status(400).json({
         success: false,
-        message: "Party ID must be a string",
+        message: "Invalid party ID format",
+        code: "INVALID_PARTY_ID_FORMAT",
       });
     }
 
-    if (partyId.length !== 24) {
-      console.error("❌ PartyId wrong length:", partyId.length);
-      return res.status(400).json({
-        success: false,
-        message: `Invalid party ID length: expected 24, got ${partyId.length}`,
-      });
-    }
-
-    // ✅ FIXED: More robust MongoDB ObjectId validation
-    let targetCompanyObjectId;
-    try {
-      targetCompanyObjectId = new mongoose.Types.ObjectId(partyId);
-      console.log("✅ Successfully created ObjectId:", targetCompanyObjectId);
-    } catch (error) {
-      console.error("❌ Failed to create ObjectId from partyId:", {
-        partyId,
-        error: error.message,
-      });
-      return res.status(400).json({
-        success: false,
-        message: "Invalid party ID format - not a valid MongoDB ObjectId",
-        details: error.message,
-      });
-    }
-
-    // ✅ FIXED: Validate user context
     if (!companyId) {
-      console.error("❌ Missing companyId in user context");
       return res.status(400).json({
         success: false,
         message: "Company context required",
+        code: "MISSING_COMPANY_CONTEXT",
       });
     }
 
-    let myCompanyObjectId;
-    try {
-      myCompanyObjectId = new mongoose.Types.ObjectId(companyId);
-    } catch (error) {
-      console.error("❌ Invalid companyId in user context:", error.message);
+    // ✅ PREVENT: Self-chat
+    if (companyId === partyId) {
       return res.status(400).json({
         success: false,
-        message: "Invalid company ID in user context",
+        message: "Cannot chat with your own company",
+        code: "SELF_CHAT_ATTEMPT",
       });
     }
 
-    console.log("🔍 Query setup - ObjectIds created successfully:", {
-      myCompanyId: myCompanyObjectId.toString(),
-      targetCompanyId: targetCompanyObjectId.toString(),
+    console.log("📚 Getting company chat history:", {
+      myCompanyId: companyId,
+      targetCompanyId: partyId,
+      page: parseInt(page),
+      limit: parseInt(limit),
       originalPartyId,
       partyName,
     });
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const myCompanyObjectId = new mongoose.Types.ObjectId(companyId);
+    const targetCompanyObjectId = new mongoose.Types.ObjectId(partyId);
 
-    // ✅ FIXED: Build query for company-to-company messages
+    // ✅ ENHANCED: Build optimized query
     const matchQuery = {
       $or: [
         {
@@ -680,81 +660,82 @@ const getChatHistory = async (req, res) => {
     if (startDate || endDate) {
       matchQuery.createdAt = {};
       if (startDate) {
-        matchQuery.createdAt.$gte = new Date(startDate);
+        try {
+          matchQuery.createdAt.$gte = new Date(startDate);
+        } catch (dateError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid start date format",
+            code: "INVALID_START_DATE",
+          });
+        }
       }
       if (endDate) {
-        matchQuery.createdAt.$lte = new Date(endDate);
+        try {
+          matchQuery.createdAt.$lte = new Date(endDate);
+        } catch (dateError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid end date format",
+            code: "INVALID_END_DATE",
+          });
+        }
       }
     }
 
     console.log("🔍 MongoDB Query:", {
-      matchQuery,
+      matchQuery: JSON.stringify(matchQuery),
       skip,
       limit: parseInt(limit),
     });
 
-    // ✅ FIXED: Execute query with error handling
-    let messages = [];
-    let totalMessages = 0;
-
-    try {
-      // Get messages
-      messages = await Message.find(matchQuery)
+    // ✅ ENHANCED: Execute query with parallel operations
+    const [messages, totalMessages, otherCompany] = await Promise.all([
+      // Get messages with proper sorting and population
+      Message.find(matchQuery)
         .sort({createdAt: -1})
         .skip(skip)
         .limit(parseInt(limit))
         .populate("senderId", "username fullName email")
-        .lean();
+        .populate("senderCompanyId", "businessName")
+        .populate("receiverCompanyId", "businessName")
+        .lean(),
 
       // Get total count
-      totalMessages = await Message.countDocuments(matchQuery);
+      Message.countDocuments(matchQuery),
 
-      console.log("✅ Query executed successfully:", {
-        messagesFound: messages.length,
-        totalMessages,
-        firstMessage: messages[0]
-          ? {
-              id: messages[0]._id,
-              createdAt: messages[0].createdAt,
-              senderCompanyId: messages[0].senderCompanyId,
-              receiverCompanyId: messages[0].receiverCompanyId,
-            }
-          : null,
-      });
-    } catch (dbError) {
-      console.error("❌ Database query failed:", {
-        error: dbError.message,
-        stack: dbError.stack,
-        query: matchQuery,
-      });
-      return res.status(500).json({
-        success: false,
-        message: "Database query failed",
-        error: dbError.message,
-      });
-    }
+      // Get other company info
+      getModel("Company")
+        ?.findById(targetCompanyObjectId)
+        .select("businessName email phoneNumber")
+        .lean(),
+    ]);
 
-    // Reverse messages to show oldest first
+    // Reverse messages to show oldest first (chronological order)
     messages.reverse();
 
-    // ✅ ENHANCED: Get company information for context
-    const Company = getModel("Company");
-    let otherCompany = null;
+    console.log("✅ Query executed successfully:", {
+      messagesFound: messages.length,
+      totalMessages,
+      otherCompanyName: otherCompany?.businessName,
+    });
 
-    if (Company) {
+    // ✅ ENHANCED: Mark notifications as read (async)
+    setImmediate(async () => {
       try {
-        otherCompany = await Company.findById(targetCompanyObjectId)
-          .select("businessName email phoneNumber")
-          .lean();
-
-        console.log("✅ Other company info loaded:", {
-          companyId: targetCompanyObjectId.toString(),
-          businessName: otherCompany?.businessName,
-        });
-      } catch (companyError) {
-        console.warn("⚠️ Failed to load company info:", companyError.message);
+        await markChatNotificationsAsRead(userId, companyId, partyId);
+      } catch (notificationError) {
+        console.warn(
+          "⚠️ Failed to mark notifications as read:",
+          notificationError.message
+        );
       }
-    }
+    });
+
+    // ✅ ENHANCED: Calculate pagination info
+    const currentPage = parseInt(page);
+    const totalPages = Math.ceil(totalMessages / parseInt(limit));
+    const hasMore = skip + messages.length < totalMessages;
 
     const response = {
       success: true,
@@ -766,30 +747,28 @@ const getChatHistory = async (req, res) => {
         originalPartyName: partyName,
         chatType: "company-to-company",
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalMessages / parseInt(limit)),
+          currentPage,
+          totalPages,
           totalMessages,
-          hasMore: skip + messages.length < totalMessages,
+          hasMore,
           limit: parseInt(limit),
+          messagesInPage: messages.length,
         },
         queryInfo: {
           myCompanyId: companyId,
           targetCompanyId: partyId,
-          messageType,
+          messageType: messageType || null,
           dateRange: {
             startDate: startDate || null,
             endDate: endDate || null,
           },
         },
+        notificationInfo: {
+          notificationsProcessed: true,
+          conversationMarkedAsRead: true,
+        },
       },
     };
-
-    console.log("✅ Sending response:", {
-      messagesCount: messages.length,
-      totalMessages,
-      currentPage: parseInt(page),
-      hasMore: response.data.pagination.hasMore,
-    });
 
     res.json(response);
   } catch (error) {
@@ -804,7 +783,11 @@ const getChatHistory = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve chat history",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+      code: "CHAT_HISTORY_ERROR",
       timestamp: new Date().toISOString(),
     });
   }
@@ -917,29 +900,382 @@ const getConversationSummary = async (req, res) => {
   }
 };
 
+// ✅ NEW: Get chat notification summary
+const getChatNotificationSummary = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const companyId = req.user.companyId;
+
+    // Get unread chat notifications count
+    const unreadResult = await notificationService.getUserNotifications({
+      userId: userId,
+      companyId: companyId,
+      type: "chat",
+      unreadOnly: true,
+      limit: 100,
+    });
+
+    let unreadChatCount = 0;
+    let conversationSummary = {};
+
+    if (unreadResult.success) {
+      unreadChatCount = unreadResult.data.notifications.length;
+
+      // Group by sender company
+      unreadResult.data.notifications.forEach((notification) => {
+        const senderCompanyId =
+          notification.relatedTo?.entityData?.senderCompanyId;
+        const senderCompanyName =
+          notification.relatedTo?.entityData?.senderCompanyName;
+
+        if (senderCompanyId) {
+          if (!conversationSummary[senderCompanyId]) {
+            conversationSummary[senderCompanyId] = {
+              companyName: senderCompanyName,
+              unreadCount: 0,
+              lastMessage: null,
+              lastMessageTime: null,
+            };
+          }
+
+          conversationSummary[senderCompanyId].unreadCount++;
+
+          // Update last message info if this is more recent
+          if (
+            !conversationSummary[senderCompanyId].lastMessageTime ||
+            new Date(notification.createdAt) >
+              new Date(conversationSummary[senderCompanyId].lastMessageTime)
+          ) {
+            conversationSummary[senderCompanyId].lastMessage =
+              notification.message;
+            conversationSummary[senderCompanyId].lastMessageTime =
+              notification.createdAt;
+          }
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalUnreadChats: unreadChatCount,
+        conversationSummary: Object.values(conversationSummary),
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get chat notification summary error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get chat notification summary",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+};
+
+const markChatNotificationsAsRead = async (
+  userId,
+  companyId,
+  conversationCompanyId
+) => {
+  try {
+    const notificationResult = await notificationService.getUserNotifications({
+      userId: userId,
+      companyId: companyId,
+      type: "chat",
+      unreadOnly: true,
+      limit: 100,
+    });
+
+    if (
+      notificationResult.success &&
+      notificationResult.data.notifications.length > 0
+    ) {
+      const conversationNotifications =
+        notificationResult.data.notifications.filter((notification) => {
+          const relatedData = notification.relatedTo?.entityData;
+          return (
+            relatedData?.senderCompanyId === conversationCompanyId ||
+            relatedData?.receiverCompanyId === conversationCompanyId ||
+            notification.metadata?.senderCompanyId === conversationCompanyId
+          );
+        });
+
+      let markedCount = 0;
+      for (const notification of conversationNotifications) {
+        try {
+          const markResult = await notificationService.markNotificationAsRead(
+            notification.id,
+            userId,
+            {
+              device: "chat_view",
+              ipAddress: "server",
+              action: "viewed_chat_messages",
+              conversationId: conversationCompanyId,
+            }
+          );
+
+          if (markResult.success) {
+            markedCount++;
+          }
+        } catch (markError) {
+          console.warn(
+            `⚠️ Failed to mark notification ${notification.id}:`,
+            markError.message
+          );
+        }
+      }
+
+      console.log(
+        `✅ Marked ${markedCount}/${conversationNotifications.length} chat notifications as read`
+      );
+      return {success: true, markedCount};
+    }
+
+    return {success: true, markedCount: 0};
+  } catch (error) {
+    console.error("❌ Error marking notifications as read:", error.message);
+    return {success: false, error: error.message};
+  }
+};
+
+// ✅ NEW: Mark conversation as read
+const markConversationAsRead = async (req, res) => {
+  try {
+    const {partyId} = req.params;
+    const userId = req.user.id;
+    const companyId = req.user.companyId;
+
+    if (!partyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Party ID is required",
+      });
+    }
+
+    // Get all unread chat notifications for this conversation
+    const notificationResult = await notificationService.getUserNotifications({
+      userId: userId,
+      companyId: companyId,
+      type: "chat",
+      unreadOnly: true,
+      limit: 100,
+    });
+
+    let markedCount = 0;
+
+    if (notificationResult.success) {
+      // Filter notifications for this specific conversation
+      const conversationNotifications =
+        notificationResult.data.notifications.filter((notification) => {
+          const relatedData = notification.relatedTo?.entityData;
+          return (
+            relatedData?.senderCompanyId === partyId ||
+            notification.metadata?.senderCompanyId === partyId
+          );
+        });
+
+      // Mark each notification as read
+      for (const notification of conversationNotifications) {
+        const result = await notificationService.markNotificationAsRead(
+          notification.id,
+          userId,
+          {
+            device: req.get("User-Agent") || "unknown",
+            ipAddress: req.ip || "unknown",
+            action: "marked_conversation_read",
+          }
+        );
+
+        if (result.success) {
+          markedCount++;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Marked ${markedCount} notifications as read`,
+      data: {
+        markedCount,
+        conversationId: partyId,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Mark conversation as read error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark conversation as read",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+};
+// ✅ NEW: Get detailed chat notifications
+const getChatNotificationDetails = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const companyId = req.user.companyId;
+    const {page = 1, limit = 20, unreadOnly = false} = req.query;
+
+    // Get chat notifications with details
+    const notificationResult = await notificationService.getUserNotifications({
+      userId: userId,
+      companyId: companyId,
+      type: "chat",
+      unreadOnly: unreadOnly === "true",
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    });
+
+    if (!notificationResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to get chat notifications",
+        error: notificationResult.error,
+      });
+    }
+
+    // Enhance notifications with additional chat context
+    const enhancedNotifications = notificationResult.data.notifications.map(
+      (notification) => ({
+        ...notification,
+        chatType: "company-to-company",
+        senderCompanyName:
+          notification.relatedTo?.entityData?.senderCompanyName,
+        messagePreview: notification.relatedTo?.entityData?.messageContent,
+        urgencyLevel: notification.metadata?.urgencyLevel || "normal",
+        hasPartyContext: notification.metadata?.hasPartyContext || false,
+        originalPartyName:
+          notification.relatedTo?.entityData?.originalPartyName,
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        notifications: enhancedNotifications,
+        pagination: notificationResult.data.pagination,
+        summary: {
+          total: notificationResult.data.pagination.totalItems,
+          unread: enhancedNotifications.filter((n) => !n.isRead).length,
+          chatType: "company-to-company",
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get chat notification details error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get chat notification details",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+};
+// ✅ NEW: Bulk mark chat notifications as read
+const bulkMarkChatNotificationsAsRead = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const companyId = req.user.companyId;
+    const {notificationIds, markAll = false} = req.body;
+
+    let markedCount = 0;
+
+    if (markAll) {
+      // Mark all chat notifications as read
+      const result = await notificationService.markAllNotificationsAsRead(
+        userId,
+        companyId,
+        {
+          device: req.get("User-Agent") || "unknown",
+          ipAddress: req.ip || "unknown",
+          action: "bulk_mark_all_chat_read",
+        }
+      );
+
+      if (result.success) {
+        markedCount = result.data.markedCount;
+      }
+    } else if (notificationIds && Array.isArray(notificationIds)) {
+      // Mark specific notifications as read
+      for (const notificationId of notificationIds) {
+        const result = await notificationService.markNotificationAsRead(
+          notificationId,
+          userId,
+          {
+            device: req.get("User-Agent") || "unknown",
+            ipAddress: req.ip || "unknown",
+            action: "bulk_mark_specific_read",
+          }
+        );
+
+        if (result.success) {
+          markedCount++;
+        }
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Either set markAll to true or provide notificationIds array",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Marked ${markedCount} chat notifications as read`,
+      data: {
+        markedCount,
+        action: markAll ? "mark_all" : "mark_specific",
+      },
+    });
+  } catch (error) {
+    console.error("❌ Bulk mark chat notifications error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark chat notifications as read",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+};
+
 // =============================================================================
 // MESSAGE OPERATIONS
 // =============================================================================
 
-// Complete the sendMessage function in chatController.js
 const sendMessage = async (req, res) => {
   try {
-    const {partyId} = req.params; // Other company ID (from linkedCompanyId)
+    const {partyId} = req.params; // Target company ID
     const {companyId, userId} = req.user;
     const {
       content,
-      messageType = "whatsapp",
+      messageType = "website", // ✅ UPDATED: Default to "website" for web interface
       templateId,
       attachments = [],
       type,
-      partyId: originalPartyId, // ✅ NEW: Original party ID from request body
-      partyName, // ✅ NEW: Party name from request body
+      partyId: originalPartyId,
+      partyName,
+      tempId,
     } = req.body;
 
+    // ✅ ENHANCED: Comprehensive validation
     if (!mongoose.Types.ObjectId.isValid(partyId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid company ID format",
+        code: "INVALID_COMPANY_ID",
       });
     }
 
@@ -947,106 +1283,206 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Message content is required",
+        code: "MISSING_CONTENT",
       });
     }
 
-    // ✅ ENHANCED: Better logging for party-to-company messaging
-    console.log("📤 Sending company message:", {
-      fromCompany: companyId,
-      toCompany: partyId, // This is the linkedCompanyId
-      originalPartyId, // This is the original party ID for reference
-      partyName, // Party name for context
-      messageType,
-      contentLength: content.length,
-      hasAttachments: attachments.length > 0,
-    });
+    if (content.trim().length > 4000) {
+      return res.status(400).json({
+        success: false,
+        message: "Message content too long (max 4000 characters)",
+        code: "CONTENT_TOO_LONG",
+      });
+    }
 
-    // ✅ VALIDATION: Ensure we're not sending to the same company
     if (companyId === partyId) {
       return res.status(400).json({
         success: false,
         message: "Cannot send message to the same company",
-        debug: {
-          fromCompany: companyId,
-          toCompany: partyId,
-          originalPartyId,
-          partyName,
-        },
+        code: "SELF_MESSAGE_ATTEMPT",
       });
     }
 
-    // ✅ UPDATED: Enhanced message data with party context
+    // ✅ VALIDATION: Check if messageType is valid
+    const validMessageTypes = [
+      "whatsapp",
+      "sms",
+      "email",
+      "internal",
+      "website",
+    ];
+    if (!validMessageTypes.includes(messageType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid message type. Must be one of: ${validMessageTypes.join(
+          ", "
+        )}`,
+        code: "INVALID_MESSAGE_TYPE",
+      });
+    }
+
+    console.log("📤 Sending company message:", {
+      fromCompany: companyId,
+      toCompany: partyId,
+      originalPartyId,
+      partyName,
+      messageType,
+      contentLength: content.length,
+      tempId,
+    });
+
+    // ✅ ENHANCED: Validate target company exists
+    const targetCompany = await getModel("Company")
+      ?.findById(partyId)
+      .select("businessName isActive");
+    if (!targetCompany) {
+      return res.status(404).json({
+        success: false,
+        message: "Target company not found",
+        code: "COMPANY_NOT_FOUND",
+      });
+    }
+
+    if (!targetCompany.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "Target company is inactive",
+        code: "COMPANY_INACTIVE",
+      });
+    }
+
+    // ✅ ENHANCED: Message data with proper messageType handling
     const messageData = {
       senderCompanyId: new mongoose.Types.ObjectId(companyId),
       receiverCompanyId: new mongoose.Types.ObjectId(partyId),
       senderId: new mongoose.Types.ObjectId(userId),
       senderType: "company",
       content: content.trim(),
-      messageType,
-      templateId,
-      attachments,
+      messageType, // ✅ Will now accept "website"
+      platform: messageType === "website" ? "internal" : messageType, // ✅ Map platform correctly
+      templateId: templateId || null,
+      attachments: Array.isArray(attachments) ? attachments : [],
       direction: "outbound",
       status: "sent",
+      chatType: "company-to-company",
       createdBy: new mongoose.Types.ObjectId(userId),
-      // ✅ NEW: Add party context for reference (optional)
       metadata: {
-        originalPartyId,
-        partyName,
+        originalPartyId: originalPartyId || null,
+        partyName: partyName || null,
         chatType: "company-to-company",
+        tempId: tempId || null,
+        userAgent: req.get("User-Agent") || "unknown",
+        ipAddress: req.ip || "unknown",
+        originalMessageType: messageType, // ✅ Store original messageType
       },
     };
 
-    console.log("💾 Creating message with data:", {
-      senderCompanyId: messageData.senderCompanyId.toString(),
-      receiverCompanyId: messageData.receiverCompanyId.toString(),
-      content: messageData.content.substring(0, 50),
-      messageType: messageData.messageType,
-    });
-
+    // ✅ CREATE: Message in database
     const message = await Message.create(messageData);
 
-    // Populate the message for response
+    // ✅ POPULATE: Message for response
     const populatedMessage = await Message.findById(message._id)
       .populate("senderId", "username fullName email")
+      .populate("senderCompanyId", "businessName email phoneNumber")
+      .populate("receiverCompanyId", "businessName email phoneNumber")
       .lean();
 
     console.log("✅ Message created successfully:", {
       messageId: populatedMessage._id,
-      fromCompany: populatedMessage.senderCompanyId,
-      toCompany: populatedMessage.receiverCompanyId,
-      createdAt: populatedMessage.createdAt,
+      fromCompany: populatedMessage.senderCompanyId?.businessName,
+      toCompany: populatedMessage.receiverCompanyId?.businessName,
+      messageType: populatedMessage.messageType,
+      platform: populatedMessage.platform,
+      tempId: populatedMessage.metadata?.tempId,
     });
 
-    // ✅ UPDATED: Emit to company-to-company chat room via Socket.IO
+    // ✅ NOTIFICATION: Send notifications (async, don't block response)
+    setImmediate(async () => {
+      try {
+        await sendMessageNotifications(
+          populatedMessage,
+          companyId,
+          partyId,
+          originalPartyId,
+          partyName
+        );
+      } catch (notificationError) {
+        console.warn(
+          "⚠️ Notification failed for chat message:",
+          notificationError.message
+        );
+      }
+    });
+
+    // ✅ WEBSOCKET: Broadcast message
     const socketManager = req.app.get("socketManager");
     if (socketManager) {
       try {
-        // Emit to both companies
-        socketManager.sendToCompanyChat(companyId, partyId, "new_message", {
-          ...populatedMessage,
+        const broadcastData = {
+          _id: populatedMessage._id,
           id: populatedMessage._id,
-          direction: "outgoing", // For sender
-        });
+          senderCompanyId:
+            populatedMessage.senderCompanyId?._id ||
+            populatedMessage.senderCompanyId,
+          receiverCompanyId:
+            populatedMessage.receiverCompanyId?._id ||
+            populatedMessage.receiverCompanyId,
+          senderId: populatedMessage.senderId,
+          content: populatedMessage.content,
+          messageType: populatedMessage.messageType,
+          platform: populatedMessage.platform,
+          createdAt: populatedMessage.createdAt,
+          status: populatedMessage.status,
+          direction: populatedMessage.direction,
+          chatType: "company-to-company",
+          senderCompanyName: populatedMessage.senderCompanyId?.businessName,
+          receiverCompanyName: populatedMessage.receiverCompanyId?.businessName,
+          senderName:
+            populatedMessage.senderId?.fullName ||
+            populatedMessage.senderId?.username,
+          tempId: populatedMessage.metadata?.tempId,
+          metadata: populatedMessage.metadata,
+          timestamp: populatedMessage.createdAt,
+        };
 
-        socketManager.sendToCompanyChat(partyId, companyId, "new_message", {
-          ...populatedMessage,
-          id: populatedMessage._id,
-          direction: "incoming", // For receiver
-        });
+        const broadcastSuccess = socketManager.sendToCompanyChat(
+          companyId,
+          partyId,
+          "new_message",
+          broadcastData
+        );
 
-        console.log("📡 Socket message sent to both companies");
+        console.log(
+          broadcastSuccess
+            ? "✅ Message broadcast successful"
+            : "⚠️ Message broadcast failed"
+        );
       } catch (socketError) {
-        console.warn("⚠️ Socket emission failed:", socketError.message);
-        // Don't fail the request if socket fails
+        console.warn("⚠️ Socket broadcast error:", socketError.message);
       }
     }
 
+    // ✅ RESPONSE: Send success response
     res.status(201).json({
       success: true,
       data: {
-        ...populatedMessage,
+        _id: populatedMessage._id,
         id: populatedMessage._id,
-        direction: "outgoing",
+        senderCompanyId:
+          populatedMessage.senderCompanyId?._id ||
+          populatedMessage.senderCompanyId,
+        receiverCompanyId:
+          populatedMessage.receiverCompanyId?._id ||
+          populatedMessage.receiverCompanyId,
+        senderId: populatedMessage.senderId,
+        content: populatedMessage.content,
+        messageType: populatedMessage.messageType,
+        platform: populatedMessage.platform,
+        createdAt: populatedMessage.createdAt,
+        status: populatedMessage.status,
+        direction: populatedMessage.direction,
+        tempId: populatedMessage.metadata?.tempId,
+        chatType: "company-to-company",
       },
       message: "Message sent successfully",
     });
@@ -1062,7 +1498,11 @@ const sendMessage = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to send message",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+      code: "SEND_MESSAGE_ERROR",
       timestamp: new Date().toISOString(),
     });
   }
@@ -1306,7 +1746,6 @@ const deleteMessages = async (req, res) => {
 // TEMPLATE MANAGEMENT
 // =============================================================================
 
-// ✅ UPDATED: Get message templates for company chat
 const getMessageTemplates = async (req, res) => {
   try {
     const {partyId} = req.params; // Other company ID
@@ -1416,18 +1855,12 @@ const getMessageTemplates = async (req, res) => {
       filteredTemplates = {[category]: templates[category] || {}};
     }
 
-    // Filter by message type if specified
-    if (messageType) {
-      // For simplicity, all templates support all message types
-      // In production, you might have type-specific templates
-    }
-
     res.json({
       success: true,
       data: {
         templates: filteredTemplates,
         categories: Object.keys(templates),
-        messageTypes: ["whatsapp", "sms", "email", "internal"],
+        messageTypes: ["whatsapp", "sms", "email", "internal", "website"], // ✅ ADDED "website"
         otherCompanyId: partyId,
         chatType: "company-to-company",
       },
@@ -1442,14 +1875,13 @@ const getMessageTemplates = async (req, res) => {
   }
 };
 
-// ✅ UPDATED: Send template message for company chat
 const sendTemplateMessage = async (req, res) => {
   try {
     const {partyId, templateId} = req.params; // partyId is other company ID
     const {companyId, userId} = req.user;
     const {
       templateData = {},
-      messageType = "whatsapp",
+      messageType = "website", // ✅ UPDATED: Default to "website"
       customContent,
       type,
     } = req.body;
@@ -1458,6 +1890,24 @@ const sendTemplateMessage = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid company ID format",
+      });
+    }
+
+    // ✅ VALIDATION: Check if messageType is valid
+    const validMessageTypes = [
+      "whatsapp",
+      "sms",
+      "email",
+      "internal",
+      "website",
+    ];
+    if (!validMessageTypes.includes(messageType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid message type. Must be one of: ${validMessageTypes.join(
+          ", "
+        )}`,
+        code: "INVALID_MESSAGE_TYPE",
       });
     }
 
@@ -1517,19 +1967,27 @@ const sendTemplateMessage = async (req, res) => {
       });
     }
 
-    // ✅ UPDATED: Create message for company-to-company chat
+    // ✅ UPDATED: Create message for company-to-company chat with proper messageType
     const messageData = {
       senderCompanyId: new mongoose.Types.ObjectId(companyId),
       receiverCompanyId: new mongoose.Types.ObjectId(partyId),
       senderId: new mongoose.Types.ObjectId(userId),
       senderType: "company",
       content: content.trim(),
-      messageType,
+      messageType, // ✅ Will now accept "website"
+      platform: messageType === "website" ? "internal" : messageType, // ✅ Map platform correctly
       templateId,
       templateData,
+      isTemplate: true,
+      chatType: "company-to-company",
       direction: "outbound",
       status: "sent",
       createdBy: new mongoose.Types.ObjectId(userId),
+      metadata: {
+        isTemplate: true,
+        templateId,
+        originalMessageType: messageType,
+      },
     };
 
     const message = await Message.create(messageData);
@@ -1537,24 +1995,55 @@ const sendTemplateMessage = async (req, res) => {
     // Populate the message for response
     const populatedMessage = await Message.findById(message._id)
       .populate("senderId", "username fullName email")
+      .populate("senderCompanyId", "businessName")
+      .populate("receiverCompanyId", "businessName")
       .lean();
+
+    console.log("✅ Template message created:", {
+      messageId: populatedMessage._id,
+      templateId,
+      messageType: populatedMessage.messageType,
+      platform: populatedMessage.platform,
+    });
 
     // ✅ UPDATED: Emit to company-to-company chat room
     const socketManager = req.app.get("socketManager");
     if (socketManager) {
       try {
-        socketManager.sendToCompanyChat(companyId, partyId, "new_message", {
+        const broadcastData = {
           ...populatedMessage,
           id: populatedMessage._id,
-        });
+          chatType: "company-to-company",
+          isTemplate: true,
+          templateId,
+        };
+
+        socketManager.sendToCompanyChat(
+          companyId,
+          partyId,
+          "new_message",
+          broadcastData
+        );
+        console.log("✅ Template message broadcast successful");
       } catch (socketError) {
-        console.warn("Socket emission failed:", socketError.message);
+        console.warn("⚠️ Socket emission failed:", socketError.message);
       }
     }
 
     res.status(201).json({
       success: true,
-      data: populatedMessage,
+      data: {
+        _id: populatedMessage._id,
+        id: populatedMessage._id,
+        content: populatedMessage.content,
+        messageType: populatedMessage.messageType,
+        platform: populatedMessage.platform,
+        templateId: populatedMessage.templateId,
+        isTemplate: true,
+        createdAt: populatedMessage.createdAt,
+        status: populatedMessage.status,
+        chatType: "company-to-company",
+      },
       message: "Template message sent successfully",
     });
   } catch (error) {
@@ -1566,7 +2055,6 @@ const sendTemplateMessage = async (req, res) => {
     });
   }
 };
-
 // =============================================================================
 // COMPANY-SPECIFIC FEATURES - ✅ NEW: Company interaction features
 // =============================================================================
@@ -2196,9 +2684,15 @@ module.exports = {
   getMessageTemplates,
   sendTemplateMessage,
 
-  // ✅ NEW: Company-specific methods
+  // Company-specific methods
   getCompanyChatParticipants,
   getActiveCompanyChats,
   getCompanyChatAnalytics,
   getCompanyStatus,
+
+  // Chat notification methods
+  getChatNotificationSummary,
+  markConversationAsRead,
+  getChatNotificationDetails,
+  bulkMarkChatNotificationsAsRead,
 };

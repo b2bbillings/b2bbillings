@@ -4,9 +4,16 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
 const http = require("http");
+const helmet = require("helmet");
+const compression = require("compression");
+const rateLimit = require("express-rate-limit");
 
 // Load environment variables
 dotenv.config();
+
+// Import production utilities
+const logger = require("./src/config/logger");
+const {createAuditLog} = require("./src/utils/auditLogger");
 
 // Import routes
 const companyRoutes = require("./src/routes/companies");
@@ -23,8 +30,8 @@ const bankAccountRoutes = require("./src/routes/bankAccountRoutes");
 const transactionRoutes = require("./src/routes/transactionRoutes");
 const chatRoutes = require("./src/routes/chatRoutes");
 const staffRoutes = require("./src/routes/staffRoutes");
-// ✅ ADD TASK ROUTES IMPORT
 const taskRoutes = require("./src/routes/taskRoutes");
+const notificationRoutes = require("./src/routes/notificationRoutes");
 
 // Import Socket.IO Manager
 const SocketManager = require("./src/socket/SocketManager");
@@ -34,259 +41,498 @@ const app = express();
 // Create HTTP server for Socket.IO
 const server = http.createServer(app);
 
-// Initialize Socket.IO
-const socketManager = new SocketManager(server);
+// ================================
+// 🛡️ PRODUCTION SECURITY MIDDLEWARE
+// ================================
 
-// Make socket manager available globally
-app.set("socketManager", socketManager);
+// Trust proxy (for load balancers, reverse proxies)
+app.set("trust proxy", 1);
 
-// Middleware
+// Security headers
 app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    credentials: true,
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "wss:", "https:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
   })
 );
 
-app.use(express.json({limit: "50mb"}));
-app.use(express.urlencoded({extended: true, limit: "50mb"}));
-
-// Static files
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// ================================
-// 🔄 ROUTES - PROPERLY ORGANIZED (FIXED ORDER)
-// ================================
-
-// Health check route (first)
-app.get("/api/health", (req, res) => {
-  const socketStats = socketManager.getStats();
-
-  res.status(200).json({
-    status: "success",
-    message: "Shop Management API is running! 🚀",
-    timestamp: new Date().toISOString(),
-    version: "2.0.0",
-    features: {
-      companies: true,
-      items: true,
-      parties: true,
-      sales: true,
-      salesOrders: true,
-      purchases: true,
-      purchaseOrders: true,
-      bankAccounts: true,
-      transactions: true,
-      payments: true,
-      auth: true,
-      userManagement: true,
-      staffManagement: true,
-      taskManagement: true, // ✅ ADD TASK MANAGEMENT FEATURE
-      chat: true,
-      realTimeMessaging: true,
+// Compression middleware
+app.use(
+  compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+      return compression.filter(req, res);
     },
-    socketIO: {
-      status: "active",
-      connectedClients: socketStats.totalConnections,
-      onlineUsers: socketStats.onlineUsers,
-      activeRooms: socketStats.activeRooms,
+  })
+);
+
+// Rate limiting
+const createRateLimit = (windowMs, max, message) =>
+  rateLimit({
+    windowMs,
+    max,
+    message: {
+      success: false,
+      message,
+      code: "RATE_LIMIT_EXCEEDED",
+      retryAfter: Math.ceil(windowMs / 1000),
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => process.env.NODE_ENV === "development",
+    handler: (req, res) => {
+      logger.warn("Rate limit exceeded", {
+        ip: req.ip,
+        userAgent: req.get("User-Agent"),
+        url: req.url,
+        method: req.method,
+      });
+      res.status(429).json({
+        success: false,
+        message,
+        code: "RATE_LIMIT_EXCEEDED",
+        retryAfter: Math.ceil(windowMs / 1000),
+      });
     },
   });
+
+// Different rate limits for different endpoints
+app.use(
+  "/api/auth",
+  createRateLimit(15 * 60 * 1000, 5, "Too many authentication attempts")
+);
+app.use(
+  "/api/payments",
+  createRateLimit(5 * 60 * 1000, 10, "Payment API limit exceeded")
+);
+app.use("/api", createRateLimit(15 * 60 * 1000, 100, "API limit exceeded"));
+
+// ================================
+// 📊 PRODUCTION MONITORING MIDDLEWARE
+// ================================
+
+// Request ID middleware for tracing
+app.use((req, res, next) => {
+  req.requestId = Math.random().toString(36).substring(2, 15);
+  req.startTime = Date.now();
+  next();
+});
+
+// Request logging middleware
+app.use((req, res, next) => {
+  // Skip logging for health checks in production
+  if (req.url === "/api/health" && process.env.NODE_ENV === "production") {
+    return next();
+  }
+
+  logger.info("Request started", {
+    requestId: req.requestId,
+    method: req.method,
+    url: req.url,
+    userAgent: req.get("User-Agent"),
+    ip: req.ip,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Override res.end to log response
+  const originalEnd = res.end;
+  res.end = function (...args) {
+    const duration = Date.now() - req.startTime;
+
+    logger.info("Request completed", {
+      requestId: req.requestId,
+      method: req.method,
+      url: req.url,
+      statusCode: res.statusCode,
+      duration,
+      ip: req.ip,
+    });
+
+    // Log slow requests
+    if (duration > 2000) {
+      logger.warn("Slow request detected", {
+        requestId: req.requestId,
+        method: req.method,
+        url: req.url,
+        duration,
+        statusCode: res.statusCode,
+      });
+    }
+
+    originalEnd.apply(res, args);
+  };
+
+  next();
+});
+
+// ================================
+// 🔧 CORE MIDDLEWARE
+// ================================
+
+// CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",")
+      : ["http://localhost:5173", "http://localhost:3000"];
+
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      logger.warn("CORS blocked request", {origin, allowedOrigins});
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+    "x-company-id",
+    "x-request-id",
+    "x-auth-token", // Add this line
+    "Cache-Control",
+  ],
+};
+
+app.use(cors(corsOptions));
+
+// Body parsing middleware
+app.use(
+  express.json({
+    limit: process.env.MAX_REQUEST_SIZE || "10mb",
+    verify: (req, res, buf) => {
+      // Log large requests
+      if (buf.length > 1024 * 1024) {
+        // 1MB
+        logger.warn("Large request received", {
+          size: buf.length,
+          url: req.url,
+          method: req.method,
+          ip: req.ip,
+        });
+      }
+    },
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: process.env.MAX_REQUEST_SIZE || "10mb",
+  })
+);
+
+// Static files with caching
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"), {
+    maxAge: process.env.NODE_ENV === "production" ? "1d" : "0",
+    etag: true,
+  })
+);
+
+// Initialize Socket.IO
+const socketManager = new SocketManager(server);
+app.set("socketManager", socketManager);
+
+// ================================
+// 🏥 ENHANCED HEALTH CHECK
+// ================================
+
+app.get("/api/health", async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    // Check database connectivity
+    const dbCheck = mongoose.connection.readyState === 1;
+
+    // Check socket manager
+    const socketStats = socketManager.getStats();
+
+    // Get system metrics
+    const memoryUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+
+    const healthData = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      version: "2.0.0",
+      environment: process.env.NODE_ENV,
+      uptime: Math.floor(process.uptime()),
+      responseTime: Date.now() - startTime,
+      database: {
+        status: dbCheck ? "connected" : "disconnected",
+        name: mongoose.connection.name,
+        readyState: mongoose.connection.readyState,
+      },
+      services: {
+        api: "operational",
+        websocket: socketManager ? "operational" : "disabled",
+        chat: "operational",
+        notifications: "operational",
+        payments: "operational",
+      },
+      socket: {
+        totalConnections: socketStats.totalConnections,
+        onlineUsers: socketStats.onlineUsers,
+        activeRooms: socketStats.activeRooms,
+      },
+      system: {
+        memory: {
+          used: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+          total: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+          external: Math.round(memoryUsage.external / 1024 / 1024),
+        },
+        cpu: {
+          user: cpuUsage.user,
+          system: cpuUsage.system,
+        },
+      },
+    };
+
+    // Log health check in development only
+    if (process.env.NODE_ENV === "development") {
+      logger.info("Health check performed", healthData);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: healthData,
+    });
+  } catch (error) {
+    logger.error("Health check failed", {
+      error: error.message,
+      responseTime: Date.now() - startTime,
+    });
+
+    res.status(503).json({
+      success: false,
+      status: "unhealthy",
+      message: "Service temporarily unavailable",
+      timestamp: new Date().toISOString(),
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 });
 
 // Socket.IO status endpoint
 app.get("/api/socket/status", (req, res) => {
-  const stats = socketManager.getStats();
-  res.json({
-    success: true,
-    data: {
-      ...stats,
-      socketIOVersion: require("socket.io/package.json").version,
-      serverUptime: process.uptime(),
-    },
-  });
+  try {
+    const stats = socketManager.getStats();
+    res.json({
+      success: true,
+      data: {
+        ...stats,
+        socketIOVersion: require("socket.io/package.json").version,
+        serverUptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Socket status check failed", {error: error.message});
+    res.status(500).json({
+      success: false,
+      message: "Failed to get socket status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 });
 
 // ================================
-// 🔐 AUTHENTICATION & USER MANAGEMENT (PRIORITY)
+// 🔐 AUTHENTICATION & USER MANAGEMENT
 // ================================
-// Auth routes (public - no company required)
 app.use("/api/auth", authRoutes);
-
-// User management routes (admin panel)
 app.use("/api/users", userRoutes);
 
 // ================================
-// 👥 STAFF MANAGEMENT ROUTES
+// 👥 STAFF & TASK MANAGEMENT
 // ================================
 app.use("/api/staff", staffRoutes);
-
-// ================================
-// 📋 TASK MANAGEMENT ROUTES (ADD THIS SECTION)
-// ================================
 app.use("/api/tasks", taskRoutes);
 
 // ================================
-// 💬 CHAT ROUTES
+// 🔔 NOTIFICATION SYSTEM
+// ================================
+app.use("/api/notifications", notificationRoutes);
+
+// ================================
+// 💬 CHAT SYSTEM
 // ================================
 app.use("/api/chat", chatRoutes);
 
 // ================================
-// 💰 PAYMENT ROUTES (PRIORITY)
+// 💰 PAYMENT SYSTEM
 // ================================
-// Payment routes need to be registered BEFORE parameterized routes
 app.use("/api/payments", paymentRoutes);
 
 // ================================
-// 🏢 COMPANY ROUTES (MUST BE BEFORE GENERIC /api ROUTES)
+// 🏢 COMPANY MANAGEMENT
 // ================================
 app.use("/api/companies", companyRoutes);
 
 // ================================
-// 🔥 SPECIFIC ADMIN ROUTES (BEFORE GENERIC /api ROUTES)
+// 🔥 ADMIN ROUTES
 // ================================
-// Use specific paths instead of mounting at /api to avoid conflicts
 app.use("/api/admin/sales-orders", salesOrderRoutes);
 app.use("/api/admin/purchase-orders", purchaseOrderRoutes);
 
 // ================================
-// 🏢 COMPANY-SPECIFIC NESTED ROUTES
+// 🏢 COMPANY-SPECIFIC ROUTES
 // ================================
-// These routes are scoped to specific companies
-
-// Items management
 app.use("/api/companies/:companyId/items", itemRoutes);
-
-// Party management
 app.use("/api/companies/:companyId/parties", partyRoutes);
-
-// Sales management
 app.use("/api/companies/:companyId/sales", salesRoutes);
-
-// Sales Order management (company-specific)
 app.use("/api/companies/:companyId/sales-orders", salesOrderRoutes);
-
-// Purchase management
 app.use("/api/companies/:companyId/purchases", purchaseRoutes);
-
-// Purchase Order management
 app.use("/api/companies/:companyId/purchase-orders", purchaseOrderRoutes);
-
-// Bank Account management
 app.use("/api/companies/:companyId/bank-accounts", bankAccountRoutes);
-
-// Transaction management (company-specific)
 app.use("/api/companies/:companyId/transactions", transactionRoutes);
-
-// Bank Account specific transactions
 app.use(
   "/api/companies/:companyId/bank-accounts/:bankAccountId/transactions",
   transactionRoutes
 );
-
-// Company-specific chat routes
 app.use("/api/companies/:companyId/chat", chatRoutes);
-
-// Company-specific staff routes
 app.use("/api/companies/:companyId/staff", staffRoutes);
-
-// ✅ Company-specific task routes
 app.use("/api/companies/:companyId/tasks", taskRoutes);
+app.use("/api/companies/:companyId/notifications", notificationRoutes);
 
 // ================================
 // 🔄 LEGACY ROUTES (BACKWARD COMPATIBILITY)
 // ================================
-// These routes maintain backward compatibility with existing frontend code
-
-// Legacy party routes
 app.use("/api/parties", partyRoutes);
-
-// Legacy sales routes
 app.use("/api/sales", salesRoutes);
-
-// Legacy sales order routes
 app.use("/api/sales-orders", salesOrderRoutes);
-
-// Legacy purchase routes
 app.use("/api/purchases", purchaseRoutes);
-
-// Legacy purchase order routes
 app.use("/api/purchase-orders", purchaseOrderRoutes);
-
-// Legacy bank account routes
 app.use("/api/bank-accounts", bankAccountRoutes);
-
-// Legacy transaction routes (MUST BE LAST to avoid conflicts)
 app.use("/api/transactions", transactionRoutes);
 
 // ================================
-// ⚠️ ERROR HANDLING
+// ⚠️ PRODUCTION ERROR HANDLING
 // ================================
 
 // Global error handling middleware
-app.use((err, req, res, next) => {
-  console.error("❌ Global Error Handler:", {
+app.use(async (err, req, res, next) => {
+  // Log error with full context
+  logger.error("Global error caught", {
     error: err.message,
+    stack: err.stack,
+    requestId: req.requestId,
     url: req.url,
     method: req.method,
+    body: req.method !== "GET" ? req.body : undefined,
+    user: req.user?.id,
+    ip: req.ip,
+    userAgent: req.get("User-Agent"),
     timestamp: new Date().toISOString(),
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
+
+  // Create audit log for critical errors
+  if (req.user?.id && (err.status >= 500 || !err.status)) {
+    try {
+      await createAuditLog({
+        userId: req.user.id,
+        action: "SYSTEM_ERROR",
+        details: {
+          error: err.message,
+          url: req.url,
+          method: req.method,
+          statusCode: err.status || 500,
+        },
+        severity: "high",
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+    } catch (auditError) {
+      logger.error("Failed to create audit log for error", {
+        auditError: auditError.message,
+      });
+    }
+  }
 
   const isDevelopment = process.env.NODE_ENV === "development";
 
   // Handle specific error types
   if (err.name === "ValidationError") {
     return res.status(400).json({
-      status: "error",
+      success: false,
       message: "Validation Error",
       errors: Object.values(err.errors).map((e) => ({
         field: e.path,
         message: e.message,
         value: e.value,
       })),
+      code: "VALIDATION_ERROR",
+      requestId: req.requestId,
     });
   }
 
   if (err.name === "CastError") {
     return res.status(400).json({
-      status: "error",
+      success: false,
       message: "Invalid ID format",
       field: err.path,
       value: err.value,
+      code: "INVALID_ID_FORMAT",
+      requestId: req.requestId,
     });
   }
 
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
     return res.status(409).json({
-      status: "error",
+      success: false,
       message: "Duplicate entry",
       field: field,
       value: err.keyValue[field],
+      code: "DUPLICATE_ENTRY",
+      requestId: req.requestId,
     });
   }
 
   if (err.name === "UnauthorizedError" || err.status === 401) {
     return res.status(401).json({
-      status: "error",
+      success: false,
       message: "Authentication required",
       code: "UNAUTHORIZED",
+      requestId: req.requestId,
     });
   }
 
   if (err.status === 403) {
     return res.status(403).json({
-      status: "error",
+      success: false,
       message: "Access denied",
       code: "FORBIDDEN",
+      requestId: req.requestId,
     });
   }
 
+  // Default error response
   res.status(err.status || 500).json({
-    status: "error",
-    message: err.message || "Internal Server Error",
+    success: false,
+    message: isDevelopment ? err.message : "Internal Server Error",
     code: err.code || "INTERNAL_ERROR",
+    requestId: req.requestId,
+    timestamp: new Date().toISOString(),
     ...(isDevelopment && {
       stack: err.stack,
       details: err,
@@ -294,151 +540,178 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler for unmatched routes
+// Enhanced 404 handler
 app.use("*", (req, res) => {
+  logger.warn("Route not found", {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get("User-Agent"),
+  });
+
   res.status(404).json({
-    status: "error",
+    success: false,
     message: `Route not found: ${req.method} ${req.originalUrl}`,
+    code: "ROUTE_NOT_FOUND",
     timestamp: new Date().toISOString(),
-    availableEndpoints: {
-      health: "GET /api/health",
-      socketStatus: "GET /api/socket/status",
-      authentication: "POST /api/auth/*",
-      userManagement: "GET /api/users",
-      staffManagement: "GET /api/staff",
-      taskManagement: "GET /api/tasks", // ✅ ADD TASK MANAGEMENT ENDPOINT
-      chat: "GET /api/chat/*",
-      adminSalesOrders: "GET /api/admin/sales-orders",
-      companies: "GET /api/companies",
-      payments: "GET /api/payments",
-      salesOrders: "GET /api/sales-orders",
-      companySpecific: {
-        items: "GET /api/companies/:companyId/items",
-        parties: "GET /api/companies/:companyId/parties",
-        staff: "GET /api/companies/:companyId/staff",
-        tasks: "GET /api/companies/:companyId/tasks", // ✅ ADD COMPANY-SPECIFIC TASKS
-        sales: "GET /api/companies/:companyId/sales",
-        salesOrders: "GET /api/companies/:companyId/sales-orders",
-        purchases: "GET /api/companies/:companyId/purchases",
-        purchaseOrders: "GET /api/companies/:companyId/purchase-orders",
-        bankAccounts: "GET /api/companies/:companyId/bank-accounts",
-        transactions: "GET /api/companies/:companyId/transactions",
-        chat: "GET /api/companies/:companyId/chat/*",
-      },
-    },
-    hint: "Visit /api/docs for complete API documentation including staff management, task management and chat features",
+    suggestion: "Check the API documentation for available endpoints",
+    health: `/api/health`,
   });
 });
 
 // ================================
-// 🗄️ DATABASE CONNECTION
+// 🗄️ FIXED DATABASE CONNECTION
 // ================================
-const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/shop-management";
 
-mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => {
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("📁 Connected to MongoDB");
-    console.log(`🗄️  Database: ${mongoose.connection.name}`);
-    console.log(`🔗 Connection: ${MONGODB_URI}`);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  })
-  .catch((error) => {
-    console.error("❌ MongoDB connection error:", error);
+const connectDatabase = async () => {
+  try {
+    const MONGODB_URI =
+      process.env.MONGODB_URI || "mongodb://localhost:27017/shop-management";
+
+    // ✅ FIXED: Updated options for latest Mongoose version
+    const options = {
+      maxPoolSize: 10, // Maintain up to 10 socket connections
+      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    };
+
+    await mongoose.connect(MONGODB_URI, options);
+
+    logger.info("Database connected successfully", {
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+      readyState: mongoose.connection.readyState,
+      environment: process.env.NODE_ENV,
+    });
+
+    // Handle connection events
+    mongoose.connection.on("error", (error) => {
+      logger.error("Database connection error", {error: error.message});
+    });
+
+    mongoose.connection.on("disconnected", () => {
+      logger.warn("Database disconnected");
+    });
+
+    mongoose.connection.on("reconnected", () => {
+      logger.info("Database reconnected");
+    });
+
+    // Handle connection timeout
+    mongoose.connection.on("timeout", () => {
+      logger.warn("Database connection timeout");
+    });
+  } catch (error) {
+    logger.error("Database connection failed", {error: error.message});
     process.exit(1);
-  });
+  }
+};
 
 // ================================
-// 🚀 SERVER START
+// 🚀 ENHANCED SERVER START
 // ================================
-const PORT = process.env.PORT || 5000;
 
-// Use server.listen instead of app.listen for Socket.IO
-server.listen(PORT, () => {
-  const socketStats = socketManager.getStats();
+const startServer = async () => {
+  try {
+    // Connect to database first
+    await connectDatabase();
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🚀 Shop Management System Backend Started!");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`🌐 Server: http://localhost:${PORT}`);
-  console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
-  console.log(
-    `🔌 Socket.IO: http://localhost:${PORT} (${socketStats.totalConnections} connections)`
-  );
-  console.log(`💬 Chat API: http://localhost:${PORT}/api/chat`);
-  console.log(`📊 Socket Status: http://localhost:${PORT}/api/socket/status`);
-  console.log(`🏢 Companies: http://localhost:${PORT}/api/companies`);
-  console.log(`💰 Payments: http://localhost:${PORT}/api/payments`);
-  console.log(`👥 Users: http://localhost:${PORT}/api/users`);
-  console.log(`👨‍💼 Staff: http://localhost:${PORT}/api/staff`);
-  console.log(`📋 Tasks: http://localhost:${PORT}/api/tasks`); // ✅ ADD TASK MANAGEMENT LOG
-  console.log(
-    `🔥 Admin Sales Orders: http://localhost:${PORT}/api/admin/sales-orders`
-  );
-  console.log(`📋 Sales Orders: http://localhost:${PORT}/api/sales-orders`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("✅ Ready to handle requests!");
-  console.log("💬 Real-time chat system active!");
-  console.log("👨‍💼 Staff management system active!");
-  console.log("📋 Task management system active!"); // ✅ ADD TASK MANAGEMENT LOG
-  console.log("");
-});
+    const PORT = process.env.PORT || 5000;
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("🔄 SIGTERM received, shutting down gracefully...");
+    server.listen(PORT, () => {
+      const socketStats = socketManager.getStats();
 
-  // Shutdown Socket.IO
-  if (socketManager && socketManager.shutdown) {
-    socketManager.shutdown();
+      logger.info("Server started successfully", {
+        port: PORT,
+        environment: process.env.NODE_ENV,
+        socketConnections: socketStats.totalConnections,
+        version: "2.0.0",
+      });
+
+      // Console output for development
+      if (process.env.NODE_ENV === "development") {
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        console.log("🚀 Shop Management System (Production Ready)");
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        console.log(`🌐 Server: http://localhost:${PORT}`);
+        console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
+        console.log(`📊 Environment: ${process.env.NODE_ENV}`);
+        console.log(
+          `🔌 Socket.IO: Active (${socketStats.totalConnections} connections)`
+        );
+        console.log(`💬 Real-time Features: Enabled`);
+        console.log(`🛡️ Security: Production Grade`);
+        console.log(`📝 Logging: Comprehensive`);
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        console.log("✅ Ready for Production Deployment!");
+      }
+    });
+  } catch (error) {
+    logger.error("Server startup failed", {error: error.message});
+    process.exit(1);
   }
+};
 
-  // Close MongoDB connection
-  mongoose.connection.close(() => {
-    console.log("📁 MongoDB connection closed");
+// ================================
+// 🔄 ENHANCED GRACEFUL SHUTDOWN
+// ================================
 
-    // Close HTTP server
-    server.close(() => {
-      console.log("🌐 HTTP server closed");
+const gracefulShutdown = async (signal) => {
+  logger.info(`${signal} received, initiating graceful shutdown`);
+
+  try {
+    // Stop accepting new connections
+    server.close(async () => {
+      logger.info("HTTP server closed");
+
+      // Shutdown Socket.IO
+      if (socketManager && socketManager.shutdown) {
+        await socketManager.shutdown();
+        logger.info("Socket.IO closed");
+      }
+
+      // Close database connection
+      await mongoose.connection.close();
+      logger.info("Database connection closed");
+
+      logger.info("Graceful shutdown completed");
       process.exit(0);
     });
-  });
-});
 
-process.on("SIGINT", () => {
-  console.log("🔄 SIGINT received, shutting down gracefully...");
-
-  // Shutdown Socket.IO
-  if (socketManager && socketManager.shutdown) {
-    socketManager.shutdown();
+    // Force shutdown after 30 seconds
+    setTimeout(() => {
+      logger.error("Forced shutdown due to timeout");
+      process.exit(1);
+    }, 30000);
+  } catch (error) {
+    logger.error("Error during graceful shutdown", {error: error.message});
+    process.exit(1);
   }
+};
 
-  // Close MongoDB connection
-  mongoose.connection.close(() => {
-    console.log("📁 MongoDB connection closed");
+// Handle signals
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-    // Close HTTP server
-    server.close(() => {
-      console.log("🌐 HTTP server closed");
-      process.exit(0);
-    });
-  });
-});
-
-// Handle uncaught exceptions
+// Enhanced error handlers
 process.on("uncaughtException", (error) => {
-  console.error("❌ Uncaught Exception:", error);
+  logger.error("Uncaught Exception", {
+    error: error.message,
+    stack: error.stack,
+  });
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+  logger.error("Unhandled Rejection", {
+    reason: reason?.message || reason,
+    stack: reason?.stack,
+    promise: promise.toString(),
+  });
   process.exit(1);
 });
+
+// Start the server
+startServer();
 
 module.exports = app;

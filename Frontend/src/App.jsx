@@ -26,6 +26,9 @@ import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
 // ✅ Import StaffManagement component
 import StaffManagement from "./components/Home/StaffManagement";
 
+// ✅ ADD: Import ChatProvider
+import {ChatProvider} from "./context/chatContext";
+
 // Import services
 import companyService from "./services/companyService";
 import authService from "./services/authService";
@@ -42,6 +45,280 @@ import EditSalesInvoice from "./components/Home/Sales/EditSalesInvoice";
 import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 
+// ✅ First-Time Welcome Animation Component
+const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onComplete();
+    }, 3500); // Show for 3.5 seconds
+
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <div className="welcome-animation-overlay">
+      <div className="welcome-content">
+        <div className="logo-animation mb-4">
+          <div className="logo-icon">
+            <i className="fas fa-store"></i>
+          </div>
+          <div className="logo-text">Shop Management</div>
+        </div>
+
+        <div className="welcome-message">
+          <h2 className="mb-3">Welcome, {userFirstName}! 👋</h2>
+          <p className="mb-4">
+            Let's get you started with your business management
+          </p>
+        </div>
+
+        <div className="loading-animation mb-3">
+          <div className="loading-bar">
+            <div className="loading-progress"></div>
+          </div>
+        </div>
+
+        <div className="loading-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .welcome-animation-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: fadeIn 0.5s ease-out;
+        }
+
+        .welcome-content {
+          text-align: center;
+          color: white;
+          animation: slideInUp 0.8s ease-out;
+        }
+
+        .logo-animation {
+          animation: logoFloat 3s ease-in-out infinite;
+        }
+
+        .logo-icon {
+          font-size: 4rem;
+          margin-bottom: 1rem;
+          background: rgba(255, 255, 255, 0.2);
+          width: 100px;
+          height: 100px;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1rem;
+          backdrop-filter: blur(10px);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          animation: iconPulse 2s ease-in-out infinite;
+        }
+
+        .logo-text {
+          font-size: 1.5rem;
+          font-weight: 600;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+        }
+
+        .welcome-message h2 {
+          font-size: 2rem;
+          font-weight: 700;
+          animation: textGlow 2s ease-in-out infinite;
+        }
+
+        .welcome-message p {
+          font-size: 1.1rem;
+          opacity: 0.9;
+          animation: textFade 2s ease-in-out infinite;
+        }
+
+        .loading-animation {
+          width: 300px;
+          margin: 0 auto;
+        }
+
+        .loading-bar {
+          width: 100%;
+          height: 4px;
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 2px;
+          overflow: hidden;
+        }
+
+        .loading-progress {
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.8) 0%,
+            rgba(255, 255, 255, 1) 50%,
+            rgba(255, 255, 255, 0.8) 100%
+          );
+          animation: progressSlide 2s ease-in-out infinite;
+        }
+
+        .loading-dots {
+          display: flex;
+          justify-content: center;
+          gap: 8px;
+        }
+
+        .loading-dots span {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.8);
+          animation: dotWave 1.4s ease-in-out infinite both;
+        }
+
+        .loading-dots span:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+        .loading-dots span:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+        .loading-dots span:nth-child(3) {
+          animation-delay: 0s;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes slideInUp {
+          from {
+            opacity: 0;
+            transform: translateY(50px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes logoFloat {
+          0%,
+          100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+        }
+
+        @keyframes iconPulse {
+          0%,
+          100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+          }
+          50% {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 20px rgba(255, 255, 255, 0);
+          }
+        }
+
+        @keyframes progressSlide {
+          0% {
+            transform: translateX(-100%);
+          }
+          100% {
+            transform: translateX(100%);
+          }
+        }
+
+        @keyframes textGlow {
+          0%,
+          100% {
+            opacity: 0.9;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+
+        @keyframes textFade {
+          0%,
+          100% {
+            opacity: 0.7;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+
+        @keyframes dotWave {
+          0%,
+          80%,
+          100% {
+            transform: scale(0.8) translateY(0);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1.2) translateY(-10px);
+            opacity: 1;
+          }
+        }
+
+        /* Responsive design */
+        @media (max-width: 576px) {
+          .logo-icon {
+            width: 80px;
+            height: 80px;
+            font-size: 3rem;
+          }
+
+          .logo-text {
+            font-size: 1.2rem;
+          }
+
+          .welcome-message h2 {
+            font-size: 1.5rem;
+          }
+
+          .welcome-message p {
+            font-size: 1rem;
+          }
+
+          .loading-animation {
+            width: 250px;
+          }
+        }
+
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+          .logo-animation,
+          .logo-icon,
+          .loading-progress,
+          .loading-dots span,
+          .welcome-content {
+            animation: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -49,6 +326,9 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // ✅ First-time visit animation state
+  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false);
 
   useEffect(() => {
     checkExistingAuth();
@@ -77,6 +357,16 @@ function App() {
       restoreCompanySelection();
     }
   }, [isLoggedIn]);
+
+  // ✅ Check if this is the first visit to dashboard/home
+  const checkFirstVisit = () => {
+    const hasVisitedBefore = localStorage.getItem("hasVisitedDashboard");
+    if (!hasVisitedBefore) {
+      localStorage.setItem("hasVisitedDashboard", "true");
+      return true;
+    }
+    return false;
+  };
 
   const loadCompanies = async () => {
     if (isLoadingCompanies) {
@@ -274,6 +564,8 @@ function App() {
       setCompanies([]);
       localStorage.removeItem("currentCompany");
       localStorage.removeItem("dashboard-active-view");
+      // ✅ Reset first visit flag on logout
+      localStorage.removeItem("hasVisitedDashboard");
     } catch (error) {
       // Handle error silently
     }
@@ -366,7 +658,6 @@ function App() {
       allProducts: `/companies/${companyId}/products`,
       inventory: `/companies/${companyId}/inventory`,
       bankAccounts: `/companies/${companyId}/bank-accounts`,
-      // ✅ FIXED: Staff management routes
       staff: `/companies/${companyId}/staff`,
       staffList: `/companies/${companyId}/staff`,
       dailyTaskAssignment: `/companies/${companyId}/staff/daily-task-assignment`,
@@ -738,27 +1029,58 @@ function App() {
     }
   };
 
-  // ✅ MainDashboard Wrapper Component - NO LAYOUT
+  // ✅ MainDashboard Wrapper Component with Welcome Animation
   const MainDashboardWrapper = () => {
+    const [showDashboard, setShowDashboard] = useState(false);
+
+    useEffect(() => {
+      // ✅ Check if this is first visit when component mounts
+      if (isLoggedIn && currentCompany && !isLoadingCompanies) {
+        const isFirstVisit = checkFirstVisit();
+        if (isFirstVisit) {
+          setShowWelcomeAnimation(true);
+        } else {
+          setShowDashboard(true);
+        }
+      }
+    }, [isLoggedIn, currentCompany, isLoadingCompanies]);
+
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
     }
 
     if (!currentCompany || isLoadingCompanies) {
       return (
-        <div className="d-flex justify-content-center align-items-center min-vh-100">
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading company...</span>
+              <span className="visually-hidden">Loading...</span>
             </div>
-            <h5 className="text-muted">Loading your dashboard...</h5>
-            <p className="text-muted small">Please wait...</p>
+            <p>Loading your dashboard...</p>
           </div>
         </div>
       );
     }
 
-    // ✅ MainDashboard WITHOUT Layout wrapper
+    // ✅ Show welcome animation for first-time visitors
+    if (showWelcomeAnimation) {
+      return (
+        <WelcomeAnimation
+          onComplete={() => {
+            setShowWelcomeAnimation(false);
+            setShowDashboard(true);
+          }}
+          userFirstName={
+            currentUser?.name?.split(" ")[0] || currentUser?.firstName || "User"
+          }
+        />
+      );
+    }
+
+    // ✅ Show main dashboard
     return (
       <MainDashboard
         currentCompany={currentCompany}
@@ -786,11 +1108,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -828,11 +1155,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -870,13 +1202,15 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="d-flex justify-content-center align-items-center min-vh-100">
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading company...</span>
+              <span className="visually-hidden">Loading...</span>
             </div>
-            <h5 className="text-muted">Loading company information...</h5>
-            <p className="text-muted small">Please wait...</p>
+            <p>Loading community...</p>
           </div>
         </div>
       );
@@ -931,11 +1265,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -967,11 +1306,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -1005,11 +1349,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -1043,11 +1392,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -1077,11 +1431,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -1113,11 +1472,16 @@ function App() {
 
     if (!currentCompany) {
       return (
-        <div className="container mt-5 text-center">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading company...</span>
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading company information...</p>
           </div>
-          <p className="mt-3">Loading company information...</p>
         </div>
       );
     }
@@ -1168,7 +1532,7 @@ function App() {
   const AutoRedirect = () => {
     useEffect(() => {
       if (companies.length > 0 && currentCompany) {
-        window.location.replace("/dashboard"); // ✅ Redirect to /dashboard
+        window.location.replace("/dashboard");
       }
     }, [companies, currentCompany]);
 
@@ -1184,12 +1548,15 @@ function App() {
     }
 
     return (
-      <div className="container mt-5">
+      <div
+        className="d-flex justify-content-center align-items-center"
+        style={{minHeight: "100vh"}}
+      >
         <div className="text-center">
-          <div className="spinner-border text-primary" role="status">
+          <div className="spinner-border text-primary mb-3" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
-          <p className="mt-3">Setting up your workspace...</p>
+          <p>Setting up your workspace...</p>
         </div>
       </div>
     );
@@ -1197,17 +1564,15 @@ function App() {
 
   if (isCheckingAuth) {
     return (
-      <div className="App">
-        <div className="d-flex justify-content-center align-items-center min-vh-100">
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <h5 className="text-muted">Checking authentication...</h5>
-            <p className="text-muted small">
-              Please wait while we verify your session...
-            </p>
+      <div
+        className="d-flex justify-content-center align-items-center"
+        style={{minHeight: "100vh"}}
+      >
+        <div className="text-center">
+          <div className="spinner-border text-primary mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
           </div>
+          <p>Checking authentication...</p>
         </div>
       </div>
     );
@@ -1215,185 +1580,188 @@ function App() {
 
   return (
     <Router>
-      <div className="App">
-        <Routes>
-          <Route
-            path="/auth"
-            element={
-              isLoggedIn ? (
-                <Navigate to="/dashboard" replace />
-              ) : (
-                <AuthPage onLogin={handleLogin} />
-              )
-            }
-          />
+      {/* ✅ UPDATED: Wrap entire Router with ChatProvider */}
+      <ChatProvider>
+        <div className="App">
+          <Routes>
+            <Route
+              path="/auth"
+              element={
+                isLoggedIn ? (
+                  <Navigate to="/dashboard" replace />
+                ) : (
+                  <AuthPage onLogin={handleLogin} />
+                )
+              }
+            />
 
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <AutoRedirect />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AutoRedirect />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="/admin/*" element={<AdminDashboardWrapper />} />
+            <Route path="/admin/*" element={<AdminDashboardWrapper />} />
 
-          {/* ✅ Main Dashboard Routes - Both /home and /dashboard */}
-          <Route path="/home" element={<MainDashboardWrapper />} />
-          <Route path="/dashboard" element={<MainDashboardWrapper />} />
-          <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
+            {/* ✅ Main Dashboard Routes - Both /home and /dashboard */}
+            <Route path="/home" element={<MainDashboardWrapper />} />
+            <Route path="/dashboard" element={<MainDashboardWrapper />} />
+            <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
 
-          <Route
-            path="/companies/:companyId/community"
-            element={<CommunityPageWrapper />}
-          />
+            <Route
+              path="/companies/:companyId/community"
+              element={<CommunityPageWrapper />}
+            />
 
-          {/* ✅ STAFF MANAGEMENT ROUTES - BEFORE THE CATCH-ALL */}
-          <Route
-            path="/companies/:companyId/staff"
-            element={
-              <ProtectedRoute>
-                <StaffManagementWrapper />
-              </ProtectedRoute>
-            }
-          />
+            {/* ✅ STAFF MANAGEMENT ROUTES - BEFORE THE CATCH-ALL */}
+            <Route
+              path="/companies/:companyId/staff"
+              element={
+                <ProtectedRoute>
+                  <StaffManagementWrapper />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* ✅ Daily Task Assignment Route */}
-          <Route
-            path="/companies/:companyId/staff/daily-task-assignment"
-            element={
-              <ProtectedRoute>
-                <DailyTaskAssignmentWrapper />
-              </ProtectedRoute>
-            }
-          />
+            {/* ✅ Daily Task Assignment Route */}
+            <Route
+              path="/companies/:companyId/staff/daily-task-assignment"
+              element={
+                <ProtectedRoute>
+                  <DailyTaskAssignmentWrapper />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Purchase Routes */}
-          <Route
-            path="/companies/:companyId/purchases/add"
-            element={
-              <ProtectedRoute>
-                <PurchaseFormWrapper isEdit={false} />
-              </ProtectedRoute>
-            }
-          />
+            {/* Purchase Routes */}
+            <Route
+              path="/companies/:companyId/purchases/add"
+              element={
+                <ProtectedRoute>
+                  <PurchaseFormWrapper isEdit={false} />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/companies/:companyId/purchases/:id/edit"
-            element={
-              <ProtectedRoute>
-                <EditPurchaseBill
-                  addToast={showToast}
-                  currentUser={currentUser}
-                  currentCompany={currentCompany}
-                  mode="purchases"
-                  documentType="purchase_bill"
-                />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/companies/:companyId/purchases/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <EditPurchaseBill
+                    addToast={showToast}
+                    currentUser={currentUser}
+                    currentCompany={currentCompany}
+                    mode="purchases"
+                    documentType="purchase_bill"
+                  />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Purchase Order Routes */}
-          <Route
-            path="/companies/:companyId/purchase-orders/add"
-            element={
-              <ProtectedRoute>
-                <PurchaseOrderFormWrapper isEdit={false} />
-              </ProtectedRoute>
-            }
-          />
+            {/* Purchase Order Routes */}
+            <Route
+              path="/companies/:companyId/purchase-orders/add"
+              element={
+                <ProtectedRoute>
+                  <PurchaseOrderFormWrapper isEdit={false} />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/companies/:companyId/purchase-orders/:id/edit"
-            element={
-              <ProtectedRoute>
-                <PurchaseOrderFormWrapper isEdit={true} />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/companies/:companyId/purchase-orders/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <PurchaseOrderFormWrapper isEdit={true} />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Sales Routes */}
-          <Route
-            path="/companies/:companyId/sales/add"
-            element={
-              <ProtectedRoute>
-                <SalesFormWrapper isEdit={false} />
-              </ProtectedRoute>
-            }
-          />
+            {/* Sales Routes */}
+            <Route
+              path="/companies/:companyId/sales/add"
+              element={
+                <ProtectedRoute>
+                  <SalesFormWrapper isEdit={false} />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/companies/:companyId/sales/edit/:transactionId"
-            element={
-              <ProtectedRoute>
-                <EditSalesInvoiceWrapper
-                  mode="invoices"
-                  documentType="invoice"
-                />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/companies/:companyId/sales/edit/:transactionId"
+              element={
+                <ProtectedRoute>
+                  <EditSalesInvoiceWrapper
+                    mode="invoices"
+                    documentType="invoice"
+                  />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Quotation Routes */}
-          <Route
-            path="/companies/:companyId/quotations/add"
-            element={
-              <ProtectedRoute>
-                <QuotationFormWrapper isEdit={false} />
-              </ProtectedRoute>
-            }
-          />
+            {/* Quotation Routes */}
+            <Route
+              path="/companies/:companyId/quotations/add"
+              element={
+                <ProtectedRoute>
+                  <QuotationFormWrapper isEdit={false} />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/companies/:companyId/quotations/edit/:transactionId"
-            element={
-              <ProtectedRoute>
-                <EditSalesInvoiceWrapper
-                  mode="quotations"
-                  documentType="quotation"
-                />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/companies/:companyId/quotations/edit/:transactionId"
+              element={
+                <ProtectedRoute>
+                  <EditSalesInvoiceWrapper
+                    mode="quotations"
+                    documentType="quotation"
+                  />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Sales Order Routes */}
-          <Route
-            path="/companies/:companyId/sales-orders/add"
-            element={
-              <ProtectedRoute>
-                <SalesOrderFormWrapper isEdit={false} />
-              </ProtectedRoute>
-            }
-          />
+            {/* Sales Order Routes */}
+            <Route
+              path="/companies/:companyId/sales-orders/add"
+              element={
+                <ProtectedRoute>
+                  <SalesOrderFormWrapper isEdit={false} />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/companies/:companyId/sales-orders/:id/edit"
-            element={
-              <ProtectedRoute>
-                <SalesOrderFormWrapper isEdit={true} />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/companies/:companyId/sales-orders/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <SalesOrderFormWrapper isEdit={true} />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* ✅ CATCH-ALL ROUTE - MUST BE LAST */}
-          <Route
-            path="/companies/:companyId/*"
-            element={
-              <ProtectedRoute>
-                <HomePage
-                  currentCompany={currentCompany}
-                  onCompanyChange={handleCompanyChange}
-                  companies={companies}
-                  currentUser={currentUser}
-                />
-              </ProtectedRoute>
-            }
-          />
+            {/* ✅ CATCH-ALL ROUTE - MUST BE LAST */}
+            <Route
+              path="/companies/:companyId/*"
+              element={
+                <ProtectedRoute>
+                  <HomePage
+                    currentCompany={currentCompany}
+                    onCompanyChange={handleCompanyChange}
+                    companies={companies}
+                    currentUser={currentUser}
+                  />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </div>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </div>
+      </ChatProvider>
     </Router>
   );
 }

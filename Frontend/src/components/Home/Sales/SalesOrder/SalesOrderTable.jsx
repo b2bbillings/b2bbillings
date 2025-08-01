@@ -20,6 +20,8 @@ import {
 import {useNavigate, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 
+import "./SalesOrderTable.css"; // ✅ ADD: Import CSS styles
+
 import {
   faSearch,
   faFileExcel,
@@ -235,11 +237,6 @@ function SalesOrderTable({
   }, [getDocumentType, isInQuotationsMode]);
   const fetchSalesOrders = useCallback(
     async (force = false) => {
-      if (!companyId) {
-        console.warn("⚠️ No companyId provided, cannot fetch sales orders");
-        return;
-      }
-
       // Skip if data is fresh and not forced
       if (!force && lastFetchTime && Date.now() - lastFetchTime < 30000) {
         return;
@@ -261,7 +258,6 @@ function SalesOrderTable({
             search: searchTerm || undefined,
           });
         } catch (fetchError) {
-          console.error("❌ Sales orders fetch failed:", fetchError);
           throw fetchError;
         }
 
@@ -333,8 +329,6 @@ function SalesOrderTable({
                       foundOrders = true;
                       break;
                     }
-                  } else {
-                    console.log(`⚠️ Array "${key}" is empty`);
                   }
                 }
               }
@@ -354,27 +348,11 @@ function SalesOrderTable({
               if (hasOrderProperties) {
                 orders = [response.data];
                 foundOrders = true;
-              } else {
-                console.log("❌ Response data structure not recognized:", {
-                  dataKeys: Object.keys(response.data),
-                  sampleValues: Object.values(response.data).slice(0, 3),
-                  fullData: response.data,
-                });
               }
             }
           }
 
           if (orders.length === 0) {
-            console.warn(
-              "⚠️ No orders found in response. Full response analysis:",
-              {
-                responseStructure: response,
-                dataType: typeof response.data,
-                dataKeys: response.data ? Object.keys(response.data) : [],
-                dataValues: response.data ? Object.values(response.data) : [],
-              }
-            );
-
             // Don't throw error, just set empty array and continue
             setSalesOrders([]);
             setLastFetchTime(Date.now());
@@ -403,20 +381,12 @@ function SalesOrderTable({
           setLastFetchTime(Date.now());
           setFetchError(null);
         } else {
-          console.error("❌ Invalid response structure:", response);
           throw new Error(
             response?.message ||
               "Failed to fetch sales orders - Invalid response"
           );
         }
       } catch (error) {
-        console.error("❌ Error fetching sales orders:", {
-          error: error.message,
-          stack: error.stack,
-          companyId,
-          serviceAvailable: !!resolvedSaleOrderService,
-        });
-
         setFetchError(error.message);
         addToast?.(`Failed to fetch sales orders: ${error.message}`, "error");
 
@@ -626,7 +596,6 @@ function SalesOrderTable({
             return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
           }
         } catch (error) {
-          console.warn("Sorting error:", error);
           return 0;
         }
       });
@@ -640,7 +609,6 @@ function SalesOrderTable({
     try {
       return getFilteredOrders();
     } catch (error) {
-      console.error("Error filtering orders:", error);
       return []; // Safe fallback
     }
   }, [
@@ -837,7 +805,6 @@ function SalesOrderTable({
           );
         }
       } catch (error) {
-        console.error("❌ Generate PO error:", error);
         setPOGenerationError(error.message);
         addToast?.(
           `Failed to generate purchase order: ${error.message}`,
@@ -1732,7 +1699,6 @@ function SalesOrderTable({
           throw new Error(response.message || "Failed to bulk confirm orders");
         }
       } catch (error) {
-        console.error("❌ Error bulk confirming orders:", error);
         addToast?.(`Failed to bulk confirm orders: ${error.message}`, "error");
       }
     },
@@ -1752,7 +1718,6 @@ function SalesOrderTable({
 
       return [];
     } catch (error) {
-      console.error("❌ Error getting orders needing confirmation:", error);
       return [];
     }
   }, [companyId, resolvedSaleOrderService]);
@@ -1760,14 +1725,6 @@ function SalesOrderTable({
   const handleConfirmGeneratedOrder = useCallback(
     async (order) => {
       try {
-        console.log("🔍 CONFIRM ORDER DEBUG - START:", {
-          orderReceived: !!order,
-          orderType: typeof order,
-          orderKeys: order ? Object.keys(order) : [],
-          fullOrder: order,
-          orderStatus: order?.status, // ✅ Add status logging
-        });
-
         setModalLoading(true);
         setModalError(null);
 
@@ -1782,13 +1739,6 @@ function SalesOrderTable({
         if (!orderId || orderId === "undefined" || orderId === "null") {
           throw new Error("Order ID is required for confirmation");
         }
-
-        console.log(
-          "🔄 Confirming order with ID:",
-          orderId,
-          "Status:",
-          order.status
-        );
 
         // ✅ FIXED: Check if order needs confirmation (include draft status)
         if (
@@ -1810,19 +1760,11 @@ function SalesOrderTable({
           status: "confirmed",
         };
 
-        console.log("📤 Sending confirmation request:", {
-          orderId,
-          confirmationData,
-          serviceMethod: "confirmGeneratedSalesOrder",
-        });
-
         const response =
           await resolvedSaleOrderService.confirmGeneratedSalesOrder(
             orderId,
             confirmationData
           );
-
-        console.log("📥 Service response:", response);
 
         if (response.success) {
           addToast?.(
@@ -1845,7 +1787,6 @@ function SalesOrderTable({
           throw new Error(response.message || "Failed to confirm sales order");
         }
       } catch (error) {
-        console.error("❌ Error confirming order:", error);
         setModalError(error.message);
         addToast?.(`Failed to confirm order: ${error.message}`, "error");
       } finally {
@@ -2118,7 +2059,6 @@ function SalesOrderTable({
 
               onShareOrder?.(targetOrder);
             } catch (shareError) {
-              console.error("Error sharing order:", shareError);
               addToast?.("Failed to generate share link", "error");
             }
             break;
@@ -2153,17 +2093,8 @@ function SalesOrderTable({
 
           case "generatePurchaseOrder":
             if (onGeneratePurchaseOrder && !isInQuotationsMode) {
-              console.log(
-                "🔄 Using external purchase order handler for sales order"
-              );
               onGeneratePurchaseOrder(targetOrder);
             } else {
-              console.log("🔄 Using internal purchase order modal for:", {
-                isQuotationsMode: isInQuotationsMode,
-                documentType: documentType,
-                orderType: targetOrder.orderType,
-                hasExternalHandler: !!onGeneratePurchaseOrder,
-              });
               handleModalGeneratePurchaseOrder(targetOrder);
             }
             break;
@@ -2209,7 +2140,6 @@ function SalesOrderTable({
             console.warn("Unknown action:", action);
         }
       } catch (error) {
-        console.error(`❌ Error handling action ${action}:`, error);
         addToast?.(error.message || `Failed to ${action} sales order`, "error");
       } finally {
         if (action === "delete") {
@@ -3991,818 +3921,6 @@ function SalesOrderTable({
           </Modal.Footer>
         </Modal>
       )}
-
-      <style>{`
-      /* ✅ FIXED: Tighter column sizing - reduced spacing */
-      .date-column {
-        width: 110px;
-        min-width: 110px;
-      }
-      .order-number-column {
-        width: 160px;
-        min-width: 160px;
-      }
-      .customer-column {
-        width: 220px;
-        min-width: 220px;
-      }
-      .items-column {
-        width: 120px;
-        min-width: 120px;
-      }
-      .source-column {
-        width: 140px;
-        min-width: 140px;
-      }
-      .amount-column {
-        width: 130px;
-        min-width: 130px;
-      }
-      .status-column {
-        width: 120px;
-        min-width: 120px;
-      }
-      .actions-column {
-        width: 50px;
-        min-width: 50px;
-      }
-
-      /* ✅ FIXED: Reduce table cell padding */
-      .sales-orders-table td {
-        padding: 8px 6px !important; /* Reduced from 12px 10px */
-        vertical-align: middle;
-        border-bottom: 1px solid #f8f9fa;
-        margin: 0;
-        position: relative;
-      }
-
-      .sales-orders-table th {
-        padding: 12px 8px !important; /* Reduced from 15px 12px */
-      }
-
-      /* ✅ FIXED: Reduce table minimum width */
-      .sales-orders-table {
-        margin: 0;
-        font-size: 0.85rem;
-        width: 100%;
-        table-layout: fixed;
-        min-width: 950px; /* Reduced from 800px */
-        position: relative;
-        z-index: 1;
-        overflow: visible !important;
-        border-radius: 0 !important;
-      }
-
-      /* ✅ FIXED: Status badges - remove curves */
-      .status-badge-compact {
-        font-size: 0.75rem !important;
-        font-weight: 600 !important;
-        padding: 0.3em 0.6em !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        line-height: 1.2 !important;
-        margin: 0 !important;
-        border: none !important;
-      }
-
-      /* ✅ Remove curves from all badges */
-      .badge {
-        border: none !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ Confirmation-specific styles */
-      .needs-confirmation {
-        background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.2) 100%) !important;
-        border-color: rgba(255, 193, 7, 0.5) !important;
-        animation: pulse-warning 2s infinite;
-      }
-
-      @keyframes pulse-warning {
-        0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
-        70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
-      }
-
-      .confirmation-badge {
-        font-size: 0.7rem !important;
-        padding: 0.2em 0.4em !important;
-      }
-
-      .order-row-needs-confirmation {
-        border-left: 3px solid #ffc107 !important;
-        background: linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.1) 100%) !important;
-      }
-
-      .order-row-needs-confirmation:hover {
-        background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.15) 100%) !important;
-        border-left: 3px solid #e0a800 !important;
-      }
-
-      /* Enhanced dropdown for confirmation orders */
-      .custom-action-dropdown .btn-success {
-        background: linear-gradient(135deg, rgba(34, 197, 94, 0.9) 0%, rgba(22, 163, 74, 0.9) 100%) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border: none !important;
-      }
-
-      .custom-action-dropdown .btn-success:hover {
-        background: linear-gradient(135deg, rgba(34, 197, 94, 1) 0%, rgba(22, 163, 74, 1) 100%) !important;
-        transform: translateX(3px) !important;
-        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3) !important;
-      }
-
-      /* ✅ SPECIFIC: Status badge colors without curves */
-      .status-badge-compact.bg-primary {
-        background: #0d6efd !important;
-        color: white !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-secondary {
-        background: #6c757d !important;
-        color: white !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-success {
-        background: #198754 !important;
-        color: white !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-warning {
-        background: #ffc107 !important;
-        color: #000 !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-danger {
-        background: #dc3545 !important;
-        color: white !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-info {
-        background: #0dcaf0 !important;
-        color: #000 !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-light {
-        background: #f8f9fa !important;
-        color: #000 !important;
-        border-radius: 0 !important;
-      }
-
-      .status-badge-compact.bg-dark {
-        background: #212529 !important;
-        color: white !important;
-        border-radius: 0 !important;
-      }
-
-      /* ✅ REDESIGNED: Container with NO curves */
-      .sales-orders-container-redesigned {
-        position: relative;
-        background: white;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05),
-          0 10px 15px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e5e7eb;
-        overflow: visible !important;
-        margin-top: 0;
-      }
-
-      .table-container-modern {
-        position: relative;
-        overflow-x: auto;
-        overflow-y: visible !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        scrollbar-width: thin;
-        scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
-      }
-
-      .modern-sales-table {
-        margin: 0;
-        position: relative;
-        z-index: 1;
-        overflow: visible !important;
-        font-size: 0.85rem;
-        width: 100%;
-        table-layout: fixed;
-        min-width: 800px;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ Action button - remove curves */
-      .action-trigger-btn {
-        border: 1px solid rgba(111, 66, 193, 0.3) !important;
-        background: linear-gradient(
-          135deg,
-          rgba(111, 66, 193, 0.08) 0%,
-          rgba(139, 92, 246, 0.08) 100%
-        ) !important;
-        color: #6f42c1 !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        padding: 6px 10px !important;
-        transition: all 0.3s ease !important;
-        font-size: 0.85rem !important;
-        font-weight: 500 !important;
-        box-shadow: 0 2px 6px rgba(111, 66, 193, 0.15) !important;
-        min-width: 38px;
-        height: 34px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .action-trigger-btn:hover,
-      .action-trigger-btn:focus {
-        background: linear-gradient(
-          135deg,
-          rgba(111, 66, 193, 0.18) 0%,
-          rgba(139, 92, 246, 0.18) 100%
-        ) !important;
-        border-color: rgba(111, 66, 193, 0.5) !important;
-        transform: translateY(-1px) scale(1.05);
-        box-shadow: 0 4px 15px rgba(111, 66, 193, 0.3) !important;
-        color: #5a2d91 !important;
-      }
-
-      /* ✅ Dropdown menu - remove curves */
-      .custom-action-dropdown {
-        position: absolute !important;
-        z-index: 99999 !important;
-      }
-
-      .custom-action-dropdown .bg-white {
-        background: #ffffff !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid #e5e7eb !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15),
-          0 0 0 1px rgba(111, 66, 193, 0.1),
-          0 4px 15px rgba(111, 66, 193, 0.1) !important;
-        animation: dropdownSlideIn 0.2s ease-out;
-      }
-
-      /* ✅ Dropdown buttons - remove curves */
-      .custom-action-dropdown .btn {
-        border: none !important;
-        text-align: left !important;
-        transition: all 0.2s ease !important;
-        padding: 8px 12px !important;
-        font-size: 0.875rem !important;
-        font-weight: 500 !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        margin: 1px 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        color: #374151 !important;
-        background: transparent !important;
-      }
-
-      .custom-action-dropdown .btn:hover {
-        background: rgba(111, 66, 193, 0.1) !important;
-        color: #6f42c1 !important;
-        transform: translateX(2px);
-        box-shadow: 0 2px 8px rgba(111, 66, 193, 0.15) !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-success {
-        background: rgba(34, 197, 94, 0.1) !important;
-        color: #16a34a !important;
-        border: 1px solid rgba(34, 197, 94, 0.2) !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-success:hover {
-        background: rgba(34, 197, 94, 0.2) !important;
-        border-color: rgba(34, 197, 94, 0.4) !important;
-        color: #15803d !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-danger {
-        background: rgba(239, 68, 68, 0.1) !important;
-        color: #dc2626 !important;
-        border: 1px solid rgba(239, 68, 68, 0.2) !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-danger:hover {
-        background: rgba(239, 68, 68, 0.2) !important;
-        border-color: rgba(239, 68, 68, 0.4) !important;
-        color: #b91c1c !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-warning {
-        background: rgba(245, 158, 11, 0.1) !important;
-        color: #d97706 !important;
-        border: 1px solid rgba(245, 158, 11, 0.2) !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn-outline-warning:hover {
-        background: rgba(245, 158, 11, 0.2) !important;
-        border-color: rgba(245, 158, 11, 0.4) !important;
-        color: #b45309 !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ Primary action (View Details) - remove curves */
-      .custom-action-dropdown .btn:first-child {
-        background: rgba(59, 130, 246, 0.1) !important;
-        color: #2563eb !important;
-        border: 1px solid rgba(59, 130, 246, 0.2) !important;
-        margin-bottom: 3px !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .custom-action-dropdown .btn:first-child:hover {
-        background: rgba(59, 130, 246, 0.2) !important;
-        border-color: rgba(59, 130, 246, 0.4) !important;
-        color: #1d4ed8 !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ TABLE CONTAINER - remove curves */
-      .sales-orders-table-wrapper {
-        background: white;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05),
-          0 10px 15px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e5e7eb;
-        overflow: visible !important;
-        position: relative;
-        margin-top: 0;
-      }
-
-      .table-responsive-wrapper-fixed {
-        overflow-x: auto;
-        overflow-y: visible !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
-        margin: 0;
-        padding: 0;
-        position: relative;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .sales-orders-table {
-        margin: 0;
-        font-size: 0.85rem;
-        width: 100%;
-        table-layout: fixed;
-        min-width: 800px;
-        position: relative;
-        z-index: 1;
-        overflow: visible !important;
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ HEADER STYLES - remove curves */
-      .sales-orders-filter-section {
-        background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        padding: 15px;
-        border: 1px solid #e5e7eb;
-        margin-bottom: 15px;
-        margin-top: 0;
-      }
-
-      .table-footer-summary {
-        background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-        border-top: 1px solid rgba(111, 66, 193, 0.1);
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        margin: 0;
-        padding: 12px 0;
-      }
-
-      /* ✅ ORDER TYPE FILTER - remove curves */
-      .order-type-filter .btn {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-        font-size: 0.85rem !important;
-        padding: 6px 12px !important;
-        transition: all 0.2s ease !important;
-      }
-
-      /* ✅ REMOVE curves from all form elements */
-      .form-control,
-      .form-select,
-      .btn,
-      .input-group-text {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from modal elements */
-      .modal-content {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .modal-header {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .modal-footer {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from alerts */
-      .alert {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from cards */
-      .card {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .card-header {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .card-body {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .card-footer {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from tables */
-      .table {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from input groups */
-      .input-group {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .input-group .form-control:first-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .input-group .form-control:last-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from button groups */
-      .btn-group .btn:first-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .btn-group .btn:last-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .btn-group .btn {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from dropdowns */
-      .dropdown-menu {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .dropdown-item {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from tabs */
-      .nav-tabs {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .nav-tabs .nav-link {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .tab-content {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .tab-pane {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from progress bars */
-      .progress {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .progress-bar {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from list groups */
-      .list-group {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .list-group-item {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .list-group-item:first-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .list-group-item:last-child {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ REMOVE curves from pagination */
-      .pagination {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      .page-link {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves */
-      }
-
-      /* ✅ GLOBAL: Remove curves from ALL elements */
-      * {
-        border-radius: 0 !important; /* ✅ REMOVED: All curves globally */
-      }
-
-      /* Keep all other existing styles intact... */
-      .sales-orders-table tbody tr {
-        position: relative;
-        transition: all 0.2s ease;
-        border-left: 3px solid transparent;
-      }
-
-      .sales-orders-table tbody tr:hover {
-        background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-        box-shadow: 0 2px 8px rgba(111, 66, 193, 0.1);
-        transform: translateY(-1px);
-        border-left: 3px solid #6f42c1;
-        z-index: 5;
-      }
-
-      .sales-order-row {
-        transition: all 0.2s ease;
-        border-left: 3px solid transparent;
-        position: relative;
-      }
-
-      .sales-order-row:hover {
-        background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
-        box-shadow: 0 2px 8px rgba(111, 66, 193, 0.1);
-        transform: translateY(-1px);
-        border-left: 3px solid #6f42c1;
-        z-index: 5;
-      }
-
-      .cancelled-order-row {
-        opacity: 0.6;
-        background-color: #f8f9fa;
-      }
-
-      .cancelled-order-row:hover {
-        background-color: #e9ecef !important;
-        border-left: 3px solid #6c757d;
-      }
-
-      .text-purple {
-        color: #6f42c1 !important;
-      }
-
-      .table-header-purple {
-        background: linear-gradient(
-          135deg,
-          #6f42c1 0%,
-          #8b5cf6 50%,
-          #a855f7 100%
-        );
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        margin: 0;
-      }
-
-      .table-header-purple th {
-        background: transparent !important;
-        border: none;
-        border-bottom: 3px solid rgba(255, 255, 255, 0.2);
-        font-weight: 700;
-        padding: 15px 12px;
-        font-size: 0.85rem;
-        color: #ffffff !important;
-        white-space: nowrap;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        margin: 0;
-      }
-
-      .sales-orders-table td {
-        padding: 12px 10px;
-        vertical-align: middle;
-        border-bottom: 1px solid #f8f9fa;
-        margin: 0;
-        position: relative;
-      }
-
-      .actions-cell-modern {
-        padding: 8px 6px !important;
-        vertical-align: middle !important;
-        text-align: center !important;
-        position: relative !important;
-        z-index: 10 !important;
-        width: 55px !important;
-        min-width: 55px !important;
-        overflow: visible !important;
-      }
-
-      .actions-column {
-        width: 55px !important;
-        min-width: 55px !important;
-        text-align: center !important;
-        overflow: visible !important;
-      }
-
-      @keyframes dropdownSlideIn {
-        from {
-          opacity: 0;
-          transform: translateY(-5px) scale(0.95);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-        }
-      }
-
-      .action-trigger-btn:active {
-        transform: translateY(0) scale(0.95);
-      }
-
-      .action-trigger-btn:disabled {
-        opacity: 0.6 !important;
-        cursor: not-allowed !important;
-      }
-
-      .custom-action-dropdown hr {
-        border-color: rgba(107, 114, 128, 0.2) !important;
-        margin: 6px 0 !important;
-        opacity: 1 !important;
-      }
-
-      .date-cell .date-wrapper {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .order-number-cell .order-number-link {
-        text-decoration: none;
-        font-weight: 600;
-        color: #6f42c1;
-      }
-
-      .order-number-cell .order-number-link:hover {
-        color: #5a2d91;
-        text-decoration: underline;
-      }
-
-      .customer-cell .customer-info {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .customer-cell .customer-name {
-        font-size: 0.9rem;
-        line-height: 1.2;
-      }
-
-      .customer-cell .customer-contact {
-        font-size: 0.75rem;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-      }
-
-      .items-cell .items-info {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-      }
-
-      .amount-cell .amount-info {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 2px;
-      }
-
-      .status-cell {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-      }
-
-      .order-type-filter .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
-      }
-
-      .summary-stats {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-      }
-
-      .summary-stats small {
-        font-size: 0.8rem !important;
-      }
-
-      .sales-order-row.loading {
-        pointer-events: none;
-        opacity: 0.7;
-        background: linear-gradient(
-          90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
-        );
-        background-size: 200% 100%;
-        animation: loading 1.5s infinite;
-      }
-
-      @keyframes loading {
-        0% {
-          background-position: 200% 0;
-        }
-        100% {
-          background-position: -200% 0;
-        }
-      }
-
-      @media (max-width: 768px) {
-        .custom-action-dropdown {
-          min-width: 180px !important;
-          max-width: 220px !important;
-        }
-
-        .custom-action-dropdown .btn {
-          padding: 6px 10px !important;
-          font-size: 0.8rem !important;
-        }
-
-        .action-trigger-btn {
-          padding: 4px 8px !important;
-          font-size: 0.75rem !important;
-          min-width: 32px !important;
-          height: 28px !important;
-        }
-
-        .actions-cell-modern {
-          width: 45px !important;
-          min-width: 45px !important;
-          padding: 6px 4px !important;
-        }
-
-        .sales-orders-table {
-          min-width: 600px;
-        }
-      }
-
-      .sales-order-row:focus {
-        outline: 2px solid #6f42c1;
-        outline-offset: 2px;
-      }
-
-      .sort-icon:hover {
-        color: rgba(255, 255, 255, 0.8) !important;
-        transform: scale(1.1);
-        transition: all 0.2s ease;
-      }
-
-      @media print {
-        .sales-orders-filter-section,
-        .actions-column,
-        .actions-cell-modern {
-          display: none !important;
-        }
-
-        .sales-orders-table-wrapper {
-          box-shadow: none;
-          border: 1px solid #000;
-        }
-
-        .table-header-purple {
-          background: #000 !important;
-          color: #fff !important;
-        }
-      }
-    `}</style>
     </>
   );
 }

@@ -1,11 +1,18 @@
 const Party = require("../models/Party");
 const Company = require("../models/Company");
 const mongoose = require("mongoose");
+const logger = require("../config/logger");
+const {createAuditLog} = require("../utils/auditLogger");
+const {sanitizeInput, validateInput} = require("../utils/validation");
 
 const partyController = {
-  // ✅ ENHANCED: createParty with linking support
   async createParty(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
+      const sanitizedBody = sanitizeInput(req.body);
+
       const {
         partyType = "customer",
         name,
@@ -29,8 +36,6 @@ const partyController = {
         deliveryTaluka = "",
         sameAsHomeAddress = false,
         phoneNumbers = [],
-
-        // ✅ NEW: Bidirectional linking fields
         linkedCompanyId = null,
         isLinkedSupplier = false,
         enableBidirectionalOrders = false,
@@ -44,8 +49,6 @@ const partyController = {
         source = null,
         isVerified = false,
         supplierCompanyData = null,
-
-        // ✅ NEW: Additional business fields
         website = "",
         businessType = "",
         businessCategory = "",
@@ -57,7 +60,7 @@ const partyController = {
         establishedYear = "",
         description = "",
         ownerInfo = null,
-      } = req.body;
+      } = sanitizedBody;
 
       const userId = req.user?.id || req.user?._id;
       const companyId =
@@ -66,10 +69,46 @@ const partyController = {
         req.headers["x-company-id"] ||
         req.query.companyId;
 
+      const validationErrors = validateInput(
+        {
+          name,
+          phoneNumber,
+          email: email || "",
+          partyType,
+          creditLimit,
+          openingBalance,
+        },
+        {
+          name: {required: true, minLength: 2, maxLength: 100},
+          phoneNumber: {required: true, phoneNumber: true},
+          email: {email: true},
+          partyType: {required: true},
+          creditLimit: {required: false, min: 0},
+          openingBalance: {required: false, min: 0},
+        }
+      );
+
+      if (validationErrors.length > 0) {
+        logger.warn("Party creation validation failed", {
+          errors: validationErrors,
+          userId,
+          companyId,
+          ip: clientIp,
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validationErrors,
+          code: "VALIDATION_ERROR",
+        });
+      }
+
       if (!userId) {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -77,6 +116,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -84,6 +124,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Party name is required",
+          code: "NAME_REQUIRED",
         });
       }
 
@@ -91,6 +132,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Phone number is required",
+          code: "PHONE_REQUIRED",
         });
       }
 
@@ -100,6 +142,7 @@ const partyController = {
           success: false,
           message:
             "Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9",
+          code: "INVALID_PHONE_FORMAT",
         });
       }
 
@@ -109,6 +152,7 @@ const partyController = {
           return res.status(400).json({
             success: false,
             message: "Please provide a valid email address",
+            code: "INVALID_EMAIL_FORMAT",
           });
         }
       }
@@ -121,6 +165,7 @@ const partyController = {
             success: false,
             message:
               "Please provide a valid GST number format (e.g., 22AAAAA0000A1Z5)",
+            code: "INVALID_GST_FORMAT",
           });
         }
       }
@@ -129,6 +174,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Credit limit cannot be negative",
+          code: "NEGATIVE_CREDIT_LIMIT",
         });
       }
 
@@ -136,38 +182,39 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Opening balance cannot be negative",
+          code: "NEGATIVE_OPENING_BALANCE",
         });
       }
 
       const userObjectId = new mongoose.Types.ObjectId(userId);
       const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
-      // ✅ NEW: Validate linked company if provided
       let linkedCompanyObjectId = null;
       if (linkedCompanyId) {
         if (!mongoose.Types.ObjectId.isValid(linkedCompanyId)) {
           return res.status(400).json({
             success: false,
             message: "Invalid linked company ID format",
+            code: "INVALID_LINKED_COMPANY_ID",
           });
         }
 
         linkedCompanyObjectId = new mongoose.Types.ObjectId(linkedCompanyId);
-
-        // Verify linked company exists
         const linkedCompany = await Company.findById(linkedCompanyObjectId);
+
         if (!linkedCompany) {
           return res.status(400).json({
             success: false,
             message: "Linked company not found",
+            code: "LINKED_COMPANY_NOT_FOUND",
           });
         }
 
-        // Prevent linking to same company
         if (linkedCompanyObjectId.toString() === companyObjectId.toString()) {
           return res.status(400).json({
             success: false,
             message: "Cannot link party to their own company",
+            code: "SELF_LINKING_NOT_ALLOWED",
           });
         }
       }
@@ -179,13 +226,22 @@ const partyController = {
       });
 
       if (existingParty) {
+        logger.warn("Duplicate party creation attempt", {
+          phoneNumber: phoneNumber.trim(),
+          existingPartyId: existingParty._id,
+          userId,
+          companyId,
+          ip: clientIp,
+        });
+
         return res.status(400).json({
           success: false,
           message: `A party with phone number ${phoneNumber.trim()} already exists in this company`,
+          code: "DUPLICATE_PHONE_NUMBER",
+          existingPartyId: existingParty._id,
         });
       }
 
-      // ✅ ENHANCED: Party data with all linking fields
       const partyData = {
         partyType,
         name: name.trim(),
@@ -230,8 +286,6 @@ const partyController = {
         userId: userObjectId,
         companyId: companyObjectId,
         createdBy: userObjectId,
-
-        // ✅ NEW: Bidirectional linking fields
         linkedCompanyId: linkedCompanyObjectId,
         isLinkedSupplier:
           linkedCompanyObjectId && partyType === "supplier"
@@ -251,8 +305,6 @@ const partyController = {
         source: source?.trim() || null,
         isVerified,
         supplierCompanyData,
-
-        // ✅ NEW: Additional business fields
         website: website?.trim() || "",
         businessType: businessType?.trim() || "",
         businessCategory: businessCategory?.trim() || "",
@@ -268,22 +320,34 @@ const partyController = {
         ownerInfo,
       };
 
-      console.log("💾 Creating party with linking data:", {
-        partyType: partyData.partyType,
-        name: partyData.name,
-        linkedCompanyId: partyData.linkedCompanyId,
-        isLinkedSupplier: partyData.isLinkedSupplier,
-        enableBidirectionalOrders: partyData.enableBidirectionalOrders,
-        supplierCompanyData: !!partyData.supplierCompanyData,
-      });
-
       const newParty = new Party(partyData);
       await newParty.save();
 
-      // ✅ NEW: Enhanced response with linking information
+      await createAuditLog({
+        userId: userObjectId,
+        action: "PARTY_CREATED",
+        resourceType: "Party",
+        resourceId: newParty._id,
+        details: {
+          partyType: newParty.partyType,
+          name: newParty.name,
+          phoneNumber: newParty.phoneNumber,
+          companyName: newParty.companyName,
+          linkedCompanyId: newParty.linkedCompanyId,
+          isLinkedSupplier: newParty.isLinkedSupplier,
+          createdAt: new Date(),
+        },
+        severity: "low",
+        ipAddress: clientIp,
+        userAgent: req.get("User-Agent"),
+        companyId: companyObjectId,
+      });
+
       const linkingInfo = {
         hasLinkedCompany: !!newParty.linkedCompanyId,
-        bidirectionalOrdersReady: newParty.isBidirectionalOrderReady(),
+        bidirectionalOrdersReady: newParty.isBidirectionalOrderReady
+          ? newParty.isBidirectionalOrderReady()
+          : false,
         linkedCompanyId: newParty.linkedCompanyId,
         autoLinkingEnabled: {
           byGST: newParty.autoLinkByGST,
@@ -292,7 +356,17 @@ const partyController = {
         },
       };
 
-      console.log("✅ Party created with linking info:", linkingInfo);
+      logger.info("Party created successfully", {
+        partyId: newParty._id,
+        partyName: newParty.name,
+        partyType: newParty.partyType,
+        linkedCompanyId: newParty.linkedCompanyId,
+        bidirectionalOrdersReady: linkingInfo.bidirectionalOrdersReady,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
+      });
 
       res.status(201).json({
         success: true,
@@ -308,57 +382,78 @@ const partyController = {
               )
             : null,
         },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
-      console.error("❌ Error creating party:", error);
+      logger.error("Party creation failed", {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        requestBody: {...req.body, phoneNumber: "[REDACTED]"},
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
+      if (req.user?.id) {
+        await createAuditLog({
+          userId: req.user.id,
+          action: "PARTY_CREATION_FAILED",
+          details: {
+            error: error.message,
+            partyName: req.body.name,
+            partyType: req.body.partyType,
+          },
+          severity: "medium",
+          ipAddress: clientIp,
+          companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        });
+      }
 
       if (error.name === "ValidationError") {
-        const validationErrors = Object.values(error.errors).map(
-          (err) => err.message
-        );
+        const validationErrors = Object.values(error.errors).map((err) => ({
+          field: err.path,
+          message: err.message,
+          value: err.value,
+        }));
+
         return res.status(400).json({
           success: false,
           message: "Validation failed",
           errors: validationErrors,
+          code: "MONGOOSE_VALIDATION_ERROR",
         });
       }
 
       if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
         return res.status(400).json({
           success: false,
-          message:
-            "A party with this phone number already exists in this company",
+          message: `Duplicate ${field}: A party with this ${field} already exists`,
+          code: "DUPLICATE_ENTRY",
+          field,
         });
       }
 
       res.status(500).json({
         success: false,
         message: "Error creating party",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
-  // ✅ NEW: Enhanced party creation with automatic linking
-  async createPartyWithLinking(req, res) {
-    try {
-      // Use the same logic as createParty but with enhanced auto-linking
-      await partyController.createParty(req, res);
-    } catch (error) {
-      console.error("❌ Error in createPartyWithLinking:", error);
-      res.status(500).json({
-        success: false,
-        message: "Error creating party with linking",
-        error: error.message,
-      });
-    }
-  },
-
-  // ✅ ENHANCED: updateParty with linking support
   async updateParty(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {id} = req.params;
-      const updateData = req.body;
+      const sanitizedUpdateData = sanitizeInput(req.body);
 
       const userId = req.user?.id || req.user?._id;
       const companyId =
@@ -371,6 +466,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -378,6 +474,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -385,6 +482,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Invalid party ID format",
+          code: "INVALID_PARTY_ID",
         });
       }
 
@@ -403,58 +501,71 @@ const partyController = {
         return res.status(404).json({
           success: false,
           message: "Party not found",
+          code: "PARTY_NOT_FOUND",
         });
       }
 
-      // ✅ NEW: Validate linked company if being updated
-      if (updateData.linkedCompanyId) {
-        if (!mongoose.Types.ObjectId.isValid(updateData.linkedCompanyId)) {
+      const changes = {};
+      Object.keys(sanitizedUpdateData).forEach((key) => {
+        if (sanitizedUpdateData[key] !== existingParty[key]) {
+          changes[key] = {
+            old: existingParty[key],
+            new: sanitizedUpdateData[key],
+          };
+        }
+      });
+
+      if (sanitizedUpdateData.linkedCompanyId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(sanitizedUpdateData.linkedCompanyId)
+        ) {
           return res.status(400).json({
             success: false,
             message: "Invalid linked company ID format",
+            code: "INVALID_LINKED_COMPANY_ID",
           });
         }
 
         const linkedCompanyObjectId = new mongoose.Types.ObjectId(
-          updateData.linkedCompanyId
+          sanitizedUpdateData.linkedCompanyId
         );
-
-        // Verify linked company exists
         const linkedCompany = await Company.findById(linkedCompanyObjectId);
+
         if (!linkedCompany) {
           return res.status(400).json({
             success: false,
             message: "Linked company not found",
+            code: "LINKED_COMPANY_NOT_FOUND",
           });
         }
 
-        // Prevent linking to same company
         if (linkedCompanyObjectId.toString() === companyObjectId.toString()) {
           return res.status(400).json({
             success: false,
             message: "Cannot link party to their own company",
+            code: "SELF_LINKING_NOT_ALLOWED",
           });
         }
 
-        updateData.linkedCompanyId = linkedCompanyObjectId;
+        sanitizedUpdateData.linkedCompanyId = linkedCompanyObjectId;
       }
 
-      // Validate phone number if being updated
       if (
-        updateData.phoneNumber &&
-        updateData.phoneNumber !== existingParty.phoneNumber
+        sanitizedUpdateData.phoneNumber &&
+        sanitizedUpdateData.phoneNumber !== existingParty.phoneNumber
       ) {
         const phoneRegex = /^[6-9]\d{9}$/;
-        if (!phoneRegex.test(updateData.phoneNumber.trim())) {
+        if (!phoneRegex.test(sanitizedUpdateData.phoneNumber.trim())) {
           return res.status(400).json({
             success: false,
             message:
               "Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9",
+            code: "INVALID_PHONE_FORMAT",
           });
         }
 
         const phoneConflict = await Party.findOne({
-          phoneNumber: updateData.phoneNumber,
+          phoneNumber: sanitizedUpdateData.phoneNumber,
           companyId: companyObjectId,
           _id: {$ne: id},
           isActive: true,
@@ -465,120 +576,121 @@ const partyController = {
             success: false,
             message:
               "A party with this phone number already exists in this company",
+            code: "DUPLICATE_PHONE_NUMBER",
           });
         }
       }
 
-      // Validate email if provided
-      if (updateData.email?.trim()) {
+      if (sanitizedUpdateData.email?.trim()) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(updateData.email.trim())) {
+        if (!emailRegex.test(sanitizedUpdateData.email.trim())) {
           return res.status(400).json({
             success: false,
             message: "Please provide a valid email address",
+            code: "INVALID_EMAIL_FORMAT",
           });
         }
       }
 
-      // Validate GST number if being updated
       if (
-        updateData.gstNumber?.trim() &&
-        updateData.gstType !== "unregistered"
+        sanitizedUpdateData.gstNumber?.trim() &&
+        sanitizedUpdateData.gstType !== "unregistered"
       ) {
         const gstRegex =
           /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-        if (!gstRegex.test(updateData.gstNumber.trim().toUpperCase())) {
+        if (
+          !gstRegex.test(sanitizedUpdateData.gstNumber.trim().toUpperCase())
+        ) {
           return res.status(400).json({
             success: false,
             message:
               "Please provide a valid GST number format (e.g., 22AAAAA0000A1Z5)",
+            code: "INVALID_GST_FORMAT",
           });
         }
       }
 
-      if (updateData.creditLimit !== undefined && updateData.creditLimit < 0) {
+      if (
+        sanitizedUpdateData.creditLimit !== undefined &&
+        sanitizedUpdateData.creditLimit < 0
+      ) {
         return res.status(400).json({
           success: false,
           message: "Credit limit cannot be negative",
+          code: "NEGATIVE_CREDIT_LIMIT",
         });
       }
 
       if (
-        updateData.openingBalance !== undefined &&
-        updateData.openingBalance < 0
+        sanitizedUpdateData.openingBalance !== undefined &&
+        sanitizedUpdateData.openingBalance < 0
       ) {
         return res.status(400).json({
           success: false,
           message: "Opening balance cannot be negative",
+          code: "NEGATIVE_OPENING_BALANCE",
         });
       }
 
       const updatedPartyData = {
-        ...updateData,
+        ...sanitizedUpdateData,
         updatedAt: new Date(),
         updatedBy: new mongoose.Types.ObjectId(userId),
       };
 
-      // Handle address data
-      if (updateData.homeAddressLine !== undefined) {
+      if (sanitizedUpdateData.homeAddressLine !== undefined) {
         updatedPartyData.homeAddress = {
-          addressLine: updateData.homeAddressLine || "",
-          pincode: updateData.homePincode || "",
-          state: updateData.homeState || "",
-          district: updateData.homeDistrict || "",
-          taluka: updateData.homeTaluka || "",
+          addressLine: sanitizedUpdateData.homeAddressLine || "",
+          pincode: sanitizedUpdateData.homePincode || "",
+          state: sanitizedUpdateData.homeState || "",
+          district: sanitizedUpdateData.homeDistrict || "",
+          taluka: sanitizedUpdateData.homeTaluka || "",
         };
       }
 
-      if (updateData.sameAsHomeAddress) {
+      if (sanitizedUpdateData.sameAsHomeAddress) {
         updatedPartyData.deliveryAddress = updatedPartyData.homeAddress;
-      } else if (updateData.deliveryAddressLine !== undefined) {
+      } else if (sanitizedUpdateData.deliveryAddressLine !== undefined) {
         updatedPartyData.deliveryAddress = {
-          addressLine: updateData.deliveryAddressLine || "",
-          pincode: updateData.deliveryPincode || "",
-          state: updateData.deliveryState || "",
-          district: updateData.deliveryDistrict || "",
-          taluka: updateData.deliveryTaluka || "",
+          addressLine: sanitizedUpdateData.deliveryAddressLine || "",
+          pincode: sanitizedUpdateData.deliveryPincode || "",
+          state: sanitizedUpdateData.deliveryState || "",
+          district: sanitizedUpdateData.deliveryDistrict || "",
+          taluka: sanitizedUpdateData.deliveryTaluka || "",
         };
       }
 
-      // Handle GST number
-      if (updateData.gstType === "unregistered") {
+      if (sanitizedUpdateData.gstType === "unregistered") {
         updatedPartyData.gstNumber = "";
-      } else if (updateData.gstNumber) {
-        updatedPartyData.gstNumber = updateData.gstNumber.trim().toUpperCase();
+      } else if (sanitizedUpdateData.gstNumber) {
+        updatedPartyData.gstNumber = sanitizedUpdateData.gstNumber
+          .trim()
+          .toUpperCase();
       }
 
-      // ✅ NEW: Handle linking field updates
-      if (updateData.linkedCompanyId && updateData.partyType === "supplier") {
+      if (
+        sanitizedUpdateData.linkedCompanyId &&
+        sanitizedUpdateData.partyType === "supplier"
+      ) {
         updatedPartyData.isLinkedSupplier = true;
         if (updatedPartyData.enableBidirectionalOrders === undefined) {
           updatedPartyData.enableBidirectionalOrders = true;
         }
       }
 
-      // Handle date fields
-      if (updateData.incorporationDate) {
+      if (sanitizedUpdateData.incorporationDate) {
         updatedPartyData.incorporationDate = new Date(
-          updateData.incorporationDate
+          sanitizedUpdateData.incorporationDate
         );
       }
-      if (updateData.importedAt) {
-        updatedPartyData.importedAt = new Date(updateData.importedAt);
+      if (sanitizedUpdateData.importedAt) {
+        updatedPartyData.importedAt = new Date(sanitizedUpdateData.importedAt);
       }
 
-      // Remove undefined fields
       Object.keys(updatedPartyData).forEach((key) => {
         if (updatedPartyData[key] === undefined) {
           delete updatedPartyData[key];
         }
-      });
-
-      console.log("📝 Updating party with linking data:", {
-        partyId: id,
-        linkedCompanyId: updatedPartyData.linkedCompanyId,
-        isLinkedSupplier: updatedPartyData.isLinkedSupplier,
-        enableBidirectionalOrders: updatedPartyData.enableBidirectionalOrders,
       });
 
       const updatedParty = await Party.findByIdAndUpdate(id, updatedPartyData, {
@@ -586,10 +698,29 @@ const partyController = {
         runValidators: true,
       });
 
-      // ✅ NEW: Enhanced response with linking information
+      await createAuditLog({
+        userId: new mongoose.Types.ObjectId(userId),
+        action: "PARTY_UPDATED",
+        resourceType: "Party",
+        resourceId: updatedParty._id,
+        details: {
+          changes,
+          partyName: updatedParty.name,
+          partyType: updatedParty.partyType,
+          linkedCompanyId: updatedParty.linkedCompanyId,
+          updatedFields: Object.keys(changes),
+        },
+        severity: "low",
+        ipAddress: clientIp,
+        userAgent: req.get("User-Agent"),
+        companyId: companyObjectId,
+      });
+
       const linkingInfo = {
         hasLinkedCompany: !!updatedParty.linkedCompanyId,
-        bidirectionalOrdersReady: updatedParty.isBidirectionalOrderReady(),
+        bidirectionalOrdersReady: updatedParty.isBidirectionalOrderReady
+          ? updatedParty.isBidirectionalOrderReady()
+          : false,
         linkedCompanyId: updatedParty.linkedCompanyId,
         autoLinkingEnabled: {
           byGST: updatedParty.autoLinkByGST,
@@ -597,6 +728,18 @@ const partyController = {
           byEmail: updatedParty.autoLinkByEmail,
         },
       };
+
+      logger.info("Party updated successfully", {
+        partyId: updatedParty._id,
+        partyName: updatedParty.name,
+        changesCount: Object.keys(changes).length,
+        linkedCompanyId: updatedParty.linkedCompanyId,
+        bidirectionalOrdersReady: linkingInfo.bidirectionalOrdersReady,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
+      });
 
       res.json({
         success: true,
@@ -612,57 +755,79 @@ const partyController = {
               )
             : null,
         },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+          changesApplied: Object.keys(changes).length,
+        },
       });
     } catch (error) {
-      console.error("❌ Error updating party:", error);
+      logger.error("Party update failed", {
+        error: error.message,
+        stack: error.stack,
+        partyId: req.params.id,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
+      if (req.user?.id) {
+        await createAuditLog({
+          userId: req.user.id,
+          action: "PARTY_UPDATE_FAILED",
+          resourceType: "Party",
+          resourceId: req.params.id,
+          details: {
+            error: error.message,
+            updateData: Object.keys(req.body),
+          },
+          severity: "medium",
+          ipAddress: clientIp,
+          companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        });
+      }
 
       if (error.name === "ValidationError") {
-        const validationErrors = Object.values(error.errors).map(
-          (err) => err.message
-        );
+        const validationErrors = Object.values(error.errors).map((err) => ({
+          field: err.path,
+          message: err.message,
+          value: err.value,
+        }));
+
         return res.status(400).json({
           success: false,
           message: "Validation failed",
           errors: validationErrors,
+          code: "MONGOOSE_VALIDATION_ERROR",
         });
       }
 
       if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
         return res.status(400).json({
           success: false,
-          message:
-            "A party with this information already exists in this company",
+          message: `Duplicate ${field}: A party with this ${field} already exists`,
+          code: "DUPLICATE_ENTRY",
+          field,
         });
       }
 
       res.status(500).json({
         success: false,
         message: "Error updating party",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
-  // ✅ NEW: Enhanced update with linking
-  async updatePartyWithLinking(req, res) {
-    try {
-      // Use the same logic as updateParty
-      await partyController.updateParty(req, res);
-    } catch (error) {
-      console.error("❌ Error in updatePartyWithLinking:", error);
-      res.status(500).json({
-        success: false,
-        message: "Error updating party with linking",
-        error: error.message,
-      });
-    }
-  },
-
-  // ✅ NEW: Link supplier to company
   async linkSupplierToCompany(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {supplierId, companyId: targetCompanyId} = req.body;
-
       const userId = req.user?.id || req.user?._id;
       const companyId = req.user?.currentCompany || req.headers["x-company-id"];
 
@@ -670,6 +835,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "Authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -677,6 +843,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Supplier ID and target company ID are required",
+          code: "MISSING_REQUIRED_FIELDS",
         });
       }
 
@@ -691,6 +858,7 @@ const partyController = {
         return res.status(404).json({
           success: false,
           message: "Supplier not found",
+          code: "SUPPLIER_NOT_FOUND",
         });
       }
 
@@ -699,14 +867,15 @@ const partyController = {
         return res.status(404).json({
           success: false,
           message: "Target company not found",
+          code: "TARGET_COMPANY_NOT_FOUND",
         });
       }
 
-      // Prevent linking to same company
       if (targetCompanyId === companyId) {
         return res.status(400).json({
           success: false,
           message: "Cannot link supplier to their own company",
+          code: "SELF_LINKING_NOT_ALLOWED",
         });
       }
 
@@ -717,30 +886,70 @@ const partyController = {
 
       await supplier.save();
 
+      await createAuditLog({
+        userId: new mongoose.Types.ObjectId(userId),
+        action: "SUPPLIER_LINKED_TO_COMPANY",
+        resourceType: "Party",
+        resourceId: supplier._id,
+        details: {
+          supplierId,
+          targetCompanyId,
+          targetCompanyName: targetCompany.businessName,
+        },
+        severity: "medium",
+        ipAddress: clientIp,
+        companyId: new mongoose.Types.ObjectId(companyId),
+      });
+
+      logger.info("Supplier linked to company successfully", {
+        supplierId,
+        targetCompanyId,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+      });
+
       res.json({
         success: true,
         message: "Supplier linked to company successfully",
         data: {
           supplier,
           linkedCompany: targetCompany,
-          bidirectionalOrdersReady: supplier.isBidirectionalOrderReady(),
+          bidirectionalOrdersReady: supplier.isBidirectionalOrderReady
+            ? supplier.isBidirectionalOrderReady()
+            : false,
+        },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
         },
       });
     } catch (error) {
-      console.error("❌ Error linking supplier to company:", error);
+      logger.error("Error linking supplier to company", {
+        error: error.message,
+        stack: error.stack,
+        supplierId: req.body.supplierId,
+        targetCompanyId: req.body.companyId,
+        userId: req.user?.id,
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error linking supplier to company",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
-  // ✅ NEW: Get suppliers with linked companies
   async getSuppliersWithLinkedCompanies(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {page = 1, limit = 10, search = ""} = req.query;
-
       const userId = req.user?.id || req.user?._id;
       const companyId = req.user?.currentCompany || req.headers["x-company-id"];
 
@@ -748,6 +957,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "Authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -779,6 +989,15 @@ const partyController = {
         ...filters,
       });
 
+      logger.info("Linked suppliers retrieved successfully", {
+        userId,
+        companyId,
+        totalRetrieved: suppliers.length,
+        totalAvailable: total,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
+      });
+
       res.json({
         success: true,
         message: "Linked suppliers retrieved successfully",
@@ -792,21 +1011,36 @@ const partyController = {
             hasPrevPage: parseInt(page) > 1,
           },
         },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
-      console.error("❌ Error getting linked suppliers:", error);
+      logger.error("Error getting linked suppliers", {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error retrieving linked suppliers",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
   async createQuickParty(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {name, phone, type = "customer"} = req.body;
-
       const userId = req.user?.id || req.user?._id;
       const companyId =
         req.user?.currentCompany ||
@@ -818,6 +1052,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -825,6 +1060,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -832,6 +1068,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Name and phone number are required",
+          code: "MISSING_REQUIRED_FIELDS",
         });
       }
 
@@ -841,6 +1078,7 @@ const partyController = {
           success: false,
           message:
             "Please provide a valid 10-digit phone number starting with 6, 7, 8, or 9",
+          code: "INVALID_PHONE_FORMAT",
         });
       }
 
@@ -857,6 +1095,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: `A party with phone number ${phone.trim()} already exists in this company`,
+          code: "DUPLICATE_PHONE_NUMBER",
         });
       }
 
@@ -895,12 +1134,50 @@ const partyController = {
       const newParty = new Party(quickPartyData);
       await newParty.save();
 
+      await createAuditLog({
+        userId: userObjectId,
+        action: "QUICK_PARTY_CREATED",
+        resourceType: "Party",
+        resourceId: newParty._id,
+        details: {
+          partyType: newParty.partyType,
+          name: newParty.name,
+          phoneNumber: newParty.phoneNumber,
+        },
+        severity: "low",
+        ipAddress: clientIp,
+        companyId: companyObjectId,
+      });
+
+      logger.info("Quick party created successfully", {
+        partyId: newParty._id,
+        partyName: newParty.name,
+        partyType: newParty.partyType,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
+      });
+
       res.status(201).json({
         success: true,
         message: "Quick party created successfully",
         data: newParty,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
+      logger.error("Quick party creation failed", {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        requestBody: {...req.body, phone: "[REDACTED]"},
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       if (error.name === "ValidationError") {
         const validationErrors = Object.values(error.errors).map(
           (err) => err.message
@@ -909,6 +1186,7 @@ const partyController = {
           success: false,
           message: "Validation failed",
           errors: validationErrors,
+          code: "VALIDATION_ERROR",
         });
       }
 
@@ -917,13 +1195,15 @@ const partyController = {
           success: false,
           message:
             "A party with this phone number already exists in this company",
+          code: "DUPLICATE_PHONE_NUMBER",
         });
       }
 
       res.status(500).json({
         success: false,
         message: "Error creating quick party",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
@@ -940,6 +1220,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company ID is required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -970,17 +1251,31 @@ const partyController = {
               phoneNumber: existingParty.phoneNumber,
             }
           : null,
+        metadata: {
+          timestamp: new Date().toISOString(),
+        },
       });
     } catch (error) {
+      logger.error("Error checking phone number", {
+        error: error.message,
+        phoneNumber: req.params.phoneNumber,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+      });
+
       res.status(500).json({
         success: false,
         message: "Error checking phone number",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
   async getAllParties(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {
         page = 1,
@@ -990,10 +1285,6 @@ const partyController = {
         sortBy = "createdAt",
         sortOrder = "desc",
         includeLinked = false,
-        includeChatFields = false,
-        includeCompanyData = false,
-        populateLinkedCompany = false,
-        showAllParties = false, // ✅ NEW: Parameter to show all parties
       } = req.query;
 
       const userId = req.user?.id || req.user?._id;
@@ -1007,6 +1298,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -1014,6 +1306,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -1022,13 +1315,11 @@ const partyController = {
           ? new mongoose.Types.ObjectId(companyId)
           : companyId;
 
-      // ✅ FIXED: Base filter - show ALL parties for this company
       const filter = {
         isActive: true,
         companyId: companyObjectId,
       };
 
-      // ✅ FIXED: Only add search filters if provided
       if (search && search.trim()) {
         filter.$or = [
           {name: {$regex: search.trim(), $options: "i"}},
@@ -1039,12 +1330,10 @@ const partyController = {
         ];
       }
 
-      // ✅ FIXED: Only filter by party type if specified
       if (type && type !== "all") {
         filter.partyType = type;
       }
 
-      // ✅ FIXED: Only filter for linked companies if explicitly requested
       if (includeLinked === "true") {
         filter.isLinkedSupplier = true;
         filter.linkedCompanyId = {$exists: true, $ne: null};
@@ -1055,17 +1344,6 @@ const partyController = {
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      console.log("🔄 Fetching parties with filter:", {
-        filter,
-        sort,
-        skip,
-        limit: parseInt(limit),
-        includeLinked: includeLinked === "true",
-        populateLinkedCompany: populateLinkedCompany === "true",
-        showAllParties: showAllParties === "true",
-      });
-
-      // ✅ FIXED: Always populate linked company information (will be null for unlinked parties)
       const parties = await Party.find(filter)
         .populate(
           "linkedCompanyId",
@@ -1078,58 +1356,39 @@ const partyController = {
 
       const total = await Party.countDocuments(filter);
 
-      // ✅ FIXED: Process ALL parties and add comprehensive linking information
-      const partiesWithLinkingInfo = parties.map((party) => {
-        const enhanced = {
-          ...party,
-          // ✅ FIXED: Chat capability based on any type of company linking
-          canChat: !!(party.linkedCompanyId || party.externalCompanyId),
-          chatCompanyId:
-            party.linkedCompanyId?._id || party.externalCompanyId || null,
-          chatCompanyName: party.linkedCompanyId?.businessName || null,
-          bidirectionalOrderReady: !!(
-            party.linkedCompanyId &&
-            party.isLinkedSupplier &&
-            party.enableBidirectionalOrders &&
-            party.partyType === "supplier"
-          ),
-          // ✅ NEW: Enhanced linking status
-          linkingStatus: party.linkedCompanyId
-            ? "linked"
-            : party.externalCompanyId
-            ? "external"
-            : "unlinked",
-          hasLinkedCompany: !!party.linkedCompanyId,
-          hasExternalCompany: !!party.externalCompanyId,
-          isUnlinked: !party.linkedCompanyId && !party.externalCompanyId,
-        };
+      const partiesWithLinkingInfo = parties.map((party) => ({
+        ...party,
+        canChat: !!(party.linkedCompanyId || party.externalCompanyId),
+        chatCompanyId:
+          party.linkedCompanyId?._id || party.externalCompanyId || null,
+        chatCompanyName: party.linkedCompanyId?.businessName || null,
+        bidirectionalOrderReady: !!(
+          party.linkedCompanyId &&
+          party.isLinkedSupplier &&
+          party.enableBidirectionalOrders &&
+          party.partyType === "supplier"
+        ),
+        linkingStatus: party.linkedCompanyId
+          ? "linked"
+          : party.externalCompanyId
+          ? "external"
+          : "unlinked",
+        hasLinkedCompany: !!party.linkedCompanyId,
+        hasExternalCompany: !!party.externalCompanyId,
+        isUnlinked: !party.linkedCompanyId && !party.externalCompanyId,
+      }));
 
-        return enhanced;
-      });
-
-      // ✅ FIXED: Comprehensive statistics for all party types
-      const linkedParties = partiesWithLinkingInfo.filter(
-        (p) => p.linkedCompanyId
-      );
-      const externalParties = partiesWithLinkingInfo.filter(
-        (p) => p.externalCompanyId && !p.linkedCompanyId
-      );
-      const unlinkedParties = partiesWithLinkingInfo.filter(
-        (p) => !p.linkedCompanyId && !p.externalCompanyId
-      );
-      const chatEnabledParties = partiesWithLinkingInfo.filter(
-        (p) => p.canChat
-      );
-
-      console.log(`✅ Retrieved ALL parties with comprehensive linking info:`, {
+      const stats = {
         total: partiesWithLinkingInfo.length,
-        breakdown: {
-          linked: linkedParties.length,
-          external: externalParties.length,
-          unlinked: unlinkedParties.length,
-          chatEnabled: chatEnabledParties.length,
-        },
-        partyTypes: {
+        linked: partiesWithLinkingInfo.filter((p) => p.linkedCompanyId).length,
+        external: partiesWithLinkingInfo.filter(
+          (p) => p.externalCompanyId && !p.linkedCompanyId
+        ).length,
+        unlinked: partiesWithLinkingInfo.filter(
+          (p) => !p.linkedCompanyId && !p.externalCompanyId
+        ).length,
+        chatEnabled: partiesWithLinkingInfo.filter((p) => p.canChat).length,
+        byType: {
           customers: partiesWithLinkingInfo.filter(
             (p) => p.partyType === "customer"
           ).length,
@@ -1140,7 +1399,16 @@ const partyController = {
             (p) => p.partyType === "vendor"
           ).length,
         },
-        filter: filter,
+      };
+
+      logger.info("Parties list retrieved successfully", {
+        userId,
+        companyId,
+        totalRetrieved: partiesWithLinkingInfo.length,
+        totalAvailable: total,
+        stats,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
       });
 
       res.json({
@@ -1155,51 +1423,40 @@ const partyController = {
             hasNextPage: parseInt(page) < Math.ceil(total / parseInt(limit)),
             hasPrevPage: parseInt(page) > 1,
           },
-          // ✅ NEW: Enhanced summary information
-          summary: {
-            total: partiesWithLinkingInfo.length,
-            linked: linkedParties.length,
-            external: externalParties.length,
-            unlinked: unlinkedParties.length,
-            chatEnabled: chatEnabledParties.length,
-            byType: {
-              customers: partiesWithLinkingInfo.filter(
-                (p) => p.partyType === "customer"
-              ).length,
-              suppliers: partiesWithLinkingInfo.filter(
-                (p) => p.partyType === "supplier"
-              ).length,
-              vendors: partiesWithLinkingInfo.filter(
-                (p) => p.partyType === "vendor"
-              ).length,
-            },
-            linking: {
-              linkedSuppliers: linkedParties.filter(
-                (p) => p.partyType === "supplier"
-              ).length,
-              bidirectionalReady: partiesWithLinkingInfo.filter(
-                (p) => p.bidirectionalOrderReady
-              ).length,
-              chatCapable: chatEnabledParties.length,
-            },
-          },
+          summary: stats,
+        },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+          version: "2.0.0",
         },
       });
     } catch (error) {
-      console.error("❌ Error fetching parties:", error);
+      logger.error("Failed to retrieve parties list", {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        query: req.query,
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error fetching parties",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
-  // ✅ FIXED: getPartyById method
+
   async getPartyById(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {id} = req.params;
-      const {includeChatFields} = req.query;
-
       const userId = req.user?.id || req.user?._id;
       const companyId =
         req.user?.currentCompany ||
@@ -1210,6 +1467,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -1217,6 +1475,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -1224,6 +1483,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Invalid party ID format",
+          code: "INVALID_PARTY_ID",
         });
       }
 
@@ -1232,7 +1492,6 @@ const partyController = {
           ? new mongoose.Types.ObjectId(companyId)
           : companyId;
 
-      // ✅ FIXED: Always populate linkedCompanyId field
       const party = await Party.findOne({
         _id: id,
         companyId: companyObjectId,
@@ -1242,16 +1501,16 @@ const partyController = {
           "linkedCompanyId",
           "businessName gstin phoneNumber email isActive"
         )
-        .lean(); // Use lean() for better performance
+        .lean();
 
       if (!party) {
         return res.status(404).json({
           success: false,
           message: "Party not found",
+          code: "PARTY_NOT_FOUND",
         });
       }
 
-      // ✅ FIXED: Enhance with chat capability info
       const enhancedParty = {
         ...party,
         canChat: !!(party.linkedCompanyId || party.externalCompanyId),
@@ -1265,34 +1524,52 @@ const partyController = {
         ),
       };
 
-      console.log("✅ Party retrieved with linking info:", {
+      logger.info("Party retrieved successfully", {
         partyId: party._id,
         partyName: party.name,
         linkedCompanyId: party.linkedCompanyId?._id,
-        linkedCompanyName: party.linkedCompanyId?.businessName,
         canChat: enhancedParty.canChat,
-        chatCompanyId: enhancedParty.chatCompanyId,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
       });
 
       res.json({
         success: true,
         message: "Party retrieved successfully",
         data: enhancedParty,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
-      console.error("❌ Error fetching party:", error);
+      logger.error("Error fetching party", {
+        error: error.message,
+        stack: error.stack,
+        partyId: req.params.id,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error fetching party",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
   async deleteParty(req, res) {
+    const startTime = Date.now();
+    const clientIp = req.ip || req.connection.remoteAddress;
+
     try {
       const {id} = req.params;
-
       const userId = req.user?.id || req.user?._id;
       const companyId =
         req.user?.currentCompany ||
@@ -1303,6 +1580,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -1310,6 +1588,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -1317,6 +1596,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Invalid party ID format",
+          code: "INVALID_PARTY_ID",
         });
       }
 
@@ -1344,28 +1624,69 @@ const partyController = {
         return res.status(404).json({
           success: false,
           message: "Party not found",
+          code: "PARTY_NOT_FOUND",
         });
       }
+
+      await createAuditLog({
+        userId: new mongoose.Types.ObjectId(userId),
+        action: "PARTY_DELETED",
+        resourceType: "Party",
+        resourceId: party._id,
+        details: {
+          partyName: party.name,
+          partyType: party.partyType,
+          phoneNumber: party.phoneNumber,
+        },
+        severity: "medium",
+        ipAddress: clientIp,
+        companyId: companyObjectId,
+      });
+
+      logger.info("Party deleted successfully", {
+        partyId: party._id,
+        partyName: party.name,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+        ip: clientIp,
+      });
 
       res.json({
         success: true,
         message: "Party deleted successfully",
         data: null,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
+      logger.error("Error deleting party", {
+        error: error.message,
+        stack: error.stack,
+        partyId: req.params.id,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        ip: clientIp,
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error deleting party",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
 
   async searchParties(req, res) {
+    const startTime = Date.now();
+
     try {
       const {query} = req.params;
       const {type, limit = 10} = req.query;
-
       const userId = req.user?.id || req.user?._id;
       const companyId =
         req.user?.currentCompany ||
@@ -1376,6 +1697,7 @@ const partyController = {
         return res.status(401).json({
           success: false,
           message: "User authentication required",
+          code: "AUTHENTICATION_REQUIRED",
         });
       }
 
@@ -1383,6 +1705,7 @@ const partyController = {
         return res.status(400).json({
           success: false,
           message: "Company selection required",
+          code: "COMPANY_REQUIRED",
         });
       }
 
@@ -1391,6 +1714,9 @@ const partyController = {
           success: true,
           message: "Search query too short",
           data: [],
+          metadata: {
+            timestamp: new Date().toISOString(),
+          },
         });
       }
 
@@ -1423,20 +1749,41 @@ const partyController = {
         .limit(parseInt(limit))
         .lean();
 
+      logger.info("Party search completed", {
+        query,
+        resultsCount: parties.length,
+        userId,
+        companyId,
+        responseTime: Date.now() - startTime,
+      });
+
       res.json({
         success: true,
         message: "Search results retrieved successfully",
         data: parties,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          responseTime: Date.now() - startTime,
+        },
       });
     } catch (error) {
+      logger.error("Error searching parties", {
+        error: error.message,
+        stack: error.stack,
+        query: req.params.query,
+        userId: req.user?.id,
+        companyId: req.user?.currentCompany || req.headers["x-company-id"],
+        responseTime: Date.now() - startTime,
+      });
+
       res.status(500).json({
         success: false,
         message: "Error searching parties",
-        error: error.message,
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       });
     }
   },
-
   async getPartyStats(req, res) {
     try {
       const userId = req.user?.id || req.user?._id;

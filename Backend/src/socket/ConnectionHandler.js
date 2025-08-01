@@ -3,45 +3,64 @@ class ConnectionHandler {
     this.connections = new Map(); // socketId -> connection info
     this.userConnections = new Map(); // userId -> Set of socketIds
     this.roomConnections = new Map(); // roomId -> Set of socketIds
+    this.companyConnections = new Map(); // companyId -> Set of socketIds
   }
 
-  // ✅ FIXED: Add a new connection with proper user data handling
-  addConnection(userId, socket) {
+  addConnection(socket, userData = null) {
     try {
-      // ✅ FIX: Handle user data properly with correct field names
-      const userInfo = {
-        userId: userId,
-        username: socket.user?.username || socket.user?.name || "Unknown User",
-        fullName: socket.user?.fullName || socket.user?.name || "Unknown User",
-        name: socket.user?.name || "Unknown User",
+      const effectiveUserData = userData || {
+        userId: socket.userId,
+        username: socket.user?.username || socket.user?.name,
+        companyId: socket.companyId,
+        companyName: socket.company?.businessName || socket.company?.name,
         email: socket.user?.email,
-        companyId: socket.companyId?.toString(),
-        companyName: socket.company?.businessName || "Unknown Company",
+      };
+
+      if (
+        !effectiveUserData ||
+        !effectiveUserData.userId ||
+        !effectiveUserData.companyId
+      ) {
+        return false;
+      }
+
+      const {userId, username, companyId, companyName, email} =
+        effectiveUserData;
+
+      const userInfo = {
+        userId: userId.toString(),
+        username: username || "Unknown User",
+        fullName: username || "Unknown User",
+        name: username || "Unknown User",
+        email: email || null,
+        companyId: companyId.toString(),
+        companyName: companyName || "Unknown Company",
         connectedAt: new Date(),
       };
 
       const connectionInfo = {
         socketId: socket.id,
-        userId: userId,
-        companyId: socket.companyId?.toString(),
+        userId: userId.toString(),
+        companyId: companyId.toString(),
         userInfo: userInfo,
         connectedAt: new Date(),
         lastActivity: new Date(),
         rooms: new Set(),
         socket: socket,
+        isActive: true,
       };
 
       this.connections.set(socket.id, connectionInfo);
 
-      // Track user connections
-      if (!this.userConnections.has(userId)) {
-        this.userConnections.set(userId, new Set());
+      if (!this.userConnections.has(userId.toString())) {
+        this.userConnections.set(userId.toString(), new Set());
       }
-      this.userConnections.get(userId).add(socket.id);
+      this.userConnections.get(userId.toString()).add(socket.id);
 
-      console.log(
-        `✅ User ${userInfo.username} (${userId}) from company ${userInfo.companyName} authenticated on socket ${socket.id}`
-      );
+      if (!this.companyConnections.has(companyId.toString())) {
+        this.companyConnections.set(companyId.toString(), new Set());
+      }
+      this.companyConnections.get(companyId.toString()).add(socket.id);
 
       return true;
     } catch (error) {
@@ -50,36 +69,35 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Remove a connection with better logging
-  removeConnection(userId) {
+  removeConnection(socketId) {
     try {
-      // Find all sockets for this user
-      const userSocketIds = this.userConnections.get(userId);
+      const connectionInfo = this.connections.get(socketId);
 
-      if (userSocketIds) {
-        userSocketIds.forEach((socketId) => {
-          const connectionInfo = this.connections.get(socketId);
-
-          if (connectionInfo) {
-            // Remove from rooms
-            connectionInfo.rooms.forEach((roomId) => {
-              this.leaveRoom(socketId, roomId);
-            });
-
-            // Remove the connection
-            this.connections.delete(socketId);
-
-            console.log(
-              `👋 User ${
-                connectionInfo.userInfo?.username || userId
-              } disconnected from socket ${socketId}`
-            );
-          }
-        });
-
-        // Remove user from userConnections
-        this.userConnections.delete(userId);
+      if (!connectionInfo) {
+        return false;
       }
+
+      const {userId, companyId} = connectionInfo;
+
+      this.connections.delete(socketId);
+
+      if (this.userConnections.has(userId)) {
+        this.userConnections.get(userId).delete(socketId);
+        if (this.userConnections.get(userId).size === 0) {
+          this.userConnections.delete(userId);
+        }
+      }
+
+      if (this.companyConnections.has(companyId)) {
+        this.companyConnections.get(companyId).delete(socketId);
+        if (this.companyConnections.get(companyId).size === 0) {
+          this.companyConnections.delete(companyId);
+        }
+      }
+
+      connectionInfo.rooms.forEach((roomId) => {
+        this.leaveRoom(socketId, roomId);
+      });
 
       return true;
     } catch (error) {
@@ -88,109 +106,69 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Remove connection by socketId (alternative method)
-  removeConnectionBySocketId(socketId) {
+  removeConnectionByUserId(userId) {
     try {
-      const connectionInfo = this.connections.get(socketId);
+      const userSocketIds = this.userConnections.get(userId.toString());
 
-      if (connectionInfo) {
-        const {userId, userInfo} = connectionInfo;
-
-        // Remove from user connections
-        if (this.userConnections.has(userId)) {
-          this.userConnections.get(userId).delete(socketId);
-
-          // If no more connections for this user, remove the user entry
-          if (this.userConnections.get(userId).size === 0) {
-            this.userConnections.delete(userId);
-          }
-        }
-
-        // Remove from rooms
-        connectionInfo.rooms.forEach((roomId) => {
-          this.leaveRoom(socketId, roomId);
+      if (userSocketIds) {
+        userSocketIds.forEach((socketId) => {
+          this.removeConnection(socketId);
         });
-
-        // Remove the connection
-        this.connections.delete(socketId);
-
-        console.log(
-          `👋 Connection removed: ${socketId} for user ${
-            userInfo?.username || userId
-          }`
-        );
         return true;
       }
 
       return false;
     } catch (error) {
-      console.error("Error removing connection by socket ID:", error);
+      console.error("Error removing connection by user ID:", error);
       return false;
     }
   }
 
-  // ✅ FIXED: Join a room with better validation
   joinRoom(socketId, roomId) {
     try {
       const connectionInfo = this.connections.get(socketId);
 
-      if (connectionInfo) {
-        connectionInfo.rooms.add(roomId);
-
-        // Track room connections
-        if (!this.roomConnections.has(roomId)) {
-          this.roomConnections.set(roomId, new Set());
-        }
-        this.roomConnections.get(roomId).add(socketId);
-
-        console.log(
-          `💬 Socket ${socketId} (${connectionInfo.userInfo?.username}) joined room ${roomId}`
-        );
-        return true;
+      if (!connectionInfo) {
+        return false;
       }
 
-      console.warn(
-        `⚠️ Cannot join room ${roomId}: Socket ${socketId} not found`
-      );
-      return false;
+      connectionInfo.rooms.add(roomId);
+
+      if (!this.roomConnections.has(roomId)) {
+        this.roomConnections.set(roomId, new Set());
+      }
+      this.roomConnections.get(roomId).add(socketId);
+
+      return true;
     } catch (error) {
       console.error("Error joining room:", error);
       return false;
     }
   }
 
-  // ✅ FIXED: Leave a room with better validation
   leaveRoom(socketId, roomId) {
     try {
       const connectionInfo = this.connections.get(socketId);
 
       if (connectionInfo) {
         connectionInfo.rooms.delete(roomId);
-
-        // Remove from room connections
-        if (this.roomConnections.has(roomId)) {
-          this.roomConnections.get(roomId).delete(socketId);
-
-          // If no more connections in this room, remove the room entry
-          if (this.roomConnections.get(roomId).size === 0) {
-            this.roomConnections.delete(roomId);
-          }
-        }
-
-        console.log(
-          `💬 Socket ${socketId} (${connectionInfo.userInfo?.username}) left room ${roomId}`
-        );
-        return true;
       }
 
-      return false;
+      if (this.roomConnections.has(roomId)) {
+        this.roomConnections.get(roomId).delete(socketId);
+
+        if (this.roomConnections.get(roomId).size === 0) {
+          this.roomConnections.delete(roomId);
+        }
+      }
+
+      return true;
     } catch (error) {
       console.error("Error leaving room:", error);
       return false;
     }
   }
 
-  // ✅ FIXED: Update last activity
   updateActivity(socketId) {
     try {
       const connectionInfo = this.connections.get(socketId);
@@ -205,10 +183,18 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get all connections for a user
+  getConnection(socketId) {
+    try {
+      return this.connections.get(socketId) || null;
+    } catch (error) {
+      console.error("Error getting connection:", error);
+      return null;
+    }
+  }
+
   getUserConnections(userId) {
     try {
-      const socketIds = this.userConnections.get(userId);
+      const socketIds = this.userConnections.get(userId.toString());
       if (!socketIds) return [];
 
       const connections = [];
@@ -226,17 +212,33 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get all socket IDs for a user
   getUserSocketIds(userId) {
     try {
-      return Array.from(this.userConnections.get(userId) || []);
+      return Array.from(this.userConnections.get(userId.toString()) || []);
     } catch (error) {
       console.error("Error getting user socket IDs:", error);
       return [];
     }
   }
 
-  // ✅ FIXED: Get all connections in a room
+  getUserSockets(userId) {
+    try {
+      const userIdStr = userId.toString();
+      const socketIds = this.userConnections.get(userIdStr);
+
+      if (!socketIds) {
+        return [];
+      }
+
+      return Array.from(socketIds)
+        .map((socketId) => this.connections.get(socketId))
+        .filter(Boolean);
+    } catch (error) {
+      console.error("Error getting user sockets:", error);
+      return [];
+    }
+  }
+
   getRoomConnections(roomId) {
     try {
       const socketIds = this.roomConnections.get(roomId);
@@ -257,7 +259,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get all socket IDs in a room
   getRoomSocketIds(roomId) {
     try {
       return Array.from(this.roomConnections.get(roomId) || []);
@@ -267,12 +268,66 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Check if user is online
+  getCompanySockets(companyId) {
+    try {
+      const companyIdStr = companyId.toString();
+      const socketIds = this.companyConnections.get(companyIdStr);
+
+      if (!socketIds) {
+        return [];
+      }
+
+      return Array.from(socketIds)
+        .map((socketId) => this.connections.get(socketId))
+        .filter(Boolean);
+    } catch (error) {
+      console.error("Error getting company sockets:", error);
+      return [];
+    }
+  }
+
+  getCompanyUsers(companyId) {
+    try {
+      const companyIdStr = companyId.toString();
+      const socketIds = this.companyConnections.get(companyIdStr);
+
+      if (!socketIds) {
+        return [];
+      }
+
+      const users = [];
+      const addedUsers = new Set();
+
+      for (const socketId of socketIds) {
+        const connection = this.connections.get(socketId);
+        if (connection && !addedUsers.has(connection.userId)) {
+          users.push({
+            userId: connection.userId,
+            username: connection.userInfo?.username,
+            fullName: connection.userInfo?.fullName,
+            companyId: connection.companyId,
+            companyName: connection.userInfo?.companyName,
+            connectedAt: connection.connectedAt,
+            lastSeen: connection.lastActivity,
+            socketId: connection.socketId,
+          });
+          addedUsers.add(connection.userId);
+        }
+      }
+
+      return users;
+    } catch (error) {
+      console.error("Error getting company users:", error);
+      return [];
+    }
+  }
+
   isUserOnline(userId) {
     try {
+      const userIdStr = userId.toString();
       return (
-        this.userConnections.has(userId) &&
-        this.userConnections.get(userId).size > 0
+        this.userConnections.has(userIdStr) &&
+        this.userConnections.get(userIdStr).size > 0
       );
     } catch (error) {
       console.error("Error checking if user is online:", error);
@@ -280,7 +335,19 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get online users count
+  isCompanyOnline(companyId) {
+    try {
+      const companyIdStr = companyId.toString();
+      return (
+        this.companyConnections.has(companyIdStr) &&
+        this.companyConnections.get(companyIdStr).size > 0
+      );
+    } catch (error) {
+      console.error("Error checking if company is online:", error);
+      return false;
+    }
+  }
+
   getOnlineUsersCount() {
     try {
       return this.userConnections.size;
@@ -290,7 +357,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get total connections count
   getTotalConnectionsCount() {
     try {
       return this.connections.size;
@@ -300,17 +366,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get connection info
-  getConnectionInfo(socketId) {
-    try {
-      return this.connections.get(socketId);
-    } catch (error) {
-      console.error("Error getting connection info:", error);
-      return null;
-    }
-  }
-
-  // ✅ FIXED: Get user info from socket
   getUserFromSocket(socketId) {
     try {
       const connectionInfo = this.connections.get(socketId);
@@ -321,7 +376,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get company info from socket
   getCompanyFromSocket(socketId) {
     try {
       const connectionInfo = this.connections.get(socketId);
@@ -332,7 +386,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get all online users with detailed info
   getOnlineUsers() {
     try {
       const onlineUsers = [];
@@ -361,7 +414,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Get active rooms with detailed info
   getActiveRooms() {
     try {
       const activeRooms = [];
@@ -381,7 +433,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ NEW: Determine room type
   getRoomType(roomId) {
     if (roomId.startsWith("company_chat_")) return "company_chat";
     if (roomId.startsWith("company_")) return "company";
@@ -389,12 +440,12 @@ class ConnectionHandler {
     return "unknown";
   }
 
-  // ✅ FIXED: Get connection statistics with better data
-  getConnectionStats() {
+  getStats() {
     try {
       return {
         totalConnections: this.connections.size,
         onlineUsers: this.userConnections.size,
+        onlineCompanies: this.companyConnections.size,
         activeRooms: this.roomConnections.size,
         connectionsByCompany: this.getConnectionsByCompany(),
         roomsByType: this.getRoomsByType(),
@@ -414,6 +465,7 @@ class ConnectionHandler {
       return {
         totalConnections: 0,
         onlineUsers: 0,
+        onlineCompanies: 0,
         activeRooms: 0,
         connectionsByCompany: {},
         roomsByType: {},
@@ -422,7 +474,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ NEW: Get connections grouped by company
   getConnectionsByCompany() {
     try {
       const stats = {};
@@ -447,7 +498,6 @@ class ConnectionHandler {
         }
       });
 
-      // Convert Set to Array for JSON serialization
       Object.values(stats).forEach((stat) => {
         stat.users = Array.from(stat.users);
       });
@@ -459,7 +509,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ NEW: Get rooms grouped by type
   getRoomsByType() {
     try {
       const stats = {
@@ -481,7 +530,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ FIXED: Clean up inactive connections
   cleanupInactiveConnections(timeoutMinutes = 30) {
     try {
       const timeout = new Date(Date.now() - timeoutMinutes * 60 * 1000);
@@ -498,18 +546,9 @@ class ConnectionHandler {
         }
       });
 
-      inactiveConnections.forEach(({socketId, userId, username}) => {
-        this.removeConnectionBySocketId(socketId);
-        console.log(
-          `🧹 Cleaned up inactive connection: ${username} (${userId}) - ${socketId}`
-        );
+      inactiveConnections.forEach(({socketId}) => {
+        this.removeConnection(socketId);
       });
-
-      if (inactiveConnections.length > 0) {
-        console.log(
-          `🧹 Cleaned up ${inactiveConnections.length} inactive connections`
-        );
-      }
 
       return inactiveConnections.length;
     } catch (error) {
@@ -518,17 +557,16 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ NEW: Get users by company
   getUsersByCompany(companyId) {
     try {
       const users = [];
+      const companyIdStr = companyId.toString();
 
       this.connections.forEach((connectionInfo) => {
         if (
-          connectionInfo.companyId === companyId.toString() &&
+          connectionInfo.companyId === companyIdStr &&
           connectionInfo.userInfo
         ) {
-          // Avoid duplicates by checking if user already exists
           const existingUser = users.find(
             (u) => u.userId === connectionInfo.userId
           );
@@ -553,22 +591,6 @@ class ConnectionHandler {
     }
   }
 
-  // ✅ NEW: Check if company has online users
-  isCompanyOnline(companyId) {
-    try {
-      for (const connectionInfo of this.connections.values()) {
-        if (connectionInfo.companyId === companyId.toString()) {
-          return true;
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error("Error checking if company is online:", error);
-      return false;
-    }
-  }
-
-  // ✅ NEW: Get detailed connection info for debugging
   getDetailedStats() {
     try {
       return {
@@ -576,6 +598,7 @@ class ConnectionHandler {
         summary: {
           totalConnections: this.connections.size,
           onlineUsers: this.userConnections.size,
+          onlineCompanies: this.companyConnections.size,
           activeRooms: this.roomConnections.size,
         },
         connectionsByCompany: this.getConnectionsByCompany(),
@@ -588,9 +611,106 @@ class ConnectionHandler {
       return {
         timestamp: new Date().toISOString(),
         error: error.message,
-        summary: {totalConnections: 0, onlineUsers: 0, activeRooms: 0},
+        summary: {
+          totalConnections: 0,
+          onlineUsers: 0,
+          onlineCompanies: 0,
+          activeRooms: 0,
+        },
       };
     }
+  }
+
+  getAllConnections() {
+    try {
+      return Array.from(this.connections.values());
+    } catch (error) {
+      console.error("Error getting all connections:", error);
+      return [];
+    }
+  }
+
+  clearAll() {
+    try {
+      this.connections.clear();
+      this.userConnections.clear();
+      this.roomConnections.clear();
+      this.companyConnections.clear();
+    } catch (error) {
+      console.error("Error clearing all connections:", error);
+    }
+  }
+
+  broadcastToCompany(companyId, event, data, excludeSocketId = null) {
+    try {
+      const companyIdStr = companyId.toString();
+      const socketIds = this.companyConnections.get(companyIdStr);
+
+      if (!socketIds) {
+        return 0;
+      }
+
+      let broadcastCount = 0;
+
+      socketIds.forEach((socketId) => {
+        if (socketId !== excludeSocketId) {
+          const connection = this.connections.get(socketId);
+          if (connection && connection.socket) {
+            try {
+              connection.socket.emit(event, data);
+              broadcastCount++;
+            } catch (error) {
+              console.error(`Error broadcasting to socket ${socketId}:`, error);
+            }
+          }
+        }
+      });
+
+      return broadcastCount;
+    } catch (error) {
+      console.error("Error broadcasting to company:", error);
+      return 0;
+    }
+  }
+
+  broadcastToUser(userId, event, data, excludeSocketId = null) {
+    try {
+      const userIdStr = userId.toString();
+      const socketIds = this.userConnections.get(userIdStr);
+
+      if (!socketIds) {
+        return 0;
+      }
+
+      let broadcastCount = 0;
+
+      socketIds.forEach((socketId) => {
+        if (socketId !== excludeSocketId) {
+          const connection = this.connections.get(socketId);
+          if (connection && connection.socket) {
+            try {
+              connection.socket.emit(event, data);
+              broadcastCount++;
+            } catch (error) {
+              console.error(`Error broadcasting to socket ${socketId}:`, error);
+            }
+          }
+        }
+      });
+
+      return broadcastCount;
+    } catch (error) {
+      console.error("Error broadcasting to user:", error);
+      return 0;
+    }
+  }
+
+  getConnectionStats() {
+    return this.getStats();
+  }
+
+  getDetailedConnectionStats() {
+    return this.getDetailedStats();
   }
 }
 

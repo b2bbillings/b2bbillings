@@ -8,6 +8,8 @@ import {
   Spinner,
   Alert,
   Dropdown,
+  Toast,
+  ToastContainer,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -29,9 +31,14 @@ import {
   faChevronDown,
   faEllipsisV,
   faUserShield,
+  faTrash,
+  faCheckCircle,
+  faEye,
+  faBellSlash,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 import CreateCompany from "../components/Company/CreateCompany";
+import notificationService from "../services/notificationService";
 import "./Navbar.css";
 
 function Navbar({
@@ -61,6 +68,15 @@ function Navbar({
   const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
 
+  // ✅ NEW: Notification service state
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notificationError, setNotificationError] = useState(null);
+
+  // ✅ NEW: Toast notification state
+  const [toastNotifications, setToastNotifications] = useState([]);
+
   // Refs for click outside detection
   const notificationRef = useRef(null);
   const userDropdownRef = useRef(null);
@@ -70,35 +86,230 @@ function Navbar({
   const tempLogo =
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM1ZTYwY2UiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4MDYwZmYiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI1MCIgZmlsbD0id2hpdGUiLz48cGF0aCBmaWxsPSJ1cmwoI2EpIiBkPSJNMTgwIDgwQzE4MCA1Ny45MDkgMTk3LjkwOSA0MCAyMjAgNDBIMjkyQzMxNC4wOTEgNDAgMzMyIDU3LjkwOSAzMzIgODBWOTZIMzgwLjY0TDQzMiAyMjRMNDMyIDM3Nkg4MFYyMjRMMTMxLjM2IDk2SDE4MFY4MFpNODAgMzc2VjQzMkgxMzZWNDAwSDE4OFY0MzJIMzI0VjQwMEgzNzZWNDMySDQzMlYzNzZIODBaIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iMzA0IiByPSIzMiIgZmlsbD0id2hpdGUiLz48Y2lyY2xlIGN4PSIzNTIiIGN5PSIzMDQiIHI9IjMyIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==";
 
-  // Mock notifications (to be replaced with real notifications from backend)
-  const notifications = [
-    {
-      id: 1,
-      message: "New order received - ORD-2023-7865",
-      time: "2 minutes ago",
-      isRead: false,
-    },
-    {
-      id: 2,
-      message: "Payment confirmed for order ORD-2023-7860",
-      time: "1 hour ago",
-      isRead: false,
-    },
-    {
-      id: 3,
-      message: 'Low stock alert for "Premium T-Shirt XL"',
-      time: "3 hours ago",
-      isRead: true,
-    },
-    {
-      id: 4,
-      message: "Staff meeting scheduled for tomorrow 10:00 AM",
-      time: "5 hours ago",
-      isRead: true,
-    },
-  ];
+  // ===============================
+  // 🔔 NOTIFICATION SERVICE INTEGRATION
+  // ===============================
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  // ✅ Setup notification service listeners
+  useEffect(() => {
+    const handleNewNotification = (notification) => {
+      console.log("📢 New notification in Navbar:", notification);
+      setNotifications((prev) => [notification, ...prev.slice(0, 49)]); // Keep max 50
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    const handleUnreadCountUpdated = ({count}) => {
+      console.log("🔔 Unread count updated:", count);
+      setUnreadCount(count);
+    };
+
+    const handleNotificationsFetched = ({
+      notifications: fetchedNotifications,
+    }) => {
+      console.log("📥 Notifications fetched:", fetchedNotifications);
+      setNotifications(fetchedNotifications || []);
+      setIsLoadingNotifications(false);
+      setNotificationError(null);
+    };
+
+    const handleNotificationRead = (notificationId) => {
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notificationId
+            ? {...n, isRead: true, readAt: new Date().toISOString()}
+            : n
+        )
+      );
+    };
+
+    const handleAllNotificationsRead = () => {
+      setNotifications((prev) =>
+        prev.map((n) => ({
+          ...n,
+          isRead: true,
+          readAt: new Date().toISOString(),
+        }))
+      );
+      setUnreadCount(0);
+    };
+
+    const handleNotificationDeleted = (notificationId) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    };
+
+    const handleToastNotification = ({message, type}) => {
+      const toastId = Date.now();
+      const newToast = {
+        id: toastId,
+        message,
+        type,
+        show: true,
+      };
+
+      setToastNotifications((prev) => [...prev, newToast]);
+
+      // Auto-remove toast after 5 seconds
+      setTimeout(() => {
+        setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
+      }, 5000);
+    };
+
+    const handleNotificationToast = (toastData) => {
+      const toastId = Date.now();
+      const newToast = {
+        id: toastId,
+        title: toastData.title,
+        message: toastData.message,
+        type: toastData.type || "info",
+        priority: toastData.priority,
+        show: true,
+        onClick: toastData.onClick,
+      };
+
+      setToastNotifications((prev) => [...prev, newToast]);
+
+      // Auto-remove toast after delay based on priority
+      const delay = toastData.priority === "critical" ? 10000 : 5000;
+      setTimeout(() => {
+        setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
+      }, delay);
+    };
+
+    // Add listeners
+    const unsubscribers = [
+      notificationService.on("new_notification", handleNewNotification),
+      notificationService.on("unread_count_updated", handleUnreadCountUpdated),
+      notificationService.on(
+        "notifications_fetched",
+        handleNotificationsFetched
+      ),
+      notificationService.on("notification_read", handleNotificationRead),
+      notificationService.on(
+        "all_notifications_read",
+        handleAllNotificationsRead
+      ),
+      notificationService.on("notification_deleted", handleNotificationDeleted),
+      notificationService.on("show_toast", handleToastNotification),
+      notificationService.on(
+        "show_notification_toast",
+        handleNotificationToast
+      ),
+    ];
+
+    return () => {
+      // Cleanup listeners
+      unsubscribers.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
+  }, []);
+
+  // ✅ Initial notification fetch
+  useEffect(() => {
+    const loadInitialNotifications = async () => {
+      if (!effectiveCompanyId) return;
+
+      setIsLoadingNotifications(true);
+      setNotificationError(null);
+
+      try {
+        // Get cached notifications first
+        const cachedNotifications = notificationService.getNotifications();
+        const cachedUnreadCount = notificationService.getUnreadCount();
+
+        if (cachedNotifications.length > 0) {
+          setNotifications(cachedNotifications);
+          setUnreadCount(cachedUnreadCount);
+        }
+
+        // Fetch fresh notifications
+        const result = await notificationService.fetchNotifications({
+          limit: 20,
+          companyId: effectiveCompanyId,
+        });
+
+        if (!result.success) {
+          setNotificationError(result.error);
+        }
+
+        // Fetch unread count
+        await notificationService.fetchUnreadCount(effectiveCompanyId);
+      } catch (error) {
+        console.error("❌ Error loading notifications:", error);
+        setNotificationError("Failed to load notifications");
+      } finally {
+        setIsLoadingNotifications(false);
+      }
+    };
+
+    loadInitialNotifications();
+  }, [effectiveCompanyId]);
+
+  // ✅ Handle notification actions
+  const handleNotificationClick = async (notification) => {
+    try {
+      // Mark as read if not already read
+      if (!notification.isRead) {
+        await notificationService.markAsRead(notification.id);
+      }
+
+      // Mark as clicked for analytics
+      await notificationService.markAsClicked(notification.id);
+
+      // Navigate to action URL if provided
+      if (notification.actionUrl) {
+        navigate(notification.actionUrl);
+        setShowNotifications(false);
+      }
+    } catch (error) {
+      console.error("❌ Error handling notification click:", error);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId, event) => {
+    event.stopPropagation();
+    try {
+      await notificationService.markAsRead(notificationId);
+    } catch (error) {
+      console.error("❌ Error marking notification as read:", error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead(effectiveCompanyId);
+    } catch (error) {
+      console.error("❌ Error marking all notifications as read:", error);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId, event) => {
+    event.stopPropagation();
+    try {
+      await notificationService.deleteNotification(notificationId);
+    } catch (error) {
+      console.error("❌ Error deleting notification:", error);
+    }
+  };
+
+  const handleRefreshNotifications = async () => {
+    setIsLoadingNotifications(true);
+    try {
+      await notificationService.fetchNotifications({
+        limit: 20,
+        companyId: effectiveCompanyId,
+      });
+    } catch (error) {
+      console.error("❌ Error refreshing notifications:", error);
+    }
+  };
+
+  // ✅ Remove toast notification
+  const removeToast = (toastId) => {
+    setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
+  };
 
   // Generate initials from company name
   const generateInitials = (name) => {
@@ -197,6 +408,7 @@ function Navbar({
       insights: "Insights",
       reports: "Reports",
       settings: "Settings",
+      chats: "Chats",
     };
 
     return viewDisplayNames[lastPart] || "Dashboard";
@@ -470,6 +682,125 @@ function Navbar({
     return null;
   };
 
+  // ✅ Render notifications dropdown
+  const renderNotificationsDropdown = () => {
+    if (isLoadingNotifications) {
+      return (
+        <div className="px-3 py-4 text-center">
+          <Spinner animation="border" size="sm" className="me-2" />
+          <span className="small text-muted">Loading notifications...</span>
+        </div>
+      );
+    }
+
+    if (notificationError) {
+      return (
+        <div className="px-3 py-2">
+          <Alert variant="danger" className="mb-0 py-2 small">
+            <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+            {notificationError}
+          </Alert>
+          <div className="text-center mt-2">
+            <Button
+              variant="outline-primary"
+              size="sm"
+              onClick={handleRefreshNotifications}
+            >
+              <FontAwesomeIcon icon={faSync} className="me-1" />
+              Retry
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (notifications.length === 0) {
+      return (
+        <div className="px-3 py-4 text-center text-muted">
+          <FontAwesomeIcon
+            icon={faBellSlash}
+            className="mb-2 text-muted"
+            size="2x"
+          />
+          <div className="small">No notifications</div>
+          <div className="small text-muted">You're all caught up!</div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`dropdown-item notification-item d-flex align-items-start p-3 ${
+              !notification.isRead ? "unread" : ""
+            }`}
+            onClick={() => handleNotificationClick(notification)}
+            style={{cursor: "pointer"}}
+          >
+            <div className="notification-icon me-3 flex-shrink-0">
+              <div
+                className={`icon-circle ${
+                  !notification.isRead ? "bg-primary" : "bg-secondary"
+                }`}
+              >
+                <span role="img" aria-label="notification">
+                  {notificationService.getNotificationIcon(notification.type)}
+                </span>
+              </div>
+            </div>
+            <div className="notification-content flex-grow-1">
+              <div className="d-flex justify-content-between align-items-start">
+                <div>
+                  <div
+                    className={`notification-title ${
+                      !notification.isRead ? "fw-bold" : ""
+                    }`}
+                  >
+                    {notification.title}
+                  </div>
+                  <div className="notification-message small text-muted">
+                    {notification.message}
+                  </div>
+                  <div className="notification-time small text-muted">
+                    {notificationService.formatNotificationTime(
+                      notification.createdAt
+                    )}
+                  </div>
+                </div>
+                <div className="notification-actions d-flex">
+                  {!notification.isRead && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="p-1 text-success"
+                      onClick={(e) => handleMarkAsRead(notification.id, e)}
+                      title="Mark as read"
+                    >
+                      <FontAwesomeIcon icon={faEye} size="xs" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="p-1 text-danger"
+                    onClick={(e) =>
+                      handleDeleteNotification(notification.id, e)
+                    }
+                    title="Delete notification"
+                  >
+                    <FontAwesomeIcon icon={faTrash} size="xs" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </>
+    );
+  };
+
   return (
     <>
       <BootstrapNavbar
@@ -714,7 +1045,7 @@ function Navbar({
                 </Nav.Link>
               </Nav.Item>
 
-              {/* Notifications dropdown */}
+              {/* ✅ Updated Notifications dropdown */}
               <Nav.Item
                 className="position-relative me-3"
                 ref={notificationRef}
@@ -740,61 +1071,62 @@ function Navbar({
 
                 {showNotifications && (
                   <div className="dropdown-menu dropdown-menu-end shadow animated--grow-in show notifications-dropdown">
-                    <h6 className="dropdown-header d-flex justify-content-between align-items-center">
-                      <span>Notifications</span>
-                      {unreadCount > 0 && (
-                        <span className="badge bg-primary">{unreadCount}</span>
-                      )}
-                    </h6>
-                    {notifications.length > 0 ? (
-                      notifications.map((notification) => (
-                        <a
-                          key={notification.id}
-                          className={`dropdown-item d-flex align-items-center ${
-                            !notification.isRead ? "unread" : ""
-                          }`}
-                          href="#"
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          <div className="notification-icon me-3">
-                            <div
-                              className={`icon-circle ${
-                                !notification.isRead
-                                  ? "bg-primary"
-                                  : "bg-secondary"
-                              }`}
-                            >
-                              <FontAwesomeIcon
-                                icon={faBell}
-                                className="text-white"
-                              />
-                            </div>
-                          </div>
-                          <div className="notification-content">
-                            <div className="small text-gray-500">
-                              {notification.time}
-                            </div>
-                            <span
-                              className={!notification.isRead ? "fw-bold" : ""}
-                            >
-                              {notification.message}
-                            </span>
-                          </div>
-                        </a>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-center text-muted small">
-                        No notifications
+                    <div className="dropdown-header d-flex justify-content-between align-items-center">
+                      <div className="d-flex align-items-center">
+                        <span>Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="badge bg-primary ms-2">
+                            {unreadCount}
+                          </span>
+                        )}
                       </div>
+                      <div className="d-flex align-items-center">
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="p-1 text-muted"
+                          onClick={handleRefreshNotifications}
+                          title="Refresh notifications"
+                          disabled={isLoadingNotifications}
+                        >
+                          <FontAwesomeIcon
+                            icon={faSync}
+                            className={isLoadingNotifications ? "fa-spin" : ""}
+                          />
+                        </Button>
+                        {unreadCount > 0 && (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="p-1 text-success"
+                            onClick={handleMarkAllAsRead}
+                            title="Mark all as read"
+                          >
+                            <FontAwesomeIcon icon={faCheckCircle} />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="notification-list">
+                      {renderNotificationsDropdown()}
+                    </div>
+
+                    {notifications.length > 0 && (
+                      <>
+                        <div className="dropdown-divider"></div>
+                        <a
+                          className="dropdown-item text-center small text-gray-500"
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            // TODO: Navigate to full notifications page
+                          }}
+                        >
+                          View All Notifications
+                        </a>
+                      </>
                     )}
-                    <div className="dropdown-divider"></div>
-                    <a
-                      className="dropdown-item text-center small text-gray-500"
-                      href="#"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      View All Notifications
-                    </a>
                   </div>
                 )}
               </Nav.Item>
@@ -975,9 +1307,103 @@ function Navbar({
         currentUser={currentUser}
       />
 
-      {/* CSS Styles - Fixed JSX error by removing jsx attribute */}
+      {/* ✅ Toast Notifications */}
+      <ToastContainer
+        position="top-end"
+        className="position-fixed"
+        style={{top: "80px", right: "20px", zIndex: 9999}}
+      >
+        {toastNotifications.map((toast) => (
+          <Toast
+            key={toast.id}
+            show={toast.show}
+            onClose={() => removeToast(toast.id)}
+            delay={toast.priority === "critical" ? 10000 : 5000}
+            autohide={toast.priority !== "critical"}
+            className={`mb-2 toast-${toast.type}`}
+          >
+            <Toast.Header>
+              <span className="me-auto fw-bold">
+                {toast.title || "Notification"}
+              </span>
+              <small className="text-muted">now</small>
+            </Toast.Header>
+            <Toast.Body
+              onClick={toast.onClick}
+              style={toast.onClick ? {cursor: "pointer"} : {}}
+            >
+              {toast.message}
+            </Toast.Body>
+          </Toast>
+        ))}
+      </ToastContainer>
+
+      {/* CSS Styles */}
       <style>
         {`
+          /* ✅ Updated notification styles */
+          .notification-item {
+            border: none !important;
+            border-radius: 8px !important;
+            margin: 2px 8px !important;
+            transition: all 0.2s ease !important;
+            border-left: 3px solid transparent !important;
+          }
+
+          .notification-item:hover {
+            background: linear-gradient(135deg, rgba(94, 96, 206, 0.05), rgba(128, 96, 255, 0.05)) !important;
+            transform: translateX(2px) !important;
+          }
+
+          .notification-item.unread {
+            background: linear-gradient(135deg, rgba(94, 96, 206, 0.08), rgba(128, 96, 255, 0.08)) !important;
+            border-left-color: #5e60ce !important;
+          }
+
+          .notification-icon .icon-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+          }
+
+          .notification-list {
+            max-height: 400px;
+            overflow-y: auto;
+          }
+
+          .notification-actions .btn {
+            opacity: 0.6;
+            transition: opacity 0.2s ease;
+          }
+
+          .notification-item:hover .notification-actions .btn {
+            opacity: 1;
+          }
+
+          .toast-info {
+            border-left: 4px solid #17a2b8;
+          }
+
+          .toast-success {
+            border-left: 4px solid #28a745;
+          }
+
+          .toast-error {
+            border-left: 4px solid #dc3545;
+          }
+
+          .toast-warning {
+            border-left: 4px solid #ffc107;
+          }
+
+          .toast-chat {
+            border-left: 4px solid #6f42c1;
+          }
+
           .admin-panel-btn {
             border: 2px solid #dc3545 !important;
             color: #dc3545 !important;
@@ -1219,6 +1645,10 @@ function Navbar({
 
             .admin-panel-btn {
               padding: 6px 8px !important;
+            }
+
+            .notifications-dropdown {
+              min-width: 300px !important;
             }
           }
         `}

@@ -1,0 +1,674 @@
+/* ✅ PRODUCTION: Optimized CSS with FIXED SCROLLING */
+
+/* =============================================================================
+   TABLE CONTAINER & SCROLLING (CRITICAL FIX)
+   ============================================================================= */
+
+.sales-orders-table-wrapper {
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 10px 15px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  overflow: hidden; /* ✅ FIXED: Changed from visible to hidden */
+  position: relative;
+  margin-top: 0;
+  border-radius: 0;
+}
+
+.table-responsive-wrapper-fixed {
+  overflow-x: auto; /* ✅ FIXED: Enable horizontal scrolling */
+  overflow-y: visible;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 66, 193, 0.3) transparent;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  border-radius: 0;
+  max-height: 70vh; /* ✅ ADDED: Limit height to enable vertical scroll if needed */
+}
+
+/* ✅ ENHANCED: Webkit scrollbar styling */
+.table-responsive-wrapper-fixed::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.table-responsive-wrapper-fixed::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 0;
+}
+
+.table-responsive-wrapper-fixed::-webkit-scrollbar-thumb {
+  background: rgba(111, 66, 193, 0.4);
+  border-radius: 0;
+  border: 2px solid #f1f1f1;
+}
+
+.table-responsive-wrapper-fixed::-webkit-scrollbar-thumb:hover {
+  background: rgba(111, 66, 193, 0.6);
+}
+
+.table-responsive-wrapper-fixed::-webkit-scrollbar-corner {
+  background: #f1f1f1;
+}
+
+/* =============================================================================
+   TABLE CORE STYLES (OPTIMIZED)
+   ============================================================================= */
+
+.sales-orders-table {
+  margin: 0;
+  font-size: 0.85rem;
+  width: 100%;
+  table-layout: fixed;
+  min-width: 1200px; /* ✅ INCREASED: Force horizontal scroll on smaller screens */
+  position: relative;
+  z-index: 1;
+  border-radius: 0;
+}
+
+.sales-orders-table td {
+  padding: 8px 6px;
+  vertical-align: middle;
+  border-bottom: 1px solid #f8f9fa;
+  margin: 0;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sales-orders-table th {
+  padding: 12px 8px;
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+/* =============================================================================
+   HEADER STYLES (STICKY)
+   ============================================================================= */
+
+.table-header-purple {
+  background: linear-gradient(135deg, #6f42c1 0%, #8b5cf6 50%, #a855f7 100%);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin: 0;
+}
+
+.table-header-purple th {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 0;
+}
+
+/* =============================================================================
+   ROW STYLES & INTERACTIONS
+   ============================================================================= */
+
+.sales-order-row {
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+  position: relative;
+}
+
+.sales-order-row:hover {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+  box-shadow: 0 2px 8px rgba(111, 66, 193, 0.1);
+  transform: translateY(-1px);
+  border-left: 3px solid #6f42c1;
+  z-index: 5;
+}
+
+.cancelled-order-row {
+  opacity: 0.6;
+  background-color: #f8f9fa;
+}
+
+.cancelled-order-row:hover {
+  background-color: #e9ecef;
+  border-left: 3px solid #6c757d;
+}
+
+.processing-order-row {
+  background: linear-gradient(135deg, #fff3cd 0%, #fef7e0 100%);
+  border-left: 3px solid #ffc107;
+}
+
+/* =============================================================================
+   COLUMN WIDTHS (OPTIMIZED FOR SCROLLING)
+   ============================================================================= */
+
+.date-column { width: 120px; min-width: 120px; }
+.order-number-column { width: 180px; min-width: 180px; }
+.customer-column { width: 250px; min-width: 250px; }
+.items-column { width: 140px; min-width: 140px; }
+.source-column { width: 160px; min-width: 160px; }
+.amount-column { width: 150px; min-width: 150px; }
+.status-column { width: 140px; min-width: 140px; }
+.actions-column { width: 80px; min-width: 80px; }
+
+/* =============================================================================
+   STICKY ACTIONS COLUMN (PERFORMANCE CRITICAL)
+   ============================================================================= */
+
+.actions-cell-modern {
+  position: sticky;
+  right: 0;
+  background: white;
+  border-left: 2px solid #e5e7eb;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  width: 80px;
+  min-width: 80px;
+  padding: 8px 6px;
+  text-align: center;
+  vertical-align: middle;
+  border-radius: 0;
+}
+
+.actions-column {
+  position: sticky;
+  right: 0;
+  background: linear-gradient(135deg, #6f42c1 0%, #8b5cf6 50%, #a855f7 100%);
+  z-index: 101;
+  width: 80px;
+  min-width: 80px;
+  text-align: center;
+  border-radius: 0;
+}
+
+/* =============================================================================
+   ACTION BUTTON STYLES (NO CURVES)
+   ============================================================================= */
+
+.action-trigger-btn {
+  border: 1px solid rgba(111, 66, 193, 0.3);
+  background: linear-gradient(135deg, rgba(111, 66, 193, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: #6f42c1;
+  border-radius: 0;
+  padding: 6px 10px;
+  transition: all 0.3s ease;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(111, 66, 193, 0.15);
+  min-width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-trigger-btn:hover,
+.action-trigger-btn:focus {
+  background: linear-gradient(135deg, rgba(111, 66, 193, 0.18) 0%, rgba(139, 92, 246, 0.18) 100%);
+  border-color: rgba(111, 66, 193, 0.5);
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 4px 15px rgba(111, 66, 193, 0.3);
+  color: #5a2d91;
+}
+
+.action-trigger-btn:active {
+  transform: translateY(0) scale(0.95);
+}
+
+.action-trigger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =============================================================================
+   DROPDOWN MENU STYLES (NO CURVES)
+   ============================================================================= */
+
+.custom-action-dropdown {
+  position: absolute;
+  z-index: 99999;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+}
+
+.custom-action-dropdown .bg-white {
+  background: #ffffff;
+  backdrop-filter: blur(10px);
+  border: 1px solid #e5e7eb;
+  border-radius: 0;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(111, 66, 193, 0.1), 0 4px 15px rgba(111, 66, 193, 0.1);
+  animation: dropdownSlideIn 0.2s ease-out;
+  min-width: 200px;
+}
+
+.custom-action-dropdown .btn {
+  border: none;
+  text-align: left;
+  transition: all 0.2s ease;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0;
+  margin: 1px 0;
+  display: flex;
+  align-items: center;
+  color: #374151;
+  background: transparent;
+  width: 100%;
+}
+
+.custom-action-dropdown .btn:hover {
+  background: rgba(111, 66, 193, 0.1);
+  color: #6f42c1;
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(111, 66, 193, 0.15);
+}
+
+.custom-action-dropdown hr {
+  border-color: rgba(107, 114, 128, 0.2);
+  margin: 6px 0;
+  opacity: 1;
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =============================================================================
+   CELL CONTENT LAYOUT
+   ============================================================================= */
+
+.date-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.customer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.customer-name {
+  font-size: 0.9rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.customer-contact {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.items-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.amount-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* =============================================================================
+   STATUS BADGES (NO CURVES)
+   ============================================================================= */
+
+.status-badge-compact,
+.badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3em 0.6em;
+  border-radius: 0;
+  line-height: 1.2;
+  margin: 0;
+  border: none;
+}
+
+.status-badge-compact.bg-primary { background: #0d6efd; color: white; }
+.status-badge-compact.bg-secondary { background: #6c757d; color: white; }
+.status-badge-compact.bg-success { background: #198754; color: white; }
+.status-badge-compact.bg-warning { background: #ffc107; color: #000; }
+.status-badge-compact.bg-danger { background: #dc3545; color: white; }
+.status-badge-compact.bg-info { background: #0dcaf0; color: #000; }
+.status-badge-compact.bg-light { background: #f8f9fa; color: #000; }
+.status-badge-compact.bg-dark { background: #212529; color: white; }
+
+/* =============================================================================
+   CONFIRMATION STYLES
+   ============================================================================= */
+
+.order-row-needs-confirmation {
+  border-left: 3px solid #ffc107;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.1) 100%);
+}
+
+.order-row-needs-confirmation:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.15) 100%);
+  border-left: 3px solid #e0a800;
+}
+
+.needs-confirmation {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.2) 100%);
+  border-color: rgba(255, 193, 7, 0.5);
+  animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+}
+
+/* =============================================================================
+   HEADER & FOOTER SECTIONS (NO CURVES)
+   ============================================================================= */
+
+.sales-orders-filter-section {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+  border-radius: 0;
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 15px;
+  margin-top: 0;
+}
+
+.table-footer-summary {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f3f4f6 100%);
+  border-top: 1px solid rgba(111, 66, 193, 0.1);
+  border-radius: 0;
+  margin: 0;
+  padding: 12px 0;
+}
+
+.summary-stats {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.summary-stats small {
+  font-size: 0.8rem;
+}
+
+/* =============================================================================
+   ORDER TYPE FILTER (NO CURVES)
+   ============================================================================= */
+
+.order-type-filter .btn {
+  border-radius: 0;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  transition: all 0.2s ease;
+}
+
+.order-type-filter .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* =============================================================================
+   LOADING ANIMATION
+   ============================================================================= */
+
+.sales-order-row.loading {
+  pointer-events: none;
+  opacity: 0.7;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* =============================================================================
+   GLOBAL NO CURVES OVERRIDE
+   ============================================================================= */
+
+.form-control,
+.form-select,
+.btn,
+.input-group-text,
+.modal-content,
+.modal-header,
+.modal-footer,
+.alert,
+.card,
+.card-header,
+.card-body,
+.card-footer,
+.table,
+.input-group,
+.btn-group .btn,
+.dropdown-menu,
+.dropdown-item,
+.nav-tabs,
+.nav-tabs .nav-link,
+.tab-content,
+.tab-pane,
+.progress,
+.progress-bar,
+.list-group,
+.list-group-item,
+.pagination,
+.page-link {
+  border-radius: 0 !important;
+}
+
+/* =============================================================================
+   RESPONSIVE DESIGN (OPTIMIZED)
+   ============================================================================= */
+
+@media (max-width: 1400px) {
+  .sales-orders-table { min-width: 1000px; }
+  .customer-column { width: 200px; min-width: 200px; }
+  .order-number-column { width: 160px; min-width: 160px; }
+}
+
+@media (max-width: 1200px) {
+  .sales-orders-table { min-width: 900px; }
+  .customer-column { width: 180px; min-width: 180px; }
+  .items-column { width: 120px; min-width: 120px; }
+}
+
+@media (max-width: 768px) {
+  .sales-orders-table { 
+    min-width: 700px; 
+    font-size: 0.8rem; 
+  }
+  
+  .actions-cell-modern { 
+    width: 60px; 
+    min-width: 60px; 
+    padding: 6px 4px; 
+  }
+  
+  .actions-column {
+    width: 60px;
+    min-width: 60px;
+  }
+  
+  .action-trigger-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    min-width: 32px;
+    height: 28px;
+  }
+
+  .custom-action-dropdown {
+    min-width: 180px;
+    max-width: 220px;
+  }
+
+  .custom-action-dropdown .btn {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .summary-stats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .date-column { width: 100px; min-width: 100px; }
+  .order-number-column { width: 140px; min-width: 140px; }
+  .customer-column { width: 160px; min-width: 160px; }
+  .items-column { width: 100px; min-width: 100px; }
+  .amount-column { width: 120px; min-width: 120px; }
+  .status-column { width: 110px; min-width: 110px; }
+}
+
+/* =============================================================================
+   ACCESSIBILITY & FOCUS STATES
+   ============================================================================= */
+
+.sales-order-row:focus {
+  outline: 2px solid #6f42c1;
+  outline-offset: 2px;
+}
+
+.sort-icon:hover {
+  color: rgba(255, 255, 255, 0.8);
+  transform: scale(1.1);
+  transition: all 0.2s ease;
+}
+
+/* =============================================================================
+   PRINT STYLES
+   ============================================================================= */
+
+@media print {
+  .sales-orders-filter-section,
+  .actions-column,
+  .actions-cell-modern {
+    display: none;
+  }
+
+  .sales-orders-table-wrapper {
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+
+  .table-header-purple {
+    background: #000;
+    color: #fff;
+  }
+  
+  .table-responsive-wrapper-fixed {
+    overflow: visible;
+    max-height: none;
+  }
+}
+
+/* =============================================================================
+   DARK MODE SUPPORT
+   ============================================================================= */
+
+@media (prefers-color-scheme: dark) {
+  .sales-orders-table-wrapper {
+    background: #1a1a1a;
+    border-color: #333;
+  }
+  
+  .sales-order-row {
+    border-color: #333;
+  }
+  
+  .table-footer-summary {
+    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  }
+  
+  .actions-cell-modern {
+    background: #1a1a1a;
+    border-left: 2px solid #333;
+  }
+}
+
+/* =============================================================================
+   REDUCED MOTION SUPPORT
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-order-row {
+    transition: none;
+  }
+  
+  .sales-order-row:hover {
+    transform: none;
+  }
+  
+  .action-trigger-btn {
+    transition: none;
+  }
+  
+  .custom-action-dropdown .bg-white {
+    animation: none;
+  }
+}
+
+/* =============================================================================
+   SCROLL INDICATORS (HELPFUL UX)
+   ============================================================================= */
+
+.table-responsive-wrapper-fixed::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 80px; /* Account for sticky actions column */
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to left, transparent, rgba(111, 66, 193, 0.1));
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.table-responsive-wrapper-fixed:hover::before {
+  opacity: 1;
+}
+
+/* =============================================================================
+   PERFORMANCE OPTIMIZATIONS
+   ============================================================================= */
+
+.sales-orders-table * {
+  box-sizing: border-box;
+}
+
+/* Force GPU acceleration for smooth scrolling */
+.table-responsive-wrapper-fixed {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+.sales-order-row {
+  contain: layout style;
+}
+
+.actions-cell-modern {
+  contain: layout style paint;
+}
