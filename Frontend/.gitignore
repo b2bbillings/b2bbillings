@@ -1,25 +1,59 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
+# ==============================================
+# 🔒 ENVIRONMENT FILES (ALL DIRECTORIES)
+# ==============================================
 .env
-node_modules
-dist
-dist-ssr
-*.local
+.env.local
+.env.production
+.env.development
+.env.staging
+*.env
+**/.env
+**/.env.*
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# ==============================================
+# 📦 DEPENDENCIES (ALL DIRECTORIES)
+# ==============================================
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# ==============================================
+# 🏗️ BUILD OUTPUTS (ALL DIRECTORIES)
+# ==============================================
+Frontend/dist/
+Frontend/build/
+Backend/uploads/
+Backend/logs/
+build/
+dist/
+
+# ==============================================
+# 📊 LOGS (ALL DIRECTORIES)
+# ==============================================
+*.log
+logs/
+**/*.log
+**/logs/
+
+# ==============================================
+# 💻 OS FILES
+# ==============================================
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.DS_Store?
+._*
+Thumbs.db
+
+# ==============================================
+# 🔧 IDE FILES
+# ==============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================================
+# 🚀 DEPLOYMENT
+# ==============================================
+.vercel
+.render
+ecosystem.config.js
