@@ -1,11 +1,7 @@
 import React from "react";
-import {Row, Col, Form, Button, Card} from "react-bootstrap";
+import {Row, Col, Button, Card} from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {
-  faFileContract,
-  faCalendarAlt,
-  faPlus,
-} from "@fortawesome/free-solid-svg-icons";
+import {faFileContract, faPlus} from "@fortawesome/free-solid-svg-icons";
 
 function SalesOrderHeader({
   orderNumber,
@@ -108,7 +104,10 @@ function SalesOrderHeader({
       </Card>
 
       <style>{`
-        .quotation-header {
+        /* ✅ FIXED: Consistent border-radius for all elements */
+        .quotation-header,
+        .sales-header {
+          border-radius: 8px !important;
           background: linear-gradient(
             135deg,
             rgba(139, 92, 246, 0.03) 0%,
@@ -126,10 +125,11 @@ function SalesOrderHeader({
           border-left: 4px solid #6366f1 !important;
         }
 
+        /* ✅ FIXED: Consistent border-radius for icon wrapper */
         .icon-wrapper {
           width: 55px;
           height: 55px;
-          border-radius: 14px;
+          border-radius: 8px !important;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -146,27 +146,23 @@ function SalesOrderHeader({
           box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
         }
 
-        /* Purple button theme */
-        .custom-purple-btn {
-          background: linear-gradient(
-            135deg,
-            #8b5cf6 0%,
-            #a855f7 100%
-          ) !important;
-          border-color: #8b5cf6 !important;
-          color: white !important;
+        /* ✅ FIXED: Consistent border-radius for buttons */
+        .custom-purple-btn,
+        .custom-primary-btn {
+          border-radius: 8px !important;
           transition: all 0.2s ease-in-out;
-          border-radius: 8px;
           font-weight: 600;
           letter-spacing: 0.5px;
         }
 
+        .custom-purple-btn {
+          background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%) !important;
+          border-color: #8b5cf6 !important;
+          color: white !important;
+        }
+
         .custom-purple-btn:hover {
-          background: linear-gradient(
-            135deg,
-            #7c3aed 0%,
-            #9333ea 100%
-          ) !important;
+          background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%) !important;
           border-color: #7c3aed !important;
           transform: translateY(-2px);
           box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
@@ -184,26 +180,13 @@ function SalesOrderHeader({
           box-shadow: none;
         }
 
-        /* Primary button theme */
         .custom-primary-btn {
-          background: linear-gradient(
-            135deg,
-            #6366f1 0%,
-            #8b5cf6 100%
-          ) !important;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
           border-color: #6366f1 !important;
-          transition: all 0.2s ease-in-out;
-          border-radius: 8px;
-          font-weight: 600;
-          letter-spacing: 0.5px;
         }
 
         .custom-primary-btn:hover {
-          background: linear-gradient(
-            135deg,
-            #4f46e5 0%,
-            #7c3aed 100%
-          ) !important;
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
           border-color: #4f46e5 !important;
           transform: translateY(-2px);
           box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
@@ -213,9 +196,10 @@ function SalesOrderHeader({
           box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25) !important;
         }
 
+        /* ✅ FIXED: Consistent border-radius for form controls */
         .form-control-custom {
           border: 1px solid #dee2e6;
-          border-radius: 6px;
+          border-radius: 8px !important;
           transition: all 0.15s ease-in-out;
         }
 
@@ -233,6 +217,7 @@ function SalesOrderHeader({
           box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
         }
 
+        /* ✅ Typography improvements */
         h4 {
           font-size: 1.5rem;
           color: #1f2937;
@@ -242,10 +227,12 @@ function SalesOrderHeader({
           color: #6b7280 !important;
         }
 
+        /* ✅ Responsive design improvements */
         @media (max-width: 991.98px) {
           .icon-wrapper {
             width: 50px;
             height: 50px;
+            border-radius: 8px !important;
           }
 
           h4 {
@@ -254,6 +241,7 @@ function SalesOrderHeader({
 
           .btn {
             font-size: 0.9rem;
+            border-radius: 8px !important;
           }
         }
 
@@ -265,6 +253,7 @@ function SalesOrderHeader({
           .icon-wrapper {
             width: 45px;
             height: 45px;
+            border-radius: 8px !important;
           }
 
           h4 {
@@ -278,6 +267,7 @@ function SalesOrderHeader({
           .btn {
             width: 100%;
             justify-content: center;
+            border-radius: 8px !important;
           }
         }
 
@@ -285,6 +275,7 @@ function SalesOrderHeader({
           .icon-wrapper {
             width: 40px;
             height: 40px;
+            border-radius: 8px !important;
           }
 
           h4 {
@@ -302,6 +293,59 @@ function SalesOrderHeader({
           .btn {
             font-size: 0.85rem;
             padding: 0.5rem 1rem;
+            border-radius: 8px !important;
+          }
+        }
+
+        /* ✅ FIXED: Remove any conflicting border-radius from Bootstrap */
+        .card,
+        .card-body,
+        .btn,
+        .form-control,
+        .input-group .form-control,
+        .input-group-text {
+          border-radius: 8px !important;
+        }
+
+        /* ✅ FIXED: Ensure consistent border-radius for all states */
+        .btn:hover,
+        .btn:focus,
+        .btn:active,
+        .btn:disabled {
+          border-radius: 8px !important;
+        }
+
+        .form-control:hover,
+        .form-control:focus,
+        .form-control:active {
+          border-radius: 8px !important;
+        }
+
+        /* ✅ Production-ready: Remove any conflicting styles */
+        * {
+          box-sizing: border-box;
+        }
+
+        /* ✅ Smooth transitions for better UX */
+        .card,
+        .btn,
+        .icon-wrapper {
+          transition: all 0.2s ease-in-out;
+        }
+
+        /* ✅ Accessibility improvements */
+        .btn:focus-visible {
+          outline: 2px solid #8b5cf6;
+          outline-offset: 2px;
+          border-radius: 8px !important;
+        }
+
+        /* ✅ Print styles */
+        @media print {
+          .card,
+          .btn,
+          .icon-wrapper {
+            border-radius: 8px !important;
           }
         }
       `}</style>

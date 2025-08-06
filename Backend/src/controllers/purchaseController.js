@@ -83,11 +83,6 @@ const normalizePaymentMethod = (method) => {
   ];
   const isValidEnum = validEnums.includes(normalized);
 
-  // ✅ ENHANCED: Better logging for debugging
-  console.log(
-    `💳 Payment method normalization: { original: '${method}', normalized: '${normalized}', isValid: ${isValidEnum} }`
-  );
-
   if (!isValidEnum) {
     console.warn(
       `⚠️ Normalized method '${normalized}' is not in valid enum list, using 'cash' instead`
@@ -126,8 +121,6 @@ const updateStockForPurchase = async (
   supplierRecord,
   req
 ) => {
-  console.log("📦 Updating stock for purchase using direct stock updates...");
-
   const results = [];
 
   for (const item of processedItems) {
@@ -148,10 +141,6 @@ const updateStockForPurchase = async (
               updatedAt: new Date(),
             },
           });
-
-          console.log(
-            `✅ Stock updated for ${item.itemName}: ${previousStock} → ${newStock} (+${item.quantity})`
-          );
 
           results.push({
             itemName: item.itemName,
@@ -420,10 +409,6 @@ const purchaseController = {
       const isInterState =
         companyState && supplierState && companyState !== supplierState;
 
-      console.log(
-        `🏢 GST Transaction Type: Company State: ${companyState}, Supplier State: ${supplierState}, Intra-State: ${isIntraState}, Inter-State: ${isInterState}`
-      );
-
       // FIXED: Sync tax mode fields
       const finalTaxMode =
         taxMode || (priceIncludesTax ? "with-tax" : "without-tax");
@@ -617,19 +602,6 @@ const purchaseController = {
         withoutTaxTotal: parseFloat(totalTaxableAmount.toFixed(2)),
       };
 
-      // ✅ Log the corrected totals
-      console.log(`✅ CORRECTED Purchase Totals:
-      Subtotal: ₹${totals.subtotal}
-      Tax Breakdown: CGST: ₹${totals.totalCGST}, SGST: ₹${
-        totals.totalSGST
-      }, IGST: ₹${totals.totalIGST}
-      Total Tax: ₹${totals.totalTax}
-      Final Total: ₹${totals.finalTotal}
-      Transaction Type: ${
-        isIntraState ? "Intra-State (CGST+SGST)" : "Inter-State (IGST)"
-      }
-    `);
-
       const rawPaymentMethod = payment?.method || "credit";
       const normalizedPaymentMethod = normalizePaymentMethod(rawPaymentMethod);
 
@@ -661,14 +633,6 @@ const purchaseController = {
           calculatedDueDate.getDate() + paymentDetails.creditDays
         );
         paymentDetails.dueDate = calculatedDueDate;
-
-        console.log(
-          `✅ Calculated due date: ${
-            calculatedDueDate.toISOString().split("T")[0]
-          } (${paymentDetails.creditDays} days from ${
-            paymentDetails.paymentDate.toISOString().split("T")[0]
-          })`
-        );
       } else {
         // Default to same day for immediate payment
         paymentDetails.dueDate = paymentDetails.paymentDate;
@@ -698,11 +662,6 @@ const purchaseController = {
         const now = new Date();
         if (now > paymentDetails.dueDate) {
           paymentDetails.status = "overdue";
-          console.log(
-            `⚠️ Purchase is overdue: Due ${
-              paymentDetails.dueDate.toISOString().split("T")[0]
-            }, Today ${now.toISOString().split("T")[0]}`
-          );
         }
       }
 
@@ -824,11 +783,6 @@ const purchaseController = {
         "name mobile email address type companyId linkedCompanyId"
       );
 
-      // ===== ✅ ENHANCED STOCK UPDATE =====
-      console.log(
-        "📦 Updating stock for purchase using direct stock updates..."
-      );
-
       const stockUpdateResults = await updateStockForPurchase(
         purchase,
         processedItems,
@@ -839,17 +793,6 @@ const purchaseController = {
       // ✅ Add stock update info to response
       const successfulUpdates = stockUpdateResults.filter((r) => r.success);
       const failedUpdates = stockUpdateResults.filter((r) => !r.success);
-
-      console.log(
-        `✅ Stock updates: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`
-      );
-
-      // ===== ✅ SIMPLIFIED PAYMENT HANDLING =====
-      if (paidAmount > 0) {
-        console.log(
-          `💰 Payment of ₹${paidAmount} recorded in purchase. Financial transaction will be handled by payment system.`
-        );
-      }
 
       // Update source purchase order if conversion
       if (sourceOrderId && mongoose.Types.ObjectId.isValid(sourceOrderId)) {
@@ -4498,16 +4441,6 @@ const purchaseController = {
 
       result.netCashOutflow = result.totalPaid;
 
-      // ✅ ENHANCED: Add debug info
-      console.log(`📊 Daily Cash Outflow Query:
-      Company ID: ${companyId}
-      Target Date: ${targetDate.toISOString().split("T")[0]}
-      Start of Day: ${startOfDay.toISOString()}
-      End of Day: ${endOfDay.toISOString()}
-      Results Found: ${result.purchaseCount} purchases
-      Total Outflow: ₹${result.netCashOutflow}
-    `);
-
       res.status(200).json({
         success: true,
         data: {
@@ -4549,10 +4482,6 @@ const purchaseController = {
       const today = new Date("2025-07-15");
       today.setHours(0, 0, 0, 0);
 
-      console.log(
-        `📅 Today's Date for Comparison: ${today.toISOString().split("T")[0]}`
-      );
-
       const payables = await Purchase.find({
         companyId: new mongoose.Types.ObjectId(companyId),
         "payment.pendingAmount": {$gt: 0},
@@ -4582,14 +4511,6 @@ const purchaseController = {
 
         let type = "upcoming";
         let priority = "low";
-
-        // ✅ DEBUG: Log each purchase's due date vs today
-        console.log(`📋 Purchase ${purchase.purchaseNumber}:
-        Due Date: ${dueDate.toISOString().split("T")[0]}
-        Today: ${today.toISOString().split("T")[0]}
-        Due Date < Today: ${dueDate < today}
-        Due Date === Today: ${dueDate.getTime() === today.getTime()}
-      `);
 
         if (dueDate < today) {
           // ✅ OVERDUE: Due date is before today
@@ -4624,14 +4545,6 @@ const purchaseController = {
           daysOverdue,
         };
       });
-
-      // ✅ Log final summary for debugging
-      console.log(`📊 Final Summary:
-      Total Payables: ₹${summary.totalPayables}
-      Overdue: ₹${summary.overduePayables} (${summary.overdueCount} purchases)
-      Due Today: ₹${summary.dueTodayPayables} (${summary.dueTodayCount} purchases)
-      Upcoming: ₹${summary.upcomingPayables} (${summary.upcomingCount} purchases)
-    `);
 
       res.status(200).json({
         success: true,

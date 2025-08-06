@@ -1414,9 +1414,6 @@ const purchaseOrderController = {
         );
         if (correspondingSalesOrder) {
           await correspondingSalesOrder.confirmOrder(confirmedBy);
-          console.log(
-            `✅ Auto-confirmed sales order ${correspondingSalesOrder.orderNumber}`
-          );
         }
       }
 

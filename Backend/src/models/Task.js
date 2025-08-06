@@ -74,6 +74,14 @@ const taskSchema = new mongoose.Schema(
         "Customer Support",
         "Data Entry",
         "Inventory Check",
+        // Added for controller compatibility
+        "follow_up",
+        "meeting",
+        "call",
+        "email",
+        "visit",
+        "delivery",
+        "payment_reminder",
         "Other",
       ],
       index: true,
@@ -88,7 +96,7 @@ const taskSchema = new mongoose.Schema(
       },
       customerId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Customer",
+        ref: "Party", // Changed from "Customer" to "Party" for controller compatibility
       },
       contactNumber: {
         type: String,
@@ -135,7 +143,7 @@ const taskSchema = new mongoose.Schema(
       },
       frequency: {
         type: String,
-        enum: ["once", "30min", "1hour", "2hours", "daily"],
+        enum: ["once", "30min", "1hour", "2hours", "daily", "weekly"], // Added weekly for controller compatibility
         default: "once",
       },
       notificationMethods: {
@@ -178,6 +186,11 @@ const taskSchema = new mongoose.Schema(
       },
       completedAt: {
         type: Date,
+      },
+      lastUpdated: {
+        // Added for controller compatibility
+        type: Date,
+        default: Date.now,
       },
       timeSpent: {
         type: Number, // in minutes
@@ -367,6 +380,7 @@ const taskSchema = new mongoose.Schema(
               percentage: 0,
               timeSpent: 0,
               notes: [],
+              lastUpdated: new Date(),
             };
           }
 
@@ -477,6 +491,11 @@ taskSchema.pre("save", async function (next) {
       }
     }
 
+    // Update progress.lastUpdated when percentage changes
+    if (this.isModified("progress.percentage")) {
+      this.progress.lastUpdated = new Date();
+    }
+
     // Update progress based on status
     if (this.isModified("status")) {
       if (this.status === "in-progress" && !this.progress.startedAt) {
@@ -528,6 +547,7 @@ taskSchema.pre("save", async function (next) {
         percentage: 0,
         timeSpent: 0,
         notes: [],
+        lastUpdated: new Date(),
       };
     }
 
@@ -552,6 +572,7 @@ taskSchema.pre("save", async function (next) {
 taskSchema.methods.markAsStarted = function () {
   this.status = "in-progress";
   this.progress.startedAt = new Date();
+  this.progress.lastUpdated = new Date();
   this.progress.percentage = Math.max(this.progress.percentage, 10);
   return this.save();
 };
@@ -559,6 +580,7 @@ taskSchema.methods.markAsStarted = function () {
 taskSchema.methods.markAsCompleted = function (resultData = {}) {
   this.status = "completed";
   this.progress.completedAt = new Date();
+  this.progress.lastUpdated = new Date();
   this.progress.percentage = 100;
 
   if (resultData.outcome) this.result.outcome = resultData.outcome;
@@ -586,6 +608,7 @@ taskSchema.methods.addNote = function (note, addedBy) {
 
 taskSchema.methods.updateProgress = function (percentage) {
   this.progress.percentage = Math.max(0, Math.min(100, percentage));
+  this.progress.lastUpdated = new Date();
 
   // Auto-update status based on progress
   if (percentage === 0) {

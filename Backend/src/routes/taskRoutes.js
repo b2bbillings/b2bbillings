@@ -1,5 +1,5 @@
 const express = require("express");
-const {body, param, query} = require("express-validator");
+const {body, param, query, validationResult} = require("express-validator");
 const {
   createTask,
   getAllTasks,
@@ -16,7 +16,7 @@ const {
   getTaskReminders,
 } = require("../controllers/taskController");
 
-// Import auth middleware (matching staffRoutes pattern)
+// Import auth middleware
 const {
   authenticate,
   requireCompanyAccess,
@@ -24,7 +24,7 @@ const {
 
 const router = express.Router();
 
-// Apply authentication to all routes (matching staffRoutes pattern)
+// Apply authentication to all routes
 router.use(authenticate);
 router.use(requireCompanyAccess);
 
@@ -32,7 +32,55 @@ router.use(requireCompanyAccess);
 // 🔧 VALIDATION MIDDLEWARE
 // ================================
 
-// Validation rules for creating tasks
+// Validation error handler
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: errors.array(),
+    });
+  }
+  next();
+};
+
+// Task types enum (updated to match your model)
+const TASK_TYPES = [
+  "Customer Call",
+  "Follow-up Call",
+  "Customer Survey",
+  "Schedule Appointment",
+  "Service Appointment",
+  "Payment Collection",
+  "Marketing Campaign",
+  "Store Management",
+  "Administrative Task",
+  "Lead Generation",
+  "Product Demo",
+  "Customer Support",
+  "Data Entry",
+  "Inventory Check",
+  "follow_up",
+  "meeting",
+  "call",
+  "email",
+  "visit",
+  "delivery",
+  "payment_reminder",
+  "Other",
+];
+
+const STATUSES = [
+  "pending",
+  "in-progress",
+  "completed",
+  "delayed",
+  "cancelled",
+];
+const PRIORITIES = ["low", "medium", "high", "urgent"];
+
+// Create task validation
 const createTaskValidation = [
   body("assignedTo")
     .notEmpty()
@@ -43,26 +91,15 @@ const createTaskValidation = [
   body("taskType")
     .notEmpty()
     .withMessage("Task type is required")
-    .isIn([
-      "Customer Call",
-      "Follow-up Call",
-      "Customer Survey",
-      "Schedule Appointment",
-      "Service Appointment",
-      "Payment Collection",
-      "Marketing Campaign",
-      "Store Management",
-      "Administrative Task",
-      "Lead Generation",
-      "Product Demo",
-      "Customer Support",
-      "Data Entry",
-      "Inventory Check",
-      "Other",
-    ])
+    .isIn(TASK_TYPES)
     .withMessage("Invalid task type"),
 
   body("customer").notEmpty().withMessage("Customer information is required"),
+
+  body("customer.name")
+    .if(body("customer").isObject())
+    .notEmpty()
+    .withMessage("Customer name is required"),
 
   body("description")
     .notEmpty()
@@ -74,7 +111,7 @@ const createTaskValidation = [
     .notEmpty()
     .withMessage("Due date is required")
     .isISO8601()
-    .withMessage("Invalid due date format (use ISO 8601)")
+    .withMessage("Invalid due date format")
     .custom((value) => {
       if (new Date(value) < new Date()) {
         throw new Error("Due date cannot be in the past");
@@ -84,7 +121,7 @@ const createTaskValidation = [
 
   body("priority")
     .optional()
-    .isIn(["low", "medium", "high", "urgent"])
+    .isIn(PRIORITIES)
     .withMessage("Invalid priority level"),
 
   body("reminder.reminderTime")
@@ -103,9 +140,11 @@ const createTaskValidation = [
     .optional()
     .isLength({min: 1, max: 50})
     .withMessage("Each tag must be between 1 and 50 characters"),
+
+  handleValidationErrors,
 ];
 
-// Validation rules for updating tasks
+// Update task validation
 const updateTaskValidation = [
   param("id").isMongoId().withMessage("Invalid task ID"),
 
@@ -114,61 +153,33 @@ const updateTaskValidation = [
     .isMongoId()
     .withMessage("Invalid staff member ID"),
 
-  body("taskType")
-    .optional()
-    .isIn([
-      "Customer Call",
-      "Follow-up Call",
-      "Customer Survey",
-      "Schedule Appointment",
-      "Service Appointment",
-      "Payment Collection",
-      "Marketing Campaign",
-      "Store Management",
-      "Administrative Task",
-      "Lead Generation",
-      "Product Demo",
-      "Customer Support",
-      "Data Entry",
-      "Inventory Check",
-      "Other",
-    ])
-    .withMessage("Invalid task type"),
+  body("taskType").optional().isIn(TASK_TYPES).withMessage("Invalid task type"),
 
   body("description")
     .optional()
     .isLength({min: 10, max: 1000})
     .withMessage("Description must be between 10 and 1000 characters"),
 
-  body("dueDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Invalid due date format (use ISO 8601)"),
+  body("dueDate").optional().isISO8601().withMessage("Invalid due date format"),
 
   body("priority")
     .optional()
-    .isIn(["low", "medium", "high", "urgent"])
+    .isIn(PRIORITIES)
     .withMessage("Invalid priority level"),
 
-  body("status")
-    .optional()
-    .isIn(["pending", "in-progress", "completed", "delayed", "cancelled"])
-    .withMessage("Invalid status"),
+  body("status").optional().isIn(STATUSES).withMessage("Invalid status"),
 
-  body("reminder.reminderTime")
-    .optional()
-    .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage("Invalid reminder time format (use HH:MM)"),
+  handleValidationErrors,
 ];
 
-// Validation rules for status update
+// Status update validation
 const statusUpdateValidation = [
   param("id").isMongoId().withMessage("Invalid task ID"),
 
   body("status")
     .notEmpty()
     .withMessage("Status is required")
-    .isIn(["pending", "in-progress", "completed", "delayed", "cancelled"])
+    .isIn(STATUSES)
     .withMessage("Invalid status value"),
 
   body("resultData")
@@ -176,28 +187,10 @@ const statusUpdateValidation = [
     .isObject()
     .withMessage("Result data must be an object"),
 
-  body("resultData.outcome")
-    .optional()
-    .isIn(["successful", "unsuccessful", "rescheduled", "cancelled", "pending"])
-    .withMessage("Invalid outcome value"),
-
-  body("resultData.resultNotes")
-    .optional()
-    .isLength({max: 500})
-    .withMessage("Result notes cannot exceed 500 characters"),
-
-  body("resultData.followUpRequired")
-    .optional()
-    .isBoolean()
-    .withMessage("Follow up required must be boolean"),
-
-  body("resultData.followUpDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Invalid follow up date format"),
+  handleValidationErrors,
 ];
 
-// Validation rules for progress update
+// Progress update validation
 const progressUpdateValidation = [
   param("id").isMongoId().withMessage("Invalid task ID"),
 
@@ -206,9 +199,11 @@ const progressUpdateValidation = [
     .withMessage("Progress percentage is required")
     .isInt({min: 0, max: 100})
     .withMessage("Progress percentage must be between 0 and 100"),
+
+  handleValidationErrors,
 ];
 
-// Validation rules for adding notes
+// Add note validation
 const addNoteValidation = [
   param("id").isMongoId().withMessage("Invalid task ID"),
 
@@ -218,9 +213,11 @@ const addNoteValidation = [
     .isLength({min: 1, max: 500})
     .withMessage("Note must be between 1 and 500 characters")
     .trim(),
+
+  handleValidationErrors,
 ];
 
-// Validation rules for bulk assign
+// Bulk assign validation
 const bulkAssignValidation = [
   body("tasks")
     .notEmpty()
@@ -237,23 +234,7 @@ const bulkAssignValidation = [
   body("tasks.*.taskType")
     .notEmpty()
     .withMessage("Each task must have taskType")
-    .isIn([
-      "Customer Call",
-      "Follow-up Call",
-      "Customer Survey",
-      "Schedule Appointment",
-      "Service Appointment",
-      "Payment Collection",
-      "Marketing Campaign",
-      "Store Management",
-      "Administrative Task",
-      "Lead Generation",
-      "Product Demo",
-      "Customer Support",
-      "Data Entry",
-      "Inventory Check",
-      "Other",
-    ])
+    .isIn(TASK_TYPES)
     .withMessage("Invalid task type"),
 
   body("tasks.*.customer")
@@ -271,10 +252,12 @@ const bulkAssignValidation = [
     .withMessage("Each task must have due date")
     .isISO8601()
     .withMessage("Invalid due date format"),
+
+  handleValidationErrors,
 ];
 
-// Validation for pagination
-const paginationValidation = [
+// Query validation for GET routes
+const queryValidation = [
   query("page")
     .optional()
     .isInt({min: 1})
@@ -284,116 +267,31 @@ const paginationValidation = [
     .optional()
     .isInt({min: 1, max: 100})
     .withMessage("Limit must be between 1 and 100"),
-];
 
-// Validation for MongoDB ID
-const mongoIdValidation = [
-  param("id").isMongoId().withMessage("Invalid task ID"),
-];
-
-// ================================
-// 📊 TASK STATISTICS (Keep at top - most specific)
-// ================================
-
-// @route   GET /api/tasks/statistics
-// @desc    Get task statistics and analytics
-// @access  Private (Any company user)
-router.get("/statistics", getTaskStatistics);
-
-// ================================
-// 🔔 TASK REMINDERS (Specific routes before generic)
-// ================================
-
-// @route   GET /api/tasks/reminders
-// @desc    Get task reminders for today
-// @access  Private (Any company user)
-router.get("/reminders", getTaskReminders);
-
-// ================================
-// 📅 DATE-BASED TASK ROUTES (Specific routes before generic)
-// ================================
-
-// @route   GET /api/tasks/today
-// @desc    Get today's tasks
-// @access  Private (Any company user)
-router.get("/today", getTodaysTasks);
-
-// @route   GET /api/tasks/overdue
-// @desc    Get overdue tasks
-// @access  Private (Any company user)
-router.get("/overdue", getOverdueTasks);
-
-// ================================
-// 📦 BULK OPERATIONS (Specific routes before generic)
-// ================================
-
-// @route   POST /api/tasks/bulk-assign
-// @desc    Bulk assign multiple tasks
-// @access  Private (Any company user)
-router.post("/bulk-assign", bulkAssignValidation, bulkAssignTasks);
-
-// ================================
-// 📋 MAIN CRUD ROUTES (Critical order: POST before GET /:id)
-// ================================
-
-// ✅ POST ROUTE MUST COME BEFORE /:id ROUTES
-// @route   POST /api/tasks
-// @desc    Create new task assignment
-// @access  Private (Any company user)
-router.post("/", createTaskValidation, createTask);
-
-// @route   GET /api/tasks
-// @desc    Get all tasks with filters and pagination
-// @access  Private (Any company user)
-router.get(
-  "/",
-  paginationValidation,
   query("status")
     .optional()
-    .isIn([
-      "all",
-      "pending",
-      "in-progress",
-      "completed",
-      "delayed",
-      "cancelled",
-    ])
+    .isIn(["all", ...STATUSES])
     .withMessage("Invalid status filter"),
+
   query("priority")
     .optional()
-    .isIn(["all", "low", "medium", "high", "urgent"])
+    .isIn(["all", ...PRIORITIES])
     .withMessage("Invalid priority filter"),
+
+  query("taskType")
+    .optional()
+    .isIn(["all", ...TASK_TYPES])
+    .withMessage("Invalid task type filter"),
+
   query("assignedTo")
     .optional()
     .custom((value) => {
       if (value !== "all" && !value.match(/^[0-9a-fA-F]{24}$/)) {
-        throw new Error(
-          "Invalid assignedTo filter - must be 'all' or valid MongoDB ID"
-        );
+        throw new Error("Invalid assignedTo filter");
       }
       return true;
     }),
-  query("taskType")
-    .optional()
-    .isIn([
-      "all",
-      "Customer Call",
-      "Follow-up Call",
-      "Customer Survey",
-      "Schedule Appointment",
-      "Service Appointment",
-      "Payment Collection",
-      "Marketing Campaign",
-      "Store Management",
-      "Administrative Task",
-      "Lead Generation",
-      "Product Demo",
-      "Customer Support",
-      "Data Entry",
-      "Inventory Check",
-      "Other",
-    ])
-    .withMessage("Invalid task type filter"),
+
   query("sortBy")
     .optional()
     .isIn([
@@ -406,36 +304,63 @@ router.get(
       "customer",
     ])
     .withMessage("Invalid sort field"),
+
   query("sortOrder")
     .optional()
     .isIn(["asc", "desc"])
     .withMessage("Invalid sort order"),
+
   query("search")
     .optional()
     .isLength({min: 1, max: 100})
     .withMessage("Search term must be between 1 and 100 characters"),
+
   query("dateFrom")
     .optional()
     .isISO8601()
     .withMessage("Invalid dateFrom format"),
+
   query("dateTo").optional().isISO8601().withMessage("Invalid dateTo format"),
-  getAllTasks
-);
 
-// ✅ GENERIC /:id ROUTES COME AFTER POST
-// @route   GET /api/tasks/:id
-// @desc    Get single task by ID
-// @access  Private (Any company user)
+  handleValidationErrors,
+];
+
+// MongoDB ID validation
+const mongoIdValidation = [
+  param("id").isMongoId().withMessage("Invalid task ID"),
+  handleValidationErrors,
+];
+
+// ================================
+// 📊 SPECIFIC ROUTES (Must come first)
+// ================================
+
+// Task statistics
+router.get("/statistics", getTaskStatistics);
+
+// Task reminders
+router.get("/reminders", getTaskReminders);
+
+// Date-based routes
+router.get("/today", getTodaysTasks);
+router.get("/overdue", getOverdueTasks);
+
+// Bulk operations
+router.post("/bulk-assign", bulkAssignValidation, bulkAssignTasks);
+
+// ================================
+// 📋 MAIN CRUD ROUTES
+// ================================
+
+// Create task (POST must come before /:id routes)
+router.post("/", createTaskValidation, createTask);
+
+// Get all tasks with filters
+router.get("/", queryValidation, getAllTasks);
+
+// Individual task operations
 router.get("/:id", mongoIdValidation, getTaskById);
-
-// @route   PUT /api/tasks/:id
-// @desc    Update task
-// @access  Private (Any company user)
 router.put("/:id", updateTaskValidation, updateTask);
-
-// @route   DELETE /api/tasks/:id
-// @desc    Delete task (soft delete by default, hard delete with ?permanent=true)
-// @access  Private (Any company user)
 router.delete(
   "/:id",
   mongoIdValidation,
@@ -448,6 +373,7 @@ router.delete(
     .trim()
     .isLength({max: 500})
     .withMessage("Deletion reason cannot exceed 500 characters"),
+  handleValidationErrors,
   deleteTask
 );
 
@@ -455,62 +381,51 @@ router.delete(
 // 🔧 STATUS & PROGRESS MANAGEMENT
 // ================================
 
-// @route   PUT /api/tasks/:id/status
-// @desc    Update task status
-// @access  Private (Any company user)
+// Update task status
 router.put("/:id/status", statusUpdateValidation, updateTaskStatus);
 
-// @route   PUT /api/tasks/:id/progress
-// @desc    Update task progress percentage
-// @access  Private (Any company user)
+// Update task progress
 router.put("/:id/progress", progressUpdateValidation, updateTaskProgress);
 
 // ================================
 // 📝 NOTES MANAGEMENT
 // ================================
 
-// @route   POST /api/tasks/:id/notes
-// @desc    Add note to task
-// @access  Private (Any company user)
+// Add note to task
 router.post("/:id/notes", addNoteValidation, addTaskNote);
 
 // ================================
-// 🚨 ERROR HANDLING MIDDLEWARE
+// 🚨 ERROR HANDLING
 // ================================
 
-// Error handling middleware for this router (matching staffRoutes pattern)
 router.use((error, req, res, next) => {
-  console.error("Task routes error:", error);
+  let statusCode = 500;
+  let message = "Internal server error";
 
   if (error.name === "ValidationError") {
-    return res.status(400).json({
+    statusCode = 400;
+    message = "Validation failed";
+    return res.status(statusCode).json({
       success: false,
-      message: "Validation Error",
+      message,
       errors: Object.values(error.errors).map((err) => err.message),
     });
   }
 
   if (error.name === "CastError") {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid ID format",
-    });
+    statusCode = 400;
+    message = "Invalid ID format";
   }
 
   if (error.code === 11000) {
-    return res.status(400).json({
-      success: false,
-      message: "Duplicate field value entered",
-    });
+    statusCode = 409;
+    message = "Duplicate field value";
   }
 
-  res.status(500).json({
+  res.status(statusCode).json({
     success: false,
-    message: "Internal Server Error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? error.message
-        : "Something went wrong",
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
   });
 });
 

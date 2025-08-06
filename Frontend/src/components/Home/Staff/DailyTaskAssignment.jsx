@@ -41,7 +41,6 @@ import {
   faBell,
 } from "@fortawesome/free-solid-svg-icons";
 
-// Import components and services
 import TaskAssignment from "./TaskAssignment";
 import taskService from "../../../services/taskService";
 import staffService from "../../../services/staffService";
@@ -56,7 +55,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
   const [selectedTask, setSelectedTask] = useState(null);
   const [editTask, setEditTask] = useState(null);
 
-  // Filter states with stable references
   const [filters, setFilters] = useState({
     status: "all",
     priority: "all",
@@ -66,7 +64,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     dateRange: "today",
   });
 
-  // Pagination
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -74,39 +71,31 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     limit: 10,
   });
 
-  // Toast state
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastVariant, setToastVariant] = useState("success");
-
-  // Error state
   const [error, setError] = useState(null);
 
-  // ✅ Memoize company and user IDs to prevent unnecessary re-renders
   const companyId = useMemo(
     () => companyData?.id || companyData?._id,
     [companyData]
   );
   const userId = useMemo(() => userData?.id || userData?._id, [userData]);
 
-  // ✅ Load initial data only once when component mounts
   useEffect(() => {
     let isMounted = true;
-    let hasLoaded = false; // Add this flag to prevent multiple loads
+    let hasLoaded = false;
 
     const loadData = async () => {
       if (isMounted && companyId && userId && !hasLoaded) {
-        hasLoaded = true; // Set flag immediately
+        hasLoaded = true;
         try {
           setIsLoading(true);
           setError(null);
-          console.log("🚀 Loading initial data...");
           await Promise.all([loadStaffMembers(), loadTasks()]);
-          console.log("✅ Initial data loaded successfully");
         } catch (error) {
-          hasLoaded = false; // Reset flag on error
+          hasLoaded = false;
           if (isMounted) {
-            console.error("❌ Failed to load initial data:", error);
             setError("Failed to load initial data. Please try again.");
             showToastMessage("Error loading data", "error");
           }
@@ -123,9 +112,8 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     return () => {
       isMounted = false;
     };
-  }, [companyId, userId]); // Only depend on stable IDs
+  }, [companyId, userId]);
 
-  // ✅ Load tasks when specific filter values change (with debounce) - FIXED
   useEffect(() => {
     let isMounted = true;
     let timeoutId;
@@ -134,13 +122,11 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
         if (isMounted && companyId && userId && !isLoading) {
-          console.log("📋 Loading tasks due to filter change...");
           await loadTasks();
         }
-      }, 300); // 300ms debounce
+      }, 300);
     };
 
-    // Only load if we have initial data and filters have actually changed
     if (companyId && userId) {
       debouncedLoadTasks();
     }
@@ -156,19 +142,14 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     filters.taskType,
     filters.dateRange,
     pagination.currentPage,
-    // ❌ REMOVED: companyId, userId - these cause the infinite loop
   ]);
 
-  // ✅ Apply filters when tasks change (but not when filters change) - FIXED
   useEffect(() => {
-    console.log("🔄 Applying filters to", tasks.length, "tasks");
     applyFilters();
-  }, [tasks, filters.search]); // Only depend on tasks and search
+  }, [tasks, filters.search]);
 
-  // ✅ Load staff members with proper error handling
   const loadStaffMembers = useCallback(async () => {
     try {
-      console.log("👥 Loading staff members...");
       const response = await staffService.getAllStaff({
         page: 1,
         limit: 100,
@@ -176,31 +157,25 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
       });
 
       if (response && response.success) {
-        // ✅ Fix: Access the nested data array properly
         const staffData = Array.isArray(response.data?.data)
           ? response.data.data
           : Array.isArray(response.data)
           ? response.data
           : [];
 
-        console.log("✅ Staff members loaded:", staffData.length);
         setStaffMembers(staffData);
       } else {
         setStaffMembers([]);
         showToastMessage("Could not load staff members", "warning");
       }
     } catch (error) {
-      console.error("❌ Error loading staff members:", error);
       setStaffMembers([]);
       showToastMessage("Error loading staff members", "error");
     }
-  }, []); // No dependencies - this function is stable
+  }, []);
 
-  // ✅ Load tasks with enhanced error handling and loading prevention
   const loadTasks = useCallback(async () => {
-    // ✅ Prevent multiple simultaneous calls
     if (isLoading) {
-      console.log("⏸️ Task loading already in progress, skipping...");
       return;
     }
 
@@ -213,13 +188,9 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         limit: pagination.limit,
       };
 
-      // Only add non-default filter values
       if (filters.status !== "all") params.status = filters.status;
       if (filters.priority !== "all") params.priority = filters.priority;
       if (filters.taskType !== "all") params.taskType = filters.taskType;
-      // Don't include search in API params - handle client-side
-
-      console.log("📋 Loading tasks with params:", params);
 
       let response;
       if (filters.dateRange === "today") {
@@ -236,7 +207,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
 
       if (response && response.success) {
         const tasksData = Array.isArray(response.data) ? response.data : [];
-        console.log("✅ Tasks loaded:", tasksData.length);
         setTasks(tasksData);
 
         if (response.pagination) {
@@ -255,7 +225,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         }
       }
     } catch (error) {
-      console.error("❌ Error loading tasks:", error);
       setTasks([]);
       setError(
         "Failed to load tasks. Please check your connection and try again."
@@ -274,7 +243,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     filters.dateRange,
   ]);
 
-  // ✅ Apply client-side filters (memoized to prevent unnecessary recalculations)
   const applyFilters = useCallback(() => {
     if (!Array.isArray(tasks)) {
       setFilteredTasks([]);
@@ -283,17 +251,14 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
 
     let filtered = [...tasks];
 
-    // Filter by status
     if (filters.status !== "all") {
       filtered = filtered.filter((task) => task.status === filters.status);
     }
 
-    // Filter by priority
     if (filters.priority !== "all") {
       filtered = filtered.filter((task) => task.priority === filters.priority);
     }
 
-    // Filter by assigned staff
     if (filters.assignedTo !== "all") {
       filtered = filtered.filter((task) => {
         const assignedId = task.assignedTo?._id || task.assignedTo;
@@ -301,12 +266,10 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
       });
     }
 
-    // Filter by task type
     if (filters.taskType !== "all") {
       filtered = filtered.filter((task) => task.taskType === filters.taskType);
     }
 
-    // Search filter
     if (filters.search.trim()) {
       const searchTerm = filters.search.toLowerCase();
       filtered = filtered.filter((task) => {
@@ -324,18 +287,15 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
       });
     }
 
-    console.log("🔄 Filtered tasks:", filtered.length, "from", tasks.length);
     setFilteredTasks(filtered);
   }, [tasks, filters]);
 
-  // ✅ Show toast message (memoized)
   const showToastMessage = useCallback(
     (message, variant = "success") => {
       setToastMessage(message);
       setToastVariant(variant);
       setShowToast(true);
 
-      // Also use the addToast prop if available
       if (addToast) {
         addToast(message, variant);
       }
@@ -343,31 +303,22 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     [addToast]
   );
 
-  // ✅ Handle filter changes (optimized to prevent unnecessary re-renders)
   const handleFilterChange = useCallback((filterName, value) => {
-    console.log(`🔧 Filter changed: ${filterName} = ${value}`);
-
     setFilters((prev) => {
-      // Only update if value actually changed
       if (prev[filterName] === value) {
         return prev;
       }
-
       return {...prev, [filterName]: value};
     });
 
-    // Reset pagination when filters change (except for search)
     if (filterName !== "search") {
       setPagination((prev) => ({...prev, currentPage: 1}));
     }
   }, []);
 
-  // ✅ Handle task actions (memoized)
   const handleTaskAction = useCallback(
     async (action, task) => {
       try {
-        console.log(`🔧 Task action: ${action} for task:`, task._id);
-
         switch (action) {
           case "view":
             setSelectedTask(task);
@@ -405,14 +356,12 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
             break;
         }
       } catch (error) {
-        console.error(`❌ Error ${action} task:`, error);
         showToastMessage(`Error ${action} task`, "error");
       }
     },
     [showToastMessage, loadTasks]
   );
 
-  // ✅ Handle task creation/update (memoized)
   const handleTaskCreated = useCallback(
     (task) => {
       if (editTask) {
@@ -426,22 +375,17 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     [editTask, showToastMessage, loadTasks]
   );
 
-  // ✅ Handle modal close (memoized)
   const handleModalClose = useCallback(() => {
     setShowAssignModal(false);
     setEditTask(null);
   }, []);
 
-  // ✅ Load initial data function (memoized)
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      console.log("🔄 Reloading initial data...");
       await Promise.all([loadStaffMembers(), loadTasks()]);
-      console.log("✅ Initial data reloaded successfully");
     } catch (error) {
-      console.error("❌ Failed to reload initial data:", error);
       setError("Failed to load initial data. Please try again.");
       showToastMessage("Error loading data", "error");
     } finally {
@@ -449,7 +393,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
     }
   }, [loadStaffMembers, loadTasks, showToastMessage]);
 
-  // ✅ Utility functions (memoized)
   const getPriorityBadge = useCallback((priority) => {
     const colors = {
       low: "success",
@@ -500,7 +443,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
 
   return (
     <div className="daily-task-assignment">
-      {/* Header */}
       <div className="page-header">
         <div className="header-content">
           <div className="header-icon">
@@ -516,9 +458,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         </div>
       </div>
 
-      {/* Main Content Container */}
       <div className="content-container">
-        {/* Error Alert */}
         {error && (
           <Alert
             variant="danger"
@@ -542,10 +482,8 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           </Alert>
         )}
 
-        {/* Filters and Actions - UPDATED RESPONSIVE LAYOUT */}
         <div className="filters-section">
           <div className="filters-container">
-            {/* Top Row - Status and Priority Filters */}
             <div className="filters-row filters-row-1">
               <div className="filter-group">
                 <Form.Select
@@ -621,7 +559,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
               </div>
             </div>
 
-            {/* Bottom Row - Search and Actions */}
             <div className="filters-row filters-row-2">
               <div className="search-group">
                 <Form.Control
@@ -662,7 +599,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           </div>
         </div>
 
-        {/* Tasks List */}
         <Card className="tasks-card">
           <Card.Header className="tasks-header">
             <div className="header-row">
@@ -723,7 +659,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
 
                       <p className="task-description">{task.description}</p>
 
-                      {/* Progress Bar */}
                       {task.progress?.percentage > 0 && (
                         <div className="task-progress">
                           <div className="progress-header">
@@ -839,7 +774,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           </Card.Body>
         </Card>
 
-        {/* Pagination */}
         {pagination.totalPages > 1 && (
           <div className="pagination-section">
             <Button
@@ -877,7 +811,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         )}
       </div>
 
-      {/* Task Assignment Modal */}
       <TaskAssignment
         show={showAssignModal}
         onHide={handleModalClose}
@@ -887,7 +820,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         userData={userData}
       />
 
-      {/* Toast Notifications */}
       <ToastContainer position="bottom-end" className="p-3">
         <Toast
           show={showToast}
@@ -900,7 +832,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         </Toast>
       </ToastContainer>
 
-      <style jsx>{`
+      <style>{`
         .daily-task-assignment {
           background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
           min-height: 100vh;
@@ -909,7 +841,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
             sans-serif;
         }
 
-        /* ✅ FIX: Modal z-index issues with filters */
         .modal {
           z-index: 1055 !important;
         }
@@ -918,29 +849,24 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           z-index: 1050 !important;
         }
 
-        /* ✅ FIX: Ensure filter dropdowns stay behind modals */
         .filters-section .dropdown-menu,
         .filters-section .form-select,
         .task-actions .dropdown-menu {
           z-index: 1040 !important;
         }
 
-        /* ✅ FIX: When modal is open, hide filter dropdowns */
         body.modal-open .filters-section .dropdown-menu {
           display: none !important;
         }
 
-        /* ✅ FIX: Ensure task action dropdowns also stay behind modal */
         .task-actions .dropdown-menu {
           z-index: 1040 !important;
         }
 
-        /* ✅ FIX: Bootstrap select dropdown z-index */
         .form-select:focus {
           z-index: 1040 !important;
         }
 
-        /* ✅ FIX: Additional Bootstrap dropdown overrides */
         .dropdown-menu {
           z-index: 1035 !important;
         }
@@ -950,7 +876,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           z-index: 1035 !important;
         }
 
-        /* ✅ FIX: Select element specific fixes */
         select.form-select {
           z-index: 1030 !important;
         }
@@ -959,7 +884,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           z-index: 1030 !important;
         }
 
-        /* Header Section */
         .page-header {
           background: linear-gradient(135deg, #6f42c1 0%, #8e44ad 100%);
           padding: 1.5rem 2rem;
@@ -998,19 +922,16 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           margin-bottom: 0;
         }
 
-        /* Content Container */
         .content-container {
           max-width: 1200px;
           margin: 0 auto;
           padding: 1.5rem 2rem;
         }
 
-        /* Error Alert */
         .error-alert {
           margin-bottom: 1.5rem;
         }
 
-        /* Filters Section - Enhanced Responsive Layout */
         .filters-section {
           background: white;
           border-radius: 12px;
@@ -1018,7 +939,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           margin-bottom: 1.5rem;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
           position: relative;
-          z-index: 1030; /* ✅ Lower than modal */
+          z-index: 1030;
         }
 
         .filters-container {
@@ -1047,14 +968,14 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           min-width: 140px;
           max-width: 180px;
           position: relative;
-          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
+          z-index: 1031;
         }
 
         .search-group {
           flex: 1;
           max-width: 300px;
           position: relative;
-          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
+          z-index: 1031;
         }
 
         .actions-group {
@@ -1062,7 +983,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           gap: 0.75rem;
           flex-shrink: 0;
           position: relative;
-          z-index: 1031; /* ✅ Slightly higher than section but lower than modal */
+          z-index: 1031;
         }
 
         .filter-select {
@@ -1074,13 +995,13 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           transition: all 0.2s ease;
           background: white;
           position: relative;
-          z-index: 1032; /* ✅ Lower than modal but higher than group */
+          z-index: 1032;
         }
 
         .filter-select:focus {
           border-color: #6f42c1;
           box-shadow: 0 0 0 2px rgba(111, 66, 193, 0.1);
-          z-index: 1032 !important; /* ✅ Stay below modal */
+          z-index: 1032 !important;
         }
 
         .filter-select:disabled {
@@ -1097,13 +1018,13 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           padding: 0.5rem 0.75rem;
           transition: all 0.2s ease;
           position: relative;
-          z-index: 1032; /* ✅ Lower than modal but higher than group */
+          z-index: 1032;
         }
 
         .search-input:focus {
           border-color: #6f42c1;
           box-shadow: 0 0 0 2px rgba(111, 66, 193, 0.1);
-          z-index: 1032 !important; /* ✅ Stay below modal */
+          z-index: 1032 !important;
         }
 
         .search-input:disabled {
@@ -1122,7 +1043,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           align-items: center;
           justify-content: center;
           position: relative;
-          z-index: 1032; /* ✅ Lower than modal but higher than group */
+          z-index: 1032;
         }
 
         .refresh-button:hover:not(:disabled) {
@@ -1145,7 +1066,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           transition: all 0.3s ease;
           white-space: nowrap;
           position: relative;
-          z-index: 1032; /* ✅ Lower than modal but higher than group */
+          z-index: 1032;
         }
 
         .assign-button:hover:not(:disabled) {
@@ -1161,14 +1082,13 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           box-shadow: none;
         }
 
-        /* Tasks Card */
         .tasks-card {
           border: none;
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
           overflow: hidden;
           position: relative;
-          z-index: 1020; /* ✅ Lower than filters */
+          z-index: 1020;
         }
 
         .tasks-header {
@@ -1200,7 +1120,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           background: white;
         }
 
-        /* Loading State */
         .loading-state {
           text-align: center;
           padding: 3rem 1.5rem;
@@ -1212,7 +1131,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           font-size: 0.95rem;
         }
 
-        /* Tasks List */
         .tasks-list {
           display: flex;
           flex-direction: column;
@@ -1226,7 +1144,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           transition: all 0.2s ease;
           background: white;
           position: relative;
-          z-index: 1021; /* ✅ Lower than filters */
+          z-index: 1021;
         }
 
         .task-item:last-child {
@@ -1339,10 +1257,9 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
         .task-actions {
           flex-shrink: 0;
           position: relative;
-          z-index: 1022; /* ✅ Higher than task item but lower than filters */
+          z-index: 1022;
         }
 
-        /* ✅ FIX: Task actions dropdown specific z-index */
         .task-actions .dropdown {
           position: relative;
           z-index: 1022;
@@ -1356,7 +1273,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           z-index: 1022 !important;
         }
 
-        /* Empty State */
         .empty-state {
           text-align: center;
           padding: 3rem 1.5rem;
@@ -1380,7 +1296,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           margin-bottom: 1.5rem;
         }
 
-        /* Pagination */
         .pagination-section {
           display: flex;
           justify-content: center;
@@ -1388,7 +1303,7 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           gap: 1rem;
           margin-top: 1.5rem;
           position: relative;
-          z-index: 1020; /* ✅ Lower than filters */
+          z-index: 1020;
         }
 
         .pagination-info {
@@ -1396,7 +1311,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           color: #64748b;
         }
 
-        /* ✅ FIX: Additional global z-index overrides for modal safety */
         body.modal-open .filter-select,
         body.modal-open .search-input,
         body.modal-open .dropdown-toggle {
@@ -1407,12 +1321,10 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           display: none !important;
         }
 
-        /* ✅ FIX: Ensure Toast notifications are above everything */
         .toast-container {
           z-index: 1060 !important;
         }
 
-        /* Responsive Design for Filters */
         @media (max-width: 992px) {
           .filters-row-1 {
             display: grid;
@@ -1543,7 +1455,6 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           }
         }
 
-        /* ✅ FIX: Additional safety overrides for any missed elements */
         .daily-task-assignment * {
           position: relative;
         }
@@ -1553,13 +1464,11 @@ function DailyTaskAssignment({companyData, userData, addToast}) {
           position: fixed !important;
         }
 
-        /* ✅ FIX: Specific Bootstrap form control overrides */
         .form-control:focus,
         .form-select:focus {
           z-index: 1040 !important;
         }
 
-        /* ✅ FIX: Dropdown menu animation override to prevent z-index issues */
         .dropdown-menu.show {
           z-index: 1035 !important;
         }

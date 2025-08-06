@@ -396,37 +396,6 @@ function DatabaseSearch({show, onHide, onSelectParty, onClose}) {
 
     partyData.phoneNumbers = phoneNumbers;
 
-    // ✅ Enhanced logging for debugging
-    console.log("🔗 Company selected with bidirectional linking data:", {
-      selectedCompany: {
-        id: company.id,
-        name: company.name,
-        gstNumber: company.gstNumber,
-        phone: company.contactPhone,
-        email: company.contactEmail,
-        source: company.source,
-      },
-      supplierPartyData: {
-        name: partyData.name,
-        companyName: partyData.companyName,
-        linkedCompanyId: partyData.linkedCompanyId,
-        partyType: partyData.partyType,
-        enableBidirectionalOrders: partyData.enableBidirectionalOrders,
-      },
-      linkingStatus: {
-        hasLinkedCompanyId: !!partyData.linkedCompanyId,
-        isLinkedSupplier: partyData.isLinkedSupplier,
-        autoLinkingEnabled: {
-          byGST: partyData.autoLinkByGST,
-          byPhone: partyData.autoLinkByPhone,
-          byEmail: partyData.autoLinkByEmail,
-        },
-        readyForBidirectionalOrders: true,
-      },
-      expectedFlow:
-        "When purchase orders are created, this supplier can auto-generate sales orders in their linked company",
-    });
-
     // ✅ Call parent callback with enhanced data
     if (typeof onSelectParty === "function") {
       onSelectParty(partyData);

@@ -44,7 +44,9 @@ function Quotations({
   const location = useLocation();
 
   const saleOrderService = propSaleOrderService || salesOrderServiceImport;
+  const companyId = propCompanyId || urlCompanyId;
 
+  // State Management
   const [quotations, setQuotations] = useState([]);
   const [ordersFromPO, setOrdersFromPO] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,12 +60,16 @@ function Quotations({
   const [showBidirectionalAnalytics, setShowBidirectionalAnalytics] =
     useState(false);
   const [activeTab, setActiveTab] = useState("quotations");
+
+  // Filter states
   const [dateRange, setDateRange] = useState("This Month");
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [endDate, setEndDate] = useState(new Date());
   const [selectedFirm, setSelectedFirm] = useState("All Companies");
+
+  // Summary state
   const [summary, setSummary] = useState({
     totalQuotations: 0,
     quotationValue: 0,
@@ -81,8 +87,7 @@ function Quotations({
     sourceCompanyLinkedCount: 0,
   });
 
-  const companyId = propCompanyId || urlCompanyId;
-
+  // Date range options
   const dateRangeOptions = [
     "Today",
     "Yesterday",
@@ -105,6 +110,7 @@ function Quotations({
     "Branch Office 2",
   ];
 
+  // Combined quotations for display
   const allQuotations = useMemo(() => {
     const combined = [...quotations, ...ordersFromPO];
     const uniqueOrders = combined.filter(
@@ -115,12 +121,14 @@ function Quotations({
     return uniqueOrders;
   }, [quotations, ordersFromPO]);
 
+  // Service validation
   const validateService = useCallback(() => {
     if (!saleOrderService) return false;
     if (typeof saleOrderService.getSalesOrders !== "function") return false;
     return true;
   }, [saleOrderService]);
 
+  // Load quotations with error handling
   const loadQuotations = useCallback(async () => {
     if (!companyId || !validateService()) return;
 
@@ -167,6 +175,7 @@ function Quotations({
 
         setQuotations(quotationData);
 
+        // Calculate summary
         const total = quotationData.length;
         const totalValue = quotationData.reduce((sum, q) => {
           const amount = parseFloat(
@@ -239,7 +248,7 @@ function Quotations({
       }
     } catch (error) {
       setError(error.message);
-      addToast?.(`Failed to load quotations: ${error.message}`, "error");
+      addToast?.("Failed to load quotations", "error");
       setQuotations([]);
     } finally {
       setIsLoading(false);
@@ -257,6 +266,7 @@ function Quotations({
     validateService,
   ]);
 
+  // Load orders from purchase orders
   const loadOrdersFromPO = useCallback(async () => {
     if (!companyId || !validateService()) return;
 
@@ -300,6 +310,7 @@ function Quotations({
     }
   }, [companyId, saleOrderService, validateService]);
 
+  // Load bidirectional analytics
   const loadBidirectionalAnalytics = useCallback(async () => {
     if (!companyId || !validateService()) return;
 
@@ -325,17 +336,19 @@ function Quotations({
         }));
       }
     } catch (error) {
-      // Silent fail
+      // Silent fail for optional feature
     }
   }, [companyId, saleOrderService, validateService]);
 
+  // Effects
   useEffect(() => {
     loadQuotations();
     loadOrdersFromPO();
     loadBidirectionalAnalytics();
   }, [loadQuotations, loadOrdersFromPO, loadBidirectionalAnalytics]);
 
-  const handleAddQuotation = () => {
+  // Action handlers
+  const handleAddQuotation = useCallback(() => {
     const createPath = `/companies/${companyId}/sales-orders/add`;
     navigate(createPath, {
       state: {
@@ -346,15 +359,12 @@ function Quotations({
         defaultOrderType: "quotation",
       },
     });
-  };
+  }, [companyId, navigate, location.pathname]);
+
   const handleViewQuotation = useCallback((quotation) => {
-    console.log(
-      "Viewing quotation:",
-      quotation.quotationNumber || quotation.orderNumber
-    );
+    // Implementation for viewing quotation details
   }, []);
 
-  // ✅ ENHANCED: Update handleEditQuotation to pass complete data
   const handleEditQuotation = useCallback(
     (quotation) => {
       const quotationId = quotation._id || quotation.id;
@@ -364,42 +374,23 @@ function Quotations({
         return;
       }
 
-      console.log("🔄 Editing quotation:", {
-        quotationId,
-        quotationNumber: quotation.quotationNumber || quotation.orderNumber,
-        quotationData: quotation,
-        hasItems: Array.isArray(quotation.items),
-        itemsCount: quotation.items?.length || 0,
-      });
-
       const editPath = `/companies/${companyId}/sales-orders/${quotationId}/edit`;
 
       navigate(editPath, {
         state: {
-          // ✅ CRITICAL: Pass the complete quotation data
           salesOrder: quotation,
           order: quotation,
           quotation: quotation,
           transaction: quotation,
-
-          // ✅ ENHANCED: Document type information
           orderType: "quotation",
           documentType: "quotation",
           mode: "quotations",
-
-          // ✅ ENHANCED: Navigation context
           returnPath: location.pathname,
           editMode: true,
           isEdit: true,
-
-          // ✅ ENHANCED: Default settings
           defaultOrderType: "quotation",
-
-          // ✅ ADDED: API configuration
           apiEndpoint: "sales-orders",
           updateRoute: `/api/sales-orders/${quotationId}`,
-
-          // ✅ ENHANCED: Metadata
           editContext: {
             source: "Quotations",
             timestamp: new Date().toISOString(),
@@ -414,367 +405,404 @@ function Quotations({
     [companyId, location.pathname, navigate, currentUser, addToast]
   );
 
-  const handleDeleteQuotation = async (quotation) => {
-    const quotationNumber =
-      quotation.quotationNumber || quotation.orderNumber || quotation._id;
+  const handleDeleteQuotation = useCallback(
+    async (quotation) => {
+      const quotationNumber =
+        quotation.quotationNumber || quotation.orderNumber || quotation._id;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete quotation ${quotationNumber}?\n\nThis action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setIsLoading(true);
-
-      const response = await saleOrderService.deleteSalesOrder(
-        quotation._id || quotation.id
+      const confirmed = window.confirm(
+        `Are you sure you want to delete quotation ${quotationNumber}?\n\nThis action cannot be undone.`
       );
 
-      if (response.success) {
-        addToast?.(
-          `Quotation ${quotationNumber} deleted successfully`,
-          "success"
+      if (!confirmed) return;
+
+      try {
+        setIsLoading(true);
+
+        const response = await saleOrderService.deleteSalesOrder(
+          quotation._id || quotation.id
         );
-        await Promise.all([
-          loadQuotations(),
-          loadOrdersFromPO(),
-          loadBidirectionalAnalytics(),
-        ]);
-      } else {
-        throw new Error(
-          response.message || response.error || "Failed to delete quotation"
-        );
-      }
-    } catch (error) {
-      addToast?.(`Failed to delete quotation: ${error.message}`, "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handleConvertQuotation = async (quotation) => {
-    const quotationNumber =
-      quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-    const confirmed = window.confirm(
-      `Convert quotation ${quotationNumber} to sales order?\n\nThis will create a new sales order based on this quotation.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setIsLoading(true);
-
-      const response = await saleOrderService.convertToInvoice(
-        quotation._id || quotation.id,
-        {
-          convertToOrderType: "sales_order",
-          preserveItems: true,
-          preservePricing: true,
-          preserveTerms: true,
-          convertedBy: currentUser?._id || currentUser?.id,
-          convertedByName: currentUser?.name || currentUser?.username,
-          conversionReason: "quotation_to_sales_order",
+        if (response.success) {
+          addToast?.(
+            `Quotation ${quotationNumber} deleted successfully`,
+            "success"
+          );
+          await Promise.all([
+            loadQuotations(),
+            loadOrdersFromPO(),
+            loadBidirectionalAnalytics(),
+          ]);
+        } else {
+          throw new Error(
+            response.message || response.error || "Failed to delete quotation"
+          );
         }
+      } catch (error) {
+        addToast?.(`Failed to delete quotation: ${error.message}`, "error");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      saleOrderService,
+      addToast,
+      loadQuotations,
+      loadOrdersFromPO,
+      loadBidirectionalAnalytics,
+    ]
+  );
+
+  const handleConvertQuotation = useCallback(
+    async (quotation) => {
+      const quotationNumber =
+        quotation.quotationNumber || quotation.orderNumber || quotation._id;
+
+      const confirmed = window.confirm(
+        `Convert quotation ${quotationNumber} to sales order?\n\nThis will create a new sales order based on this quotation.`
       );
 
-      if (response.success) {
-        addToast?.(
-          `Quotation ${quotationNumber} converted to sales order successfully`,
-          "success"
-        );
-        await loadQuotations();
+      if (!confirmed) return;
 
-        if (response.data?.order?._id) {
-          const salesOrderPath = `/companies/${companyId}/sales-orders/${response.data.order._id}/view`;
-          navigate(salesOrderPath, {
+      try {
+        setIsLoading(true);
+
+        const response = await saleOrderService.convertToInvoice(
+          quotation._id || quotation.id,
+          {
+            convertToOrderType: "sales_order",
+            preserveItems: true,
+            preservePricing: true,
+            preserveTerms: true,
+            convertedBy: currentUser?._id || currentUser?.id,
+            convertedByName: currentUser?.name || currentUser?.username,
+            conversionReason: "quotation_to_sales_order",
+          }
+        );
+
+        if (response.success) {
+          addToast?.(
+            `Quotation ${quotationNumber} converted to sales order successfully`,
+            "success"
+          );
+          await loadQuotations();
+
+          if (response.data?.order?._id) {
+            const salesOrderPath = `/companies/${companyId}/sales-orders/${response.data.order._id}/view`;
+            navigate(salesOrderPath, {
+              state: {
+                salesOrder: response.data.order,
+                documentType: "sales_order",
+                mode: "sales-orders",
+                returnPath: location.pathname,
+                converted: true,
+                originalQuotation: quotation,
+              },
+            });
+          }
+        } else {
+          throw new Error(
+            response.message || response.error || "Conversion failed"
+          );
+        }
+      } catch (error) {
+        addToast?.(`Failed to convert quotation: ${error.message}`, "error");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      saleOrderService,
+      addToast,
+      loadQuotations,
+      currentUser,
+      companyId,
+      navigate,
+      location.pathname,
+    ]
+  );
+
+  const handleDuplicateQuotation = useCallback(
+    (quotation) => {
+      const createPath = `/companies/${companyId}/sales-orders/add`;
+      navigate(createPath, {
+        state: {
+          duplicateData: quotation,
+          isDuplicate: true,
+          originalQuotation: quotation,
+          orderType: "quotation",
+          documentType: "quotation",
+          mode: "quotations",
+          returnPath: location.pathname,
+          defaultOrderType: "quotation",
+        },
+      });
+    },
+    [companyId, navigate, location.pathname]
+  );
+
+  const handlePrintQuotation = useCallback(
+    async (quotation) => {
+      try {
+        const response = await saleOrderService.getSalesOrderForPrint?.(
+          quotation._id || quotation.id,
+          {
+            template: "quotation",
+            format: "a4",
+          }
+        );
+
+        if (response && response.success) {
+          return response;
+        }
+      } catch (error) {
+        addToast?.(`Failed to print quotation: ${error.message}`, "error");
+      }
+    },
+    [saleOrderService, addToast]
+  );
+
+  const handleShareQuotation = useCallback(
+    async (quotation) => {
+      try {
+        const quotationNumber =
+          quotation.quotationNumber || quotation.orderNumber || quotation._id;
+
+        const response = await saleOrderService.shareOrder?.(
+          quotation._id || quotation.id,
+          {
+            method: "email",
+          }
+        );
+
+        if (response && response.success) {
+          addToast?.(
+            `Quotation ${quotationNumber} shared successfully`,
+            "success"
+          );
+        }
+      } catch (error) {
+        addToast?.(`Failed to share quotation: ${error.message}`, "error");
+      }
+    },
+    [saleOrderService, addToast]
+  );
+
+  const handleDownloadQuotation = useCallback(
+    async (quotation) => {
+      try {
+        const quotationNumber =
+          quotation.quotationNumber || quotation.orderNumber || quotation._id;
+
+        const response = await saleOrderService.downloadSalesOrderPDF?.(
+          quotation._id || quotation.id,
+          {
+            template: "quotation",
+            format: "pdf",
+          }
+        );
+
+        if (response && response.success) {
+          addToast?.(
+            `Quotation ${quotationNumber} downloaded successfully`,
+            "success"
+          );
+        }
+      } catch (error) {
+        addToast?.(`Failed to download quotation: ${error.message}`, "error");
+      }
+    },
+    [saleOrderService, addToast]
+  );
+
+  const handleViewTrackingChain = useCallback(
+    async (quotation) => {
+      try {
+        const quotationNumber =
+          quotation.quotationNumber || quotation.orderNumber || quotation._id;
+
+        const response = await saleOrderService.getTrackingChain(
+          quotation._id || quotation.id
+        );
+
+        if (response.success) {
+          const trackingPath = `/companies/${companyId}/sales-orders/${
+            quotation._id || quotation.id
+          }/tracking`;
+          navigate(trackingPath, {
             state: {
-              salesOrder: response.data.order,
-              documentType: "sales_order",
-              mode: "sales-orders",
+              quotation: quotation,
+              trackingChain: response.data,
+              documentType: "quotation",
+              mode: "quotations",
               returnPath: location.pathname,
-              converted: true,
-              originalQuotation: quotation,
             },
           });
+        } else {
+          addToast?.(
+            `No tracking information found for quotation ${quotationNumber}`,
+            "warning"
+          );
         }
+      } catch (error) {
+        addToast?.(`Failed to load tracking chain: ${error.message}`, "error");
+      }
+    },
+    [saleOrderService, companyId, navigate, location.pathname, addToast]
+  );
+
+  const handleViewSourceOrder = useCallback(
+    (quotation) => {
+      if (
+        quotation.sourceOrderId &&
+        quotation.sourceOrderType === "purchase_order"
+      ) {
+        const sourcePath = `/companies/${
+          quotation.sourceCompanyId || companyId
+        }/purchase-orders/${quotation.sourceOrderId}/view`;
+        navigate(sourcePath, {
+          state: {
+            returnPath: location.pathname,
+            sourceQuotation: quotation,
+          },
+        });
       } else {
-        throw new Error(
-          response.message || response.error || "Conversion failed"
-        );
+        addToast?.("No source order found for this quotation", "warning");
       }
-    } catch (error) {
-      addToast?.(`Failed to convert quotation: ${error.message}`, "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [companyId, navigate, location.pathname, addToast]
+  );
 
-  const handleDuplicateQuotation = (quotation) => {
-    const createPath = `/companies/${companyId}/sales-orders/add`;
-    navigate(createPath, {
-      state: {
-        duplicateData: quotation,
-        isDuplicate: true,
-        originalQuotation: quotation,
-        orderType: "quotation",
-        documentType: "quotation",
-        mode: "quotations",
-        returnPath: location.pathname,
-        defaultOrderType: "quotation",
-      },
-    });
-  };
-
-  const handlePrintQuotation = async (quotation) => {
-    try {
-      const quotationNumber =
-        quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-      // ✅ REMOVED: No "preparing quotation for printing" toast
-      // ✅ REMOVED: No "quotation sent to printer" toast
-
-      // Just call the print service without showing toasts
-      const response = await saleOrderService.getSalesOrderForPrint?.(
-        quotation._id || quotation.id,
-        {
-          template: "quotation",
-          format: "a4",
-        }
-      );
-
-      if (response && response.success) {
-        // Let the SalesOrderTable component handle the print UI
-        return response;
-      }
-    } catch (error) {
-      // Only show error toasts
-      addToast?.(`Failed to print quotation: ${error.message}`, "error");
-    }
-  };
-
-  // ✅ FIXED: Remove toasts from handleShareQuotation function around line 545
-  const handleShareQuotation = async (quotation) => {
-    try {
-      const quotationNumber =
-        quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-      // ✅ REMOVED: No "sharing quotation" toast
-      // ✅ REMOVED: No "quotation shared successfully" toast
-
-      // Just call the share service without showing toasts
-      const response = await saleOrderService.shareOrder?.(
-        quotation._id || quotation.id,
-        {
-          method: "email",
-        }
-      );
-
-      if (response && response.success) {
-        // Only show final success message
-        addToast?.(
-          `Quotation ${quotationNumber} shared successfully`,
-          "success"
-        );
-      }
-    } catch (error) {
-      addToast?.(`Failed to share quotation: ${error.message}`, "error");
-    }
-  };
-
-  // ✅ FIXED: Remove toasts from handleDownloadQuotation function around line 555
-  const handleDownloadQuotation = async (quotation) => {
-    try {
-      const quotationNumber =
-        quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-      // ✅ REMOVED: No "downloading quotation" toast
-      // ✅ REMOVED: No "quotation downloaded successfully" toast
-
-      // Just call the download service without showing toasts
-      const response = await saleOrderService.downloadSalesOrderPDF?.(
-        quotation._id || quotation.id,
-        {
-          template: "quotation",
-          format: "pdf",
-        }
-      );
-
-      if (response && response.success) {
-        // Only show final success message
-        addToast?.(
-          `Quotation ${quotationNumber} downloaded successfully`,
-          "success"
-        );
-      }
-    } catch (error) {
-      addToast?.(`Failed to download quotation: ${error.message}`, "error");
-    }
-  };
-
-  const handleViewTrackingChain = async (quotation) => {
-    try {
-      const quotationNumber =
-        quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-      const response = await saleOrderService.getTrackingChain(
-        quotation._id || quotation.id
-      );
-
-      if (response.success) {
-        const trackingPath = `/companies/${companyId}/sales-orders/${
+  const handleViewGeneratedOrders = useCallback(
+    async (quotation) => {
+      try {
+        const generatedOrdersPath = `/companies/${companyId}/sales-orders/${
           quotation._id || quotation.id
-        }/tracking`;
-        navigate(trackingPath, {
+        }/generated-orders`;
+        navigate(generatedOrdersPath, {
           state: {
             quotation: quotation,
-            trackingChain: response.data,
             documentType: "quotation",
             mode: "quotations",
             returnPath: location.pathname,
           },
         });
-      } else {
+      } catch (error) {
         addToast?.(
-          `No tracking information found for quotation ${quotationNumber}`,
-          "warning"
+          `Failed to load generated orders: ${error.message}`,
+          "error"
         );
       }
-    } catch (error) {
-      addToast?.(`Failed to load tracking chain: ${error.message}`, "error");
-    }
-  };
+    },
+    [companyId, navigate, location.pathname, addToast]
+  );
 
-  const handleViewSourceOrder = (quotation) => {
-    if (
-      quotation.sourceOrderId &&
-      quotation.sourceOrderType === "purchase_order"
-    ) {
-      const sourcePath = `/companies/${
-        quotation.sourceCompanyId || companyId
-      }/purchase-orders/${quotation.sourceOrderId}/view`;
-      navigate(sourcePath, {
-        state: {
-          returnPath: location.pathname,
-          sourceQuotation: quotation,
-        },
-      });
-    } else {
-      addToast?.("No source order found for this quotation", "warning");
-    }
-  };
+  const handleCancelQuotation = useCallback(
+    async (quotation) => {
+      const quotationNumber =
+        quotation.quotationNumber || quotation.orderNumber || quotation._id;
 
-  const handleViewGeneratedOrders = async (quotation) => {
-    try {
-      const generatedOrdersPath = `/companies/${companyId}/sales-orders/${
-        quotation._id || quotation.id
-      }/generated-orders`;
-      navigate(generatedOrdersPath, {
-        state: {
-          quotation: quotation,
-          documentType: "quotation",
-          mode: "quotations",
-          returnPath: location.pathname,
-        },
-      });
-    } catch (error) {
-      addToast?.(`Failed to load generated orders: ${error.message}`, "error");
-    }
-  };
-
-  const handleCancelQuotation = async (quotation) => {
-    const quotationNumber =
-      quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to cancel quotation ${quotationNumber}?`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const response = await saleOrderService.cancelOrder(
-        quotation._id || quotation.id
+      const confirmed = window.confirm(
+        `Are you sure you want to cancel quotation ${quotationNumber}?`
       );
 
-      if (response.success) {
-        addToast?.(
-          `Quotation ${quotationNumber} cancelled successfully`,
-          "success"
+      if (!confirmed) return;
+
+      try {
+        const response = await saleOrderService.cancelOrder(
+          quotation._id || quotation.id
         );
-        await Promise.all([loadQuotations(), loadBidirectionalAnalytics()]);
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      addToast?.(`Failed to cancel quotation: ${error.message}`, "error");
-    }
-  };
 
-  const handleGeneratePurchaseOrder = async (quotation) => {
-    const quotationNumber =
-      quotation.quotationNumber || quotation.orderNumber || quotation._id;
-
-    const confirmed = window.confirm(
-      `Generate Purchase Order from quotation ${quotationNumber}?\n\nThis will create a corresponding purchase order.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setIsLoading(true);
-
-      // Call service to generate PO from quotation
-      const response = await saleOrderService.generatePurchaseOrder(
-        quotation._id || quotation.id,
-        {
-          preserveItems: true,
-          preservePricing: true,
-          preserveTerms: true,
-          generatedBy: currentUser?._id || currentUser?.id,
-          generatedByName: currentUser?.name || currentUser?.username,
-          generationReason: "quotation_to_purchase_order",
+        if (response.success) {
+          addToast?.(
+            `Quotation ${quotationNumber} cancelled successfully`,
+            "success"
+          );
+          await Promise.all([loadQuotations(), loadBidirectionalAnalytics()]);
+        } else {
+          throw new Error(response.message);
         }
-      );
-
-      if (response.success) {
-        addToast?.(
-          `Purchase Order generated from quotation ${quotationNumber} successfully`,
-          "success"
-        );
-        await loadQuotations();
-
-        if (response.data?.purchaseOrder?._id) {
-          const purchaseOrderPath = `/companies/${companyId}/purchase-orders/${response.data.purchaseOrder._id}/view`;
-          navigate(purchaseOrderPath, {
-            state: {
-              purchaseOrder: response.data.purchaseOrder,
-              documentType: "purchase-order",
-              mode: "purchase-orders",
-              returnPath: location.pathname,
-              generated: true,
-              originalQuotation: quotation,
-            },
-          });
-        }
-      } else {
-        throw new Error(
-          response.message ||
-            response.error ||
-            "Purchase Order generation failed"
-        );
+      } catch (error) {
+        addToast?.(`Failed to cancel quotation: ${error.message}`, "error");
       }
-    } catch (error) {
-      addToast?.(
-        `Failed to generate Purchase Order: ${error.message}`,
-        "error"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [saleOrderService, addToast, loadQuotations, loadBidirectionalAnalytics]
+  );
 
+  const handleGeneratePurchaseOrder = useCallback(
+    async (quotation) => {
+      const quotationNumber =
+        quotation.quotationNumber || quotation.orderNumber || quotation._id;
+
+      const confirmed = window.confirm(
+        `Generate Purchase Order from quotation ${quotationNumber}?\n\nThis will create a corresponding purchase order.`
+      );
+
+      if (!confirmed) return;
+
+      try {
+        setIsLoading(true);
+
+        const response = await saleOrderService.generatePurchaseOrder(
+          quotation._id || quotation.id,
+          {
+            preserveItems: true,
+            preservePricing: true,
+            preserveTerms: true,
+            generatedBy: currentUser?._id || currentUser?.id,
+            generatedByName: currentUser?.name || currentUser?.username,
+            generationReason: "quotation_to_purchase_order",
+          }
+        );
+
+        if (response.success) {
+          addToast?.(
+            `Purchase Order generated from quotation ${quotationNumber} successfully`,
+            "success"
+          );
+          await loadQuotations();
+
+          if (response.data?.purchaseOrder?._id) {
+            const purchaseOrderPath = `/companies/${companyId}/purchase-orders/${response.data.purchaseOrder._id}/view`;
+            navigate(purchaseOrderPath, {
+              state: {
+                purchaseOrder: response.data.purchaseOrder,
+                documentType: "purchase-order",
+                mode: "purchase-orders",
+                returnPath: location.pathname,
+                generated: true,
+                originalQuotation: quotation,
+              },
+            });
+          }
+        } else {
+          throw new Error(
+            response.message ||
+              response.error ||
+              "Purchase Order generation failed"
+          );
+        }
+      } catch (error) {
+        addToast?.(
+          `Failed to generate Purchase Order: ${error.message}`,
+          "error"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      saleOrderService,
+      currentUser,
+      addToast,
+      loadQuotations,
+      companyId,
+      navigate,
+      location.pathname,
+    ]
+  );
+
+  // Filter handlers
   const handleDateRangeChange = useCallback((range) => {
     setDateRange(range);
     const today = new Date();
@@ -897,23 +925,16 @@ function Quotations({
     setFilterStatus(status);
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     loadQuotations();
     loadOrdersFromPO();
     loadBidirectionalAnalytics();
-  };
+  }, [loadQuotations, loadOrdersFromPO, loadBidirectionalAnalytics]);
 
+  // Validation states
   if (!companyId) {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100vh",
-          backgroundColor: "#f8f9fa",
-          margin: 0,
-          padding: "1rem",
-        }}
-      >
+      <div className="quotations-error-container">
         <Container fluid>
           <Alert variant="warning" className="text-center">
             <h5>⚠️ No Company Selected</h5>
@@ -928,15 +949,7 @@ function Quotations({
 
   if (!isOnline) {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100vh",
-          backgroundColor: "#f8f9fa",
-          margin: 0,
-          padding: "1rem",
-        }}
-      >
+      <div className="quotations-error-container">
         <Container fluid>
           <Alert variant="warning" className="text-center">
             <h5>📡 No Internet Connection</h5>
@@ -951,15 +964,7 @@ function Quotations({
 
   if (!validateService()) {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100vh",
-          backgroundColor: "#f8f9fa",
-          margin: 0,
-          padding: "1rem",
-        }}
-      >
+      <div className="quotations-error-container">
         <Container fluid>
           <Alert variant="danger" className="text-center">
             <h5>🔧 Service Unavailable</h5>
@@ -982,79 +987,9 @@ function Quotations({
   }
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100vh",
-        backgroundColor: "#f8f9fa",
-        margin: 0,
-        padding: 0,
-        overflow: "hidden", // ✅ FIXED: Prevent outer scroll
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <style>
-        {`
-        .main-content {
-          padding: 0 !important;
-          margin: 0 !important;
-          min-height: auto !important;
-        }
-        
-        /* ✅ FIXED: Remove scroll bars from nested components */
-        .quotations-container {
-          overflow: hidden !important;
-        }
-        
-        .quotations-container .container-fluid {
-          overflow: hidden !important;
-        }
-        
-        /* ✅ FIXED: Ensure tables handle overflow properly */
-        .table-responsive {
-          overflow-x: auto !important;
-          overflow-y: hidden !important;
-        }
-        
-        /* ✅ Smaller card styling for quotations */
-        .text-center .card-body {
-          padding: 0.5rem !important;
-        }
-        
-        .text-center h6 {
-          font-size: 1rem !important;
-          margin-bottom: 0.25rem !important;
-          font-weight: 600 !important;
-        }
-        
-        .text-center small {
-          font-size: 0.7rem !important;
-          line-height: 1.2 !important;
-        }
-        
-        /* Tab styling */
-        .nav-tabs .nav-link {
-          border-radius: 0 !important;
-        }
-        
-        .nav-tabs .nav-link.active {
-          border-radius: 0 !important;
-        }
-
-        /* ✅ FIXED: Prevent scroll in specific containers */
-        .sales-order-table-container {
-          overflow: visible !important;
-        }
-        
-        .card-body {
-          overflow: visible !important;
-        }
-      `}
-      </style>
-
-      {/* ✅ FIXED: Header with fixed height */}
-      <div style={{flexShrink: 0}}>
+    <div className="quotations-main-container">
+      {/* Header - Fixed */}
+      <div className="quotations-header-fixed">
         <SalesInvoicesHeader
           searchTerm={searchTerm}
           onSearchChange={handleSearchChange}
@@ -1070,335 +1005,524 @@ function Quotations({
         />
       </div>
 
-      {/* ✅ FIXED: Scrollable content area */}
-      <Container
-        fluid
-        className="px-3 quotations-container"
-        style={{
-          flex: 1,
-          overflow: "auto",
-          height: 0, // ✅ CRITICAL: Forces proper flex behavior
-          paddingBottom: "20px",
-        }}
-      >
-        {/* ✅ FIXED: Page Title Header with margin adjustment */}
-        <div style={{marginBottom: "1rem"}}>
-          <SalesInvoicesPageTitle
-            onAddSale={handleAddQuotation}
-            invoiceCount={allQuotations.length}
-            companyId={companyId}
-            mode="quotations"
-            documentType="quotation"
-            title="Quotations"
-            subtitle="Create and manage professional quotations for your clients"
-          />
-        </div>
-
-        {/* ✅ FIXED: Filter section */}
-        <Row className="mb-3">
-          <Col xs={12}>
-            <SalesInvoicesFilter
-              dateRange={dateRange}
-              startDate={startDate}
-              endDate={endDate}
-              selectedFirm={selectedFirm}
-              dateRangeOptions={dateRangeOptions}
-              firmOptions={firmOptions}
-              onDateRangeChange={handleDateRangeChange}
-              onStartDateChange={handleStartDateChange}
-              onEndDateChange={handleEndDateChange}
-              onFirmChange={handleFirmChange}
-              onExcelExport={() =>
-                addToast?.("Excel export coming soon", "info")
-              }
-              onPrint={() => addToast?.("Print coming soon", "info")}
-              resultCount={allQuotations.length}
+      {/* Scrollable Content */}
+      <div className="quotations-content-scrollable">
+        <Container fluid className="quotations-container">
+          {/* Page Title */}
+          <div className="quotations-page-title">
+            <SalesInvoicesPageTitle
+              onAddSale={handleAddQuotation}
+              invoiceCount={allQuotations.length}
+              companyId={companyId}
               mode="quotations"
               documentType="quotation"
-              pageTitle="Quotations"
-              showBidirectionalFilters={true}
-              onToggleBidirectionalAnalytics={() =>
-                setShowBidirectionalAnalytics(!showBidirectionalAnalytics)
-              }
-              showBidirectionalAnalytics={showBidirectionalAnalytics}
+              title="Quotations"
+              subtitle="Create and manage professional quotations for your clients"
             />
-          </Col>
-        </Row>
+          </div>
 
-        <Row className="g-3">
-          <Col xl={2} lg={3} md={3} sm={12}>
-            <SalesInvoicesSummary
-              summary={summary}
-              loading={isLoading}
-              dateRange={dateRange}
-              mode="quotations"
-              documentType="quotation"
-              isQuotationsMode={true}
-              showBidirectionalMetrics={true}
-              bidirectionalCount={summary.bidirectionalCount}
-              autoGeneratedCount={summary.autoGeneratedCount}
-              sourceCompanyLinkedCount={summary.sourceCompanyLinkedCount}
-            />
-          </Col>
+          {/* Filters */}
+          <Row className="mb-3">
+            <Col xs={12}>
+              <SalesInvoicesFilter
+                dateRange={dateRange}
+                startDate={startDate}
+                endDate={endDate}
+                selectedFirm={selectedFirm}
+                dateRangeOptions={dateRangeOptions}
+                firmOptions={firmOptions}
+                onDateRangeChange={handleDateRangeChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onFirmChange={handleFirmChange}
+                onExcelExport={() =>
+                  addToast?.("Excel export coming soon", "info")
+                }
+                onPrint={() => addToast?.("Print coming soon", "info")}
+                resultCount={allQuotations.length}
+                mode="quotations"
+                documentType="quotation"
+                pageTitle="Quotations"
+                showBidirectionalFilters={true}
+                onToggleBidirectionalAnalytics={() =>
+                  setShowBidirectionalAnalytics(!showBidirectionalAnalytics)
+                }
+                showBidirectionalAnalytics={showBidirectionalAnalytics}
+              />
+            </Col>
+          </Row>
 
-          <Col xl={10} lg={9} md={9} sm={12}>
-            {error && (
-              <Alert
-                variant="danger"
-                className="mb-3"
-                style={{borderRadius: 0}}
+          {/* Main Content */}
+          <Row className="g-3">
+            {/* Summary Sidebar */}
+            <Col xl={2} lg={3} md={3} sm={12}>
+              <SalesInvoicesSummary
+                summary={summary}
+                loading={isLoading}
+                dateRange={dateRange}
+                mode="quotations"
+                documentType="quotation"
+                isQuotationsMode={true}
+                showBidirectionalMetrics={true}
+                bidirectionalCount={summary.bidirectionalCount}
+                autoGeneratedCount={summary.autoGeneratedCount}
+                sourceCompanyLinkedCount={summary.sourceCompanyLinkedCount}
+              />
+            </Col>
+
+            {/* Main Content Area */}
+            <Col xl={10} lg={9} md={9} sm={12}>
+              {/* Error Display */}
+              {error && (
+                <Alert variant="danger" className="mb-3">
+                  <FontAwesomeIcon
+                    icon={faExclamationTriangle}
+                    className="me-2"
+                  />
+                  {error}
+                  <Button
+                    variant="outline-danger"
+                    size="sm"
+                    className="ms-2"
+                    onClick={() => {
+                      setError(null);
+                      handleRefresh();
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faSync} className="me-1" /> Retry
+                  </Button>
+                </Alert>
+              )}
+
+              {/* Tabs */}
+              <Tab.Container
+                activeKey={activeTab}
+                onSelect={(k) => setActiveTab(k)}
               >
-                <FontAwesomeIcon
-                  icon={faExclamationTriangle}
-                  className="me-2"
-                />
-                {error}
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  className="ms-2"
-                  onClick={() => {
-                    setError(null);
-                    handleRefresh();
-                  }}
-                  style={{borderRadius: 0}}
-                >
-                  <FontAwesomeIcon icon={faSync} className="me-1" /> Retry
-                </Button>
-              </Alert>
-            )}
-
-            <Tab.Container
-              activeKey={activeTab}
-              onSelect={(k) => setActiveTab(k)}
-            >
-              <Nav variant="tabs" className="mb-0" style={{borderRadius: 0}}>
-                <Nav.Item>
-                  <Nav.Link eventKey="quotations">
-                    <FontAwesomeIcon icon={faClipboardList} className="me-2" />
-                    Quotations ({quotations.length})
-                  </Nav.Link>
-                </Nav.Item>
-                <Nav.Item>
-                  <Nav.Link eventKey="fromBuyers">
-                    <FontAwesomeIcon icon={faBuilding} className="me-2" />
-                    From Buyers (
-                    {summary.autoGeneratedCount + summary.bidirectionalCount})
-                  </Nav.Link>
-                </Nav.Item>
-              </Nav>
-
-              <Tab.Content>
-                <Tab.Pane eventKey="quotations">
-                  {/* ✅ FIXED: Card without scroll overflow */}
-                  <Card
-                    className="border-0 shadow-sm"
-                    style={{
-                      borderRadius: 0,
-                      overflow: "visible", // ✅ FIXED: Remove overflow restriction
-                    }}
-                  >
-                    <Card.Body
-                      className="p-0"
-                      style={{
-                        overflow: "visible", // ✅ FIXED: Remove overflow restriction
-                      }}
-                    >
-                      <SalesOrderTable
-                        salesOrders={quotations}
-                        onViewOrder={handleViewQuotation}
-                        onEditOrder={handleEditQuotation}
-                        onDeleteOrder={handleDeleteQuotation}
-                        onPrintOrder={handlePrintQuotation}
-                        onShareOrder={handleShareQuotation}
-                        onDownloadOrder={handleDownloadQuotation}
-                        onConvertOrder={handleConvertQuotation}
-                        onDuplicateOrder={handleDuplicateQuotation}
-                        onGeneratePurchaseOrder={handleGeneratePurchaseOrder}
-                        isLoading={isLoading}
-                        title="Quotations"
-                        searchPlaceholder="Search quotations, customers, mobile..."
-                        companyId={companyId}
-                        addToast={addToast}
-                        currentUser={currentUser}
-                        currentCompany={currentCompany}
-                        searchTerm={searchTerm}
-                        onSearchChange={handleSearchChange}
-                        sortBy={sortBy}
-                        sortOrder={sortOrder}
-                        onSort={handleSort}
-                        filterStatus={filterStatus}
-                        onFilterChange={handleFilterChange}
-                        showHeader={false}
-                        enableActions={true}
-                        enableBulkActions={true}
-                        selectedOrders={selectedQuotations}
-                        onSelectionChange={setSelectedQuotations}
-                        showBidirectionalColumns={true}
-                        documentType="quotation"
-                        isQuotationsMode={true}
-                        saleOrderService={saleOrderService}
-                        onCancelOrder={handleCancelQuotation}
-                        onViewTrackingChain={handleViewTrackingChain}
-                        onViewSourceOrder={handleViewSourceOrder}
-                        onViewGeneratedOrders={handleViewGeneratedOrders}
-                        enableEnhancedTracking={true}
-                        showSourceCompanyColumn={true}
-                        showGeneratedOrdersColumn={false}
-                        enableQuickNavigation={true}
-                        refreshTrigger={`${quotations.length}-${ordersFromPO.length}`}
+                <Nav variant="tabs" className="mb-0 quotations-tabs">
+                  <Nav.Item>
+                    <Nav.Link eventKey="quotations">
+                      <FontAwesomeIcon
+                        icon={faClipboardList}
+                        className="me-2"
                       />
-                    </Card.Body>
-                  </Card>
-                </Tab.Pane>
+                      Quotations ({quotations.length})
+                    </Nav.Link>
+                  </Nav.Item>
+                  <Nav.Item>
+                    <Nav.Link eventKey="fromBuyers">
+                      <FontAwesomeIcon icon={faBuilding} className="me-2" />
+                      From Buyers (
+                      {summary.autoGeneratedCount + summary.bidirectionalCount})
+                    </Nav.Link>
+                  </Nav.Item>
+                </Nav>
 
-                <Tab.Pane eventKey="fromBuyers">
-                  {/* ✅ FIXED: Similar overflow fix for second tab */}
-                  <Card
-                    style={{
-                      borderRadius: 0,
-                      overflow: "visible", // ✅ FIXED: Remove overflow restriction
-                    }}
-                  >
-                    <Card.Header className="bg-light">
-                      <div className="d-flex align-items-center justify-content-between">
-                        <h5 className="mb-0">
-                          <FontAwesomeIcon
-                            icon={faBuilding}
-                            className="me-2 text-primary"
-                          />
-                          Quotations From Buyers
-                        </h5>
-                        <Badge
-                          bg="info"
-                          className="fs-6"
-                          style={{borderRadius: 0}}
-                        >
-                          {summary.autoGeneratedCount +
-                            summary.bidirectionalCount}{" "}
-                          Active
-                        </Badge>
-                      </div>
-                    </Card.Header>
-                    <Card.Body
-                      style={{
-                        overflow: "visible", // ✅ FIXED: Remove overflow restriction
-                      }}
-                    >
-                      <Row className="mb-3">
-                        <Col md={4}>
-                          <Card
-                            className="text-center border-info"
-                            style={{borderRadius: 0}}
-                          >
-                            <Card.Body className="py-2">
-                              <FontAwesomeIcon
-                                icon={faFileImport}
-                                className="text-info mb-1"
-                                style={{fontSize: "1.2rem"}}
-                              />
-                              <h6 className="text-info mb-1">
-                                {summary.autoGeneratedCount}
-                              </h6>
-                              <small
-                                className="text-muted"
-                                style={{fontSize: "0.75rem"}}
-                              >
-                                Auto-Generated from Purchase Orders
-                              </small>
-                            </Card.Body>
-                          </Card>
-                        </Col>
-                        <Col md={4}>
-                          <Card
-                            className="text-center border-success"
-                            style={{borderRadius: 0}}
-                          >
-                            <Card.Body className="py-2">
-                              <FontAwesomeIcon
-                                icon={faFileExport}
-                                className="text-success mb-1"
-                                style={{fontSize: "1.2rem"}}
-                              />
-                              <h6 className="text-success mb-1">
-                                {summary.convertedQuotations}
-                              </h6>
-                              <small
-                                className="text-muted"
-                                style={{fontSize: "0.75rem"}}
-                              >
-                                Converted to Orders
-                              </small>
-                            </Card.Body>
-                          </Card>
-                        </Col>
-                        <Col md={4}>
-                          <Card
-                            className="text-center border-warning"
-                            style={{borderRadius: 0}}
-                          >
-                            <Card.Body className="py-2">
-                              <FontAwesomeIcon
-                                icon={faExchangeAlt}
-                                className="text-warning mb-1"
-                                style={{fontSize: "1.2rem"}}
-                              />
-                              <h6 className="text-warning mb-1">
-                                {summary.bidirectionalCount}
-                              </h6>
-                              <small
-                                className="text-muted"
-                                style={{fontSize: "0.75rem"}}
-                              >
-                                From Purchase Orders
-                              </small>
-                            </Card.Body>
-                          </Card>
-                        </Col>
-                      </Row>
+                <Tab.Content className="quotations-tab-content">
+                  {/* All Quotations Tab */}
+                  <Tab.Pane eventKey="quotations">
+                    <Card className="quotations-card">
+                      <Card.Body className="p-0">
+                        <SalesOrderTable
+                          salesOrders={quotations}
+                          onViewOrder={handleViewQuotation}
+                          onEditOrder={handleEditQuotation}
+                          onDeleteOrder={handleDeleteQuotation}
+                          onPrintOrder={handlePrintQuotation}
+                          onShareOrder={handleShareQuotation}
+                          onDownloadOrder={handleDownloadQuotation}
+                          onConvertOrder={handleConvertQuotation}
+                          onDuplicateOrder={handleDuplicateQuotation}
+                          onGeneratePurchaseOrder={handleGeneratePurchaseOrder}
+                          isLoading={isLoading}
+                          title="Quotations"
+                          searchPlaceholder="Search quotations, customers, mobile..."
+                          companyId={companyId}
+                          addToast={addToast}
+                          currentUser={currentUser}
+                          currentCompany={currentCompany}
+                          searchTerm={searchTerm}
+                          onSearchChange={handleSearchChange}
+                          sortBy={sortBy}
+                          sortOrder={sortOrder}
+                          onSort={handleSort}
+                          filterStatus={filterStatus}
+                          onFilterChange={handleFilterChange}
+                          showHeader={false}
+                          enableActions={true}
+                          enableBulkActions={true}
+                          selectedOrders={selectedQuotations}
+                          onSelectionChange={setSelectedQuotations}
+                          showBidirectionalColumns={true}
+                          documentType="quotation"
+                          isQuotationsMode={true}
+                          saleOrderService={saleOrderService}
+                          onCancelOrder={handleCancelQuotation}
+                          onViewTrackingChain={handleViewTrackingChain}
+                          onViewSourceOrder={handleViewSourceOrder}
+                          onViewGeneratedOrders={handleViewGeneratedOrders}
+                          enableEnhancedTracking={true}
+                          showSourceCompanyColumn={true}
+                          showGeneratedOrdersColumn={false}
+                          enableQuickNavigation={true}
+                          refreshTrigger={`${quotations.length}-${ordersFromPO.length}`}
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Tab.Pane>
 
-                      <SalesOrderTable
-                        salesOrders={ordersFromPO}
-                        onViewOrder={handleViewQuotation}
-                        onEditOrder={handleEditQuotation}
-                        onDeleteOrder={handleDeleteQuotation}
-                        onPrintOrder={handlePrintQuotation}
-                        onShareOrder={handleShareQuotation}
-                        onDownloadOrder={handleDownloadQuotation}
-                        onConvertOrder={handleConvertQuotation}
-                        onDuplicateOrder={handleDuplicateQuotation}
-                        onGeneratePurchaseOrder={handleGeneratePurchaseOrder}
-                        isLoading={isLoading}
-                        title="Quotations From Buyers"
-                        searchPlaceholder="Search buyer quotations..."
-                        companyId={companyId}
-                        addToast={addToast}
-                        currentUser={currentUser}
-                        currentCompany={currentCompany}
-                        showHeader={false}
-                        enableActions={true}
-                        enableBulkActions={false}
-                        showBidirectionalColumns={true}
-                        documentType="quotation"
-                        isQuotationsMode={true}
-                        saleOrderService={saleOrderService}
-                        onCancelOrder={handleCancelQuotation}
-                        onViewTrackingChain={handleViewTrackingChain}
-                        onViewSourceOrder={handleViewSourceOrder}
-                        onViewGeneratedOrders={handleViewGeneratedOrders}
-                        enableEnhancedTracking={true}
-                        showSourceCompanyColumn={true}
-                        showGeneratedOrdersColumn={true}
-                        enableQuickNavigation={true}
-                      />
-                    </Card.Body>
-                  </Card>
-                </Tab.Pane>
-              </Tab.Content>
-            </Tab.Container>
-          </Col>
-        </Row>
-      </Container>
+                  {/* From Buyers Tab */}
+                  <Tab.Pane eventKey="fromBuyers">
+                    <Card className="quotations-card">
+                      <Card.Header className="bg-light">
+                        <div className="d-flex align-items-center justify-content-between">
+                          <h5 className="mb-0">
+                            <FontAwesomeIcon
+                              icon={faBuilding}
+                              className="me-2 text-primary"
+                            />
+                            Quotations From Buyers
+                          </h5>
+                          <Badge bg="info" className="fs-6">
+                            {summary.autoGeneratedCount +
+                              summary.bidirectionalCount}{" "}
+                            Active
+                          </Badge>
+                        </div>
+                      </Card.Header>
+                      <Card.Body>
+                        {/* Stats Cards */}
+                        <Row className="mb-3">
+                          <Col md={4}>
+                            <Card className="text-center border-info quotations-stat-card">
+                              <Card.Body className="py-2">
+                                <FontAwesomeIcon
+                                  icon={faFileImport}
+                                  className="text-info mb-1"
+                                />
+                                <h6 className="text-info mb-1">
+                                  {summary.autoGeneratedCount}
+                                </h6>
+                                <small className="text-muted">
+                                  Auto-Generated from Purchase Orders
+                                </small>
+                              </Card.Body>
+                            </Card>
+                          </Col>
+                          <Col md={4}>
+                            <Card className="text-center border-success quotations-stat-card">
+                              <Card.Body className="py-2">
+                                <FontAwesomeIcon
+                                  icon={faFileExport}
+                                  className="text-success mb-1"
+                                />
+                                <h6 className="text-success mb-1">
+                                  {summary.convertedQuotations}
+                                </h6>
+                                <small className="text-muted">
+                                  Converted to Orders
+                                </small>
+                              </Card.Body>
+                            </Card>
+                          </Col>
+                          <Col md={4}>
+                            <Card className="text-center border-warning quotations-stat-card">
+                              <Card.Body className="py-2">
+                                <FontAwesomeIcon
+                                  icon={faExchangeAlt}
+                                  className="text-warning mb-1"
+                                />
+                                <h6 className="text-warning mb-1">
+                                  {summary.bidirectionalCount}
+                                </h6>
+                                <small className="text-muted">
+                                  From Purchase Orders
+                                </small>
+                              </Card.Body>
+                            </Card>
+                          </Col>
+                        </Row>
+
+                        {/* From Buyers Table */}
+                        <SalesOrderTable
+                          salesOrders={ordersFromPO}
+                          onViewOrder={handleViewQuotation}
+                          onEditOrder={handleEditQuotation}
+                          onDeleteOrder={handleDeleteQuotation}
+                          onPrintOrder={handlePrintQuotation}
+                          onShareOrder={handleShareQuotation}
+                          onDownloadOrder={handleDownloadQuotation}
+                          onConvertOrder={handleConvertQuotation}
+                          onDuplicateOrder={handleDuplicateQuotation}
+                          onGeneratePurchaseOrder={handleGeneratePurchaseOrder}
+                          isLoading={isLoading}
+                          title="Quotations From Buyers"
+                          searchPlaceholder="Search buyer quotations..."
+                          companyId={companyId}
+                          addToast={addToast}
+                          currentUser={currentUser}
+                          currentCompany={currentCompany}
+                          showHeader={false}
+                          enableActions={true}
+                          enableBulkActions={false}
+                          showBidirectionalColumns={true}
+                          documentType="quotation"
+                          isQuotationsMode={true}
+                          saleOrderService={saleOrderService}
+                          onCancelOrder={handleCancelQuotation}
+                          onViewTrackingChain={handleViewTrackingChain}
+                          onViewSourceOrder={handleViewSourceOrder}
+                          onViewGeneratedOrders={handleViewGeneratedOrders}
+                          enableEnhancedTracking={true}
+                          showSourceCompanyColumn={true}
+                          showGeneratedOrdersColumn={true}
+                          enableQuickNavigation={true}
+                        />
+                      </Card.Body>
+                    </Card>
+                  </Tab.Pane>
+                </Tab.Content>
+              </Tab.Container>
+            </Col>
+          </Row>
+        </Container>
+      </div>
+
+      {/* Production-ready styles */}
+      <style>{`
+        .quotations-main-container {
+          width: 100%;
+          height: 100vh;
+          background-color: #f8f9fa;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .quotations-header-fixed {
+          flex-shrink: 0;
+          z-index: 1000;
+        }
+
+        .quotations-content-scrollable {
+          flex: 1;
+          overflow: auto;
+          padding: 0;
+          margin: 0;
+          height: 0;
+        }
+
+        .quotations-container {
+          padding: 1rem 1.5rem 2rem;
+          margin: 0;
+          overflow: visible;
+        }
+
+        .quotations-page-title {
+          margin-bottom: 1rem;
+        }
+
+        .quotations-error-container {
+          width: 100%;
+          height: 100vh;
+          background-color: #f8f9fa;
+          margin: 0;
+          padding: 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .quotations-tabs .nav-link {
+          border-radius: 0.375rem 0.375rem 0 0 !important;
+          font-weight: 500;
+          color: #6c757d;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .quotations-tabs .nav-link:hover {
+          border-color: #e9ecef #e9ecef #dee2e6;
+          color: #495057;
+        }
+
+        .quotations-tabs .nav-link.active {
+          color: #495057;
+          background-color: #fff;
+          border-color: #dee2e6 #dee2e6 #fff;
+          font-weight: 600;
+        }
+
+        .quotations-tab-content {
+          border: 1px solid #dee2e6;
+          border-top: none;
+          border-radius: 0 0 0.375rem 0.375rem;
+          background: white;
+        }
+
+        .quotations-card {
+          border: none;
+          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+          transition: all 0.15s ease-in-out;
+        }
+
+        .quotations-card:hover {
+          box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+
+        .quotations-stat-card {
+          transition: all 0.15s ease-in-out;
+        }
+
+        .quotations-stat-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+        }
+
+        .quotations-stat-card .card-body {
+          padding: 0.75rem !important;
+        }
+
+        .quotations-stat-card h6 {
+          font-size: 1.1rem !important;
+          margin-bottom: 0.25rem !important;
+          font-weight: 600 !important;
+        }
+
+        .quotations-stat-card small {
+          font-size: 0.75rem !important;
+          line-height: 1.2 !important;
+        }
+
+        .quotations-stat-card .fa-icon {
+          font-size: 1.2rem;
+        }
+
+        .alert {
+          border: none !important;
+          font-weight: 500;
+          border-radius: 0.375rem !important;
+        }
+
+        .btn {
+          border-radius: 0.375rem !important;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .badge {
+          font-weight: 600;
+          letter-spacing: 0.025em;
+          border-radius: 0.25rem !important;
+        }
+
+        .card {
+          border-radius: 0.375rem !important;
+        }
+
+        .form-control,
+        .form-select {
+          border-radius: 0.375rem !important;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+          border-color: #86b7fe;
+          outline: 0;
+          box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        .text-muted {
+          color: #6c757d !important;
+        }
+
+        /* Scrollbar styling */
+        .quotations-content-scrollable::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .quotations-content-scrollable::-webkit-scrollbar-track {
+          background: #f1f1f1;
+        }
+
+        .quotations-content-scrollable::-webkit-scrollbar-thumb {
+          background: #c1c1c1;
+          border-radius: 4px;
+        }
+
+        .quotations-content-scrollable::-webkit-scrollbar-thumb:hover {
+          background: #a1a1a1;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+          .quotations-container {
+            padding: 0.75rem;
+          }
+
+          .quotations-page-title {
+            margin-bottom: 0.75rem;
+          }
+
+          .quotations-tabs .nav-link {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+          }
+
+          .quotations-stat-card .card-body {
+            padding: 0.5rem !important;
+          }
+
+          .quotations-stat-card h6 {
+            font-size: 1rem !important;
+          }
+
+          .quotations-stat-card small {
+            font-size: 0.7rem !important;
+          }
+
+          .g-3 {
+            gap: 0.75rem !important;
+          }
+        }
+
+        @media (max-width: 576px) {
+          .quotations-container {
+            padding: 0.5rem;
+          }
+
+          .quotations-tabs .nav-link {
+            padding: 0.375rem 0.5rem;
+            font-size: 0.8rem;
+          }
+
+          .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.775rem;
+          }
+
+          .quotations-stat-card .card-body {
+            padding: 0.375rem !important;
+          }
+        }
+
+        /* Fix for footer overlap */
+        .quotations-content-scrollable {
+          padding-bottom: 60px;
+        }
+
+        /* Ensure proper spacing from footer */
+        @media (max-width: 768px) {
+          .quotations-content-scrollable {
+            padding-bottom: 80px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

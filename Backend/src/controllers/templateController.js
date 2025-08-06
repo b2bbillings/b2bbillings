@@ -1,11 +1,47 @@
 const mongoose = require("mongoose");
 
+// Helper function to handle async errors
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// Helper function to get company ID from request
+const getCompanyId = (req) => {
+  return req.companyId || req.user?.companyId || req.headers["x-company-id"];
+};
+
+// Enhanced error handler
+const handleError = (error, req, res, operation) => {
+  let statusCode = 500;
+  let message = "Internal server error";
+
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed";
+  }
+
+  if (error.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid data format";
+  }
+
+  if (error.code === 11000) {
+    statusCode = 409;
+    message = "Duplicate data detected";
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
+  });
+};
+
 // Import models with error handling
 const getModel = (modelName) => {
   try {
     return require(`../models/${modelName}`);
   } catch (error) {
-    console.warn(`Model ${modelName} not found:`, error.message);
     return null;
   }
 };
@@ -15,11 +51,11 @@ let MessageHandler = null;
 try {
   MessageHandler = require("../socket/messageHandler");
 } catch (error) {
-  console.warn("MessageHandler not found, using fallback templates");
+  // MessageHandler not available - using fallback templates
 }
 
-// Fallback templates if MessageHandler is not available
-const fallbackTemplates = {
+// Production-ready template library
+const messageTemplates = {
   payment: {
     payment_reminder: {
       id: "payment_reminder",
@@ -92,17 +128,6 @@ const fallbackTemplates = {
         "Dear {customerName}, your invoice #{invoiceNumber} for ₹{amount} is due today. Please make the payment to avoid any late charges.",
       messageType: "whatsapp",
       variables: ["customerName", "invoiceNumber", "amount"],
-    },
-  },
-  statement: {
-    monthly_statement: {
-      id: "monthly_statement",
-      title: "Monthly Statement",
-      category: "statement",
-      content:
-        "Dear {customerName}, your monthly statement is ready. Outstanding balance: ₹{balance}. Please review your account and clear any pending payments.",
-      messageType: "email",
-      variables: ["customerName", "balance"],
     },
   },
   meeting: {
@@ -208,15 +233,17 @@ if (MessageHandler) {
   try {
     messageHandler = new MessageHandler();
   } catch (error) {
-    console.warn("Failed to initialize MessageHandler:", error.message);
+    // MessageHandler initialization failed - using templates only
   }
 }
 
-// Get message templates for a party
-const getMessageTemplates = async (req, res) => {
+// @desc    Get message templates for a party
+// @route   GET /api/templates/:partyId
+// @access  Private
+const getMessageTemplates = asyncHandler(async (req, res) => {
   try {
     const {partyId} = req.params;
-    const {companyId} = req.user;
+    const companyId = getCompanyId(req);
     const {category, messageType} = req.query;
 
     // Validate partyId
@@ -245,22 +272,21 @@ const getMessageTemplates = async (req, res) => {
           });
         }
       } catch (error) {
-        console.warn("Party lookup failed:", error.message);
+        // Party lookup failed - continue with templates only
       }
     }
 
-    // Get templates from MessageHandler or use fallback
-    let templates = {};
+    // Get templates from MessageHandler or use built-in templates
+    let templates = messageTemplates;
 
     if (messageHandler && party) {
       try {
-        templates = messageHandler.getMessageTemplates(party);
+        templates =
+          messageHandler.getMessageTemplates(party) || messageTemplates;
       } catch (error) {
-        console.warn("MessageHandler failed, using fallback:", error.message);
-        templates = fallbackTemplates;
+        // MessageHandler failed - use built-in templates
+        templates = messageTemplates;
       }
-    } else {
-      templates = fallbackTemplates;
     }
 
     // Filter by category if specified
@@ -299,8 +325,9 @@ const getMessageTemplates = async (req, res) => {
       0
     );
 
-    res.json({
+    res.status(200).json({
       success: true,
+      message: "Templates retrieved successfully",
       data: {
         partyId,
         partyName: party?.name || "Unknown Party",
@@ -311,20 +338,18 @@ const getMessageTemplates = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get message templates error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get message templates",
-      error: error.message,
-    });
+    handleError(error, req, res, "getMessageTemplates");
   }
-};
+});
 
-// Send message using template
-const sendTemplateMessage = async (req, res) => {
+// @desc    Send message using template
+// @route   POST /api/templates/:partyId/:templateId/send
+// @access  Private
+const sendTemplateMessage = asyncHandler(async (req, res) => {
   try {
     const {partyId, templateId} = req.params;
-    const {companyId, userId} = req.user;
+    const companyId = getCompanyId(req);
+    const currentUser = req.user;
     const {
       customContent,
       messageType = "whatsapp",
@@ -357,23 +382,23 @@ const sendTemplateMessage = async (req, res) => {
           });
         }
       } catch (error) {
-        console.warn("Party lookup failed:", error.message);
-        // Continue with null party for fallback
+        return res.status(404).json({
+          success: false,
+          message: "Party not found",
+        });
       }
     }
 
-    // Get templates from MessageHandler or use fallback
-    let templates = {};
+    // Get templates from MessageHandler or use built-in templates
+    let templates = messageTemplates;
 
     if (messageHandler && party) {
       try {
-        templates = messageHandler.getMessageTemplates(party);
+        templates =
+          messageHandler.getMessageTemplates(party) || messageTemplates;
       } catch (error) {
-        console.warn("MessageHandler failed, using fallback:", error.message);
-        templates = fallbackTemplates;
+        templates = messageTemplates;
       }
-    } else {
-      templates = fallbackTemplates;
     }
 
     // Find the template
@@ -408,7 +433,7 @@ const sendTemplateMessage = async (req, res) => {
       template.variables.forEach((variable) => {
         const regex = new RegExp(`{${variable}}`, "g");
         if (templateData[variable] !== undefined) {
-          content = content.replace(regex, templateData[variable]);
+          content = content.replace(regex, String(templateData[variable]));
         }
       });
     }
@@ -425,14 +450,14 @@ const sendTemplateMessage = async (req, res) => {
     if (!Message) {
       return res.status(500).json({
         success: false,
-        message: "Message model not available",
+        message: "Message service not available",
       });
     }
 
     const messageData = {
       companyId,
       partyId,
-      senderId: userId,
+      senderId: currentUser._id || currentUser.id,
       senderType: "user",
       content,
       messageType: finalMessageType,
@@ -441,7 +466,7 @@ const sendTemplateMessage = async (req, res) => {
       templateName: template.title,
       isTemplate: true,
       direction: "outbound",
-      createdBy: userId,
+      createdBy: currentUser._id || currentUser.id,
       metadata: {
         templateUsed: true,
         originalTemplate: template.content,
@@ -462,13 +487,13 @@ const sendTemplateMessage = async (req, res) => {
           id: message._id,
         });
       } catch (socketError) {
-        console.warn("Socket emission failed:", socketError.message);
         // Continue without socket - not critical
       }
     }
 
     res.status(201).json({
       success: true,
+      message: "Template message sent successfully",
       data: {
         message,
         template: {
@@ -488,27 +513,25 @@ const sendTemplateMessage = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Send template message error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to send template message",
-      error: error.message,
-    });
+    handleError(error, req, res, "sendTemplateMessage");
   }
-};
+});
 
-// Get all template categories
-const getTemplateCategories = async (req, res) => {
+// @desc    Get all template categories
+// @route   GET /api/templates/categories
+// @access  Private
+const getTemplateCategories = asyncHandler(async (req, res) => {
   try {
-    const categories = Object.keys(fallbackTemplates).map((category) => ({
+    const categories = Object.keys(messageTemplates).map((category) => ({
       id: category,
       name: category.charAt(0).toUpperCase() + category.slice(1),
-      templateCount: Object.keys(fallbackTemplates[category]).length,
-      templates: Object.keys(fallbackTemplates[category]),
+      templateCount: Object.keys(messageTemplates[category]).length,
+      templates: Object.keys(messageTemplates[category]),
     }));
 
-    res.json({
+    res.status(200).json({
       success: true,
+      message: "Template categories retrieved successfully",
       data: {
         categories,
         totalCategories: categories.length,
@@ -519,26 +542,23 @@ const getTemplateCategories = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get template categories error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get template categories",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTemplateCategories");
   }
-};
+});
 
-// Get template by ID
-const getTemplateById = async (req, res) => {
+// @desc    Get template by ID
+// @route   GET /api/templates/template/:templateId
+// @access  Private
+const getTemplateById = asyncHandler(async (req, res) => {
   try {
     const {templateId} = req.params;
 
-    // Find the template in fallback templates
+    // Find the template in message templates
     let template = null;
     let templateCategory = null;
 
     for (const [category, categoryTemplates] of Object.entries(
-      fallbackTemplates
+      messageTemplates
     )) {
       if (categoryTemplates[templateId]) {
         template = categoryTemplates[templateId];
@@ -551,32 +571,25 @@ const getTemplateById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: `Template '${templateId}' not found`,
-        availableTemplates: Object.keys(fallbackTemplates).reduce(
-          (acc, cat) => {
-            acc[cat] = Object.keys(fallbackTemplates[cat]);
-            return acc;
-          },
-          {}
-        ),
+        availableTemplates: Object.keys(messageTemplates).reduce((acc, cat) => {
+          acc[cat] = Object.keys(messageTemplates[cat]);
+          return acc;
+        }, {}),
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
+      message: "Template retrieved successfully",
       data: {
         ...template,
         category: templateCategory,
       },
     });
   } catch (error) {
-    console.error("Get template by ID error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get template",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTemplateById");
   }
-};
+});
 
 module.exports = {
   getMessageTemplates,

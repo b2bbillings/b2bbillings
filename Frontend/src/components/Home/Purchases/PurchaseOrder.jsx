@@ -1,7 +1,6 @@
 import React, {useState, useCallback, useMemo, useEffect} from "react";
 import {useNavigate} from "react-router-dom";
 import {
-  Container,
   Row,
   Col,
   Card,
@@ -18,7 +17,6 @@ import {
   faClipboardList,
   faBuilding,
   faFileExport,
-  faPlus,
   faExclamationTriangle,
   faSync,
   faExchangeAlt,
@@ -27,7 +25,6 @@ import {
   faFileImport,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ Import all components
 import PurchaseOrderTable from "./PurchaseOrderForm/PurchaseOrderTable";
 import PurchaseOrderSummary from "./PurchaseOrderForm/PurchaseOrderSummary";
 import PurchaseOrderPageTitle from "./PurchaseOrderForm/PurchaseOrderPageTitle";
@@ -47,7 +44,7 @@ function PurchaseOrder({
 }) {
   const navigate = useNavigate();
 
-  // ✅ SIMPLIFIED State Management
+  // State Management
   const [activeTab, setActiveTab] = useState("orders");
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,13 +56,13 @@ function PurchaseOrder({
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // ✅ Filter states for PurchaseOrderFilter
+  // Filter states
   const [dateRange, setDateRange] = useState("This Month");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
 
-  // ✅ Modal states for bidirectional operations
+  // Modal states for bidirectional operations
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedOrderForGeneration, setSelectedOrderForGeneration] =
     useState(null);
@@ -76,10 +73,10 @@ function PurchaseOrder({
     autoCreateSupplier: true,
   });
 
-  // ✅ Get effective company ID
+  // Get effective company ID
   const companyId = propCompanyId || currentCompany?.id || currentCompany?._id;
 
-  // ✅ ENHANCED: Load purchase orders
+  // Load purchase orders with comprehensive error handling
   const loadPurchaseOrders = useCallback(async () => {
     if (!companyId) {
       setOrders([]);
@@ -138,17 +135,13 @@ function PurchaseOrder({
         }
 
         setOrders(ordersData);
-        addToast?.(
-          `Loaded ${ordersData.length} purchase orders successfully`,
-          "success"
-        );
       } else {
         throw new Error(response?.message || "Failed to load purchase orders");
       }
     } catch (error) {
       setError(error.message || "Failed to load purchase orders");
       setOrders([]);
-      addToast?.("Failed to load purchase orders: " + error.message, "error");
+      addToast?.("Failed to load purchase orders", "error");
     } finally {
       setIsLoading(false);
     }
@@ -165,12 +158,12 @@ function PurchaseOrder({
     addToast,
   ]);
 
-  // ✅ Load orders on component mount and when dependencies change
+  // Load orders on component mount and when dependencies change
   useEffect(() => {
     loadPurchaseOrders();
   }, [loadPurchaseOrders, refreshTrigger]);
 
-  // ✅ Calculate summary stats from orders
+  // Calculate summary stats from orders
   const summaryStats = useMemo(() => {
     if (!orders || orders.length === 0) {
       return {
@@ -234,7 +227,7 @@ function PurchaseOrder({
     };
   }, [orders]);
 
-  // ✅ Event Handlers
+  // Event Handlers
   const handleSearchChange = useCallback((e) => {
     const value = typeof e === "string" ? e : e?.target?.value || "";
     setSearchTerm(value);
@@ -260,10 +253,9 @@ function PurchaseOrder({
 
   const handleRefresh = useCallback(() => {
     setRefreshTrigger((prev) => prev + 1);
-    addToast?.("Purchase orders refreshed", "success");
-  }, [addToast]);
+  }, []);
 
-  // ✅ Navigation handlers
+  // Navigation handlers
   const handleAddPurchaseOrder = useCallback(() => {
     if (!companyId) {
       addToast?.("Please select a company first", "warning");
@@ -280,13 +272,10 @@ function PurchaseOrder({
     navigate(`/companies/${companyId}/purchases/add`);
   }, [companyId, navigate, addToast]);
 
-  // ✅ Purchase Order Action Handlers
-  const handleViewOrder = useCallback(
-    (order) => {
-      addToast?.(`Viewing order ${order.orderNumber || order.id}`, "info");
-    },
-    [addToast]
-  );
+  // Purchase Order Action Handlers
+  const handleViewOrder = useCallback((order) => {
+    // Implementation for viewing order details
+  }, []);
 
   const handleEditOrder = useCallback(
     (order) => {
@@ -299,97 +288,172 @@ function PurchaseOrder({
   );
 
   const handleDeleteOrder = useCallback(
-    (order) => {
+    async (order) => {
       const confirmed = window.confirm(
         `Are you sure you want to delete order ${
           order.orderNumber || order.id
         }?`
       );
       if (confirmed) {
-        setOrders((prev) => prev.filter((o) => o._id !== order._id));
-        addToast?.(`Order ${order.orderNumber || order.id} deleted`, "success");
+        try {
+          await purchaseOrderService.deletePurchaseOrder(order._id);
+          setOrders((prev) => prev.filter((o) => o._id !== order._id));
+          addToast?.("Order deleted successfully", "success");
+        } catch (error) {
+          addToast?.("Failed to delete order", "error");
+        }
       }
     },
     [addToast]
   );
 
-  const handlePrintOrder = useCallback(
-    (order) => {
-      addToast?.(`Printing order ${order.orderNumber || order.id}`, "info");
-    },
-    [addToast]
-  );
+  const handlePrintOrder = useCallback((order) => {
+    // Implementation for printing order
+    window.print();
+  }, []);
 
-  const handleShareOrder = useCallback(
-    (order) => {
-      addToast?.(`Sharing order ${order.orderNumber || order.id}`, "info");
-    },
-    [addToast]
-  );
+  const handleShareOrder = useCallback((order) => {
+    // Implementation for sharing order
+    if (navigator.share) {
+      navigator.share({
+        title: `Purchase Order ${order.orderNumber}`,
+        text: `Purchase Order details for ${order.orderNumber}`,
+        url: window.location.href,
+      });
+    }
+  }, []);
 
-  const handleDownloadOrder = useCallback(
-    (order) => {
-      addToast?.(`Downloading order ${order.orderNumber || order.id}`, "info");
-    },
-    [addToast]
-  );
+  const handleDownloadOrder = useCallback((order) => {
+    // Implementation for downloading order
+    const element = document.createElement("a");
+    const file = new Blob([JSON.stringify(order, null, 2)], {
+      type: "text/plain",
+    });
+    element.href = URL.createObjectURL(file);
+    element.download = `purchase-order-${order.orderNumber}.json`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  }, []);
 
   const handleConvertOrder = useCallback(
-    (order) => {
-      addToast?.(
-        `Converting order ${order.orderNumber || order.id} to invoice`,
-        "info"
-      );
+    async (order) => {
+      try {
+        // Implementation for converting order to invoice
+        addToast?.("Order conversion feature coming soon", "info");
+      } catch (error) {
+        addToast?.("Failed to convert order", "error");
+      }
     },
     [addToast]
   );
 
   const handleConfirmOrder = useCallback(
-    (order) => {
-      setOrders((prev) =>
-        prev.map((o) => (o._id === order._id ? {...o, status: "confirmed"} : o))
-      );
-      addToast?.(`Order ${order.orderNumber || order.id} confirmed`, "success");
+    async (order) => {
+      try {
+        await purchaseOrderService.updateOrderStatus(order._id, "confirmed");
+        setOrders((prev) =>
+          prev.map((o) =>
+            o._id === order._id ? {...o, status: "confirmed"} : o
+          )
+        );
+        addToast?.("Order confirmed successfully", "success");
+      } catch (error) {
+        addToast?.("Failed to confirm order", "error");
+      }
     },
     [addToast]
   );
 
-  const handleShipOrder = useCallback((order) => {
-    setOrders((prev) =>
-      prev.map((o) => (o._id === order._id ? {...o, status: "shipped"} : o))
-    );
-  }, []);
+  const handleShipOrder = useCallback(
+    async (order) => {
+      try {
+        await purchaseOrderService.updateOrderStatus(order._id, "shipped");
+        setOrders((prev) =>
+          prev.map((o) => (o._id === order._id ? {...o, status: "shipped"} : o))
+        );
+        addToast?.("Order marked as shipped", "success");
+      } catch (error) {
+        addToast?.("Failed to update order status", "error");
+      }
+    },
+    [addToast]
+  );
 
-  const handleReceiveOrder = useCallback((order) => {
-    setOrders((prev) =>
-      prev.map((o) => (o._id === order._id ? {...o, status: "received"} : o))
-    );
-  }, []);
+  const handleReceiveOrder = useCallback(
+    async (order) => {
+      try {
+        await purchaseOrderService.updateOrderStatus(order._id, "received");
+        setOrders((prev) =>
+          prev.map((o) =>
+            o._id === order._id ? {...o, status: "received"} : o
+          )
+        );
+        addToast?.("Order marked as received", "success");
+      } catch (error) {
+        addToast?.("Failed to update order status", "error");
+      }
+    },
+    [addToast]
+  );
 
-  const handleCompleteOrder = useCallback((order) => {
-    setOrders((prev) =>
-      prev.map((o) => (o._id === order._id ? {...o, status: "completed"} : o))
-    );
-  }, []);
+  const handleCompleteOrder = useCallback(
+    async (order) => {
+      try {
+        await purchaseOrderService.updateOrderStatus(order._id, "completed");
+        setOrders((prev) =>
+          prev.map((o) =>
+            o._id === order._id ? {...o, status: "completed"} : o
+          )
+        );
+        addToast?.("Order completed successfully", "success");
+      } catch (error) {
+        addToast?.("Failed to complete order", "error");
+      }
+    },
+    [addToast]
+  );
 
-  const handleCancelOrder = useCallback((order) => {
-    setOrders((prev) =>
-      prev.map((o) => (o._id === order._id ? {...o, status: "cancelled"} : o))
-    );
-  }, []);
+  const handleCancelOrder = useCallback(
+    async (order) => {
+      const confirmed = window.confirm(
+        `Are you sure you want to cancel order ${order.orderNumber}?`
+      );
+      if (confirmed) {
+        try {
+          await purchaseOrderService.updateOrderStatus(order._id, "cancelled");
+          setOrders((prev) =>
+            prev.map((o) =>
+              o._id === order._id ? {...o, status: "cancelled"} : o
+            )
+          );
+          addToast?.("Order cancelled successfully", "success");
+        } catch (error) {
+          addToast?.("Failed to cancel order", "error");
+        }
+      }
+    },
+    [addToast]
+  );
 
-  const handleDuplicateOrder = useCallback((order) => {
-    const newOrder = {
-      ...order,
-      _id: `${order._id}-copy-${Date.now()}`,
-      orderNumber: `${order.orderNumber}-COPY`,
-      status: "draft",
-      orderDate: new Date().toISOString(),
-    };
-    setOrders((prev) => [newOrder, ...prev]);
-  }, []);
+  const handleDuplicateOrder = useCallback(
+    async (order) => {
+      try {
+        const duplicatedOrder = await purchaseOrderService.duplicateOrder(
+          order._id
+        );
+        if (duplicatedOrder?.success) {
+          setOrders((prev) => [duplicatedOrder.data, ...prev]);
+          addToast?.("Order duplicated successfully", "success");
+        }
+      } catch (error) {
+        addToast?.("Failed to duplicate order", "error");
+      }
+    },
+    [addToast]
+  );
 
-  // ✅ Bidirectional action handlers
+  // Bidirectional action handlers
   const handleViewSourceOrder = useCallback(
     (purchaseOrder) => {
       if (
@@ -402,10 +466,6 @@ function PurchaseOrder({
             highlight: true,
           });
         }
-        addToast?.(
-          `Viewing source sales order: ${purchaseOrder.sourceOrderNumber}`,
-          "info"
-        );
       } else {
         addToast?.("No source order found for this purchase order", "warning");
       }
@@ -427,12 +487,6 @@ function PurchaseOrder({
             highlight: true,
           });
         }
-        addToast?.(
-          `Viewing generated sales order: ${
-            purchaseOrder.salesOrderNumber || "Generated Order"
-          }`,
-          "info"
-        );
       } else {
         addToast?.(
           "No generated orders found for this purchase order",
@@ -504,10 +558,7 @@ function PurchaseOrder({
           purchaseOrder._id
         );
         if (response?.success) {
-          addToast?.(
-            `Tracking chain loaded for ${purchaseOrder.orderNumber}`,
-            "success"
-          );
+          // Implementation for viewing tracking chain
         } else {
           throw new Error(response?.message || "Failed to load tracking chain");
         }
@@ -518,7 +569,7 @@ function PurchaseOrder({
     [addToast]
   );
 
-  // ✅ Modal handlers
+  // Modal handlers
   const handleCloseGenerateModal = useCallback(() => {
     setShowGenerateModal(false);
     setSelectedOrderForGeneration(null);
@@ -535,57 +586,8 @@ function PurchaseOrder({
   }, []);
 
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "100vh",
-        backgroundColor: "#f8f9fa",
-        margin: 0,
-        padding: 0,
-      }}
-    >
-      <style>
-        {`
-          .main-content {
-            padding: 0 !important;
-            margin: 0 !important;
-            min-height: auto !important;
-          }
-          
-          .table-responsive {
-            overflow-x: auto;
-            overflow-y: visible;
-          }
-          
-          .card-body {
-            overflow: visible !important;
-          }
-          
-          .container-fluid,
-          .row,
-          .col {
-            overflow: visible;
-          }
-          
-          /* Remove all border radius */
-          .card,
-          .btn,
-          .alert,
-          .badge,
-          .nav-tabs .nav-link,
-          .form-control,
-          .form-select,
-          .input-group-text,
-          .modal-content,
-          .modal-header,
-          .modal-body,
-          .modal-footer {
-            border-radius: 0 !important;
-          }
-        `}
-      </style>
-
-      {/* ✅ Purchase Order Header at Top */}
+    <div className="purchase-order-container">
+      {/* Purchase Order Header */}
       <PurchaseOrderHeader
         searchTerm={searchTerm}
         onSearchChange={handleSearchChange}
@@ -601,7 +603,7 @@ function PurchaseOrder({
         completedOrders={summaryStats.completedOrders}
       />
 
-      {/* ✅ Page Title Component */}
+      {/* Page Title Component */}
       <PurchaseOrderPageTitle
         onAddPurchase={handleAddPurchaseOrder}
         billCount={orders.length}
@@ -612,7 +614,7 @@ function PurchaseOrder({
         subtitle="Create and manage purchase orders"
       />
 
-      {/* ✅ Filter Component */}
+      {/* Filter Component */}
       <div className="px-3">
         <PurchaseOrderFilter
           dateRange={dateRange}
@@ -630,10 +632,10 @@ function PurchaseOrder({
         />
       </div>
 
-      {/* ✅ Main Content */}
+      {/* Main Content */}
       <div className="px-3 pb-3">
         <Row className="g-3">
-          {/* ✅ Left Sidebar with Summary */}
+          {/* Left Sidebar with Summary */}
           <Col xl={2} lg={3} md={3} sm={12}>
             <PurchaseOrderSummary
               summary={{
@@ -651,7 +653,7 @@ function PurchaseOrder({
             />
           </Col>
 
-          {/* ✅ Main Content Area */}
+          {/* Main Content Area */}
           <Col xl={10} lg={9} md={9} sm={12}>
             <Tab.Container
               activeKey={activeTab}
@@ -700,7 +702,7 @@ function PurchaseOrder({
                     </Alert>
                   )}
 
-                  {/* ✅ Purchase Orders Table */}
+                  {/* Purchase Orders Table */}
                   <PurchaseOrderTable
                     purchaseOrders={orders}
                     onViewOrder={handleViewOrder}
@@ -861,12 +863,13 @@ function PurchaseOrder({
         </Row>
       </div>
 
-      {/* ✅ Generate Sales Order Modal */}
+      {/* Generate Sales Order Modal */}
       <Modal
         show={showGenerateModal}
         onHide={handleCloseGenerateModal}
         size="lg"
         backdrop="static"
+        centered
       >
         <Modal.Header closeButton>
           <Modal.Title>
@@ -978,6 +981,167 @@ function PurchaseOrder({
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Production-ready styles */}
+      <style>{`
+        .purchase-order-container {
+          width: 100%;
+          min-height: 100vh;
+          background-color: #f8f9fa;
+          margin: 0;
+          padding: 0;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .main-content {
+          padding: 0 !important;
+          margin: 0 !important;
+          min-height: auto !important;
+        }
+
+        .table-responsive {
+          overflow-x: auto;
+          overflow-y: visible;
+        }
+
+        .card-body {
+          overflow: visible !important;
+        }
+
+        .container-fluid,
+        .row,
+        .col {
+          overflow: visible;
+        }
+
+        .card,
+        .btn,
+        .alert,
+        .badge,
+        .nav-tabs .nav-link,
+        .form-control,
+        .form-select,
+        .input-group-text,
+        .modal-content,
+        .modal-header,
+        .modal-body,
+        .modal-footer {
+          border-radius: 0 !important;
+        }
+
+        .nav-tabs .nav-link {
+          border-radius: 0.375rem 0.375rem 0 0 !important;
+        }
+
+        .card {
+          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+          border: 1px solid rgba(0, 0, 0, 0.125) !important;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .card:hover {
+          box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        }
+
+        .btn {
+          transition: all 0.15s ease-in-out;
+        }
+
+        .btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .alert {
+          border: none !important;
+          font-weight: 500;
+        }
+
+        .badge {
+          font-weight: 600;
+          letter-spacing: 0.025em;
+        }
+
+        .modal-content {
+          box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
+        }
+
+        .nav-tabs {
+          border-bottom: 2px solid #dee2e6;
+        }
+
+        .nav-tabs .nav-link {
+          border: 1px solid transparent;
+          font-weight: 500;
+          color: #6c757d;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .nav-tabs .nav-link:hover {
+          border-color: #e9ecef #e9ecef #dee2e6;
+          color: #495057;
+        }
+
+        .nav-tabs .nav-link.active {
+          color: #495057;
+          background-color: #fff;
+          border-color: #dee2e6 #dee2e6 #fff;
+          font-weight: 600;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+          border-color: #86b7fe;
+          outline: 0;
+          box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        .text-muted {
+          color: #6c757d !important;
+        }
+
+        @media (max-width: 768px) {
+          .px-3 {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+          }
+
+          .pb-3 {
+            padding-bottom: 1rem !important;
+          }
+
+          .g-3 {
+            gap: 1rem !important;
+          }
+
+          .card-body {
+            padding: 1rem !important;
+          }
+
+          .modal-dialog {
+            margin: 0.5rem !important;
+          }
+        }
+
+        @media (max-width: 576px) {
+          .purchase-order-container {
+            padding: 0.5rem;
+          }
+
+          .nav-tabs .nav-link {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+          }
+
+          .card-body {
+            padding: 0.75rem !important;
+          }
+
+          .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.775rem;
+          }
+        }
+      `}</style>
     </div>
   );
 }

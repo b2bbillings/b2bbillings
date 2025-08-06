@@ -1,249 +1,457 @@
 const express = require("express");
-const router = express.Router({mergeParams: true}); // ✅ CRITICAL: This is missing in your current code!
+const {body, param, query, validationResult} = require("express-validator");
+const router = express.Router({mergeParams: true});
 const transactionController = require("../controllers/transactionController");
 const {
   authenticate,
   requireBankAccess,
 } = require("../middleware/authMiddleware");
-// const { validateCompanyParam, validateTransactionData } = require('../middleware/validation');
 
-// ✅ SIMPLIFIED: Debug middleware to verify params are passed correctly
-router.use((req, res, next) => {
-  console.log("🔍 Transaction Route Debug:", {
-    method: req.method,
-    originalUrl: req.originalUrl,
-    baseUrl: req.baseUrl,
-    params: req.params,
-    companyId: req.params.companyId,
-    hasCompanyId: !!req.params.companyId,
-    headers: {
-      "x-company-id": req.headers["x-company-id"],
-    },
-  });
+// ================================
+// 🔧 PRODUCTION-READY MIDDLEWARE
+// ================================
+
+// Validation error handler
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: errors.array(),
+    });
+  }
   next();
-});
+};
 
-// ✅ SIMPLIFIED: Company ID resolver middleware
+// Company ID resolver middleware (production version)
 const resolveCompanyId = (req, res, next) => {
   const companyId =
-    req.params.companyId || // From URL params (primary)
-    req.headers["x-company-id"] || // From header (backup)
-    req.query.companyId || // From query (fallback)
-    req.body.companyId; // From body (for POST requests)
+    req.params.companyId ||
+    req.headers["x-company-id"] ||
+    req.query.companyId ||
+    req.body.companyId;
 
   if (!companyId) {
-    console.error("❌ Company ID not found in request");
     return res.status(400).json({
       success: false,
       message: "Company ID is required",
-      debug: {
-        params: req.params,
-        headers: {"x-company-id": req.headers["x-company-id"]},
-        query: req.query.companyId ? "Present" : "Missing",
-        body: req.body.companyId ? "Present" : "Missing",
-        route: req.originalUrl,
-      },
     });
   }
 
-  // Ensure company ID is available in all common places
+  // Ensure company ID is available everywhere
   req.companyId = companyId;
   if (!req.query.companyId) req.query.companyId = companyId;
   if (!req.body.companyId) req.body.companyId = companyId;
 
-  console.log("✅ Company ID resolved:", companyId);
   next();
 };
 
-// ==================== MAIN ROUTES ====================
+// ================================
+// 🔧 VALIDATION SCHEMAS
+// ================================
 
-/**
- * @route   GET /
- * @desc    Get all transactions for a company
- * @access  Private
- */
+// Valid enums (matching your controller)
+const VALID_PAYMENT_METHODS = [
+  "cash",
+  "card",
+  "upi",
+  "bank_transfer",
+  "cheque",
+  "credit",
+  "online",
+  "neft",
+  "rtgs",
+  "bank",
+];
+
+const VALID_TRANSACTION_TYPES = [
+  "purchase",
+  "sale",
+  "payment_in",
+  "payment_out",
+  "expense",
+  "income",
+  "transfer",
+  "adjustment",
+];
+
+const VALID_DIRECTIONS = ["in", "out"];
+const VALID_STATUSES = ["pending", "completed", "failed", "cancelled"];
+
+// MongoDB ID validation
+const mongoIdValidation = [
+  param("id").optional().isMongoId().withMessage("Invalid ID format"),
+  param("companyId")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid Company ID format"),
+  param("bankAccountId")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid Bank Account ID format"),
+  handleValidationErrors,
+];
+
+// Create transaction validation
+const createTransactionValidation = [
+  body("amount")
+    .isFloat({min: 0.01})
+    .withMessage("Amount must be a positive number"),
+
+  body("direction")
+    .isIn(VALID_DIRECTIONS)
+    .withMessage("Direction must be 'in' or 'out'"),
+
+  body("transactionType")
+    .isIn(VALID_TRANSACTION_TYPES)
+    .withMessage("Invalid transaction type"),
+
+  body("paymentMethod")
+    .optional()
+    .isIn(VALID_PAYMENT_METHODS)
+    .withMessage("Invalid payment method"),
+
+  body("description")
+    .trim()
+    .isLength({min: 1, max: 500})
+    .withMessage("Description is required (max 500 characters)"),
+
+  body("notes")
+    .optional()
+    .trim()
+    .isLength({max: 1000})
+    .withMessage("Notes cannot exceed 1000 characters"),
+
+  body("bankAccountId")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid bank account ID"),
+
+  body("partyId").optional().isMongoId().withMessage("Invalid party ID"),
+
+  body("partyName")
+    .optional()
+    .trim()
+    .isLength({max: 200})
+    .withMessage("Party name cannot exceed 200 characters"),
+
+  body("transactionDate")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid transaction date format"),
+
+  body("chequeNumber")
+    .optional()
+    .trim()
+    .isLength({max: 50})
+    .withMessage("Cheque number cannot exceed 50 characters"),
+
+  body("chequeDate")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid cheque date format"),
+
+  body("upiTransactionId")
+    .optional()
+    .trim()
+    .isLength({max: 100})
+    .withMessage("UPI transaction ID cannot exceed 100 characters"),
+
+  body("referenceNumber")
+    .optional()
+    .trim()
+    .isLength({max: 100})
+    .withMessage("Reference number cannot exceed 100 characters"),
+
+  handleValidationErrors,
+];
+
+// Update transaction validation
+const updateTransactionValidation = [
+  body("amount")
+    .optional()
+    .isFloat({min: 0.01})
+    .withMessage("Amount must be a positive number"),
+
+  body("direction")
+    .optional()
+    .isIn(VALID_DIRECTIONS)
+    .withMessage("Direction must be 'in' or 'out'"),
+
+  body("transactionType")
+    .optional()
+    .isIn(VALID_TRANSACTION_TYPES)
+    .withMessage("Invalid transaction type"),
+
+  body("paymentMethod")
+    .optional()
+    .isIn(VALID_PAYMENT_METHODS)
+    .withMessage("Invalid payment method"),
+
+  body("description")
+    .optional()
+    .trim()
+    .isLength({min: 1, max: 500})
+    .withMessage("Description must be 1-500 characters"),
+
+  handleValidationErrors,
+];
+
+// Query filters validation
+const queryFiltersValidation = [
+  query("page")
+    .optional()
+    .isInt({min: 1})
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({min: 1, max: 100})
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("bankAccountId")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid bank account ID"),
+
+  query("partyId").optional().isMongoId().withMessage("Invalid party ID"),
+
+  query("direction")
+    .optional()
+    .isIn(VALID_DIRECTIONS)
+    .withMessage("Direction must be 'in' or 'out'"),
+
+  query("status").optional().isIn(VALID_STATUSES).withMessage("Invalid status"),
+
+  query("dateFrom")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid dateFrom format"),
+
+  query("dateTo").optional().isISO8601().withMessage("Invalid dateTo format"),
+
+  query("sortBy")
+    .optional()
+    .isIn(["transactionDate", "amount", "createdAt"])
+    .withMessage("Invalid sortBy field"),
+
+  query("sortOrder")
+    .optional()
+    .isIn(["asc", "desc"])
+    .withMessage("Sort order must be 'asc' or 'desc'"),
+
+  handleValidationErrors,
+];
+
+// Bulk reconcile validation
+const bulkReconcileValidation = [
+  body("transactionIds")
+    .isArray({min: 1, max: 100})
+    .withMessage("Transaction IDs must be an array (1-100 items)"),
+
+  body("transactionIds.*")
+    .isMongoId()
+    .withMessage("All transaction IDs must be valid MongoDB IDs"),
+
+  body("reconciled").isBoolean().withMessage("Reconciled must be a boolean"),
+
+  body("notes")
+    .optional()
+    .trim()
+    .isLength({max: 1000})
+    .withMessage("Notes cannot exceed 1000 characters"),
+
+  handleValidationErrors,
+];
+
+// ================================
+// 📊 MAIN TRANSACTION ROUTES
+// ================================
+
+// Get all transactions with filters
 router.get(
   "/",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getAllTransactions
 );
 
-/**
- * @route   POST /
- * @desc    Create a new transaction
- * @access  Private
- */
+// Create new transaction
 router.post(
   "/",
   authenticate,
   requireBankAccess("create"),
   resolveCompanyId,
-  // validateTransactionData,
+  createTransactionValidation,
   transactionController.createTransaction
 );
 
-/**
- * @route   GET /summary
- * @desc    Get transaction summary for a company
- * @access  Private
- */
+// Get transaction summary
 router.get(
   "/summary",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getTransactionSummary
 );
 
-/**
- * @route   GET /recent
- * @desc    Get recent transactions for a company
- * @access  Private
- */
+// Get recent transactions
 router.get(
   "/recent",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getRecentTransactions
 );
 
-// ✅ NEW: Missing DayBook routes that transactionService expects
-
-/**
- * @route   GET /analytics
- * @desc    Get transaction analytics for insights
- * @access  Private
- */
+// Get transaction analytics
 router.get(
   "/analytics",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getTransactionAnalytics
 );
 
-/**
- * @route   GET /cash-flow
- * @desc    Get cash flow summary for DayBook
- * @access  Private
- */
+// Get cash flow summary
 router.get(
   "/cash-flow",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getCashFlowSummary
 );
 
-/**
- * @route   GET /daily-cash-flow
- * @desc    Get daily cash flow (inflow/outflow) for DayBook
- * @access  Private
- */
+// Get daily cash flow
 router.get(
   "/daily-cash-flow",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.getDailyCashFlow
 );
 
-/**
- * @route   GET /export
- * @desc    Export transactions to CSV
- * @access  Private
- */
+// Export transactions to CSV
 router.get(
   "/export",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  queryFiltersValidation,
   transactionController.exportTransactionsCSV
 );
 
-/**
- * @route   GET /:id
- * @desc    Get transaction by ID
- * @access  Private
- */
+// Get transaction by ID
 router.get(
   "/:id",
   authenticate,
   requireBankAccess("read"),
   resolveCompanyId,
+  mongoIdValidation,
   transactionController.getTransactionById
 );
 
-/**
- * @route   PUT /:id
- * @desc    Update transaction by ID
- * @access  Private
- */
+// Update transaction
 router.put(
   "/:id",
   authenticate,
   requireBankAccess("update"),
   resolveCompanyId,
-  // validateTransactionData,
+  mongoIdValidation,
+  updateTransactionValidation,
   transactionController.updateTransaction
 );
 
-/**
- * @route   DELETE /:id
- * @desc    Delete transaction by ID
- * @access  Private
- */
+// Delete transaction
 router.delete(
   "/:id",
   authenticate,
   requireBankAccess("delete"),
   resolveCompanyId,
+  mongoIdValidation,
   transactionController.deleteTransaction
 );
 
-/**
- * @route   PATCH /:id/reconcile
- * @desc    Reconcile transaction
- * @access  Private
- */
+// Reconcile transaction
 router.patch(
   "/:id/reconcile",
   authenticate,
   requireBankAccess("update"),
   resolveCompanyId,
+  mongoIdValidation,
+  [
+    body("reconciled").isBoolean().withMessage("Reconciled must be a boolean"),
+    body("notes")
+      .optional()
+      .trim()
+      .isLength({max: 1000})
+      .withMessage("Notes cannot exceed 1000 characters"),
+    handleValidationErrors,
+  ],
   transactionController.reconcileTransaction
 );
 
-/**
- * @route   PATCH /bulk-reconcile
- * @desc    Bulk reconcile transactions
- * @access  Private
- */
+// Bulk reconcile transactions
 router.patch(
   "/bulk-reconcile",
   authenticate,
   requireBankAccess("update"),
   resolveCompanyId,
+  bulkReconcileValidation,
   transactionController.bulkReconcileTransactions
 );
 
-// ==================== UTILITY ROUTES ====================
+// ================================
+// 🏦 BANK ACCOUNT SPECIFIC ROUTES
+// ================================
 
-/**
- * @route   GET /health
- * @desc    Health check for transaction routes
- * @access  Public
- */
+// Get bank account transactions
+router.get(
+  "/bank/:bankAccountId",
+  authenticate,
+  requireBankAccess("read"),
+  resolveCompanyId,
+  [
+    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
+    queryFiltersValidation,
+  ],
+  transactionController.getBankAccountTransactions
+);
+
+// Verify bank account balance
+router.get(
+  "/bank/:bankAccountId/verify-balance",
+  authenticate,
+  requireBankAccess("read"),
+  resolveCompanyId,
+  [
+    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
+    handleValidationErrors,
+  ],
+  transactionController.verifyBankAccountBalance
+);
+
+// ================================
+// 🔧 UTILITY ROUTES
+// ================================
+
+// Health check
 router.get("/health", (req, res) => {
-  res.json({
+  res.status(200).json({
     success: true,
     message: "Transaction routes are healthy! 🏦",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
     routes: {
+      total: 15,
       available: [
         "GET /",
         "POST /",
@@ -258,67 +466,52 @@ router.get("/health", (req, res) => {
         "DELETE /:id",
         "PATCH /:id/reconcile",
         "PATCH /bulk-reconcile",
+        "GET /bank/:bankAccountId",
+        "GET /bank/:bankAccountId/verify-balance",
       ],
     },
-  });
-});
-
-/**
- * @route   GET /debug
- * @desc    Debug route for development
- * @access  Development only
- */
-router.get("/debug", (req, res) => {
-  if (process.env.NODE_ENV !== "development") {
-    return res.status(404).json({
-      success: false,
-      message: "Debug route only available in development",
-    });
-  }
-
-  res.json({
-    success: true,
-    debug: {
-      companyId: req.params.companyId,
-      allParams: req.params,
-      query: req.query,
-      headers: {
-        "x-company-id": req.headers["x-company-id"],
-        authorization: req.headers.authorization ? "Present" : "Missing",
-      },
-      route: {
-        baseUrl: req.baseUrl,
-        originalUrl: req.originalUrl,
-        method: req.method,
-      },
-      timestamp: new Date().toISOString(),
+    validation: {
+      paymentMethods: VALID_PAYMENT_METHODS,
+      transactionTypes: VALID_TRANSACTION_TYPES,
+      directions: VALID_DIRECTIONS,
+      statuses: VALID_STATUSES,
     },
   });
 });
 
-// ==================== ERROR HANDLING ====================
+// ================================
+// 🚨 ERROR HANDLING
+// ================================
 
-// Global error handler for this router
-router.use((err, req, res, next) => {
-  console.error("❌ Transaction route error:", err);
+// Global error handler
+router.use((error, req, res, next) => {
+  let statusCode = 500;
+  let message = "Transaction route error";
 
-  res.status(err.status || 500).json({
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed";
+  }
+
+  if (error.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid ID format";
+  }
+
+  if (error.code === 11000) {
+    statusCode = 409;
+    message = "Duplicate transaction data";
+  }
+
+  res.status(statusCode).json({
     success: false,
-    message: err.message || "Transaction route error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? {
-            stack: err.stack,
-            details: err,
-          }
-        : undefined,
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
   });
 });
 
-// 404 handler for unmatched routes
+// 404 handler
 router.use("*", (req, res) => {
-  console.log("❌ Transaction route not found:", req.method, req.originalUrl);
-
   res.status(404).json({
     success: false,
     message: `Transaction route not found: ${req.method} ${req.originalUrl}`,
@@ -331,6 +524,12 @@ router.use("*", (req, res) => {
       "GET /api/companies/:companyId/transactions/daily-cash-flow",
       "GET /api/companies/:companyId/transactions/export",
       "GET /api/companies/:companyId/transactions/:id",
+      "PUT /api/companies/:companyId/transactions/:id",
+      "DELETE /api/companies/:companyId/transactions/:id",
+      "PATCH /api/companies/:companyId/transactions/:id/reconcile",
+      "PATCH /api/companies/:companyId/transactions/bulk-reconcile",
+      "GET /api/companies/:companyId/transactions/bank/:bankAccountId",
+      "GET /api/companies/:companyId/transactions/bank/:bankAccountId/verify-balance",
     ],
   });
 });

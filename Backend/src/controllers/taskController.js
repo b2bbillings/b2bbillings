@@ -11,20 +11,104 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 // Helper function to get company ID from request
 const getCompanyId = (req) => {
-  return req.companyId || req.user.companyId || req.headers["x-company-id"];
+  return req.companyId || req.user?.companyId || req.headers["x-company-id"];
 };
+
+// Enhanced error handler
+const handleError = (error, req, res, operation) => {
+  let statusCode = 500;
+  let message = "Internal server error";
+
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed";
+    const validationErrors = Object.values(error.errors).map((err) => ({
+      field: err.path,
+      message: err.message,
+      value: err.value,
+    }));
+    return res.status(statusCode).json({
+      success: false,
+      message,
+      errors: validationErrors,
+    });
+  }
+
+  if (error.code === 11000) {
+    statusCode = 409;
+    message = "Duplicate data detected";
+  }
+
+  if (error.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid data format";
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
+  });
+};
+
+// Generate unique task ID
+const generateTaskId = async (companyId, index = 0) => {
+  try {
+    const company = await Company.findById(companyId);
+    const companyPrefix = company?.name?.substring(0, 3).toUpperCase() || "TSK";
+    const taskCount = await Task.countDocuments({companyId});
+    const taskNumber = String(taskCount + index + 1).padStart(4, "0");
+    const taskId = `${companyPrefix}-TASK-${taskNumber}`;
+
+    const existingTask = await Task.findOne({taskId, companyId});
+    if (existingTask) {
+      const timestamp = Date.now().toString().slice(-4);
+      return `${companyPrefix}-TASK-${taskNumber}-${timestamp}`;
+    }
+
+    return taskId;
+  } catch (error) {
+    const timestamp = Date.now().toString();
+    return `TSK-${timestamp}${index ? `-${index}` : ""}`;
+  }
+};
+
+// Process customer data helper
+const processCustomerData = (customer) => {
+  if (typeof customer === "string") {
+    return {name: customer};
+  }
+  return {
+    name: customer.name || customer,
+    customerId: customer.customerId || null,
+    contactNumber: customer.contactNumber || customer.phone || null,
+    email: customer.email || null,
+    address: customer.address || null,
+  };
+};
+
+// Process reminder data helper
+const processReminderData = (reminder) => {
+  return {
+    enabled: reminder?.enabled !== false,
+    reminderTime: reminder?.reminderTime || "09:00",
+    frequency: reminder?.frequency || "once",
+    notificationMethods: {
+      email: reminder?.notificationMethods?.email !== false,
+      sms: reminder?.notificationMethods?.sms !== false,
+      app: reminder?.notificationMethods?.app || false,
+      whatsapp: reminder?.notificationMethods?.whatsapp || false,
+    },
+  };
+};
+
 // @desc    Create new task assignment
 // @route   POST /api/tasks
-// @access  Private (Any company user)
+// @access  Private
 const createTask = asyncHandler(async (req, res) => {
   try {
-    console.log("🚀 Starting task creation process...");
-    console.log("📝 Request body received:", JSON.stringify(req.body, null, 2));
-
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log("❌ Validation errors found:", errors.array());
       return res.status(400).json({
         success: false,
         message: "Validation failed",
@@ -58,7 +142,7 @@ const createTask = asyncHandler(async (req, res) => {
       title,
     } = req.body;
 
-    // Validate required fields
+    // Basic validation
     if (!assignedTo || !taskType || !customer || !description || !dueDate) {
       return res.status(400).json({
         success: false,
@@ -70,7 +154,7 @@ const createTask = asyncHandler(async (req, res) => {
     // Verify assigned staff exists and belongs to company
     const assignedStaff = await Staff.findOne({
       _id: assignedTo,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -81,82 +165,20 @@ const createTask = asyncHandler(async (req, res) => {
       });
     }
 
-    // Process customer data
-    let customerData;
-    if (typeof customer === "string") {
-      customerData = {name: customer};
-    } else {
-      customerData = {
-        name: customer.name || customer,
-        customerId: customer.customerId || null,
-        contactNumber: customer.contactNumber || customer.phone || null,
-        email: customer.email || null,
-        address: customer.address || null,
-      };
-    }
+    const customerData = processCustomerData(customer);
+    const reminderData = processReminderData(reminder);
+    const taskId = await generateTaskId(companyId);
 
-    // Process reminder data
-    const reminderData = {
-      enabled: reminder?.enabled !== false,
-      reminderTime: reminder?.reminderTime || "09:00",
-      frequency: reminder?.frequency || "once",
-      notificationMethods: {
-        email: reminder?.notificationMethods?.email !== false,
-        sms: reminder?.notificationMethods?.sms !== false,
-        app: reminder?.notificationMethods?.app || false,
-        whatsapp: reminder?.notificationMethods?.whatsapp || false,
-      },
-    };
-
-    // ✅ Generate unique taskId
-    const generateTaskId = async () => {
-      try {
-        const company = await Company.findById(companyId);
-        const companyPrefix =
-          company?.name?.substring(0, 3).toUpperCase() || "TSK";
-
-        // Count existing tasks for this company to get next number
-        const taskCount = await Task.countDocuments({companyId: companyId});
-        const taskNumber = String(taskCount + 1).padStart(4, "0");
-
-        // Create taskId with format: COMPANY-TASK-0001
-        const taskId = `${companyPrefix}-TASK-${taskNumber}`;
-
-        // Check if this taskId already exists (very unlikely but safe)
-        const existingTask = await Task.findOne({
-          taskId: taskId,
-          companyId: companyId,
-        });
-
-        if (existingTask) {
-          // If collision, add timestamp
-          const timestamp = Date.now().toString().slice(-4);
-          return `${companyPrefix}-TASK-${taskNumber}-${timestamp}`;
-        }
-
-        return taskId;
-      } catch (error) {
-        console.error("Error generating task ID:", error);
-        // Fallback: use timestamp-based ID
-        const timestamp = Date.now().toString();
-        return `TSK-${timestamp}`;
-      }
-    };
-
-    const taskId = await generateTaskId();
-    console.log("✅ Generated task ID:", taskId);
-
-    // Create task data
     const taskData = {
-      taskId: taskId, // ✅ Add the generated taskId
-      companyId: companyId,
-      assignedTo: assignedTo,
+      taskId,
+      companyId,
+      assignedTo,
       assignedBy: currentUser._id || currentUser.id,
       assignmentDate: new Date(),
       dueDate: new Date(dueDate),
       title: title || `${taskType}: ${customerData.name}`,
-      taskType: taskType,
-      description: description,
+      taskType,
+      description,
       customer: customerData,
       priority: priority || "medium",
       reminder: reminderData,
@@ -168,14 +190,8 @@ const createTask = asyncHandler(async (req, res) => {
       recurringPattern: isRecurring ? recurringPattern : undefined,
     };
 
-    console.log("💾 Task data to be saved:", JSON.stringify(taskData, null, 2));
-
-    // Create task
     const task = new Task(taskData);
     await task.save();
-
-    console.log("✅ Task saved successfully with ID:", task._id);
-    console.log("✅ Task saved successfully with taskId:", task.taskId);
 
     // Update staff assigned tasks count
     await Staff.findByIdAndUpdate(assignedTo, {
@@ -196,50 +212,19 @@ const createTask = asyncHandler(async (req, res) => {
       {path: "customer.customerId", select: "name email phone"},
     ]);
 
-    console.log("🎉 Task creation completed successfully");
-
     res.status(201).json({
       success: true,
       message: "Task assigned successfully",
       data: task,
     });
   } catch (error) {
-    console.error("❌ Create task error:", error);
-    console.error("❌ Error stack:", error.stack);
-
-    if (error.name === "ValidationError") {
-      const validationErrors = Object.values(error.errors).map((err) => ({
-        field: err.path,
-        message: err.message,
-        value: err.value,
-      }));
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: validationErrors,
-      });
-    }
-
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate task ID generated",
-        error: "Please try again",
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Error creating task",
-      error: error.message,
-    });
+    handleError(error, req, res, "createTask");
   }
 });
 
 // @desc    Get all tasks for company with filters
 // @route   GET /api/tasks
-// @access  Private (Any company user)
+// @access  Private
 const getAllTasks = asyncHandler(async (req, res) => {
   try {
     const {
@@ -261,7 +246,7 @@ const getAllTasks = asyncHandler(async (req, res) => {
 
     // Build query
     const query = {
-      companyId: companyId,
+      companyId,
       isActive: true,
     };
 
@@ -286,24 +271,27 @@ const getAllTasks = asyncHandler(async (req, res) => {
 
     // Search functionality
     if (search) {
+      const searchRegex = new RegExp(
+        search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i"
+      );
       query.$or = [
-        {title: {$regex: search, $options: "i"}},
-        {description: {$regex: search, $options: "i"}},
-        {"customer.name": {$regex: search, $options: "i"}},
-        {taskId: {$regex: search, $options: "i"}},
-        {tags: {$regex: search, $options: "i"}},
+        {title: searchRegex},
+        {description: searchRegex},
+        {"customer.name": searchRegex},
+        {taskId: searchRegex},
+        {tags: searchRegex},
       ];
     }
 
     // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
     // Sort options
     const sortOptions = {};
     if (sortBy === "priority") {
-      // Custom priority sorting
       sortOptions.priorityWeight = sortOrder === "desc" ? -1 : 1;
     } else {
       sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
@@ -322,10 +310,7 @@ const getAllTasks = asyncHandler(async (req, res) => {
       Task.countDocuments(query),
     ]);
 
-    // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
 
     res.status(200).json({
       success: true,
@@ -336,29 +321,58 @@ const getAllTasks = asyncHandler(async (req, res) => {
         totalPages,
         totalCount,
         limit: limitNum,
-        hasNextPage,
-        hasPrevPage,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
       },
     });
   } catch (error) {
-    console.error("Get all tasks error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching tasks",
-      error: error.message,
-    });
+    handleError(error, req, res, "getAllTasks");
   }
 });
 
 // @desc    Get today's tasks
 // @route   GET /api/tasks/today
-// @access  Private (Any company user)
+// @access  Private
 const getTodaysTasks = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const {assignedTo} = req.query;
 
-    const tasks = await Task.getTodaysTasks(companyId, assignedTo);
+    let tasks;
+    if (Task.getTodaysTasks) {
+      tasks = await Task.getTodaysTasks(companyId, assignedTo);
+    } else {
+      const today = new Date();
+      const startOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const endOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59
+      );
+
+      const query = {
+        companyId,
+        isActive: true,
+        dueDate: {$gte: startOfDay, $lte: endOfDay},
+      };
+
+      if (assignedTo && assignedTo !== "all") {
+        query.assignedTo = assignedTo;
+      }
+
+      tasks = await Task.find(query)
+        .populate("assignedTo", "name employeeId role")
+        .populate("assignedBy", "name employeeId role")
+        .sort({dueDate: 1})
+        .lean();
+    }
 
     res.status(200).json({
       success: true,
@@ -367,24 +381,39 @@ const getTodaysTasks = asyncHandler(async (req, res) => {
       count: tasks.length,
     });
   } catch (error) {
-    console.error("Get today's tasks error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching today's tasks",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTodaysTasks");
   }
 });
 
 // @desc    Get overdue tasks
 // @route   GET /api/tasks/overdue
-// @access  Private (Any company user)
+// @access  Private
 const getOverdueTasks = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const {assignedTo} = req.query;
 
-    const tasks = await Task.getOverdueTasks(companyId, assignedTo);
+    let tasks;
+    if (Task.getOverdueTasks) {
+      tasks = await Task.getOverdueTasks(companyId, assignedTo);
+    } else {
+      const query = {
+        companyId,
+        isActive: true,
+        dueDate: {$lt: new Date()},
+        status: {$nin: ["completed", "cancelled"]},
+      };
+
+      if (assignedTo && assignedTo !== "all") {
+        query.assignedTo = assignedTo;
+      }
+
+      tasks = await Task.find(query)
+        .populate("assignedTo", "name employeeId role")
+        .populate("assignedBy", "name employeeId role")
+        .sort({dueDate: 1})
+        .lean();
+    }
 
     res.status(200).json({
       success: true,
@@ -393,25 +422,20 @@ const getOverdueTasks = asyncHandler(async (req, res) => {
       count: tasks.length,
     });
   } catch (error) {
-    console.error("Get overdue tasks error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching overdue tasks",
-      error: error.message,
-    });
+    handleError(error, req, res, "getOverdueTasks");
   }
 });
 
 // @desc    Get single task by ID
 // @route   GET /api/tasks/:id
-// @access  Private (Any company user)
+// @access  Private
 const getTaskById = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     })
       .populate("assignedTo", "name employeeId role email mobileNumbers")
@@ -434,18 +458,13 @@ const getTaskById = asyncHandler(async (req, res) => {
       data: task,
     });
   } catch (error) {
-    console.error("Get task by ID error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching task",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTaskById");
   }
 });
 
 // @desc    Update task
 // @route   PUT /api/tasks/:id
-// @access  Private (Any company user)
+// @access  Private
 const updateTask = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -453,7 +472,7 @@ const updateTask = asyncHandler(async (req, res) => {
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -473,7 +492,7 @@ const updateTask = asyncHandler(async (req, res) => {
     ) {
       const newAssignedStaff = await Staff.findOne({
         _id: updateData.assignedTo,
-        companyId: companyId,
+        companyId,
         isActive: true,
       });
 
@@ -484,15 +503,15 @@ const updateTask = asyncHandler(async (req, res) => {
         });
       }
 
-      // Update old staff task count
-      await Staff.findByIdAndUpdate(task.assignedTo, {
-        $inc: {"performance.totalTasksAssigned": -1},
-      });
-
-      // Update new staff task count
-      await Staff.findByIdAndUpdate(updateData.assignedTo, {
-        $inc: {"performance.totalTasksAssigned": 1},
-      });
+      // Update staff task counts
+      await Promise.all([
+        Staff.findByIdAndUpdate(task.assignedTo, {
+          $inc: {"performance.totalTasksAssigned": -1},
+        }),
+        Staff.findByIdAndUpdate(updateData.assignedTo, {
+          $inc: {"performance.totalTasksAssigned": 1},
+        }),
+      ]);
     }
 
     // Update task
@@ -520,18 +539,13 @@ const updateTask = asyncHandler(async (req, res) => {
       data: task,
     });
   } catch (error) {
-    console.error("Update task error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating task",
-      error: error.message,
-    });
+    handleError(error, req, res, "updateTask");
   }
 });
 
 // @desc    Delete task
 // @route   DELETE /api/tasks/:id
-// @access  Private (Any company user)
+// @access  Private
 const deleteTask = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -541,7 +555,7 @@ const deleteTask = asyncHandler(async (req, res) => {
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -553,10 +567,7 @@ const deleteTask = asyncHandler(async (req, res) => {
     }
 
     if (permanent === "true") {
-      // Hard delete
       await Task.findByIdAndDelete(task._id);
-
-      // Update staff task count
       await Staff.findByIdAndUpdate(task.assignedTo, {
         $inc: {"performance.totalTasksAssigned": -1},
       });
@@ -567,13 +578,11 @@ const deleteTask = asyncHandler(async (req, res) => {
         data: {deletedId: task._id, permanent: true},
       });
     } else {
-      // Soft delete
       task.isActive = false;
       task.status = "cancelled";
       task.deletedAt = new Date();
       task.deletedBy = currentUser._id || currentUser.id;
       task.deletionReason = reason || "No reason provided";
-
       await task.save();
 
       res.status(200).json({
@@ -583,28 +592,26 @@ const deleteTask = asyncHandler(async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Delete task error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting task",
-      error: error.message,
-    });
+    handleError(error, req, res, "deleteTask");
   }
 });
 
 // @desc    Update task status
 // @route   PUT /api/tasks/:id/status
-// @access  Private (Any company user)
+// @access  Private
 const updateTaskStatus = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const {status, resultData} = req.body;
 
-    if (
-      !["pending", "in-progress", "completed", "delayed", "cancelled"].includes(
-        status
-      )
-    ) {
+    const validStatuses = [
+      "pending",
+      "in-progress",
+      "completed",
+      "delayed",
+      "cancelled",
+    ];
+    if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
@@ -613,7 +620,7 @@ const updateTaskStatus = asyncHandler(async (req, res) => {
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -624,16 +631,28 @@ const updateTaskStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    // Update status using instance method for completed tasks
+    // Update status using instance methods for specific statuses
     if (status === "completed") {
-      await task.markAsCompleted(resultData || {});
+      if (task.markAsCompleted) {
+        await task.markAsCompleted(resultData || {});
+      } else {
+        task.status = "completed";
+        task.progress.percentage = 100;
+        task.progress.completedAt = new Date();
+        await task.save();
+      }
 
-      // Update staff completed tasks count
       await Staff.findByIdAndUpdate(task.assignedTo, {
         $inc: {"performance.totalTasksCompleted": 1},
       });
     } else if (status === "in-progress") {
-      await task.markAsStarted();
+      if (task.markAsStarted) {
+        await task.markAsStarted();
+      } else {
+        task.status = "in-progress";
+        task.progress.startedAt = new Date();
+        await task.save();
+      }
     } else {
       task.status = status;
       await task.save();
@@ -649,18 +668,13 @@ const updateTaskStatus = asyncHandler(async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Update task status error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating task status",
-      error: error.message,
-    });
+    handleError(error, req, res, "updateTaskStatus");
   }
 });
 
 // @desc    Update task progress
 // @route   PUT /api/tasks/:id/progress
-// @access  Private (Any company user)
+// @access  Private
 const updateTaskProgress = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -675,7 +689,7 @@ const updateTaskProgress = asyncHandler(async (req, res) => {
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -686,7 +700,22 @@ const updateTaskProgress = asyncHandler(async (req, res) => {
       });
     }
 
-    await task.updateProgress(percentage);
+    if (task.updateProgress) {
+      await task.updateProgress(percentage);
+    } else {
+      task.progress.percentage = percentage;
+      task.progress.lastUpdated = new Date();
+
+      if (percentage === 100) {
+        task.status = "completed";
+        task.progress.completedAt = new Date();
+      } else if (percentage > 0 && task.status === "pending") {
+        task.status = "in-progress";
+        task.progress.startedAt = new Date();
+      }
+
+      await task.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -698,25 +727,20 @@ const updateTaskProgress = asyncHandler(async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Update task progress error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating task progress",
-      error: error.message,
-    });
+    handleError(error, req, res, "updateTaskProgress");
   }
 });
 
 // @desc    Add note to task
 // @route   POST /api/tasks/:id/notes
-// @access  Private (Any company user)
+// @access  Private
 const addTaskNote = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const currentUser = req.user;
     const {note} = req.body;
 
-    if (!note || !note.trim()) {
+    if (!note?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Note content is required",
@@ -725,7 +749,7 @@ const addTaskNote = asyncHandler(async (req, res) => {
 
     const task = await Task.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -736,9 +760,22 @@ const addTaskNote = asyncHandler(async (req, res) => {
       });
     }
 
-    await task.addNote(note.trim(), currentUser._id || currentUser.id);
+    if (task.addNote) {
+      await task.addNote(note.trim(), currentUser._id || currentUser.id);
+    } else {
+      if (!task.progress.notes) {
+        task.progress.notes = [];
+      }
 
-    // Populate the added note
+      task.progress.notes.push({
+        note: note.trim(),
+        addedBy: currentUser._id || currentUser.id,
+        addedAt: new Date(),
+      });
+
+      await task.save();
+    }
+
     await task.populate("progress.notes.addedBy", "name employeeId");
 
     res.status(200).json({
@@ -747,18 +784,13 @@ const addTaskNote = asyncHandler(async (req, res) => {
       data: task.progress.notes[task.progress.notes.length - 1],
     });
   } catch (error) {
-    console.error("Add task note error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error adding note to task",
-      error: error.message,
-    });
+    handleError(error, req, res, "addTaskNote");
   }
 });
 
 // @desc    Get task statistics
 // @route   GET /api/tasks/statistics
-// @access  Private (Any company user)
+// @access  Private
 const getTaskStatistics = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -781,39 +813,66 @@ const getTaskStatistics = asyncHandler(async (req, res) => {
     }
 
     // Get overall statistics
-    const [stats] = await Task.getTaskStats(companyId, assignedTo);
+    let stats;
+    if (Task.getTaskStats) {
+      [stats] = await Task.getTaskStats(companyId, assignedTo);
+    } else {
+      const totalTasks = await Task.countDocuments(matchQuery);
+      const completedTasks = await Task.countDocuments({
+        ...matchQuery,
+        status: "completed",
+      });
+      const pendingTasks = await Task.countDocuments({
+        ...matchQuery,
+        status: "pending",
+      });
+      const inProgressTasks = await Task.countDocuments({
+        ...matchQuery,
+        status: "in-progress",
+      });
 
-    // Get tasks by status
-    const statusDistribution = await Task.aggregate([
-      {$match: matchQuery},
-      {$group: {_id: "$status", count: {$sum: 1}}},
-      {$sort: {count: -1}},
-    ]);
+      stats = {
+        totalTasks,
+        completedTasks,
+        pendingTasks,
+        inProgressTasks,
+        overdueTasks: 0,
+        completionRate:
+          totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0,
+        averageProgress: 0,
+        totalTimeSpent: 0,
+      };
+    }
 
-    // Get tasks by priority
-    const priorityDistribution = await Task.aggregate([
-      {$match: matchQuery},
-      {$group: {_id: "$priority", count: {$sum: 1}}},
-      {$sort: {count: -1}},
-    ]);
+    // Get distribution data
+    const [statusDistribution, priorityDistribution, typeDistribution] =
+      await Promise.all([
+        Task.aggregate([
+          {$match: matchQuery},
+          {$group: {_id: "$status", count: {$sum: 1}}},
+          {$sort: {count: -1}},
+        ]),
+        Task.aggregate([
+          {$match: matchQuery},
+          {$group: {_id: "$priority", count: {$sum: 1}}},
+          {$sort: {count: -1}},
+        ]),
+        Task.aggregate([
+          {$match: matchQuery},
+          {$group: {_id: "$taskType", count: {$sum: 1}}},
+          {$sort: {count: -1}},
+        ]),
+      ]);
 
-    // Get tasks by type
-    const typeDistribution = await Task.aggregate([
-      {$match: matchQuery},
-      {$group: {_id: "$taskType", count: {$sum: 1}}},
-      {$sort: {count: -1}},
-    ]);
-
-    // Get overdue tasks count
+    // Get additional counts
     const overdueCount = await Task.countDocuments({
-      companyId: companyId,
+      companyId,
       isActive: true,
       dueDate: {$lt: new Date()},
       status: {$nin: ["completed", "cancelled"]},
-      ...(assignedTo && assignedTo !== "all" && {assignedTo: assignedTo}),
+      ...(assignedTo && assignedTo !== "all" && {assignedTo}),
     });
 
-    // Get tasks due today
     const today = new Date();
     const startOfDay = new Date(
       today.getFullYear(),
@@ -830,10 +889,10 @@ const getTaskStatistics = asyncHandler(async (req, res) => {
     );
 
     const todaysTasksCount = await Task.countDocuments({
-      companyId: companyId,
+      companyId,
       isActive: true,
       dueDate: {$gte: startOfDay, $lte: endOfDay},
-      ...(assignedTo && assignedTo !== "all" && {assignedTo: assignedTo}),
+      ...(assignedTo && assignedTo !== "all" && {assignedTo}),
     });
 
     res.status(200).json({
@@ -858,18 +917,13 @@ const getTaskStatistics = asyncHandler(async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get task statistics error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching task statistics",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTaskStatistics");
   }
 });
 
 // @desc    Bulk assign tasks
 // @route   POST /api/tasks/bulk-assign
-// @access  Private (Any company user)
+// @access  Private
 const bulkAssignTasks = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -883,23 +937,12 @@ const bulkAssignTasks = asyncHandler(async (req, res) => {
       });
     }
 
-    // ✅ Helper function to generate taskId for bulk operations
-    const generateBulkTaskId = async (index) => {
-      try {
-        const company = await Company.findById(companyId);
-        const companyPrefix =
-          company?.name?.substring(0, 3).toUpperCase() || "TSK";
-
-        const taskCount = await Task.countDocuments({companyId: companyId});
-        const taskNumber = String(taskCount + index + 1).padStart(4, "0");
-
-        return `${companyPrefix}-TASK-${taskNumber}`;
-      } catch (error) {
-        console.error("Error generating bulk task ID:", error);
-        const timestamp = Date.now().toString();
-        return `TSK-${timestamp}-${index}`;
-      }
-    };
+    if (tasks.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum 100 tasks can be created at once",
+      });
+    }
 
     const createdTasks = [];
     const errors = [];
@@ -911,7 +954,7 @@ const bulkAssignTasks = asyncHandler(async (req, res) => {
         // Verify assigned staff exists
         const assignedStaff = await Staff.findOne({
           _id: taskData.assignedTo,
-          companyId: companyId,
+          companyId,
           isActive: true,
         });
 
@@ -919,35 +962,18 @@ const bulkAssignTasks = asyncHandler(async (req, res) => {
           errors.push({
             index: i,
             error: "Assigned staff member not found",
-            taskData: taskData,
+            taskData,
           });
           continue;
         }
 
-        // Process customer data
-        let customerData;
-        if (typeof taskData.customer === "string") {
-          customerData = {name: taskData.customer};
-        } else {
-          customerData = {
-            name: taskData.customer.name || taskData.customer,
-            customerId: taskData.customer.customerId || null,
-            contactNumber:
-              taskData.customer.contactNumber ||
-              taskData.customer.phone ||
-              null,
-            email: taskData.customer.email || null,
-            address: taskData.customer.address || null,
-          };
-        }
-
-        // ✅ Generate taskId for this bulk task
-        const taskId = await generateBulkTaskId(i);
+        const customerData = processCustomerData(taskData.customer);
+        const taskId = await generateTaskId(companyId, i);
 
         // Create task
         const task = new Task({
-          taskId: taskId, // ✅ Add generated taskId
-          companyId: companyId,
+          taskId,
+          companyId,
           assignedTo: taskData.assignedTo,
           assignedBy: currentUser._id || currentUser.id,
           assignmentDate: new Date(),
@@ -957,18 +983,7 @@ const bulkAssignTasks = asyncHandler(async (req, res) => {
           description: taskData.description,
           customer: customerData,
           priority: taskData.priority || "medium",
-          reminder: {
-            enabled: taskData.reminder?.enabled !== false,
-            reminderTime: taskData.reminder?.reminderTime || "09:00",
-            frequency: taskData.reminder?.frequency || "once",
-            notificationMethods: {
-              email: taskData.reminder?.notificationMethods?.email !== false,
-              sms: taskData.reminder?.notificationMethods?.sms !== false,
-              app: taskData.reminder?.notificationMethods?.app || false,
-              whatsapp:
-                taskData.reminder?.notificationMethods?.whatsapp || false,
-            },
-          },
+          reminder: processReminderData(taskData.reminder),
           tags: taskData.tags || [],
         });
 
@@ -997,22 +1012,17 @@ const bulkAssignTasks = asyncHandler(async (req, res) => {
       data: {
         createdTasks: createdTasks.length,
         totalRequested: tasks.length,
-        errors: errors,
+        errors,
       },
     });
   } catch (error) {
-    console.error("Bulk assign tasks error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error bulk assigning tasks",
-      error: error.message,
-    });
+    handleError(error, req, res, "bulkAssignTasks");
   }
 });
 
 // @desc    Get task reminders for today
 // @route   GET /api/tasks/reminders
-// @access  Private (Any company user)
+// @access  Private
 const getTaskReminders = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -1029,7 +1039,7 @@ const getTaskReminders = asyncHandler(async (req, res) => {
     );
 
     const query = {
-      companyId: companyId,
+      companyId,
       isActive: true,
       "reminder.enabled": true,
       "reminder.reminderDateTime": {
@@ -1056,12 +1066,7 @@ const getTaskReminders = asyncHandler(async (req, res) => {
       count: tasks.length,
     });
   } catch (error) {
-    console.error("Get task reminders error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching task reminders",
-      error: error.message,
-    });
+    handleError(error, req, res, "getTaskReminders");
   }
 });
 

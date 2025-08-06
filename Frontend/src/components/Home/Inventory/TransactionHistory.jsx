@@ -28,7 +28,6 @@ import {
   faShoppingCart,
   faTag,
   faInfoCircle,
-  faSyncAlt,
   faCalendarAlt,
   faUser,
   faReceipt,
@@ -53,7 +52,7 @@ function TransactionHistory({
   const [transactionSummary, setTransactionSummary] = useState(null);
   const [filterType, setFilterType] = useState("all");
 
-  // ✅ ENHANCED: Fetch transactions with better error handling and parameters
+  // Fetch transactions with comprehensive error handling
   const fetchTransactions = useCallback(
     async (itemId, companyId, filters = {}) => {
       if (!itemId || !companyId) {
@@ -66,9 +65,6 @@ function TransactionHistory({
       setError(null);
 
       try {
-        console.log(`🔍 Fetching transactions for item: ${itemId}`);
-
-        // ✅ ENHANCED: Call with additional parameters
         const params = {
           page: 1,
           limit: 100,
@@ -92,10 +88,6 @@ function TransactionHistory({
           setTransactionSummary(summary);
           setLastFetchedItemId(itemId);
 
-          console.log(
-            `✅ Loaded ${transactionData.length} transactions for item: ${selectedItem?.name}`
-          );
-
           if (transactionData.length === 0 && !error) {
             addToast?.("No transactions found for this item", "info");
           }
@@ -103,7 +95,6 @@ function TransactionHistory({
           throw new Error(response.message || "Failed to fetch transactions");
         }
       } catch (err) {
-        console.error("❌ Error fetching transactions:", err);
         setError(err.message || "Failed to fetch transactions");
         setTransactions([]);
         setTransactionSummary(null);
@@ -112,13 +103,12 @@ function TransactionHistory({
         setIsLoading(false);
       }
     },
-    [addToast, selectedItem?.name, filterType]
+    [addToast, filterType]
   );
 
-  // ✅ ENHANCED: Effect to fetch transactions when selectedItem or filter changes
+  // Effect to fetch transactions when selectedItem or filter changes
   useEffect(() => {
     if (selectedItem?.id && companyId) {
-      // Fetch if it's a different item, filter changed, or no previous fetch
       if (lastFetchedItemId !== selectedItem.id || filterType !== "all") {
         fetchTransactions(selectedItem.id, companyId);
       }
@@ -129,12 +119,11 @@ function TransactionHistory({
     }
   }, [selectedItem?.id, companyId, fetchTransactions, filterType]);
 
-  // ✅ ENHANCED: Filter and sort transactions with better logic
+  // Filter and sort transactions with optimized performance
   const filteredAndSortedTransactions = useMemo(() => {
     let filtered = transactions.filter((transaction) => {
       if (!transaction) return false;
 
-      // Search filter
       const searchMatch =
         searchQuery === "" ||
         transaction.customerName
@@ -158,19 +147,16 @@ function TransactionHistory({
       return searchMatch;
     });
 
-    // Sort transactions
     if (sortConfig.key) {
       filtered.sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
-        // Handle date sorting
         if (sortConfig.key === "date" || sortConfig.key === "transactionDate") {
           aVal = new Date(aVal || 0).getTime();
           bVal = new Date(bVal || 0).getTime();
         }
 
-        // Handle number sorting
         if (
           sortConfig.key === "quantity" ||
           sortConfig.key === "pricePerUnit" ||
@@ -181,7 +167,6 @@ function TransactionHistory({
           bVal = Number(bVal || 0);
         }
 
-        // Handle string sorting
         if (typeof aVal === "string" && typeof bVal === "string") {
           aVal = aVal.toLowerCase();
           bVal = bVal.toLowerCase();
@@ -196,7 +181,7 @@ function TransactionHistory({
     return filtered;
   }, [transactions, searchQuery, sortConfig]);
 
-  // ✅ ENHANCED: Better price formatting
+  // Format price with proper currency and locale
   const formatPrice = useCallback((price) => {
     const numPrice = Number(price || 0);
     if (numPrice === 0) return "₹0";
@@ -206,7 +191,7 @@ function TransactionHistory({
     })}`;
   }, []);
 
-  // ✅ ENHANCED: Better transaction icons with colors
+  // Get transaction icon with proper styling
   const getTransactionIcon = useCallback((type) => {
     const transactionType = type?.toLowerCase();
 
@@ -257,7 +242,7 @@ function TransactionHistory({
     }
   }, []);
 
-  // ✅ ENHANCED: Better status badges
+  // Get status badge with appropriate styling
   const getStatusBadge = useCallback((status) => {
     if (!status) return null;
 
@@ -306,7 +291,7 @@ function TransactionHistory({
     );
   }, []);
 
-  // ✅ ENHANCED: Better sorting with visual feedback
+  // Handle sorting with proper state management
   const handleSort = useCallback((key) => {
     setSortConfig((prev) => {
       let direction = "asc";
@@ -317,25 +302,22 @@ function TransactionHistory({
     });
   }, []);
 
-  // ✅ ENHANCED: Refresh with loading state
+  // Refresh transactions with loading state
   const handleRefresh = useCallback(() => {
     if (selectedItem?.id && companyId) {
-      setLastFetchedItemId(null); // Force refetch
+      setLastFetchedItemId(null);
       fetchTransactions(selectedItem.id, companyId);
     }
   }, [selectedItem?.id, companyId, fetchTransactions]);
 
-  // ✅ ENHANCED: Filter by transaction type
+  // Filter by transaction type
   const handleFilterChange = useCallback((type) => {
     setFilterType(type);
   }, []);
 
-  // ✅ ENHANCED: Action handlers with better feedback
+  // View transaction details
   const handleViewDetails = useCallback(
     (transaction) => {
-      console.log("📋 View details for:", transaction);
-
-      // Create a detailed view of the transaction
       const details = [
         `Transaction ID: ${transaction.id}`,
         `Type: ${transaction.type}`,
@@ -361,7 +343,6 @@ function TransactionHistory({
 
   const handleEditTransaction = useCallback(
     (transaction) => {
-      console.log("✏️ Edit transaction:", transaction);
       addToast?.("Edit transaction feature will be available soon", "info");
     },
     [addToast]
@@ -374,14 +355,13 @@ function TransactionHistory({
           `Are you sure you want to delete this ${transaction.type} transaction?`
         )
       ) {
-        console.log("🗑️ Delete transaction:", transaction);
         addToast?.("Delete transaction feature will be available soon", "info");
       }
     },
     [addToast]
   );
 
-  // ✅ ENHANCED: Better export with more details
+  // Export transactions to CSV
   const handleExport = useCallback(() => {
     if (filteredAndSortedTransactions.length === 0) {
       addToast?.("No transactions to export", "warning");
@@ -389,7 +369,6 @@ function TransactionHistory({
     }
 
     try {
-      // Create enhanced CSV content
       const headers = [
         "Date",
         "Type",
@@ -424,7 +403,6 @@ function TransactionHistory({
         ),
       ].join("\n");
 
-      // Download CSV with better filename
       const blob = new Blob([csvContent], {type: "text/csv;charset=utf-8;"});
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -442,12 +420,11 @@ function TransactionHistory({
         "success"
       );
     } catch (error) {
-      console.error("Export error:", error);
       addToast?.("Failed to export transactions", "error");
     }
   }, [filteredAndSortedTransactions, selectedItem?.name, addToast]);
 
-  // ✅ ENHANCED: Custom Dropdown Toggle with better styling
+  // Custom dropdown toggle component
   const CustomToggle = React.forwardRef(({children, onClick}, ref) => (
     <button
       ref={ref}
@@ -475,7 +452,7 @@ function TransactionHistory({
   return (
     <>
       <Card className="border-0 shadow-sm h-100 transaction-history-card">
-        {/* ✅ ENHANCED: Header with summary stats */}
+        {/* Header with summary stats */}
         <Card.Header className="bg-white border-bottom py-3">
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h5
@@ -500,7 +477,7 @@ function TransactionHistory({
             </h5>
 
             <div className="d-flex align-items-center gap-2">
-              {/* ✅ ENHANCED: Transaction type filter */}
+              {/* Transaction type filter */}
               <Dropdown size="sm">
                 <Dropdown.Toggle
                   variant="outline-secondary"
@@ -612,7 +589,7 @@ function TransactionHistory({
             </div>
           </div>
 
-          {/* ✅ ENHANCED: Summary stats */}
+          {/* Summary stats */}
           {transactionSummary && (
             <Row className="g-3">
               <Col md={3}>
@@ -651,7 +628,7 @@ function TransactionHistory({
           )}
         </Card.Header>
 
-        {/* ✅ ENHANCED: Error Alert */}
+        {/* Error Alert */}
         {error && (
           <Alert
             variant="danger"
@@ -673,7 +650,7 @@ function TransactionHistory({
           </Alert>
         )}
 
-        {/* ✅ ENHANCED: Transaction Table */}
+        {/* Transaction Table */}
         <Card.Body className="p-0">
           <div className="table-responsive transaction-table-container">
             <Table className="mb-0 transaction-table" hover>
@@ -1007,7 +984,7 @@ function TransactionHistory({
         </Card.Body>
       </Card>
 
-      {/* ✅ ENHANCED: Modern Styles */}
+      {/* Production-ready styles */}
       <style>
         {`
           .transaction-history-card {

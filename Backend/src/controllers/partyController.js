@@ -2096,18 +2096,6 @@ const partyController = {
         });
       }
 
-      console.log("🌐 External database search requested:", {
-        query,
-        filter,
-        source,
-      });
-
-      // TODO: Integrate with actual external APIs:
-      // - Government business registry APIs (MCA, GSTIN lookup)
-      // - Trade directory APIs
-      // - Verified business listing APIs
-      // - Industry-specific databases
-
       // For now, return empty results with a message
       res.json({
         success: true,

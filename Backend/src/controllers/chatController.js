@@ -365,10 +365,6 @@ const sendMessageNotifications = async (
           message,
           originalPartyInfo
         );
-      console.log(
-        "📧 New conversation notification:",
-        conversationResult.success ? "✅ Sent" : "❌ Failed"
-      );
     } else if (isUrgent) {
       // Urgent message notification
       const urgentResult = await notificationService.notifyUrgentChatMessage(
@@ -376,10 +372,6 @@ const sendMessageNotifications = async (
         senderCompany,
         receiverCompany,
         "urgent_keywords"
-      );
-      console.log(
-        "🚨 Urgent message notification:",
-        urgentResult.success ? "✅ Sent" : "❌ Failed"
       );
     } else {
       // Regular message notification
@@ -390,10 +382,6 @@ const sendMessageNotifications = async (
           receiverCompany,
           originalPartyInfo
         );
-      console.log(
-        "💬 Regular message notification:",
-        messageResult.success ? "✅ Sent" : "❌ Failed"
-      );
     }
   } catch (error) {
     console.error("❌ Notification error:", error.message);
@@ -623,16 +611,6 @@ const getChatHistory = async (req, res) => {
         code: "SELF_CHAT_ATTEMPT",
       });
     }
-
-    console.log("📚 Getting company chat history:", {
-      myCompanyId: companyId,
-      targetCompanyId: partyId,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      originalPartyId,
-      partyName,
-    });
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const myCompanyObjectId = new mongoose.Types.ObjectId(companyId);
     const targetCompanyObjectId = new mongoose.Types.ObjectId(partyId);
@@ -683,12 +661,6 @@ const getChatHistory = async (req, res) => {
       }
     }
 
-    console.log("🔍 MongoDB Query:", {
-      matchQuery: JSON.stringify(matchQuery),
-      skip,
-      limit: parseInt(limit),
-    });
-
     // ✅ ENHANCED: Execute query with parallel operations
     const [messages, totalMessages, otherCompany] = await Promise.all([
       // Get messages with proper sorting and population
@@ -713,12 +685,6 @@ const getChatHistory = async (req, res) => {
 
     // Reverse messages to show oldest first (chronological order)
     messages.reverse();
-
-    console.log("✅ Query executed successfully:", {
-      messagesFound: messages.length,
-      totalMessages,
-      otherCompanyName: otherCompany?.businessName,
-    });
 
     // ✅ ENHANCED: Mark notifications as read (async)
     setImmediate(async () => {
@@ -806,12 +772,6 @@ const getConversationSummary = async (req, res) => {
         message: "Invalid company ID format",
       });
     }
-
-    console.log("📋 Getting company conversation summary:", {
-      myCompanyId: companyId,
-      otherCompanyId: partyId,
-      type,
-    });
 
     // ✅ UPDATED: Query for company-to-company messages
     const query = {
@@ -1028,10 +988,6 @@ const markChatNotificationsAsRead = async (
           );
         }
       }
-
-      console.log(
-        `✅ Marked ${markedCount}/${conversationNotifications.length} chat notifications as read`
-      );
       return {success: true, markedCount};
     }
 
@@ -1321,16 +1277,6 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    console.log("📤 Sending company message:", {
-      fromCompany: companyId,
-      toCompany: partyId,
-      originalPartyId,
-      partyName,
-      messageType,
-      contentLength: content.length,
-      tempId,
-    });
-
     // ✅ ENHANCED: Validate target company exists
     const targetCompany = await getModel("Company")
       ?.findById(partyId)
@@ -1387,15 +1333,6 @@ const sendMessage = async (req, res) => {
       .populate("receiverCompanyId", "businessName email phoneNumber")
       .lean();
 
-    console.log("✅ Message created successfully:", {
-      messageId: populatedMessage._id,
-      fromCompany: populatedMessage.senderCompanyId?.businessName,
-      toCompany: populatedMessage.receiverCompanyId?.businessName,
-      messageType: populatedMessage.messageType,
-      platform: populatedMessage.platform,
-      tempId: populatedMessage.metadata?.tempId,
-    });
-
     // ✅ NOTIFICATION: Send notifications (async, don't block response)
     setImmediate(async () => {
       try {
@@ -1450,12 +1387,6 @@ const sendMessage = async (req, res) => {
           partyId,
           "new_message",
           broadcastData
-        );
-
-        console.log(
-          broadcastSuccess
-            ? "✅ Message broadcast successful"
-            : "⚠️ Message broadcast failed"
         );
       } catch (socketError) {
         console.warn("⚠️ Socket broadcast error:", socketError.message);
@@ -1999,13 +1930,6 @@ const sendTemplateMessage = async (req, res) => {
       .populate("receiverCompanyId", "businessName")
       .lean();
 
-    console.log("✅ Template message created:", {
-      messageId: populatedMessage._id,
-      templateId,
-      messageType: populatedMessage.messageType,
-      platform: populatedMessage.platform,
-    });
-
     // ✅ UPDATED: Emit to company-to-company chat room
     const socketManager = req.app.get("socketManager");
     if (socketManager) {
@@ -2024,7 +1948,6 @@ const sendTemplateMessage = async (req, res) => {
           "new_message",
           broadcastData
         );
-        console.log("✅ Template message broadcast successful");
       } catch (socketError) {
         console.warn("⚠️ Socket emission failed:", socketError.message);
       }
@@ -2072,12 +1995,6 @@ const getCompanyChatParticipants = async (req, res) => {
         message: "Invalid company ID format",
       });
     }
-
-    console.log("👥 Getting participants for company chat:", {
-      myCompanyId: companyId,
-      otherCompanyId: partyId,
-      type,
-    });
 
     // Get users who have sent/received messages in this company-to-company chat
     const participants = await Message.aggregate([
@@ -2207,14 +2124,6 @@ const getActiveCompanyChats = async (req, res) => {
   try {
     const {companyId} = req.user;
     const {type, page = 1, limit = 20} = req.query;
-
-    console.log("💬 Getting active company chats:", {
-      companyId,
-      type,
-      page,
-      limit,
-    });
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     // Get companies that have active chats with current company
@@ -2385,12 +2294,6 @@ const getCompanyChatAnalytics = async (req, res) => {
         message: "Invalid company ID format",
       });
     }
-
-    console.log("📊 Getting chat analytics:", {
-      myCompanyId: companyId,
-      otherCompanyId: partyId,
-      period,
-    });
 
     // Calculate date range based on period
     const now = new Date();
@@ -2588,11 +2491,6 @@ const getCompanyStatus = async (req, res) => {
         message: "Invalid company ID format",
       });
     }
-
-    console.log("🔍 Checking company status:", {
-      companyId,
-      requestedBy: userId,
-    });
 
     // Get company information
     const Company = getModel("Company");

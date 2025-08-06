@@ -1,119 +1,206 @@
 import axios from "axios";
 
-// ✅ NEW: Simple EventEmitter implementation for browser
+// ===============================
+// 🎯 CONFIGURATION
+// ===============================
+
+const CONFIG = {
+  API_BASE_URL: process.env.REACT_APP_API_URL || "http://localhost:5000",
+  WEBSOCKET_URL: process.env.REACT_APP_WS_URL || "http://localhost:5000",
+  CACHE_EXPIRY: 5 * 60 * 1000, // 5 minutes
+  POLLING_INTERVAL: 30000, // 30 seconds
+  MAX_CACHED_NOTIFICATIONS: 100,
+  MAX_RETRY_ATTEMPTS: 3,
+  RETRY_DELAY_BASE: 1000, // 1 second
+  REQUEST_TIMEOUT: 10000, // 10 seconds
+};
+
+// ===============================
+// 🔧 EVENT EMITTER
+// ===============================
+
 class EventEmitter {
   constructor() {
-    this.events = {};
+    this.events = new Map();
   }
 
   on(event, listener) {
-    if (!this.events[event]) {
-      this.events[event] = [];
+    if (!this.events.has(event)) {
+      this.events.set(event, new Set());
     }
-    this.events[event].push(listener);
-
-    // Return unsubscribe function
-    return () => {
-      this.off(event, listener);
-    };
+    this.events.get(event).add(listener);
+    return () => this.off(event, listener);
   }
 
-  off(event, listenerToRemove) {
-    if (!this.events[event]) return;
-
-    this.events[event] = this.events[event].filter(
-      (listener) => listener !== listenerToRemove
-    );
+  off(event, listener) {
+    if (this.events.has(event)) {
+      this.events.get(event).delete(listener);
+      if (this.events.get(event).size === 0) {
+        this.events.delete(event);
+      }
+    }
   }
 
   emit(event, ...args) {
-    if (!this.events[event]) return;
-
-    this.events[event].forEach((listener) => {
-      try {
-        listener(...args);
-      } catch (error) {
-        console.error("EventEmitter listener error:", error);
-      }
-    });
+    if (this.events.has(event)) {
+      this.events.get(event).forEach((listener) => {
+        try {
+          listener(...args);
+        } catch (error) {
+          // Silent error handling in production
+        }
+      });
+    }
   }
 
   removeAllListeners(event) {
     if (event) {
-      delete this.events[event];
+      this.events.delete(event);
     } else {
-      this.events = {};
+      this.events.clear();
+    }
+  }
+
+  listenerCount(event) {
+    return this.events.has(event) ? this.events.get(event).size : 0;
+  }
+}
+
+// ===============================
+// 🌐 API CLIENT
+// ===============================
+
+class APIClient {
+  constructor() {
+    this.client = axios.create({
+      baseURL: CONFIG.API_BASE_URL,
+      timeout: CONFIG.REQUEST_TIMEOUT,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    this.setupInterceptors();
+  }
+
+  setupInterceptors() {
+    this.client.interceptors.request.use(
+      (config) => {
+        const token = this.getAuthToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+
+        const companyId = this.getCurrentCompanyId();
+        if (companyId) {
+          config.headers["X-Company-ID"] = companyId;
+        }
+
+        config.metadata = {startTime: Date.now()};
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          this.handleAuthenticationError();
+        }
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  getAuthToken() {
+    return (
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      sessionStorage.getItem("authToken")
+    );
+  }
+
+  getCurrentCompanyId() {
+    try {
+      const currentCompany = localStorage.getItem("currentCompany");
+      if (currentCompany) {
+        const company = JSON.parse(currentCompany);
+        return company.id || company._id || company.companyId;
+      }
+    } catch (error) {
+      // Silent error handling
+    }
+    return null;
+  }
+
+  handleAuthenticationError() {
+    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("authToken");
+
+    if (!window.location.pathname.includes("/login")) {
+      window.location.href = "/login";
+    }
+  }
+
+  async request(config) {
+    try {
+      const response = await this.client.request(config);
+      return {
+        success: true,
+        data: response.data,
+        status: response.status,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message,
+        status: error.response?.status,
+        code: error.code,
+      };
     }
   }
 }
 
-// ✅ Create API instance
-const API_BASE_URL = "http://localhost:5000";
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {"Content-Type": "application/json"},
-});
-
-// Add interceptors
-api.interceptors.request.use((config) => {
-  const token =
-    localStorage.getItem("token") || sessionStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-
-  const currentCompany = localStorage.getItem("currentCompany");
-  if (currentCompany) {
-    try {
-      const company = JSON.parse(currentCompany);
-      const companyId = company.id || company._id || company.companyId;
-      if (companyId) config.headers["X-Company-ID"] = companyId;
-    } catch (e) {
-      // Silent fail
-    }
-  }
-  return config;
-});
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
-);
+// ===============================
+// 🔔 NOTIFICATION SERVICE
+// ===============================
 
 class NotificationService extends EventEmitter {
   constructor() {
     super();
-    this.unreadCount = 0;
+
+    // Core state
+    this.api = new APIClient();
     this.notifications = [];
+    this.unreadCount = 0;
+    this.lastFetchTime = null;
+
+    // Connection state
     this.isConnected = false;
     this.socket = null;
     this.retryCount = 0;
-    this.maxRetries = 3;
     this.pollingInterval = null;
-    this.lastFetchTime = null;
 
-    // ✅ NEW: Chat notification state
+    // Chat notifications
     this.isChatWindowFocused = false;
     this.activeChatCompanyId = null;
     this.chatNotificationSettings = {
       enabled: true,
       sound: true,
       desktop: true,
+      showToast: true,
     };
 
-    // Bind methods to preserve context
+    // Browser notification permission
+    this.notificationPermission = "default";
+
+    // Bind methods
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
     this.handleOnline = this.handleOnline.bind(this);
     this.handleOffline = this.handleOffline.bind(this);
 
-    // Initialize service
+    // Initialize
     this.init();
   }
 
@@ -121,29 +208,20 @@ class NotificationService extends EventEmitter {
   // 🚀 INITIALIZATION
   // ===============================
 
-  init() {
-    // Add event listeners
-    document.addEventListener("visibilitychange", this.handleVisibilityChange);
-    window.addEventListener("online", this.handleOnline);
-    window.addEventListener("offline", this.handleOffline);
-
-    // ✅ Load chat notification settings
-    this.loadChatNotificationSettings();
-
-    // Load cached notifications
-    this.loadCachedNotifications();
-
-    // Connect to real-time updates
-    this.connectWebSocket();
-
-    // Start polling as fallback
-    this.startPolling();
-
-    console.log("📢 NotificationService initialized");
+  async init() {
+    try {
+      this.loadSettings();
+      this.loadCachedNotifications();
+      this.setupBrowserEventListeners();
+      await this.requestNotificationPermission();
+      await this.connectWebSocket();
+      this.startPolling();
+    } catch (error) {
+      // Silent error handling
+    }
   }
 
-  // ✅ NEW: Load chat notification settings
-  loadChatNotificationSettings() {
+  loadSettings() {
     try {
       const saved = localStorage.getItem("chatNotificationSettings");
       if (saved) {
@@ -153,133 +231,158 @@ class NotificationService extends EventEmitter {
         };
       }
     } catch (error) {
-      console.warn("Failed to load chat notification settings:", error);
+      // Silent error handling
     }
   }
 
-  // ✅ NEW: Save chat notification settings
-  saveChatNotificationSettings() {
+  saveSettings() {
     try {
       localStorage.setItem(
         "chatNotificationSettings",
         JSON.stringify(this.chatNotificationSettings)
       );
     } catch (error) {
-      console.warn("Failed to save chat notification settings:", error);
+      // Silent error handling
     }
   }
 
-  // ✅ NEW: Simple toast method (replaces react-toastify)
-  showToast(message, type = "info") {
-    // Emit event for components to handle
-    this.emit("show_toast", {message, type});
-    console.log(`${type.toUpperCase()}: ${message}`);
+  setupBrowserEventListeners() {
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    window.addEventListener("online", this.handleOnline);
+    window.addEventListener("offline", this.handleOffline);
+    window.addEventListener("beforeunload", () => {
+      this.cleanup();
+    });
+  }
+
+  async requestNotificationPermission() {
+    if (!("Notification" in window)) {
+      return false;
+    }
+
+    try {
+      if (Notification.permission === "default") {
+        const permission = await Notification.requestPermission();
+        this.notificationPermission = permission;
+        return permission === "granted";
+      }
+
+      this.notificationPermission = Notification.permission;
+      return Notification.permission === "granted";
+    } catch (error) {
+      return false;
+    }
   }
 
   // ===============================
-  // 📡 REAL-TIME CONNECTION
+  // 🌐 WEBSOCKET CONNECTION
   // ===============================
 
-  connectWebSocket() {
+  async connectWebSocket() {
     try {
-      const token = localStorage.getItem("token");
+      const token = this.api.getAuthToken();
       if (!token) {
-        console.warn("⚠️ No auth token found for WebSocket connection");
-        return;
+        return false;
       }
 
-      // ✅ Use dynamic import for socket.io-client
-      import("socket.io-client")
-        .then(({io}) => {
-          this.socket = io(API_BASE_URL, {
-            auth: {token},
-            transports: ["websocket", "polling"],
-            timeout: 5000,
-            retries: 3,
-          });
+      let io;
+      try {
+        const socketIO = await import("socket.io-client");
+        io = socketIO.io || socketIO.default?.io || socketIO.default;
+      } catch (importError) {
+        return false;
+      }
 
-          this.setupSocketListeners();
-        })
-        .catch((error) => {
-          console.warn("Socket.IO not available:", error);
-          // Continue without real-time updates, use polling only
-        });
+      if (!io) {
+        return false;
+      }
+
+      this.socket = io(CONFIG.WEBSOCKET_URL, {
+        auth: {token},
+        transports: ["websocket", "polling"],
+        timeout: 5000,
+        retries: CONFIG.MAX_RETRY_ATTEMPTS,
+        autoConnect: true,
+      });
+
+      this.setupSocketListeners();
+      return true;
     } catch (error) {
-      console.error("❌ Failed to initialize WebSocket:", error);
+      return false;
     }
   }
 
   setupSocketListeners() {
     if (!this.socket) return;
 
-    // Connection events
     this.socket.on("connect", () => {
-      console.log("✅ Notification WebSocket connected");
       this.isConnected = true;
       this.retryCount = 0;
       this.emit("connected");
 
-      // Join user room for personalized notifications
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      if (user.id) {
+      const user = this.getCurrentUser();
+      if (user?.id) {
         this.socket.emit("join_user_room", user.id);
+      }
+
+      const companyId = this.api.getCurrentCompanyId();
+      if (companyId) {
+        this.socket.emit("join_company_room", companyId);
       }
     });
 
     this.socket.on("disconnect", (reason) => {
-      console.log("❌ Notification WebSocket disconnected:", reason);
       this.isConnected = false;
       this.emit("disconnected", reason);
 
-      // Auto-reconnect logic
       if (
         reason !== "io client disconnect" &&
-        this.retryCount < this.maxRetries
+        this.retryCount < CONFIG.MAX_RETRY_ATTEMPTS
       ) {
+        const delay = CONFIG.RETRY_DELAY_BASE * Math.pow(2, this.retryCount);
         setTimeout(() => {
           this.retryCount++;
-          console.log(`🔄 Reconnecting... Attempt ${this.retryCount}`);
           this.socket.connect();
-        }, Math.pow(2, this.retryCount) * 1000);
+        }, delay);
       }
     });
 
-    // Notification events
     this.socket.on("new_notification", (notification) => {
-      console.log("📢 New notification received:", notification);
       this.handleNewNotification(notification);
     });
 
     this.socket.on("notification_read", (data) => {
-      console.log("👁️ Notification marked as read:", data);
       this.handleNotificationRead(data.notificationId);
     });
 
-    this.socket.on("all_notifications_read", (data) => {
-      console.log("👁️ All notifications marked as read:", data);
+    this.socket.on("all_notifications_read", () => {
       this.handleAllNotificationsRead();
     });
 
     this.socket.on("notification_deleted", (data) => {
-      console.log("🗑️ Notification deleted:", data);
       this.handleNotificationDeleted(data.notificationId);
     });
 
-    // ✅ NEW: Chat notification events
     this.socket.on("new_chat_notification", (notification) => {
-      console.log("💬 New chat notification received:", notification);
       this.handleChatNotification(notification);
     });
 
-    // Error handling
     this.socket.on("error", (error) => {
-      console.error("❌ Notification WebSocket error:", error);
       this.emit("error", error);
     });
   }
 
+  getCurrentUser() {
+    try {
+      const user = localStorage.getItem("user");
+      return user ? JSON.parse(user) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
   // ===============================
-  // 📥 FETCH NOTIFICATIONS
+  // 📥 FETCH OPERATIONS
   // ===============================
 
   async fetchNotifications(params = {}) {
@@ -311,16 +414,21 @@ class NotificationService extends EventEmitter {
       if (endDate) queryParams.append("endDate", endDate);
       if (companyId) queryParams.append("companyId", companyId);
 
-      const response = await api.get(`/api/notifications?${queryParams}`);
+      const result = await this.api.request({
+        method: "GET",
+        url: `/api/notifications?${queryParams}`,
+      });
 
-      if (response.data.success) {
-        const {notifications, pagination} = response.data.data;
+      if (result.success) {
+        const {notifications, pagination} = result.data.data || {};
 
-        // Update local cache
         if (page === 1) {
-          this.notifications = notifications;
+          this.notifications = notifications || [];
         } else {
-          this.notifications = [...this.notifications, ...notifications];
+          this.notifications = [
+            ...this.notifications,
+            ...(notifications || []),
+          ];
         }
 
         this.cacheNotifications();
@@ -332,47 +440,11 @@ class NotificationService extends EventEmitter {
           success: true,
           data: {notifications, pagination},
         };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to fetch notifications"
-        );
       }
+
+      throw new Error(result.error || "Failed to fetch notifications");
     } catch (error) {
-      console.error("❌ Fetch notifications error:", error);
       this.showToast("Failed to load notifications", "error");
-
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  async fetchNotificationById(notificationId) {
-    try {
-      const response = await api.get(`/api/notifications/${notificationId}`);
-
-      if (response.data.success) {
-        const notification = response.data.data.notification;
-
-        // Update in local cache
-        const index = this.notifications.findIndex(
-          (n) => n.id === notificationId
-        );
-        if (index !== -1) {
-          this.notifications[index] = notification;
-          this.cacheNotifications();
-        }
-
-        return {
-          success: true,
-          data: notification,
-        };
-      } else {
-        throw new Error(response.data.message || "Notification not found");
-      }
-    } catch (error) {
-      console.error("❌ Fetch notification by ID error:", error);
       return {
         success: false,
         error: error.message,
@@ -383,27 +455,25 @@ class NotificationService extends EventEmitter {
   async fetchUnreadCount(companyId = null) {
     try {
       const queryParams = companyId ? `?companyId=${companyId}` : "";
-      const response = await api.get(
-        `/api/notifications/unread-count${queryParams}`
-      );
+      const result = await this.api.request({
+        method: "GET",
+        url: `/api/notifications/unread-count${queryParams}`,
+      });
 
-      if (response.data.success) {
-        const {unreadCount} = response.data.data;
-        this.unreadCount = unreadCount;
+      if (result.success) {
+        const {unreadCount} = result.data.data || {};
+        this.unreadCount = unreadCount || 0;
 
-        this.emit("unread_count_updated", {count: unreadCount});
+        this.emit("unread_count_updated", {count: this.unreadCount});
 
         return {
           success: true,
-          data: unreadCount,
+          data: this.unreadCount,
         };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to fetch unread count"
-        );
       }
+
+      throw new Error(result.error || "Failed to fetch unread count");
     } catch (error) {
-      console.error("❌ Fetch unread count error:", error);
       return {
         success: false,
         error: error.message,
@@ -412,57 +482,21 @@ class NotificationService extends EventEmitter {
   }
 
   // ===============================
-  // 📤 CREATE NOTIFICATIONS
-  // ===============================
-
-  async createNotification(notificationData) {
-    try {
-      const response = await api.post("/api/notifications", notificationData);
-
-      if (response.data.success) {
-        this.showToast("Notification sent successfully", "success");
-
-        this.emit("notification_created", response.data.data);
-
-        return {
-          success: true,
-          data: response.data.data,
-        };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to create notification"
-        );
-      }
-    } catch (error) {
-      console.error("❌ Create notification error:", error);
-      this.showToast(
-        error.response?.data?.message || "Failed to send notification",
-        "error"
-      );
-
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  // ===============================
-  // ✏️ UPDATE NOTIFICATIONS
+  // 📤 UPDATE OPERATIONS
   // ===============================
 
   async markAsRead(notificationId) {
     try {
-      const response = await api.put(
-        `/api/notifications/${notificationId}/read`
-      );
+      const result = await this.api.request({
+        method: "PUT",
+        url: `/api/notifications/${notificationId}/read`,
+      });
 
-      if (response.data.success) {
-        // Update local cache
+      if (result.success) {
         const notification = this.notifications.find(
           (n) => n.id === notificationId
         );
-        if (notification) {
+        if (notification && !notification.isRead) {
           notification.isRead = true;
           notification.readAt = new Date().toISOString();
           this.unreadCount = Math.max(0, this.unreadCount - 1);
@@ -472,33 +506,25 @@ class NotificationService extends EventEmitter {
         this.emit("notification_read", notificationId);
         this.emit("unread_count_updated", {count: this.unreadCount});
 
-        return {
-          success: true,
-          data: response.data.data,
-        };
-      } else {
-        throw new Error(response.data.message || "Failed to mark as read");
+        return {success: true};
       }
-    } catch (error) {
-      console.error("❌ Mark as read error:", error);
-      this.showToast("Failed to mark notification as read", "error");
 
-      return {
-        success: false,
-        error: error.message,
-      };
+      throw new Error(result.error || "Failed to mark as read");
+    } catch (error) {
+      this.showToast("Failed to mark notification as read", "error");
+      return {success: false, error: error.message};
     }
   }
 
   async markAllAsRead(companyId = null) {
     try {
       const queryParams = companyId ? `?companyId=${companyId}` : "";
-      const response = await api.put(
-        `/api/notifications/mark-all-read${queryParams}`
-      );
+      const result = await this.api.request({
+        method: "PUT",
+        url: `/api/notifications/mark-all-read${queryParams}`,
+      });
 
-      if (response.data.success) {
-        // Update local cache
+      if (result.success) {
         this.notifications.forEach((notification) => {
           if (!notification.isRead) {
             notification.isRead = true;
@@ -509,70 +535,75 @@ class NotificationService extends EventEmitter {
         this.unreadCount = 0;
         this.cacheNotifications();
 
-        this.showToast(response.data.message, "success");
+        this.showToast("All notifications marked as read", "success");
 
         this.emit("all_notifications_read");
         this.emit("unread_count_updated", {count: 0});
 
-        return {
-          success: true,
-          data: response.data.data,
-        };
-      } else {
-        throw new Error(response.data.message || "Failed to mark all as read");
+        return {success: true};
       }
-    } catch (error) {
-      console.error("❌ Mark all as read error:", error);
-      this.showToast("Failed to mark all notifications as read", "error");
 
-      return {
-        success: false,
-        error: error.message,
-      };
+      throw new Error(result.error || "Failed to mark all as read");
+    } catch (error) {
+      this.showToast("Failed to mark all notifications as read", "error");
+      return {success: false, error: error.message};
     }
   }
 
   async markAsClicked(notificationId) {
     try {
-      const response = await api.put(
-        `/api/notifications/${notificationId}/click`
-      );
+      const result = await this.api.request({
+        method: "PUT",
+        url: `/api/notifications/${notificationId}/click`,
+      });
 
-      if (response.data.success) {
-        // Update local cache
-        const notification = this.notifications.find(
-          (n) => n.id === notificationId
-        );
-        if (notification && notification.interactions) {
-          notification.interactions.clicks = response.data.data.clicks;
-        }
-
+      if (result.success) {
         this.emit("notification_clicked", notificationId);
-
-        return {
-          success: true,
-          data: response.data.data,
-        };
-      } else {
-        throw new Error(response.data.message || "Failed to track click");
+        return {success: true};
       }
+
+      return {success: false, error: result.error};
     } catch (error) {
-      console.error("❌ Mark as clicked error:", error);
-      return {
-        success: false,
-        error: error.message,
-      };
+      return {success: false, error: error.message};
     }
   }
 
-  // =============================================================================
-  // 💬 NEW: CHAT NOTIFICATION METHODS
-  // =============================================================================
+  // ===============================
+  // 🗑️ DELETE OPERATIONS
+  // ===============================
 
-  // ✅ NEW: Handle chat-specific notifications
+  async deleteNotification(notificationId) {
+    try {
+      const result = await this.api.request({
+        method: "DELETE",
+        url: `/api/notifications/${notificationId}`,
+      });
+
+      if (result.success) {
+        this.notifications = this.notifications.filter(
+          (n) => n.id !== notificationId
+        );
+        this.cacheNotifications();
+
+        this.showToast("Notification deleted", "success");
+        this.emit("notification_deleted", notificationId);
+
+        return {success: true};
+      }
+
+      throw new Error(result.error || "Failed to delete notification");
+    } catch (error) {
+      this.showToast("Failed to delete notification", "error");
+      return {success: false, error: error.message};
+    }
+  }
+
+  // ===============================
+  // 💬 CHAT NOTIFICATIONS
+  // ===============================
+
   handleNewChatMessage(messageData, senderInfo, chatInfo) {
     try {
-      // Don't show notification if chat window is focused
       if (
         this.isChatWindowFocused &&
         this.activeChatCompanyId === senderInfo.companyId
@@ -580,81 +611,60 @@ class NotificationService extends EventEmitter {
         return;
       }
 
-      // Don't show if chat notifications are disabled
       if (!this.chatNotificationSettings.enabled) {
         return;
       }
 
-      const notification = {
-        id: `chat_${messageData._id || Date.now()}`,
-        title: "💬 New Message",
-        message: `${
-          senderInfo.companyName || "Company"
-        }: ${messageData.content.substring(0, 100)}${
-          messageData.content.length > 100 ? "..." : ""
-        }`,
-        type: "chat",
-        priority: "low",
-        actionUrl: `/chats?from=${senderInfo.companyId}`,
-        actionLabel: "Reply",
-        createdAt: new Date().toISOString(),
-        isRead: false,
-        relatedTo: {
-          entityType: "chat",
-          entityId: messageData._id,
-          entityData: {
-            senderCompanyId: senderInfo.companyId,
-            senderCompanyName: senderInfo.companyName,
-            messageType: messageData.messageType,
-          },
-        },
-        metadata: {
-          source: "chat_system",
-          chatMessage: true,
-        },
-      };
+      const notification = this.createChatNotification(messageData, senderInfo);
+      this.handleNewNotification(notification);
 
-      // Add to notifications array
-      this.notifications.unshift(notification);
-      this.unreadCount++;
-
-      // Keep cache size reasonable
-      if (this.notifications.length > 100) {
-        this.notifications = this.notifications.slice(0, 100);
-      }
-
-      this.cacheNotifications();
-
-      // Emit events
-      this.emit("new_notification", notification);
-      this.emit("unread_count_updated", {count: this.unreadCount});
-
-      // Show browser notification if enabled
       if (this.chatNotificationSettings.desktop) {
         this.showBrowserNotification(notification);
       }
 
-      // Play sound if enabled
       if (this.chatNotificationSettings.sound) {
         this.playNotificationSound();
       }
-
-      // Show toast notification
-      this.showToastNotification(notification);
     } catch (error) {
-      console.error("❌ Error handling chat notification:", error);
+      // Silent error handling
     }
   }
 
-  // ✅ NEW: Handle chat notification from server
+  createChatNotification(messageData, senderInfo) {
+    return {
+      id: `chat_${messageData._id || Date.now()}`,
+      title: "💬 New Message",
+      message: `${
+        senderInfo.companyName || "Company"
+      }: ${messageData.content.substring(0, 100)}${
+        messageData.content.length > 100 ? "..." : ""
+      }`,
+      type: "chat",
+      priority: "low",
+      actionUrl: `/chats?from=${senderInfo.companyId}`,
+      actionLabel: "Reply",
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      relatedTo: {
+        entityType: "chat",
+        entityId: messageData._id,
+        entityData: {
+          senderCompanyId: senderInfo.companyId,
+          senderCompanyName: senderInfo.companyName,
+          messageType: messageData.messageType,
+        },
+      },
+      metadata: {
+        source: "chat_system",
+        chatMessage: true,
+      },
+    };
+  }
+
   handleChatNotification(notification) {
     try {
-      // Only handle if notification is relevant and chat notifications are enabled
-      if (!this.chatNotificationSettings.enabled) {
-        return;
-      }
+      if (!this.chatNotificationSettings.enabled) return;
 
-      // Don't show if relevant chat window is focused
       const senderCompanyId =
         notification.relatedTo?.entityData?.senderCompanyId;
       if (
@@ -664,110 +674,78 @@ class NotificationService extends EventEmitter {
         return;
       }
 
-      // Add to notifications
       this.handleNewNotification(notification);
 
-      // Play sound if enabled
       if (this.chatNotificationSettings.sound) {
         this.playNotificationSound();
       }
 
-      // Show browser notification if enabled
       if (this.chatNotificationSettings.desktop) {
         this.showBrowserNotification(notification);
       }
     } catch (error) {
-      console.error("❌ Error handling server chat notification:", error);
+      // Silent error handling
     }
   }
 
-  // ✅ NEW: Track chat window focus
   setChatWindowFocus(isFocused, companyId = null) {
     this.isChatWindowFocused = isFocused;
     this.activeChatCompanyId = companyId;
-
-    console.log("🔔 Chat focus updated:", {
-      isFocused,
-      companyId,
-      notificationsEnabled: this.chatNotificationSettings.enabled,
-    });
   }
 
-  // ✅ NEW: Update chat notification settings
   updateChatNotificationSettings(settings) {
     this.chatNotificationSettings = {
       ...this.chatNotificationSettings,
       ...settings,
     };
-    this.saveChatNotificationSettings();
-
+    this.saveSettings();
     this.emit(
       "chat_notification_settings_updated",
       this.chatNotificationSettings
     );
   }
 
-  // ✅ NEW: Get chat notification settings
   getChatNotificationSettings() {
     return {...this.chatNotificationSettings};
   }
 
-  // ✅ NEW: Play notification sound
+  // ===============================
+  // 🔊 AUDIO & VISUAL NOTIFICATIONS
+  // ===============================
+
   playNotificationSound() {
+    if (!this.chatNotificationSettings.sound) return;
+
     try {
-      if (!this.chatNotificationSettings.sound) return;
+      if (window.AudioContext || window.webkitAudioContext) {
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-      // Create a simple notification sound using Web Audio API
-      const audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = "sine";
 
-      oscillator.frequency.value = 800;
-      oscillator.type = "sine";
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.5
+        );
 
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        audioContext.currentTime + 0.5
-      );
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      }
     } catch (error) {
-      // Silent fail for audio
-      console.warn("Audio notification failed:", error);
+      // Silent error handling
     }
   }
 
-  // ✅ NEW: Show browser notification
-  showBrowserNotification(notification) {
-    try {
-      // Check if browser notifications are supported and permitted
-      if (!("Notification" in window)) {
-        return;
-      }
+  async showBrowserNotification(notification) {
+    if (this.notificationPermission !== "granted") return;
 
-      // Request permission if needed
-      if (Notification.permission === "default") {
-        Notification.requestPermission().then((permission) => {
-          if (permission === "granted") {
-            this.createBrowserNotification(notification);
-          }
-        });
-      } else if (Notification.permission === "granted") {
-        this.createBrowserNotification(notification);
-      }
-    } catch (error) {
-      console.warn("Browser notification failed:", error);
-    }
-  }
-
-  // ✅ NEW: Create browser notification
-  createBrowserNotification(notification) {
     try {
       const browserNotification = new Notification(notification.title, {
         body: notification.message,
@@ -776,237 +754,127 @@ class NotificationService extends EventEmitter {
         tag: notification.id,
         requireInteraction: notification.priority === "critical",
         silent: notification.priority === "low",
+        data: notification,
       });
 
       browserNotification.onclick = () => {
         window.focus();
         this.markAsClicked(notification.id);
+
         if (notification.actionUrl) {
-          window.location.href = notification.actionUrl;
+          if (window.location.pathname !== notification.actionUrl) {
+            window.location.href = notification.actionUrl;
+          }
         }
+
         browserNotification.close();
       };
 
-      // Auto close after 5 seconds for non-critical notifications
       if (notification.priority !== "critical") {
         setTimeout(() => {
           browserNotification.close();
         }, 5000);
       }
     } catch (error) {
-      console.warn("Failed to create browser notification:", error);
+      // Silent error handling
     }
   }
 
+  showToast(message, type = "info") {
+    this.emit("show_toast", {message, type});
+  }
+
+  showToastNotification(notification) {
+    if (document.hidden || !this.chatNotificationSettings.showToast) return;
+
+    this.emit("show_notification_toast", {
+      title: notification.title,
+      message: notification.message,
+      priority: notification.priority,
+      type: notification.type || "info",
+      onClick: () => {
+        this.markAsClicked(notification.id);
+        if (notification.actionUrl) {
+          window.location.href = notification.actionUrl;
+        }
+      },
+    });
+  }
+
   // ===============================
-  // 🗑️ DELETE NOTIFICATIONS
+  // 🔄 REAL-TIME EVENT HANDLERS
   // ===============================
 
-  async deleteNotification(notificationId) {
+  handleNewNotification(notification) {
     try {
-      const response = await api.delete(`/api/notifications/${notificationId}`);
+      this.notifications.unshift(notification);
+      this.unreadCount++;
 
-      if (response.data.success) {
-        // Remove from local cache
-        this.notifications = this.notifications.filter(
-          (n) => n.id !== notificationId
+      if (this.notifications.length > CONFIG.MAX_CACHED_NOTIFICATIONS) {
+        this.notifications = this.notifications.slice(
+          0,
+          CONFIG.MAX_CACHED_NOTIFICATIONS
         );
+      }
+
+      this.cacheNotifications();
+      this.showToastNotification(notification);
+
+      this.emit("new_notification", notification);
+      this.emit("unread_count_updated", {count: this.unreadCount});
+    } catch (error) {
+      // Silent error handling
+    }
+  }
+
+  handleNotificationRead(notificationId) {
+    try {
+      const notification = this.notifications.find(
+        (n) => n.id === notificationId
+      );
+      if (notification && !notification.isRead) {
+        notification.isRead = true;
+        notification.readAt = new Date().toISOString();
+        this.unreadCount = Math.max(0, this.unreadCount - 1);
         this.cacheNotifications();
 
-        this.showToast("Notification deleted", "success");
-
-        this.emit("notification_deleted", notificationId);
-
-        return {
-          success: true,
-        };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to delete notification"
-        );
+        this.emit("notification_read", notificationId);
+        this.emit("unread_count_updated", {count: this.unreadCount});
       }
     } catch (error) {
-      console.error("❌ Delete notification error:", error);
-      this.showToast("Failed to delete notification", "error");
-
-      return {
-        success: false,
-        error: error.message,
-      };
+      // Silent error handling
     }
   }
 
-  async archiveNotification(notificationId) {
+  handleAllNotificationsRead() {
     try {
-      const response = await api.put(
-        `/api/notifications/${notificationId}/archive`
-      );
+      this.notifications.forEach((notification) => {
+        if (!notification.isRead) {
+          notification.isRead = true;
+          notification.readAt = new Date().toISOString();
+        }
+      });
 
-      if (response.data.success) {
-        // Remove from local cache (archived notifications are hidden)
-        this.notifications = this.notifications.filter(
-          (n) => n.id !== notificationId
-        );
-        this.cacheNotifications();
+      this.unreadCount = 0;
+      this.cacheNotifications();
 
-        this.showToast("Notification archived", "success");
-
-        this.emit("notification_archived", notificationId);
-
-        return {
-          success: true,
-        };
-      } else {
-        throw new Error(
-          response.data.message || "Failed to archive notification"
-        );
-      }
+      this.emit("all_notifications_read");
+      this.emit("unread_count_updated", {count: 0});
     } catch (error) {
-      console.error("❌ Archive notification error:", error);
-      this.showToast("Failed to archive notification", "error");
-
-      return {
-        success: false,
-        error: error.message,
-      };
+      // Silent error handling
     }
   }
 
-  // ===============================
-  // 📊 ANALYTICS & STATS
-  // ===============================
-
-  async fetchNotificationStats(companyId, startDate = null, endDate = null) {
+  handleNotificationDeleted(notificationId) {
     try {
-      const queryParams = new URLSearchParams();
-      if (startDate) queryParams.append("startDate", startDate);
-      if (endDate) queryParams.append("endDate", endDate);
-
-      const query = queryParams.toString() ? `?${queryParams}` : "";
-      const response = await api.get(
-        `/api/notifications/stats/${companyId}${query}`
+      this.notifications = this.notifications.filter(
+        (n) => n.id !== notificationId
       );
-
-      if (response.data.success) {
-        return {
-          success: true,
-          data: response.data.data,
-        };
-      } else {
-        throw new Error(response.data.message || "Failed to fetch stats");
-      }
+      this.cacheNotifications();
+      this.emit("notification_deleted", notificationId);
     } catch (error) {
-      console.error("❌ Fetch notification stats error:", error);
-      return {
-        success: false,
-        error: error.message,
-      };
+      // Silent error handling
     }
-  }
-
-  // ===============================
-  // 🎯 SPECIALIZED NOTIFICATIONS
-  // ===============================
-
-  async notifyLowInventory(productData, companyId) {
-    const notificationData = {
-      title: "⚠️ Low Inventory Alert",
-      message: `${productData.name} is running low! Current stock: ${productData.currentStock} units`,
-      type: "inventory",
-      priority: productData.currentStock === 0 ? "critical" : "high",
-      recipients: await this.getManagerRecipients(companyId),
-      relatedTo: {
-        entityType: "product",
-        entityId: productData.id,
-        entityData: productData,
-      },
-      actionUrl: `/companies/${companyId}/products/${productData.id}`,
-      actionLabel: "View Product",
-      channels: {
-        inApp: true,
-        email: productData.currentStock === 0,
-      },
-      metadata: {
-        source: "inventory_management",
-        tags: ["low_stock", "urgent"],
-      },
-    };
-
-    return await this.createNotification(notificationData);
-  }
-
-  async notifyNewOrder(orderData, companyId) {
-    const isHighValue = orderData.totalAmount > 25000;
-
-    const notificationData = {
-      title: "🛒 New Order Received",
-      message: `New order #${
-        orderData.orderNumber
-      } for ₹${orderData.totalAmount.toLocaleString()} from ${
-        orderData.customerName
-      }`,
-      type: "order",
-      priority: isHighValue ? "high" : "medium",
-      recipients: await this.getSalesRecipients(companyId),
-      relatedTo: {
-        entityType: "order",
-        entityId: orderData.id,
-        entityData: orderData,
-      },
-      actionUrl: `/companies/${companyId}/orders/${orderData.id}`,
-      actionLabel: "View Order",
-      channels: {
-        inApp: true,
-        email: isHighValue,
-      },
-      metadata: {
-        source: "order_management",
-        tags: ["new_order", "sales"],
-      },
-    };
-
-    return await this.createNotification(notificationData);
-  }
-
-  async notifyTaskAssignment(taskData, assignedUserId, companyId) {
-    const notificationData = {
-      title: "📋 New Task Assigned",
-      message: `You have been assigned a new task: "${taskData.title}"`,
-      type: "task",
-      priority: taskData.priority || "medium",
-      recipients: [{userId: assignedUserId}],
-      relatedTo: {
-        entityType: "task",
-        entityId: taskData.id,
-        entityData: taskData,
-      },
-      actionUrl: `/companies/${companyId}/tasks/${taskData.id}`,
-      actionLabel: "View Task",
-      channels: {
-        inApp: true,
-        email: taskData.priority === "high" || taskData.priority === "critical",
-      },
-      metadata: {
-        source: "task_management",
-        tags: ["task_assignment"],
-      },
-    };
-
-    return await this.createNotification(notificationData);
-  }
-
-  // ===============================
-  // 🔧 UTILITY METHODS
-  // ===============================
-
-  async getManagerRecipients(companyId) {
-    // TODO: Implement API call to get managers
-    return [];
-  }
-
-  async getSalesRecipients(companyId) {
-    // TODO: Implement API call to get sales team
-    return [];
   }
 
   // ===============================
@@ -1024,61 +892,59 @@ class NotificationService extends EventEmitter {
 
       localStorage.setItem("cached_notifications", JSON.stringify(cacheData));
     } catch (error) {
-      console.warn("⚠️ Failed to cache notifications:", error);
+      // Silent error handling
     }
   }
 
   loadCachedNotifications() {
     try {
       const cached = localStorage.getItem("cached_notifications");
-      if (cached) {
-        const cacheData = JSON.parse(cached);
+      if (!cached) return;
 
-        // Check if cache is not too old (5 minutes)
-        const cacheAge = new Date() - new Date(cacheData.timestamp);
-        if (cacheAge < 5 * 60 * 1000) {
-          this.notifications = cacheData.notifications || [];
-          this.unreadCount = cacheData.unreadCount || 0;
-          this.lastFetchTime = cacheData.lastFetchTime
-            ? new Date(cacheData.lastFetchTime)
-            : null;
+      const cacheData = JSON.parse(cached);
+      const cacheAge = new Date() - new Date(cacheData.timestamp);
 
-          console.log(
-            "📦 Loaded cached notifications:",
-            this.notifications.length
-          );
-          this.emit("notifications_loaded_from_cache", this.notifications);
-        }
+      if (cacheAge < CONFIG.CACHE_EXPIRY) {
+        this.notifications = cacheData.notifications || [];
+        this.unreadCount = cacheData.unreadCount || 0;
+        this.lastFetchTime = cacheData.lastFetchTime
+          ? new Date(cacheData.lastFetchTime)
+          : null;
+
+        this.emit("notifications_loaded_from_cache", this.notifications);
+      } else {
+        this.clearCache();
       }
     } catch (error) {
-      console.warn("⚠️ Failed to load cached notifications:", error);
+      this.clearCache();
     }
   }
 
   clearCache() {
-    localStorage.removeItem("cached_notifications");
-    this.notifications = [];
-    this.unreadCount = 0;
-    this.lastFetchTime = null;
+    try {
+      localStorage.removeItem("cached_notifications");
+      this.notifications = [];
+      this.unreadCount = 0;
+      this.lastFetchTime = null;
+    } catch (error) {
+      // Silent error handling
+    }
   }
 
   // ===============================
   // 🔄 POLLING (FALLBACK)
   // ===============================
 
-  startPolling(interval = 30000) {
+  startPolling(interval = CONFIG.POLLING_INTERVAL) {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
     }
 
     this.pollingInterval = setInterval(async () => {
-      // Only poll if not connected via WebSocket and page is visible
       if (!this.isConnected && !document.hidden) {
-        console.log("🔄 Polling for new notifications...");
         await this.fetchUnreadCount();
 
-        // Fetch latest notifications if it's been a while
-        if (!this.lastFetchTime || new Date() - this.lastFetchTime > 60000) {
+        if (!this.lastFetchTime || Date.now() - this.lastFetchTime > 60000) {
           await this.fetchNotifications({limit: 10});
         }
       }
@@ -1093,105 +959,13 @@ class NotificationService extends EventEmitter {
   }
 
   // ===============================
-  // 📡 REAL-TIME EVENT HANDLERS
-  // ===============================
-
-  handleNewNotification(notification) {
-    // Add to local cache
-    this.notifications.unshift(notification);
-    this.unreadCount++;
-
-    // Keep cache size reasonable
-    if (this.notifications.length > 100) {
-      this.notifications = this.notifications.slice(0, 100);
-    }
-
-    this.cacheNotifications();
-
-    // Show toast notification
-    this.showToastNotification(notification);
-
-    // Emit events
-    this.emit("new_notification", notification);
-    this.emit("unread_count_updated", {count: this.unreadCount});
-  }
-
-  handleNotificationRead(notificationId) {
-    const notification = this.notifications.find(
-      (n) => n.id === notificationId
-    );
-    if (notification && !notification.isRead) {
-      notification.isRead = true;
-      notification.readAt = new Date().toISOString();
-      this.unreadCount = Math.max(0, this.unreadCount - 1);
-      this.cacheNotifications();
-
-      this.emit("notification_read", notificationId);
-      this.emit("unread_count_updated", {count: this.unreadCount});
-    }
-  }
-
-  handleAllNotificationsRead() {
-    this.notifications.forEach((notification) => {
-      if (!notification.isRead) {
-        notification.isRead = true;
-        notification.readAt = new Date().toISOString();
-      }
-    });
-
-    this.unreadCount = 0;
-    this.cacheNotifications();
-
-    this.emit("all_notifications_read");
-    this.emit("unread_count_updated", {count: 0});
-  }
-
-  handleNotificationDeleted(notificationId) {
-    this.notifications = this.notifications.filter(
-      (n) => n.id !== notificationId
-    );
-    this.cacheNotifications();
-
-    this.emit("notification_deleted", notificationId);
-  }
-
-  // ===============================
-  // 🔔 TOAST NOTIFICATIONS
-  // ===============================
-
-  showToastNotification(notification) {
-    // Don't show toast if page is hidden
-    if (document.hidden) return;
-
-    // ✅ Emit custom toast event for components to handle
-    this.emit("show_notification_toast", {
-      title: notification.title,
-      message: notification.message,
-      priority: notification.priority,
-      type: "chat",
-      onClick: () => {
-        this.markAsClicked(notification.id);
-        if (notification.actionUrl) {
-          window.location.href = notification.actionUrl;
-        }
-      },
-    });
-
-    // ✅ Also show simple toast
-    this.showToast(`${notification.title}: ${notification.message}`, "info");
-  }
-
-  // ===============================
-  // 🎧 EVENT LISTENERS
+  // 🎧 EVENT HANDLERS
   // ===============================
 
   handleVisibilityChange() {
     if (!document.hidden) {
-      // Page became visible, refresh notifications
-      console.log("👁️ Page visible, refreshing notifications...");
       this.fetchUnreadCount();
 
-      // Reconnect WebSocket if disconnected
       if (!this.isConnected && this.socket) {
         this.socket.connect();
       }
@@ -1199,7 +973,6 @@ class NotificationService extends EventEmitter {
   }
 
   handleOnline() {
-    console.log("🌐 Back online, reconnecting...");
     if (this.socket && !this.isConnected) {
       this.socket.connect();
     }
@@ -1207,36 +980,7 @@ class NotificationService extends EventEmitter {
   }
 
   handleOffline() {
-    console.log("📴 Offline mode");
     this.isConnected = false;
-  }
-
-  // ===============================
-  // 🧹 CLEANUP
-  // ===============================
-
-  destroy() {
-    // Remove event listeners
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange
-    );
-    window.removeEventListener("online", this.handleOnline);
-    window.removeEventListener("offline", this.handleOffline);
-
-    // Stop polling
-    this.stopPolling();
-
-    // Disconnect WebSocket
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-
-    // Remove all listeners
-    this.removeAllListeners();
-
-    console.log("🧹 NotificationService destroyed");
   }
 
   // ===============================
@@ -1244,7 +988,7 @@ class NotificationService extends EventEmitter {
   // ===============================
 
   getNotifications() {
-    return this.notifications;
+    return [...this.notifications];
   }
 
   getUnreadCount() {
@@ -1268,6 +1012,15 @@ class NotificationService extends EventEmitter {
     return notification ? notification.isRead : false;
   }
 
+  getConnectionStatus() {
+    return {
+      isConnected: this.isConnected,
+      hasWebSocket: !!this.socket,
+      isPolling: !!this.pollingInterval,
+      retryCount: this.retryCount,
+    };
+  }
+
   // ===============================
   // 🎨 UI HELPERS
   // ===============================
@@ -1286,6 +1039,9 @@ class NotificationService extends EventEmitter {
       error: "❌",
       success: "✅",
       info: "ℹ️",
+      payment: "💳",
+      user: "👤",
+      company: "🏢",
     };
 
     return icons[type] || "📢";
@@ -1293,35 +1049,98 @@ class NotificationService extends EventEmitter {
 
   getNotificationColor(priority) {
     const colors = {
-      critical: "#DC2626", // Red
-      high: "#F59E0B", // Orange
-      medium: "#3B82F6", // Blue
-      low: "#6B7280", // Gray
+      critical: "#DC2626",
+      high: "#F59E0B",
+      medium: "#3B82F6",
+      low: "#6B7280",
     };
 
     return colors[priority] || colors.medium;
   }
 
   formatNotificationTime(timestamp) {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInSeconds = Math.floor((now - time) / 1000);
+    try {
+      const now = new Date();
+      const time = new Date(timestamp);
+      const diffInSeconds = Math.floor((now - time) / 1000);
 
-    if (diffInSeconds < 60) return "Just now";
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400)
-      return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    if (diffInSeconds < 604800)
-      return `${Math.floor(diffInSeconds / 86400)}d ago`;
+      if (diffInSeconds < 60) return "Just now";
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+      if (diffInSeconds < 86400)
+        return `${Math.floor(diffInSeconds / 3600)}h ago`;
+      if (diffInSeconds < 604800)
+        return `${Math.floor(diffInSeconds / 86400)}d ago`;
 
-    return time.toLocaleDateString();
+      return time.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: time.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+      });
+    } catch (error) {
+      return "Unknown";
+    }
+  }
+
+  // ===============================
+  // 🧹 CLEANUP
+  // ===============================
+
+  cleanup() {
+    try {
+      document.removeEventListener(
+        "visibilitychange",
+        this.handleVisibilityChange
+      );
+      window.removeEventListener("online", this.handleOnline);
+      window.removeEventListener("offline", this.handleOffline);
+
+      this.stopPolling();
+
+      if (this.socket) {
+        this.socket.disconnect();
+        this.socket = null;
+      }
+
+      this.removeAllListeners();
+    } catch (error) {
+      // Silent error handling
+    }
+  }
+
+  destroy() {
+    this.cleanup();
   }
 }
 
-// Create singleton instance
+// ===============================
+// 🏭 SINGLETON INSTANCE
+// ===============================
+
 const notificationService = new NotificationService();
 
-export default notificationService;
+// Hot reload handling for development
+if (process.env.NODE_ENV === "development") {
+  if (typeof module !== "undefined" && module.hot) {
+    module.hot.dispose(() => {
+      notificationService.cleanup();
+    });
+  }
 
-// Export for direct import
+  if (import.meta?.hot) {
+    import.meta.hot.dispose(() => {
+      notificationService.cleanup();
+    });
+  }
+
+  if (typeof window !== "undefined") {
+    if (!window.__NOTIFICATION_SERVICE_CLEANUP__) {
+      window.__NOTIFICATION_SERVICE_CLEANUP__ = [];
+    }
+    window.__NOTIFICATION_SERVICE_CLEANUP__.push(() => {
+      notificationService.cleanup();
+    });
+  }
+}
+
+export default notificationService;
 export {notificationService};

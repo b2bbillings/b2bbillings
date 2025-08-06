@@ -241,12 +241,6 @@ function Parties() {
 
       // ✅ Use context to open chat with proper data
       openChat(chatData.party, "modal");
-
-      setSuccess(
-        `Opening chat with ${
-          chatData.party.chatCompanyName
-        } (${targetCompanyId.slice(-6)})`
-      );
     } catch (error) {
       setError("Failed to open chat: " + error.message);
     } finally {
@@ -899,12 +893,6 @@ function Parties() {
         setParties((prevParties) => [normalizedParty, ...prevParties]);
         setTotalParties((prev) => prev + 1);
         setSelectedParty(normalizedParty);
-
-        if (isQuickAdd) {
-          setSuccess("Quick customer added successfully!");
-        } else {
-          setSuccess("Party added successfully!");
-        }
       }
 
       handleCloseModal();

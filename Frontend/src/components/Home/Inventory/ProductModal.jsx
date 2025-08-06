@@ -143,20 +143,9 @@ function ProductModal({
   // 🚨 SIMPLIFIED PRE-POPULATION - Only set tax states, form data handled by parent
   useEffect(() => {
     if (editingProduct && mode === "edit" && show) {
-      console.log(
-        "🔧 ProductModal - Edit mode detected, setting tax states only"
-      );
-      console.log("🔧 ProductModal - Editing product:", editingProduct);
-      console.log("🔧 ProductModal - Current form data:", formData);
-
       // Only set tax inclusive states here - form data is handled by parent
       setBuyPriceTaxInclusive(editingProduct.isBuyPriceTaxInclusive || false);
       setSalePriceTaxInclusive(editingProduct.isSalePriceTaxInclusive || false);
-
-      console.log("🔧 ProductModal - Tax states set:", {
-        buyPriceTaxInclusive: editingProduct.isBuyPriceTaxInclusive || false,
-        salePriceTaxInclusive: editingProduct.isSalePriceTaxInclusive || false,
-      });
     }
   }, [editingProduct?.id, editingProduct?._id, mode, show]); // Use stable ID references
 
@@ -428,15 +417,6 @@ function ProductModal({
       return;
     }
 
-    // 🚨 DEBUG LOG - What data is being sent
-    console.log("🚀 ProductModal - Submitting form data:", {
-      mode: mode,
-      formData: formData,
-      buyPriceTaxInclusive: buyPriceTaxInclusive,
-      salePriceTaxInclusive: salePriceTaxInclusive,
-      editingProduct: editingProduct,
-    });
-
     // Prepare the complete data to send to parent
     const dataToSend = {
       ...formData,
@@ -482,11 +462,6 @@ function ProductModal({
             parseFloat(formData.minStockLevel) ||
             0,
     };
-
-    console.log(
-      "🚀 ProductModal - Prepared data to send to parent:",
-      dataToSend
-    );
 
     setIsLoading(true);
 
@@ -670,8 +645,6 @@ function ProductModal({
   // Handle product selection from search modal (only for add mode)
   const handleProductSelection = (product) => {
     if (mode === "edit") return; // Don't allow database search in edit mode
-
-    console.log("🔍 Selected product from search:", product);
 
     // Auto-fill form with selected product data
     const productData = {

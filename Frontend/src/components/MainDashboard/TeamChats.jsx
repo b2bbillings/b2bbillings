@@ -1,5 +1,6 @@
 import React, {useState, useEffect, useRef, Fragment} from "react";
-
+import {createPortal} from "react-dom"; // ✅ ADD THIS LINE
+// import "./TeamChats.css";
 import {
   Card,
   Form,
@@ -49,1046 +50,16 @@ import {
   faShare,
   faCopy,
   faQrcode,
+  faBell,
+  faBellSlash,
+  faVolumeUp,
+  faVolumeMute,
 } from "@fortawesome/free-solid-svg-icons";
 
 // Import services
 import partyService from "../../services/partyService";
 import chatService from "../../services/chatService";
-import AddNewParty from "../Home/Party/AddNewParty"; // ✅ Add this import
-
-const styles = `
-/* Team Chats Styles */
-.team-chats {
-  width: 100%;
-  height: 100%;
-}
-
-.chat-section {
-  border: none;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 160px);
-  margin-top: 1rem;
-}
-
-/* Dashboard layout override */
-.dashboard-layout .team-chats .chat-section {
-  margin-top: 0;
-  height: 100%;
-}
-
-/* Single view layout */
-.single-view .team-chats .chat-section {
-  margin-top: 1rem;
-}
-
-/* Chat Header */
-.chat-header {
-  padding: 1.2rem;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  color: white;
-  flex-shrink: 0;
-}
-
-.chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.chat-title {
-  font-size: 1.2rem;
-  color: white;
-  font-weight: 600;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.chat-title::before {
-  content: '💬';
-  font-size: 1.1rem;
-}
-
-.members-count {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 0.4rem 0.8rem;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-/* Section Toggle - COMPACT LAYOUT */
-.section-toggle-container {
-  padding: 1rem 1.5rem 0.8rem 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 85px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  overflow: visible;
-  flex-shrink: 0;
-}
-
-/* Add Party Button - Compact */
-.section-toggle-container .add-party-button {
-  width: 100%;
-  font-size: 0.95rem;
-  font-weight: 600;
-  padding: 0.75rem 1.25rem;
-  border-radius: 10px;
-  height: 42px;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-  border: none;
-  text-decoration: none;
-  box-sizing: border-box;
-  position: relative;
-  overflow: visible;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.25);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  margin: 0;
-}
-
-.section-toggle-container .add-party-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  color: white;
-  text-decoration: none;
-}
-
-.section-toggle-container .add-party-button:active {
-  transform: translateY(0);
-  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.25);
-}
-
-/* Filter Buttons Container - Same line layout */
-.section-toggle-container .filter-buttons {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: nowrap;
-  width: 100%;
-}
-
-/* Filter buttons - Base styles */
-.section-toggle-container .filter-buttons .btn {
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0.65rem 1.25rem;
-  border-radius: 10px;
-  height: 38px;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-  border: 2px solid transparent;
-  line-height: 1.2;
-  text-decoration: none;
-  box-sizing: border-box;
-  position: relative;
-  overflow: visible;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  text-shadow: none;
-}
-
-/* Linked button - Regular size */
-.section-toggle-container .filter-buttons .btn:first-child {
-  flex: 1;
-  min-width: 110px;
-  max-width: 160px;
-}
-
-/* All Parties button - Wider */
-.section-toggle-container .filter-buttons .btn:last-child {
-  flex: 1.3;
-  min-width: 140px;
-  max-width: 220px;
-}
-
-.section-toggle-container .filter-buttons .btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  text-decoration: none;
-}
-
-.section-toggle-container .filter-buttons .btn-primary {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  border-color: #2563eb;
-  color: white;
-  box-shadow: 0 3px 12px rgba(37, 99, 235, 0.25);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.section-toggle-container .filter-buttons .btn-primary:hover {
-  background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
-  border-color: #1d4ed8;
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
-  color: white;
-}
-
-.section-toggle-container .filter-buttons .btn-outline-primary {
-  border-color: #cbd5e1;
-  color: #475569;
-  background-color: white;
-  font-weight: 500;
-}
-
-.section-toggle-container .filter-buttons .btn-outline-primary:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  border-color: #2563eb;
-  color: #2563eb;
-  font-weight: 600;
-}
-
-/* Icon styling - Compact */
-.section-toggle-container .btn svg {
-  font-size: 0.9rem;
-  margin-right: 0.4rem;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
-}
-
-/* Search - More compact */
-.search-chat {
-  padding: 0.6rem 1.2rem;
-  border-bottom: 1px solid #e2e8f0;
-  background-color: #f8fafc;
-  flex-shrink: 0;
-}
-
-.search-chat .input-group-text {
-  background-color: #ffffff;
-  border-color: #cbd5e1;
-  color: #64748b;
-  padding: 0.5rem 0.75rem;
-}
-
-.search-chat .form-control {
-  border-color: #cbd5e1;
-  font-size: 0.9rem;
-  background-color: #ffffff;
-  padding: 0.5rem 0.75rem;
-}
-
-.search-chat .form-control:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
-}
-
-/* Chat List */
-.chat-list {
-  flex: 1;
-  overflow-y: auto;
-  background-color: #ffffff;
-  min-height: 0;
-}
-
-/* Chat Item - Compact layout */
-.chat-item {
-  padding: 0.85rem 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  border-bottom: 1px solid #f1f5f9;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  min-height: 72px;
-}
-
-.chat-item:hover {
-  background-color: #f8fafc;
-  transform: translateX(2px);
-}
-
-.chat-item:last-child {
-  border-bottom: none;
-}
-
-.chat-avatar-container {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.chat-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  font-size: 1rem;
-  position: relative;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-.online-indicator {
-  position: absolute;
-  bottom: 1px;
-  right: 1px;
-  width: 12px;
-  height: 12px;
-  background-color: #10b981;
-  border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
-}
-
-/* Chat Info - Compact text handling */
-.chat-info {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.chat-info-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 0.3rem;
-  gap: 0.5rem;
-}
-
-.chat-name {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: 1;
-  min-width: 0;
-  line-height: 1.3;
-  word-break: break-word;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: calc(100% - 70px);
-}
-
-.linked-indicator {
-  color: #10b981;
-  opacity: 0.8;
-  flex-shrink: 0;
-}
-
-.chat-time {
-  font-size: 0.75rem;
-  color: #64748b;
-  white-space: nowrap;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.chat-preview {
-  font-size: 0.85rem;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  overflow: hidden;
-  line-height: 1.3;
-}
-
-.chat-preview .company-name {
-  font-weight: 500;
-  color: #2563eb;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 130px;
-}
-
-.chat-preview .party-type {
-  color: #6b7280;
-  font-size: 0.75rem;
-  text-transform: capitalize;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.unread-badge {
-  position: absolute;
-  top: 0.65rem;
-  right: 0.85rem;
-  font-size: 0.65rem;
-  padding: 0.15rem 0.35rem;
-  min-width: 16px;
-  text-align: center;
-}
-
-/* Share button - Compact positioning */
-.chat-item .d-flex.align-items-center {
-  flex-shrink: 0;
-  margin-left: 0.4rem;
-}
-
-.chat-item .btn-outline-primary {
-  border-color: #cbd5e1;
-  color: #64748b;
-  transition: all 0.2s ease;
-  border-width: 1.5px;
-  width: 30px;
-  height: 30px;
-}
-
-.chat-item:hover .btn-outline-primary {
-  border-color: #2563eb;
-  color: #2563eb;
-  background-color: rgba(37, 99, 235, 0.08);
-  transform: scale(1.05);
-}
-
-.chat-item .btn-outline-primary:hover {
-  border-color: #2563eb !important;
-  color: #2563eb !important;
-  background-color: rgba(37, 99, 235, 0.1) !important;
-  transform: scale(1.08);
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
-}
-
-/* No Chats */
-.no-chats {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.no-chats-content {
-  text-align: center;
-}
-
-/* Error State */
-.error-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.error-content {
-  text-align: center;
-  color: #ef4444;
-}
-
-/* Chat Popup with proper z-index hierarchy */
-.chat-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 2000;
-  backdrop-filter: blur(2px);
-}
-
-.chat-popup {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 420px;
-  height: 100vh;
-  background-color: white;
-  box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15);
-  z-index: 2001;
-  display: flex;
-  flex-direction: column;
-  animation: slideInRight 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* Popup Header with highest z-index */
-.popup-header {
-  padding: 1rem 1.2rem;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-  z-index: 2002;
-  flex-shrink: 0;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.2);
-  min-height: 72px;
-}
-
-.popup-header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.popup-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  font-size: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  flex-shrink: 0;
-}
-
-.popup-user-info {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.popup-user-name {
-  font-weight: 600;
-  font-size: 1rem;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.popup-user-status {
-  font-size: 0.8rem;
-  opacity: 0.9;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin: 0;
-  flex-wrap: wrap;
-  overflow: hidden;
-}
-
-.online-dot {
-  color: #10b981;
-  font-size: 0.6rem;
-  filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.5));
-}
-
-.popup-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.popup-action-btn,
-.popup-close-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 0.5rem;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.popup-action-btn:hover,
-.popup-close-btn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  transform: scale(1.05);
-}
-
-/* Messages */
-.popup-body {
-  flex: 1;
-  padding: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  background: #f8fafc;
-  min-height: 0;
-}
-
-.messages-container {
-  flex: 1;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-}
-
-.message-bubble {
-  max-width: 85%;
-  padding: 0.75rem 1rem;
-  border-radius: 18px;
-  font-size: 0.9rem;
-  line-height: 1.4;
-  position: relative;
-  word-wrap: break-word;
-  animation: messageSlideIn 0.3s ease-out;
-}
-
-@keyframes messageSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.message-sent {
-  align-self: flex-end;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  color: white;
-  border-bottom-right-radius: 6px;
-}
-
-.message-received {
-  align-self: flex-start;
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  border-bottom-left-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.message-time {
-  font-size: 0.7rem;
-  opacity: 0.7;
-  margin-top: 0.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.message-status {
-  font-size: 0.7rem;
-}
-
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: white;
-  border-radius: 18px;
-  border-bottom-left-radius: 6px;
-  max-width: 75%;
-  align-self: flex-start;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.typing-dots {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.typing-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #9ca3af;
-  border-radius: 50%;
-  animation: typingBounce 1.4s infinite ease-in-out;
-}
-
-.typing-dot:nth-child(1) { animation-delay: -0.32s; }
-.typing-dot:nth-child(2) { animation-delay: -0.16s; }
-
-@keyframes typingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.8);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.no-messages {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  text-align: center;
-  color: #6b7280;
-}
-
-/* Message Input */
-.popup-footer {
-  padding: 1rem;
-  border-top: 1px solid #e2e8f0;
-  background-color: white;
-  position: relative;
-  z-index: 2001;
-  flex-shrink: 0;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-}
-
-.popup-footer .d-flex.gap-1 {
-  margin-bottom: 0.75rem;
-}
-
-.popup-footer .btn[style*="font-size: 10px"] {
-  font-size: 10px;
-  padding: 0.375rem 0.75rem;
-  border-radius: 15px;
-  font-weight: 500;
-}
-
-.popup-footer .input-group {
-  position: relative;
-}
-
-.popup-footer .form-control {
-  border-radius: 20px;
-  border-color: #cbd5e1;
-  padding: 0.75rem 1rem;
-  background-color: #f8fafc;
-  transition: all 0.2s ease;
-  resize: none;
-  min-height: 44px;
-  max-height: 120px;
-  font-size: 13px;
-}
-
-.popup-footer .form-control:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
-  background-color: white;
-}
-
-.popup-footer .input-group .btn {
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.2s ease;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  border: none;
-  margin-left: 0.5rem;
-}
-
-.popup-footer .input-group .btn:hover:not(:disabled) {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
-
-.popup-footer .input-group .btn:disabled {
-  opacity: 0.5;
-  transform: none;
-  background: #9ca3af;
-}
-
-.popup-footer .d-flex.justify-content-between {
-  margin-top: 0.5rem;
-}
-
-.popup-footer .d-flex.justify-content-between small {
-  font-size: 10px;
-}
-
-/* Templates dropdown */
-.popup-footer .p-2.border.rounded.bg-light {
-  max-height: 150px;
-  overflow-y: auto;
-  border-radius: 12px;
-  border-color: #cbd5e1;
-}
-
-/* Loading state */
-.chat-item.loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.chat-item.loading .chat-avatar {
-  background-color: #e2e8f0;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* Responsive Design - Compact responsive with wider All Parties button */
-@media (max-width: 1200px) {
-  .section-toggle-container .filter-buttons .btn:first-child {
-    flex: 1;
-    min-width: 100px;
-    max-width: 150px;
-    font-size: 0.8rem;
-    padding: 0.6rem 1rem;
-    height: 36px;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:last-child {
-    flex: 1.2;
-    min-width: 130px;
-    max-width: 200px;
-    font-size: 0.8rem;
-    padding: 0.6rem 1rem;
-    height: 36px;
-  }
-}
-
-@media (max-width: 992px) {
-  .section-toggle-container {
-    min-height: 80px;
-    padding: 0.85rem 1.25rem 0.65rem 1.25rem;
-    gap: 0.65rem;
-  }
-  
-  .section-toggle-container .add-party-button {
-    height: 38px;
-    font-size: 0.9rem;
-    padding: 0.65rem 1rem;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:first-child {
-    flex: 1;
-    min-width: 90px;
-    max-width: 130px;
-    font-size: 0.75rem;
-    padding: 0.55rem 0.85rem;
-    height: 34px;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:last-child {
-    flex: 1.15;
-    min-width: 120px;
-    max-width: 180px;
-    font-size: 0.75rem;
-    padding: 0.55rem 0.85rem;
-    height: 34px;
-  }
-  
-  .chat-popup {
-    width: 100%;
-    right: 0;
-  }
-  
-  .popup-header {
-    padding-top: 4rem;
-    z-index: 2002;
-  }
-  
-  .chat-section {
-    height: calc(100vh - 180px);
-    max-height: 500px;
-    margin-top: 0.5rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .section-toggle-container {
-    min-height: 75px;
-    padding: 0.75rem 1rem 0.55rem 1rem;
-    gap: 0.6rem;
-  }
-  
-  .section-toggle-container .add-party-button {
-    height: 36px;
-    font-size: 0.85rem;
-    padding: 0.6rem 0.9rem;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:first-child {
-    font-size: 0.7rem;
-    height: 32px;
-    padding: 0.5rem 0.75rem;
-    min-width: 80px;
-    max-width: 120px;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:last-child {
-    flex: 1.1;
-    font-size: 0.7rem;
-    height: 32px;
-    padding: 0.5rem 0.75rem;
-    min-width: 110px;
-    max-width: 160px;
-  }
-  
-  .chat-name {
-    font-size: 0.9rem;
-    max-width: calc(100% - 55px);
-  }
-  
-  .chat-preview .company-name {
-    max-width: 110px;
-  }
-}
-
-@media (max-width: 576px) {
-  .section-toggle-container {
-    min-height: 70px;
-    padding: 0.65rem 0.85rem 0.45rem 0.85rem;
-    gap: 0.5rem;
-  }
-  
-  .section-toggle-container .add-party-button {
-    font-size: 0.8rem;
-    height: 34px;
-    padding: 0.55rem 0.8rem;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:first-child {
-    font-size: 0.65rem;
-    height: 30px;
-    padding: 0.45rem 0.65rem;
-    min-width: 70px;
-    max-width: 110px;
-  }
-  
-  .section-toggle-container .filter-buttons .btn:last-child {
-    flex: 1;
-    font-size: 0.65rem;
-    height: 30px;
-    padding: 0.45rem 0.65rem;
-    min-width: 90px;
-    max-width: 140px;
-  }
-  
-  .chat-item {
-    padding: 0.75rem 0.85rem;
-    min-height: 68px;
-  }
-  
-  .chat-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 0.95rem;
-  }
-  
-  .chat-name {
-    font-size: 0.85rem;
-    max-width: calc(100% - 45px);
-  }
-  
-  .chat-preview {
-    font-size: 0.8rem;
-  }
-  
-  .chat-preview .company-name {
-    max-width: 90px;
-  }
-}
-
-/* Custom scrollbar */
-.chat-list::-webkit-scrollbar,
-.popup-body::-webkit-scrollbar,
-.messages-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-list::-webkit-scrollbar-track,
-.popup-body::-webkit-scrollbar-track,
-.messages-container::-webkit-scrollbar-track {
-  background-color: #f1f5f9;
-  border-radius: 3px;
-}
-
-.chat-list::-webkit-scrollbar-thumb,
-.popup-body::-webkit-scrollbar-thumb,
-.messages-container::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 3px;
-  transition: background-color 0.2s ease;
-}
-
-.chat-list::-webkit-scrollbar-thumb:hover,
-.popup-body::-webkit-scrollbar-thumb:hover,
-.messages-container::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
-}
-
-/* Share Modal Animation */
-.modal.show {
-  animation: modalFadeIn 0.3s ease-out;
-}
-
-@keyframes modalFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.modal-dialog {
-  animation: modalSlideIn 0.3s ease-out;
-}
-
-@keyframes modalSlideIn {
-  from {
-    transform: translateY(-50px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-`;
+import AddNewParty from "../Home/Party/AddNewParty";
 
 function TeamChats({
   currentUser,
@@ -1105,13 +76,13 @@ function TeamChats({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Party management states - UPDATED
-  const [parties, setParties] = useState([]); // Current view parties
-  const [allParties, setAllParties] = useState([]); // All parties
-  const [linkedParties, setLinkedParties] = useState([]); // Only linked parties
-  const [activeSection, setActiveSection] = useState("linked"); // 'linked' or 'all'
+  // Party management states
+  const [parties, setParties] = useState([]);
+  const [allParties, setAllParties] = useState([]);
+  const [linkedParties, setLinkedParties] = useState([]);
+  const [activeSection, setActiveSection] = useState("linked");
 
-  // Add these states after line 897 (after existing states)
+  // Share modal states
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedPartyForShare, setSelectedPartyForShare] = useState(null);
   const [shareOptions, setShareOptions] = useState({
@@ -1119,20 +90,22 @@ function TeamChats({
     includeCompanyDetails: true,
     generateQR: false,
   });
-  // Chat functionality states
+
+  // ✅ UPDATED: Chat functionality states (aligned with PartyChat)
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState("");
-  const [messageType, setMessageType] = useState("whatsapp");
+  const [messageType, setMessageType] = useState("website"); // ✅ Changed to "website"
+  const [displayMessageType, setDisplayMessageType] = useState("whatsapp"); // ✅ Added display type
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState({});
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [conversationSummary, setConversationSummary] = useState(null);
 
-  // Toast states
+  // ✅ UPDATED: Toast states (aligned with PartyChat)
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("success");
@@ -1141,48 +114,120 @@ function TeamChats({
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
 
-  // Connection and user states
+  // ✅ UPDATED: Connection and user states (aligned with PartyChat)
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [chatParticipants, setChatParticipants] = useState([]);
 
-  // Company mapping states
+  // ✅ UPDATED: Company mapping states (aligned with PartyChat)
   const [targetCompanyId, setTargetCompanyId] = useState(null);
   const [mappingValidated, setMappingValidated] = useState(false);
+  const [currentCompanyData, setCurrentCompanyData] = useState(null);
+
+  // ✅ ADDED: Notification states (from PartyChat)
+  const [notificationSettings, setNotificationSettings] = useState({
+    enabled: true,
+    sound: true,
+    desktop: true,
+  });
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isChatFocused, setIsChatFocused] = useState(false);
 
   // Add Party Modal states
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
   const [isQuickAdd, setIsQuickAdd] = useState(false);
   const [quickAddType, setQuickAddType] = useState("customer");
 
+  // ✅ UPDATED: Socket management (from PartyChat)
+  const [socketUnsubscribeFns, setSocketUnsubscribeFns] = useState([]);
+
   // Refs
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
-  // Inject styles into the document
+  // ✅ UPDATED: Load company context (from PartyChat)
   useEffect(() => {
-    const styleElement = document.createElement("style");
-    styleElement.textContent = styles;
-    document.head.appendChild(styleElement);
+    const loadCompanyContext = async () => {
+      try {
+        const companyData = localStorage.getItem("currentCompany");
+        if (!companyData) {
+          setError("Company context not found. Please refresh and try again.");
+          return;
+        }
 
-    return () => {
-      if (document.head.contains(styleElement)) {
-        document.head.removeChild(styleElement);
+        let company;
+        try {
+          company = JSON.parse(companyData);
+        } catch (parseError) {
+          setError(
+            "Invalid company data. Please refresh and select your company."
+          );
+          return;
+        }
+
+        const companyId = company._id || company.id;
+        if (!companyId) {
+          setError("Company ID not found. Please refresh and try again.");
+          return;
+        }
+
+        setCurrentCompanyData(company);
+
+        if (chatService.setCompanyContext) {
+          chatService.setCompanyContext(companyId, company.businessName);
+        }
+
+        // Load notification settings
+        const savedNotificationSettings = localStorage.getItem(
+          "chatNotificationSettings"
+        );
+        if (savedNotificationSettings) {
+          try {
+            const parsed = JSON.parse(savedNotificationSettings);
+            setNotificationSettings(parsed);
+          } catch (error) {
+            // Silent fail
+          }
+        }
+      } catch (error) {
+        setError(
+          "Failed to load company context. Please refresh and try again."
+        );
       }
     };
+
+    loadCompanyContext();
   }, []);
 
-  // Add this useEffect after your existing useEffects (around line 200):
+  // ✅ UPDATED: Notification settings persistence (from PartyChat)
   useEffect(() => {
-    console.log("🔍 AddNewParty modal state changed:", {
-      showAddPartyModal,
-      isQuickAdd,
-      quickAddType,
-    });
-  }, [showAddPartyModal, isQuickAdd, quickAddType]);
-  // Initialize company context
+    try {
+      localStorage.setItem(
+        "chatNotificationSettings",
+        JSON.stringify(notificationSettings)
+      );
+    } catch (error) {
+      // Silent fail
+    }
+  }, [notificationSettings]);
+
+  // ✅ UPDATED: Chat focus management (from PartyChat)
+  useEffect(() => {
+    if (chatPopupOpen && selectedParty && targetCompanyId && mappingValidated) {
+      setIsChatFocused(true);
+      setTimeout(() => {
+        markConversationAsRead();
+      }, 1000);
+
+      return () => {
+        setIsChatFocused(false);
+      };
+    }
+  }, [chatPopupOpen, selectedParty, targetCompanyId, mappingValidated]);
+
+  // ✅ UPDATED: Company context initialization (simplified)
   useEffect(() => {
     const initializeCompanyContext = () => {
       try {
@@ -1203,31 +248,45 @@ function TeamChats({
     initializeCompanyContext();
   }, [currentCompany]);
 
-  // Validate party mapping when selected
+  // ✅ UPDATED: Party mapping validation (aligned with PartyChat)
   useEffect(() => {
-    if (selectedParty) {
-      validatePartyCompanyMapping();
+    if (selectedParty && currentCompanyData?._id) {
+      validatePartyMapping();
+    } else if (selectedParty && !currentCompanyData) {
+      setMappingValidated(false);
+      setTargetCompanyId(null);
+      setError("Loading company context...");
+    } else {
+      setMappingValidated(false);
+      setTargetCompanyId(null);
+      setError(null);
     }
-  }, [selectedParty?._id]);
+  }, [selectedParty?._id, currentCompanyData?._id]);
 
-  // Initialize chat when conditions are met
+  // ✅ UPDATED: Chat initialization (aligned with PartyChat)
   useEffect(() => {
-    if (chatPopupOpen && selectedParty && currentCompany && mappingValidated) {
+    if (
+      chatPopupOpen &&
+      selectedParty &&
+      currentCompanyData &&
+      mappingValidated &&
+      targetCompanyId
+    ) {
       initializeChat();
     }
 
     return () => {
-      if (chatPopupOpen) {
-        cleanup();
-      }
+      if (chatPopupOpen) cleanup();
     };
   }, [
     chatPopupOpen,
     selectedParty?._id,
-    currentCompany?._id,
+    currentCompanyData?._id,
     mappingValidated,
+    targetCompanyId,
   ]);
 
+  // Fetch parties
   useEffect(() => {
     const fetchAllParties = async () => {
       if (!currentCompany?.id && !currentCompany?._id) {
@@ -1240,7 +299,6 @@ function TeamChats({
         setLoading(true);
         setError(null);
 
-        // Fetch all parties
         const allPartiesResponse = await partyService.getParties({
           page: 1,
           limit: 100,
@@ -1251,13 +309,11 @@ function TeamChats({
           const allPartiesData = allPartiesResponse.data.parties;
           setAllParties(allPartiesData);
 
-          // Filter linked parties (those with chat capabilities)
           const linkedPartiesData = allPartiesData.filter(
             (party) => party.canChat && party.chatCompanyId
           );
           setLinkedParties(linkedPartiesData);
 
-          // Set default parties based on active section
           setParties(
             activeSection === "linked" ? linkedPartiesData : allPartiesData
           );
@@ -1285,20 +341,164 @@ function TeamChats({
     scrollToBottom();
   }, [messages]);
 
-  const validatePartyCompanyMapping = () => {
+  // ✅ ADD: New useEffect for escape key
+  useEffect(() => {
+    const handleEscapeKey = (e) => {
+      if (e.key === "Escape" && chatPopupOpen) {
+        e.preventDefault();
+        closeChatPopup();
+      }
+    };
+
+    if (chatPopupOpen) {
+      document.addEventListener("keydown", handleEscapeKey);
+      return () => document.removeEventListener("keydown", handleEscapeKey);
+    }
+  }, [chatPopupOpen]);
+
+  // ✅ UPDATED: Display message type change handler (from PartyChat)
+  const handleDisplayMessageTypeChange = (newDisplayType) => {
+    setDisplayMessageType(newDisplayType);
+    localStorage.setItem("preferredDisplayMessageType", newDisplayType);
+  };
+
+  // ✅ UPDATED: Get effective message type (from PartyChat)
+  const getEffectiveMessageType = () => {
+    return "website";
+  };
+
+  // ✅ UPDATED: Display toast (from PartyChat)
+  const displayToast = (message, type = "success") => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
+  // ✅ UPDATED: Mark conversation as read (from PartyChat)
+  const markConversationAsRead = async () => {
+    if (!selectedParty || !mappingValidated || !targetCompanyId) return;
+
     try {
-      if (!selectedParty) {
+      if (chatService.markConversationAsRead) {
+        await chatService.markConversationAsRead(selectedParty);
+      }
+      setUnreadCount(0);
+    } catch (error) {
+      // Silent fail
+    }
+  };
+
+  // ✅ UPDATED: Toggle notification setting (from PartyChat)
+  const toggleNotificationSetting = (setting) => {
+    setNotificationSettings((prev) => {
+      const newSettings = {
+        ...prev,
+        [setting]: !prev[setting],
+      };
+
+      displayToast(
+        `Notifications ${setting} ${prev[setting] ? "disabled" : "enabled"}`,
+        "info"
+      );
+
+      return newSettings;
+    });
+  };
+
+  // ✅ UPDATED: Validate party mapping (from PartyChat)
+  const validatePartyMapping = () => {
+    try {
+      if (!selectedParty || !currentCompanyData?._id) {
+        setMappingValidated(false);
+        setTargetCompanyId(null);
+        setError(
+          !selectedParty
+            ? "Party data is missing"
+            : "Loading company context..."
+        );
+        return;
+      }
+
+      const myCompanyId = currentCompanyData._id || currentCompanyData.id;
+      let extractedCompanyId = null;
+
+      // Try using chatService validation first
+      try {
+        const mappingResult =
+          chatService.validateAndExtractPartyCompanyData(selectedParty);
+        if (
+          mappingResult?.targetCompanyId &&
+          mappingResult.targetCompanyId !== myCompanyId
+        ) {
+          extractedCompanyId = mappingResult.targetCompanyId;
+        }
+      } catch (chatServiceError) {
+        // Silent fail and continue with other methods
+      }
+
+      if (!extractedCompanyId) {
+        const possibleCompanyIds = [
+          selectedParty.targetCompanyId,
+          selectedParty.chatCompanyId,
+          selectedParty.externalCompanyId,
+          selectedParty.linkedCompanyId,
+          selectedParty.companyId,
+          selectedParty.company,
+        ]
+          .map((companyRef) => {
+            if (!companyRef) return null;
+
+            if (typeof companyRef === "object") {
+              return companyRef._id || companyRef.id || null;
+            }
+
+            if (
+              typeof companyRef === "string" &&
+              /^[0-9a-fA-F]{24}$/.test(companyRef)
+            ) {
+              return companyRef;
+            }
+
+            return null;
+          })
+          .filter(Boolean);
+
+        extractedCompanyId = possibleCompanyIds.find(
+          (id) => id !== myCompanyId
+        );
+      }
+
+      if (!extractedCompanyId) {
+        try {
+          extractedCompanyId =
+            chatService.extractTargetCompanyId(selectedParty);
+        } catch (extractError) {
+          // Silent fail
+        }
+      }
+
+      if (!extractedCompanyId) {
+        setError(
+          "This party is not linked to any company for chat. Please configure the party's company association."
+        );
         setMappingValidated(false);
         setTargetCompanyId(null);
         return;
       }
 
-      const extractedCompanyId =
-        chatService.extractTargetCompanyId(selectedParty);
-
-      if (!extractedCompanyId) {
+      if (!/^[0-9a-fA-F]{24}$/.test(extractedCompanyId)) {
         setError(
-          "No linked company found for this party. This party cannot be used for company-to-company chat."
+          `Invalid company ID format: ${extractedCompanyId}. Please check party configuration.`
+        );
+        setMappingValidated(false);
+        setTargetCompanyId(null);
+        return;
+      }
+
+      if (extractedCompanyId === myCompanyId) {
+        setError(
+          "Cannot chat with your own company. Please check party configuration."
         );
         setMappingValidated(false);
         setTargetCompanyId(null);
@@ -1309,226 +509,399 @@ function TeamChats({
       setMappingValidated(true);
       setError(null);
     } catch (error) {
-      setError(error.message || "Failed to validate party-company mapping");
+      setError(`Validation failed: ${error.message}`);
       setMappingValidated(false);
       setTargetCompanyId(null);
     }
   };
 
+  // ✅ UPDATED: Initialize chat (from PartyChat)
   const initializeChat = async () => {
     try {
       setIsLoadingMessages(true);
       setError(null);
 
+      if (!targetCompanyId || !currentCompanyData?._id) {
+        throw new Error("Missing required IDs for chat initialization");
+      }
+
       const socket = chatService.initializeSocket();
-      if (socket) {
-        setIsConnected(true);
-        setupSocketListeners();
+      if (!socket) {
+        throw new Error("Failed to initialize socket connection");
+      }
+
+      try {
+        const authenticatedData = await Promise.race([
+          waitForAuthentication(),
+          new Promise((_, reject) =>
+            setTimeout(
+              () =>
+                reject(new Error("Authentication timeout after 15 seconds")),
+              15000
+            )
+          ),
+        ]);
+
+        const myCompanyId =
+          authenticatedData.companyId || currentCompanyData._id;
+
+        if (myCompanyId === targetCompanyId) {
+          throw new Error("Cannot chat with your own company");
+        }
+
+        setIsConnected(chatService.isConnected);
+      } catch (authError) {
+        throw new Error(`Authentication failed: ${authError.message}`);
+      }
+
+      setupSocketListeners();
+
+      if (chatService.isConnected) {
+        try {
+          const joinData = {
+            party: {
+              ...selectedParty,
+              _id: selectedParty._id,
+              name: selectedParty.name,
+              linkedCompanyId: targetCompanyId,
+              targetCompanyId: targetCompanyId,
+              chatCompanyId: targetCompanyId,
+            },
+            myCompanyId: currentCompanyData._id,
+            targetCompanyId: targetCompanyId,
+            otherCompanyId: targetCompanyId,
+            partyId: selectedParty._id,
+            partyName: selectedParty.name,
+            chatCompanyName:
+              selectedParty.chatCompanyName || selectedParty.name,
+          };
+
+          const joinResult = await Promise.race([
+            chatService.joinChat(joinData),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Join chat timeout after 10 seconds")),
+                10000
+              )
+            ),
+          ]);
+        } catch (joinError) {
+          displayToast(
+            `Failed to join chat room: ${joinError.message}`,
+            "warning"
+          );
+        }
+      } else {
+        displayToast(
+          "Socket not connected - some features may be limited",
+          "warning"
+        );
       }
 
       await loadChatHistory();
-      await loadConversationSummary();
-      await loadTemplates();
-
-      if (selectedParty) {
-        try {
-          const joinResult = await chatService.joinChat(selectedParty);
-        } catch (joinError) {
-          showToastMessage("Failed to join chat room", "error");
-        }
-      }
-
-      await loadChatParticipants();
     } catch (error) {
-      setError("Failed to initialize chat. Please try again.");
-      showToastMessage("Failed to initialize chat", "error");
+      setError(`Failed to initialize chat: ${error.message}`);
+      displayToast(`Chat initialization failed: ${error.message}`, "error");
     } finally {
       setIsLoadingMessages(false);
     }
   };
 
-  const setupSocketListeners = () => {
-    try {
-      const unsubscribeFunctions = [];
-
-      if (typeof chatService.on === "function") {
-        const unsubscribeNewMessage = chatService.on(
-          "new_message",
-          (message) => {
-            const formattedMessage = formatIncomingMessage(message);
-            setMessages((prev) => [...prev, formattedMessage]);
-            scrollToBottom();
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeNewMessage);
-
-        const unsubscribeMessageSent = chatService.on(
-          "message_sent",
-          (data) => {
-            updateMessageStatus(data.messageId, "sent");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageSent);
-
-        const unsubscribeMessageDelivered = chatService.on(
-          "message_delivered",
-          (data) => {
-            updateMessageStatus(data.messageId, "delivered");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageDelivered);
-
-        const unsubscribeMessageRead = chatService.on(
-          "message_read",
-          (data) => {
-            updateMessageStatus(data.messageId, "read");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeMessageRead);
-
-        const unsubscribeTypingStart = chatService.on("user_typing", (data) => {
-          if (data.companyId !== currentCompany?._id && data.isTyping) {
-            setTypingUsers((prev) => {
-              const existing = prev.find((u) => u.userId === data.userId);
-              if (!existing) {
-                return [
-                  ...prev,
-                  {
-                    userId: data.userId,
-                    username: data.username,
-                    companyName: data.companyName,
-                  },
-                ];
-              }
-              return prev;
-            });
-          } else if (!data.isTyping) {
-            setTypingUsers((prev) =>
-              prev.filter((u) => u.userId !== data.userId)
-            );
-          }
-        });
-        unsubscribeFunctions.push(unsubscribeTypingStart);
-
-        const unsubscribeUserJoined = chatService.on(
-          "user_joined_chat",
-          (data) => {
-            showToastMessage(
-              `${data.username} from ${data.companyName} joined the chat`,
-              "success"
-            );
-            setChatParticipants((prev) => {
-              const existing = prev.find((p) => p.userId === data.userId);
-              if (!existing) {
-                return [
-                  ...prev,
-                  {
-                    userId: data.userId,
-                    username: data.username,
-                    companyName: data.companyName,
-                    joinedAt: new Date(),
-                  },
-                ];
-              }
-              return prev;
-            });
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeUserJoined);
-
-        const unsubscribeUserLeft = chatService.on("user_left_chat", (data) => {
-          showToastMessage(
-            `${data.username} from ${data.companyName} left the chat`,
-            "info"
-          );
-          setChatParticipants((prev) =>
-            prev.filter((p) => p.userId !== data.userId)
-          );
-        });
-        unsubscribeFunctions.push(unsubscribeUserLeft);
-
-        const unsubscribeUserOnline = chatService.on("user_online", (data) => {
-          setOnlineUsers((prev) => {
-            const existing = prev.find((u) => u.userId === data.userId);
-            if (!existing) {
-              return [...prev, data];
-            }
-            return prev;
-          });
-        });
-        unsubscribeFunctions.push(unsubscribeUserOnline);
-
-        const unsubscribeUserOffline = chatService.on(
-          "user_offline",
-          (data) => {
-            setOnlineUsers((prev) =>
-              prev.filter((u) => u.userId !== data.userId)
-            );
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeUserOffline);
-
-        const unsubscribeAuthenticated = chatService.on(
-          "socket_authenticated",
-          (data) => {
-            setIsConnected(true);
-            setConnectionStatus("authenticated");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeAuthenticated);
-
-        const unsubscribeAuthError = chatService.on(
-          "socket_auth_error",
-          (data) => {
-            setError("Authentication failed. Please refresh the page.");
-            showToastMessage("Authentication failed", "error");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeAuthError);
-
-        const unsubscribeConnected = chatService.on("socket_connected", () => {
-          setIsConnected(true);
-          setConnectionStatus("connected");
-        });
-        unsubscribeFunctions.push(unsubscribeConnected);
-
-        const unsubscribeDisconnected = chatService.on(
-          "socket_disconnected",
-          () => {
-            setIsConnected(false);
-            setConnectionStatus("disconnected");
-          }
-        );
-        unsubscribeFunctions.push(unsubscribeDisconnected);
+  // ✅ ADDED: Wait for authentication (from PartyChat)
+  const waitForAuthentication = () => {
+    return new Promise((resolve, reject) => {
+      if (chatService.isConnected) {
+        const companyData = chatService.getAuthenticatedCompany
+          ? chatService.getAuthenticatedCompany()
+          : null;
+        if (companyData?.companyId) {
+          resolve(companyData);
+          return;
+        }
       }
 
-      return () => {
-        try {
-          unsubscribeFunctions.forEach((unsubscribe) => {
-            if (typeof unsubscribe === "function") {
-              unsubscribe();
+      let resolved = false;
+
+      const unsubscribeAuth = chatService.on
+        ? chatService.on("socket_authenticated", (data) => {
+            if (!resolved) {
+              resolved = true;
+              unsubscribeAuth();
+              unsubscribeError();
+              resolve(data);
             }
-          });
-        } catch (error) {
-          // Silent fail
+          })
+        : null;
+
+      const unsubscribeError = chatService.on
+        ? chatService.on("auth_failed", (error) => {
+            if (!resolved) {
+              resolved = true;
+              if (unsubscribeAuth) unsubscribeAuth();
+              unsubscribeError();
+              reject(new Error("Authentication failed: " + error.error));
+            }
+          })
+        : null;
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          if (unsubscribeAuth) unsubscribeAuth();
+          if (unsubscribeError) unsubscribeError();
+          reject(new Error("Authentication timeout"));
         }
-      };
+      }, 10000);
+    });
+  };
+
+  // ✅ UPDATED: Setup socket listeners (enhanced from PartyChat)
+  const setupSocketListeners = () => {
+    cleanupSocketListeners();
+
+    const unsubscribeFunctions = [];
+    const processedMessageIds = new Set();
+
+    if (chatService.on) {
+      const listeners = [
+        chatService.on("new_message", (message) => {
+          const messageId = message._id || message.id;
+
+          if (processedMessageIds.has(messageId)) {
+            return;
+          }
+
+          processedMessageIds.add(messageId);
+          handleNewMessage(message);
+        }),
+
+        chatService.on("message_sent", (data) => {
+          if (data.messageId) {
+            processedMessageIds.add(data.messageId);
+          }
+
+          setMessages((prev) => {
+            let messageUpdated = false;
+
+            const updatedMessages = prev.map((msg) => {
+              const isTargetMessage =
+                msg.id === data.tempId ||
+                msg.tempId === data.tempId ||
+                (msg.id &&
+                  msg.id.startsWith("temp_") &&
+                  Math.abs(new Date(msg.timestamp) - new Date()) < 60000);
+
+              if (isTargetMessage) {
+                messageUpdated = true;
+                return {
+                  ...msg,
+                  id: data.messageId,
+                  tempId: data.tempId,
+                  status: "sent",
+                  realMessageId: data.messageId,
+                  timestamp: new Date(),
+                };
+              }
+              return msg;
+            });
+
+            return updatedMessages;
+          });
+
+          updateMessageStatus(data.messageId, "sent");
+        }),
+
+        chatService.on("user_typing", handleTyping),
+        chatService.on("socket_connected", () => {
+          setIsConnected(true);
+          displayToast("Connected to chat server", "success");
+          processedMessageIds.clear();
+        }),
+        chatService.on("socket_disconnected", (data) => {
+          setIsConnected(false);
+          displayToast("Disconnected from chat server", "warning");
+        }),
+        chatService.on("message_delivered", (data) => {
+          updateMessageStatus(data.messageId, "delivered");
+        }),
+        chatService.on("message_read", (data) => {
+          updateMessageStatus(data.messageId, "read");
+        }),
+      ];
+
+      listeners.forEach((listener) => {
+        if (typeof listener === "function") {
+          unsubscribeFunctions.push(listener);
+        }
+      });
+    }
+
+    setSocketUnsubscribeFns(unsubscribeFunctions);
+  };
+
+  // ✅ UPDATED: Handle new message (from PartyChat)
+  const handleNewMessage = (message) => {
+    try {
+      const messageId = message._id || message.id;
+      const currentCompanyId =
+        currentCompanyData?._id || currentCompanyData?.id;
+
+      const senderCompanyId =
+        typeof message.senderCompanyId === "object"
+          ? message.senderCompanyId._id || message.senderCompanyId.id
+          : message.senderCompanyId;
+
+      const isFromMyCompany = senderCompanyId === currentCompanyId;
+
+      if (isFromMyCompany) {
+        // Handle sent message updates
+        setMessages((prev) => {
+          const existingMessage = prev.find(
+            (m) => m.realMessageId === messageId || m.id === messageId
+          );
+          if (existingMessage) {
+            return prev;
+          }
+
+          const tempMessage = prev.find(
+            (m) =>
+              m.id &&
+              m.id.startsWith("temp_") &&
+              m.content === message.content &&
+              m.senderCompanyId === senderCompanyId
+          );
+
+          if (tempMessage) {
+            return prev.map((m) =>
+              m.id === tempMessage.id
+                ? {
+                    ...m,
+                    id: messageId,
+                    realMessageId: messageId,
+                    status: "delivered",
+                    timestamp: new Date(message.createdAt || message.timestamp),
+                  }
+                : m
+            );
+          }
+
+          return prev;
+        });
+        return;
+      }
+
+      const formattedMessage = formatIncomingMessage(message);
+
+      setMessages((prev) => {
+        const exists = prev.find(
+          (m) =>
+            m.id === formattedMessage.id ||
+            m.realMessageId === formattedMessage.id
+        );
+
+        if (exists) {
+          return prev;
+        }
+
+        return [...prev, formattedMessage];
+      });
+
+      scrollToBottom();
+
+      // Handle notifications
+      if (!isChatFocused && notificationSettings.enabled) {
+        setUnreadCount((prev) => prev + 1);
+        if (notificationSettings.sound) {
+          playNotificationSound();
+        }
+      }
     } catch (error) {
-      return () => {};
+      // Silent fail
     }
   };
 
+  // ✅ ADDED: Play notification sound (from PartyChat)
+  const playNotificationSound = () => {
+    try {
+      if (!notificationSettings.sound) return;
+
+      const audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 800;
+      oscillator.type = "sine";
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.3
+      );
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      // Silent fail
+    }
+  };
+
+  // ✅ UPDATED: Handle typing (from PartyChat)
+  const handleTyping = (data) => {
+    if (data.companyId !== currentCompanyData?._id) {
+      if (data.isTyping) {
+        setTypingUsers((prev) => {
+          const existing = prev.find((u) => u.userId === data.userId);
+          if (!existing) {
+            return [
+              ...prev,
+              {
+                userId: data.userId,
+                username: data.username,
+                companyName: data.companyName || "Other Company",
+              },
+            ];
+          }
+          return prev;
+        });
+      } else {
+        setTypingUsers((prev) => prev.filter((u) => u.userId !== data.userId));
+      }
+    }
+  };
+
+  // ✅ UPDATED: Cleanup socket listeners (from PartyChat)
+  const cleanupSocketListeners = () => {
+    socketUnsubscribeFns.forEach((unsubscribe) => {
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch (error) {
+          // Silent fail
+        }
+      }
+    });
+
+    setSocketUnsubscribeFns([]);
+  };
+
+  // ✅ UPDATED: Load chat history (aligned with PartyChat)
   const loadChatHistory = async (page = 1, append = false) => {
-    if (!selectedParty || !mappingValidated) return;
+    if (!selectedParty || !mappingValidated || !targetCompanyId) return;
 
     try {
       const response = await chatService.getChatHistory(selectedParty, {
         page,
         limit: 50,
-        messageType: messageType !== "all" ? messageType : null,
+        messageType: "website",
+        myCompanyId: currentCompanyData._id,
+        targetCompanyId: targetCompanyId,
       });
 
-      if (response.success) {
+      if (response?.success && response.data) {
         const formattedMessages = response.data.messages.map(
           formatIncomingMessage
         );
@@ -1540,15 +913,23 @@ function TeamChats({
           scrollToBottom();
         }
 
-        setHasMoreMessages(response.data.pagination.hasMore);
+        setHasMoreMessages(response.data.pagination?.hasMore || false);
         setCurrentPage(page);
+
+        // Mark as read after loading
+        setTimeout(() => {
+          markConversationAsRead();
+        }, 1000);
+      } else {
+        displayToast("No chat history found", "info");
       }
     } catch (error) {
       setError("Failed to load chat history");
-      showToastMessage(error.message || "Failed to load chat history", "error");
+      displayToast("Failed to load chat history", "error");
     }
   };
 
+  // Load conversation summary (optional functionality)
   const loadConversationSummary = async () => {
     if (!selectedParty || !mappingValidated) return;
 
@@ -1578,233 +959,234 @@ function TeamChats({
     }
   };
 
+  // Load templates (optional functionality)
   const loadTemplates = async () => {
-    if (!selectedParty || !mappingValidated) return;
-
-    try {
-      setIsLoadingTemplates(true);
-
-      if (typeof chatService.getMessageTemplates === "function") {
-        const response = await chatService.getMessageTemplates(selectedParty);
-        if (response.success) {
-          setTemplates(response.data.templates || {});
-        }
-      } else {
-        setTemplates({});
-      }
-    } catch (error) {
-      showToastMessage("Failed to load message templates", "error");
-      setTemplates({});
-    } finally {
-      setIsLoadingTemplates(false);
-    }
+    setTemplates({}); // No templates for now
   };
 
+  // Load chat participants (optional functionality)
   const loadChatParticipants = async () => {
-    if (!selectedParty || !mappingValidated) return;
-
-    try {
-      if (typeof chatService.getChatParticipants === "function") {
-        const response = await chatService.getChatParticipants(selectedParty);
-        if (response.success) {
-          setChatParticipants(response.data.participants || []);
-        }
-      } else {
-        setChatParticipants([]);
-      }
-    } catch (error) {
-      setChatParticipants([]);
-    }
+    setChatParticipants([]); // No participants for now
   };
 
+  // ✅ UPDATED: Cleanup (from PartyChat)
   const cleanup = () => {
     try {
-      if (isConnected && selectedParty && mappingValidated) {
-        if (typeof chatService.leaveChat === "function") {
-          chatService.leaveChat();
-        }
-      }
+      if (isTyping) handleTypingStop();
 
-      if (typeof chatService.off === "function") {
-        const eventsToRemove = [
-          "new_message",
-          "message_sent",
-          "message_delivered",
-          "message_read",
-          "user_typing",
-          "user_joined_chat",
-          "user_left_chat",
-          "user_online",
-          "user_offline",
-          "socket_authenticated",
-          "socket_auth_error",
-          "socket_connected",
-          "socket_disconnected",
-        ];
-
-        eventsToRemove.forEach((eventName) => {
-          try {
-            chatService.off(eventName);
-          } catch (error) {
-            // Silent fail
-          }
+      if (
+        isConnected &&
+        selectedParty &&
+        mappingValidated &&
+        chatService.leaveChat
+      ) {
+        chatService.leaveChat(selectedParty).catch(() => {
+          // Silent fail
         });
       }
+
+      cleanupSocketListeners();
+      setMessages([]);
+      setTypingUsers([]);
+      setError(null);
+      setUnreadCount(0);
+      setIsChatFocused(false);
     } catch (error) {
       // Silent fail
     }
   };
 
+  // ✅ UPDATED: Format incoming message (from PartyChat)
   const formatIncomingMessage = (message) => {
-    const isFromMyCompany =
-      message.senderCompanyId === currentCompany?._id ||
-      message.senderCompanyId === currentCompany?.id;
+    const currentCompanyId = currentCompanyData?._id || currentCompanyData?.id;
+
+    const senderCompanyId =
+      typeof message.senderCompanyId === "object"
+        ? message.senderCompanyId._id || message.senderCompanyId.id
+        : message.senderCompanyId;
+
+    const receiverCompanyId =
+      typeof message.receiverCompanyId === "object"
+        ? message.receiverCompanyId._id || message.receiverCompanyId.id
+        : message.receiverCompanyId;
+
+    const isFromMyCompany = senderCompanyId === currentCompanyId;
+    const messageType = isFromMyCompany ? "sent" : "received";
 
     return {
-      id: message._id || message.id,
-      type: isFromMyCompany ? "sent" : "received",
-      content: message.content,
-      timestamp: new Date(message.createdAt),
-      status: message.status,
+      id:
+        message._id ||
+        message.id ||
+        `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: messageType,
+      content: message.content || "",
+      timestamp: new Date(message.createdAt || message.timestamp || Date.now()),
+      status: message.status || "delivered",
       sender: isFromMyCompany ? "You" : message.senderName || "User",
-      senderCompanyName: message.senderCompanyName,
-      senderCompanyId: message.senderCompanyId,
-      receiverCompanyId: message.receiverCompanyId,
-      messageType: message.messageType,
-      attachments: message.attachments || [],
+      senderCompanyName:
+        typeof message.senderCompanyId === "object"
+          ? message.senderCompanyId.businessName
+          : message.senderCompanyName,
+      messageType: message.messageType || "website",
+      senderCompanyId: senderCompanyId,
+      receiverCompanyId: receiverCompanyId,
+      chatType: "company-to-company",
     };
   };
 
+  // Update message status
   const updateMessageStatus = (messageId, status) => {
     setMessages((prev) =>
       prev.map((msg) => (msg.id === messageId ? {...msg, status} : msg))
     );
   };
 
+  // ✅ UPDATED: Handle send message (aligned with PartyChat)
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || isSending || !selectedParty || !mappingValidated)
+    if (
+      !newMessage.trim() ||
+      isSending ||
+      !selectedParty ||
+      !mappingValidated
+    ) {
       return;
+    }
+
+    if (!isConnected || !chatService.isConnected) {
+      displayToast("Connection lost. Please refresh and try again.", "error");
+      return;
+    }
 
     setIsSending(true);
     const messageContent = newMessage.trim();
-    const tempId = Date.now().toString();
+
+    const tempId = `temp_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
 
     try {
       const tempMessage = {
         id: tempId,
+        tempId: tempId,
         type: "sent",
         content: messageContent,
         timestamp: new Date(),
         status: "sending",
         sender: "You",
-        senderCompanyName: currentCompany?.businessName,
-        senderCompanyId: currentCompany?._id || currentCompany?.id,
+        messageType: "website",
+        senderCompanyId: currentCompanyData._id,
         receiverCompanyId: targetCompanyId,
-        messageType: messageType,
-        attachments: [],
       };
 
       setMessages((prev) => [...prev, tempMessage]);
       setNewMessage("");
       scrollToBottom();
 
-      const response = await chatService.sendMessage(
-        selectedParty,
-        messageContent,
-        messageType
-      );
+      const messageData = {
+        party: {
+          ...selectedParty,
+          _id: selectedParty._id,
+          name: selectedParty.name,
+          linkedCompanyId: targetCompanyId,
+          targetCompanyId: targetCompanyId,
+          chatCompanyId: targetCompanyId,
+        },
+        content: messageContent,
+        messageType: "website",
+        tempId: tempId,
+        myCompanyId: currentCompanyData._id,
+        targetCompanyId: targetCompanyId,
+        senderCompanyId: currentCompanyData._id,
+        receiverCompanyId: targetCompanyId,
+      };
 
-      if (response.success) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempId
-              ? {
-                  ...msg,
-                  id: response.data._id,
-                  status: "sent",
-                  senderCompanyId: response.data.senderCompanyId,
-                  receiverCompanyId: response.data.receiverCompanyId,
-                }
-              : msg
-          )
-        );
+      const response = await chatService.sendMessage(messageData);
 
-        showToastMessage("Message sent successfully", "success");
+      if (response && response.success && response.data) {
+        setMessages((prev) => {
+          const responseMessageId = response.data._id || response.data.id;
+
+          const updatedMessages = prev.map((msg) => {
+            if (
+              msg.id === tempId ||
+              msg.tempId === tempId ||
+              (msg.id &&
+                msg.id.startsWith("temp_") &&
+                msg.content === messageContent)
+            ) {
+              return {
+                ...msg,
+                id: responseMessageId,
+                realMessageId: responseMessageId,
+                status: "sent",
+                timestamp: new Date(
+                  response.data.createdAt || response.data.timestamp
+                ),
+              };
+            }
+            return msg;
+          });
+
+          return updatedMessages;
+        });
+
+        displayToast("Message sent successfully", "success");
       } else {
-        throw new Error(response.message || "Failed to send message");
+        throw new Error(response?.message || "Send failed");
       }
     } catch (error) {
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === tempId ? {...msg, status: "failed"} : msg
+          msg.id === tempId || msg.tempId === tempId
+            ? {...msg, status: "failed"}
+            : msg
         )
       );
-
-      showToastMessage(
-        error.message || "Failed to send message. Please try again.",
-        "error"
-      );
+      displayToast(error.message || "Failed to send message", "error");
     } finally {
       setIsSending(false);
     }
   };
 
-  const handleTemplateSelect = async (templateCategory, templateKey) => {
-    const template = templates[templateCategory]?.[templateKey];
-    if (!template) return;
-
-    try {
-      setIsLoadingTemplates(true);
-
-      if (template.content) {
-        setNewMessage(template.content);
-        setSelectedTemplate(templateKey);
-        setShowTemplates(false);
-        messageInputRef.current?.focus();
-      }
-    } catch (error) {
-      showToastMessage("Failed to use template", "error");
-    } finally {
-      setIsLoadingTemplates(false);
-    }
-  };
-
+  // Handle typing start/stop
   const handleTypingStart = () => {
-    try {
-      if (isConnected && selectedParty && mappingValidated) {
-        if (typeof chatService.startTyping === "function") {
-          chatService.startTyping(selectedParty);
-        }
-      }
-    } catch (error) {
-      // Silent fail
+    if (
+      isConnected &&
+      selectedParty &&
+      mappingValidated &&
+      !isTyping &&
+      chatService.startTyping
+    ) {
+      chatService.startTyping(selectedParty);
+      setIsTyping(true);
     }
   };
 
   const handleTypingStop = () => {
-    try {
-      if (isConnected && selectedParty && mappingValidated) {
-        if (typeof chatService.stopTyping === "function") {
-          chatService.stopTyping(selectedParty);
-        }
-      }
-    } catch (error) {
-      // Silent fail
+    if (
+      isConnected &&
+      selectedParty &&
+      mappingValidated &&
+      isTyping &&
+      chatService.stopTyping
+    ) {
+      chatService.stopTyping(selectedParty);
+      setIsTyping(false);
     }
   };
 
+  // Handle key press
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
       handleTypingStop();
-    } else if (e.key === "Enter" && e.shiftKey) {
-      return;
     } else {
       handleTypingStart();
     }
   };
 
+  // Load more messages
   const loadMoreMessages = async () => {
     if (!hasMoreMessages || isLoadingMessages) return;
 
@@ -1813,12 +1195,14 @@ function TeamChats({
     setIsLoadingMessages(false);
   };
 
+  // Scroll to bottom
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
     }, 100);
   };
 
+  // Show toast message
   const showToastMessage = (message, type = "success") => {
     setToastMessage(message);
     setToastType(type);
@@ -1826,6 +1210,7 @@ function TeamChats({
     setTimeout(() => setShowToast(false), 3000);
   };
 
+  // Get status icon
   const getStatusIcon = (status) => {
     switch (status) {
       case "sending":
@@ -1850,8 +1235,11 @@ function TeamChats({
     }
   };
 
+  // ✅ UPDATED: Get message type icon (with display type support)
   const getMessageTypeIcon = (msgType) => {
-    switch (msgType) {
+    const effectiveType = msgType === "website" ? displayMessageType : msgType;
+
+    switch (effectiveType) {
       case "whatsapp":
         return {icon: faCommentDots, color: "#25D366"};
       case "sms":
@@ -1859,10 +1247,11 @@ function TeamChats({
       case "email":
         return {icon: faEnvelope, color: "#dc3545"};
       default:
-        return {icon: faComment, color: "#6c757d"};
+        return {icon: faCommentDots, color: "#6c757d"};
     }
   };
 
+  // Format time and date
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -1891,30 +1280,7 @@ function TeamChats({
     }
   };
 
-  const renderTemplateButtons = () => {
-    return Object.entries(templates).map(([category, categoryTemplates]) => (
-      <div key={category} className="mb-2">
-        <small className="text-muted text-uppercase fw-bold d-block mb-1">
-          {category.replace("_", " ")}
-        </small>
-        <div className="d-flex flex-wrap gap-1">
-          {Object.entries(categoryTemplates).map(([templateKey, template]) => (
-            <Button
-              key={`${category}-${templateKey}`}
-              variant="outline-secondary"
-              size="sm"
-              onClick={() => handleTemplateSelect(category, templateKey)}
-              disabled={isLoadingTemplates}
-              style={{fontSize: "9px"}}
-            >
-              {template.title}
-            </Button>
-          ))}
-        </div>
-      </div>
-    ));
-  };
-
+  // Render typing indicator
   const renderTypingIndicator = () => {
     if (typingUsers.length === 0) return null;
 
@@ -1923,25 +1289,13 @@ function TeamChats({
         <div className="bg-white border rounded-3 p-2">
           <div className="d-flex align-items-center">
             <div className="typing-indicator me-2">
-              <div className="typing-dots">
-                <div key="typing-dot-1" className="typing-dot"></div>
-                <div key="typing-dot-2" className="typing-dot"></div>
-                <div key="typing-dot-3" className="typing-dot"></div>
-              </div>
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
             <small className="text-muted">
-              {typingUsers.length === 1 ? (
-                <span>
-                  <FontAwesomeIcon icon={faBuilding} className="me-1" />
-                  {typingUsers[0].username} from {typingUsers[0].companyName} is
-                  typing...
-                </span>
-              ) : (
-                <span>
-                  <FontAwesomeIcon icon={faUsers} className="me-1" />
-                  {typingUsers.length} users are typing...
-                </span>
-              )}
+              {typingUsers[0].username} from {typingUsers[0].companyName} is
+              typing...
             </small>
           </div>
         </div>
@@ -1949,6 +1303,7 @@ function TeamChats({
     );
   };
 
+  // Render mapping info
   const renderMappingInfo = () => {
     if (!selectedParty) return null;
 
@@ -1971,24 +1326,20 @@ function TeamChats({
     );
   };
 
+  // Handle add party
   const handleAddParty = (quickAdd = true, type = "customer") => {
-    console.log("🚀 handleAddParty called with:", {quickAdd, type});
-
     setIsQuickAdd(quickAdd);
     setQuickAddType(type);
     setShowAddPartyModal(true);
-
-    console.log("✅ Modal should open now");
   };
 
+  // Handle save party
   const handleSaveParty = async (
     newParty,
     isQuickAdd = false,
     isUpdate = false
   ) => {
     try {
-      console.log("✅ Party saved:", newParty);
-
       // Add or update the party in the all parties list
       setAllParties((prev) =>
         isUpdate
@@ -2033,7 +1384,7 @@ function TeamChats({
       // Close modal
       setShowAddPartyModal(false);
 
-      // Refresh the parties list to get updated data after a short delay
+      // Refresh the parties list
       setTimeout(async () => {
         try {
           const allPartiesResponse = await partyService.getParties({
@@ -2051,7 +1402,6 @@ function TeamChats({
             );
             setLinkedParties(linkedPartiesData);
 
-            // Update current view
             setParties(
               activeSection === "linked" ? linkedPartiesData : allPartiesData
             );
@@ -2061,7 +1411,6 @@ function TeamChats({
         }
       }, 1000);
     } catch (error) {
-      console.error("❌ Error handling saved party:", error);
       showToastMessage(
         `Failed to ${isUpdate ? "update" : "add"} party. Please try again.`,
         "error"
@@ -2069,6 +1418,7 @@ function TeamChats({
     }
   };
 
+  // Filter parties
   const filteredParties = parties.filter(
     (party) =>
       party.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -2078,13 +1428,14 @@ function TeamChats({
       party.phoneNumber?.includes(searchQuery)
   );
 
-  // Update total linked companies calculation
+  // Calculate totals
   const totalLinkedCompanies = new Set(
     linkedParties.map((party) => party.chatCompanyId).filter(Boolean)
   ).size;
 
   const totalAllParties = allParties.length;
 
+  // ✅ UPDATE: Enhanced handlePartyClick function
   const handlePartyClick = (party) => {
     // Check if party has chat capabilities
     if (!party.canChat || !party.chatCompanyId) {
@@ -2100,8 +1451,17 @@ function TeamChats({
     setMessages([]);
     setError(null);
     setMappingValidated(false);
+
+    // ✅ NEW: Prevent body scroll
+    document.body.classList.add("chat-popup-open");
+    const scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
   };
 
+  // ✅ UPDATE: Enhanced closeChatPopup function
   const closeChatPopup = () => {
     setChatPopupOpen(false);
     setSelectedParty(null);
@@ -2111,15 +1471,24 @@ function TeamChats({
     setError(null);
     setMappingValidated(false);
     setTargetCompanyId(null);
+
+    // ✅ NEW: Remove body scroll lock
+    document.body.classList.remove("chat-popup-open");
+    document.body.style.overflow = "";
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.width = "";
+
     cleanup();
   };
-
+  // Handle share party (existing functionality)
   const handleShareParty = (party, event) => {
-    event.stopPropagation(); // Prevent party click
+    event.stopPropagation();
     setSelectedPartyForShare(party);
     setShowShareModal(true);
   };
 
+  // Generate shareable functions (existing functionality)
   const generateShareableLink = (party) => {
     const baseUrl = window.location.origin;
     const companyId = currentCompany?.id || currentCompany?._id;
@@ -2156,15 +1525,15 @@ function TeamChats({
     try {
       const shareData = generateShareableData(party);
       const shareText = `
-  🏢 ${shareData.name} (${shareData.type})
-  ${shareData.phone ? `📱 ${shareData.phone}` : ""}
-  ${shareData.email ? `📧 ${shareData.email}` : ""}
-  ${shareData.company ? `🏢 Company: ${shareData.company}` : ""}
-  ${shareData.address ? `📍 ${shareData.address}` : ""}
-  
-  🔗 View Details: ${shareData.link}
-  
-  Shared by ${shareData.sharedBy} on ${shareData.sharedAt}
+🏢 ${shareData.name} (${shareData.type})
+${shareData.phone ? `📱 ${shareData.phone}` : ""}
+${shareData.email ? `📧 ${shareData.email}` : ""}
+${shareData.company ? `🏢 Company: ${shareData.company}` : ""}
+${shareData.address ? `📍 ${shareData.address}` : ""}
+
+🔗 View Details: ${shareData.link}
+
+Shared by ${shareData.sharedBy} on ${shareData.sharedAt}
       `.trim();
 
       await navigator.clipboard.writeText(shareText);
@@ -2200,18 +1569,18 @@ function TeamChats({
     const shareData = generateShareableData(party);
     const subject = `${shareData.name} - ${shareData.type} Details`;
     const body = `Hi,
-  
-  I'm sharing the details of ${shareData.name} (${shareData.type}) with you:
-  
-  ${shareData.phone ? `Phone: ${shareData.phone}` : ""}
-  ${shareData.email ? `Email: ${shareData.email}` : ""}
-  ${shareData.company ? `Company: ${shareData.company}` : ""}
-  ${shareData.address ? `Address: ${shareData.address}` : ""}
-  
-  View full details: ${shareData.link}
-  
-  Best regards,
-  ${shareData.sharedBy}`;
+
+I'm sharing the details of ${shareData.name} (${shareData.type}) with you:
+
+${shareData.phone ? `Phone: ${shareData.phone}` : ""}
+${shareData.email ? `Email: ${shareData.email}` : ""}
+${shareData.company ? `Company: ${shareData.company}` : ""}
+${shareData.address ? `Address: ${shareData.address}` : ""}
+
+View full details: ${shareData.link}
+
+Best regards,
+${shareData.sharedBy}`;
 
     const mailtoLink = `mailto:?subject=${encodeURIComponent(
       subject
@@ -2220,6 +1589,7 @@ function TeamChats({
     setShowShareModal(false);
   };
 
+  // Utility functions
   const getAvatarColor = (name) => {
     const colors = [
       "#2563eb",
@@ -2247,6 +1617,283 @@ function TeamChats({
 
   const formatPartyType = (type) => {
     return type === "supplier" ? "Supplier" : "Customer";
+  };
+
+  // ✅ ADDED: Missing function - Validate party company mapping
+  const validatePartyCompanyMapping = () => {
+    validatePartyMapping();
+  };
+
+  const renderTemplateButtons = () => {
+    if (Object.keys(templates).length === 0) {
+      return (
+        <div className="text-center text-muted py-2">
+          <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+          No templates available
+        </div>
+      );
+    }
+
+    return Object.entries(templates).map(([key, template], index) => (
+      <Button
+        key={`template-${key}-${index}`} // ✅ FIXED: Added unique key
+        variant="outline-secondary"
+        size="sm"
+        className="me-1 mb-1"
+        onClick={() => {
+          setNewMessage(template.content || template);
+          setSelectedTemplate(key);
+          setShowTemplates(false);
+        }}
+        style={{fontSize: "10px"}}
+      >
+        {template.name || key}
+      </Button>
+    ));
+  };
+
+  const renderChatPopupAsPortal = () => {
+    if (!chatPopupOpen || !selectedParty) return null;
+
+    const popupContent = (
+      <div className="chat-overlay" onClick={closeChatPopup}>
+        <div className="chat-popup" onClick={(e) => e.stopPropagation()}>
+          <div className="popup-header">
+            <div className="popup-header-left">
+              <div
+                className="popup-avatar"
+                style={{
+                  backgroundColor: getAvatarColor(selectedParty.name),
+                }}
+              >
+                {generateInitials(selectedParty.name)}
+              </div>
+              <div className="popup-user-info">
+                <div className="popup-user-name">{selectedParty.name}</div>
+                <div className="popup-user-status">
+                  <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                  <span>{formatPartyType(selectedParty.partyType)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="popup-actions">
+              <button
+                type="button"
+                className="popup-close-btn"
+                onClick={closeChatPopup}
+                aria-label="Close chat"
+                title="Close (Esc)"
+              >
+                <FontAwesomeIcon icon={faTimes} size="sm" />
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <Alert variant="danger" className="m-3 mb-0">
+              <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+              {error}
+              <Button
+                variant="outline-danger"
+                size="sm"
+                className="ms-2"
+                onClick={() => {
+                  setError(null);
+                  validatePartyCompanyMapping();
+                  if (mappingValidated) {
+                    initializeChat();
+                  }
+                }}
+              >
+                Retry
+              </Button>
+            </Alert>
+          )}
+
+          <div className="popup-body">
+            {!mappingValidated ? (
+              <div className="d-flex align-items-center justify-content-center h-100 text-center p-4">
+                <div>
+                  <FontAwesomeIcon
+                    icon={faLink}
+                    size="3x"
+                    className="text-warning mb-3"
+                  />
+                  <h5>Company Mapping Required</h5>
+                  <p className="text-muted">
+                    This party needs to be linked to a company for chat
+                    functionality.
+                  </p>
+                  <small className="text-muted">
+                    Please ensure this party has a linkedCompanyId or
+                    externalCompanyId.
+                  </small>
+                  <div className="mt-3">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={validatePartyCompanyMapping}
+                    >
+                      <FontAwesomeIcon icon={faSync} className="me-1" />
+                      Re-validate Mapping
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {isLoadingMessages && (
+                  <div className="text-center p-3">
+                    <Spinner animation="border" size="sm" />
+                    <span className="ms-2">Loading messages...</span>
+                  </div>
+                )}
+
+                {hasMoreMessages &&
+                  !isLoadingMessages &&
+                  messages.length > 0 && (
+                    <div className="text-center p-2 border-bottom">
+                      <Button
+                        variant="outline-primary"
+                        size="sm"
+                        onClick={loadMoreMessages}
+                        disabled={isLoadingMessages}
+                      >
+                        Load More Messages
+                      </Button>
+                    </div>
+                  )}
+
+                <div ref={messagesContainerRef} className="messages-container">
+                  {messages.length === 0 && !isLoadingMessages && (
+                    <div className="no-messages">
+                      <div>
+                        <FontAwesomeIcon
+                          icon={faComments}
+                          size="3x"
+                          className="mb-3"
+                        />
+                        <p>No messages yet. Start a conversation!</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.map((message, index) => {
+                    const showDate =
+                      index === 0 ||
+                      formatDate(message.timestamp) !==
+                        formatDate(messages[index - 1].timestamp);
+
+                    return (
+                      <Fragment
+                        key={`message-${message.id || message.tempId || index}`}
+                      >
+                        {showDate && (
+                          <div className="date-separator">
+                            <small>{formatDate(message.timestamp)}</small>
+                          </div>
+                        )}
+
+                        <div className={`message-wrapper ${message.type}`}>
+                          <div className={`message-bubble ${message.type}`}>
+                            <div className="message-content">
+                              {message.content}
+                            </div>
+                            <div className="message-footer">
+                              <span className="message-time">
+                                {formatTime(message.timestamp)}
+                              </span>
+                              {message.type === "sent" && (
+                                <span className="message-status">
+                                  {getStatusIcon(message.status)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Fragment>
+                    );
+                  })}
+
+                  {typingUsers.length > 0 && (
+                    <div className="typing-indicator-wrapper">
+                      <div className="typing-indicator-bubble">
+                        <div className="typing-indicator">
+                          <div className="typing-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </div>
+                          <span className="typing-text">
+                            {typingUsers[0].username} is typing...
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="popup-footer">
+            {mappingValidated && (
+              <>
+                <InputGroup className="message-input-group">
+                  <Form.Control
+                    ref={messageInputRef}
+                    as="textarea"
+                    rows={2}
+                    className="message-input"
+                    placeholder={`Type your message to ${selectedParty?.name}...`}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    onKeyUp={handleTypingStop}
+                    disabled={isSending}
+                  />
+                  <Button
+                    className="message-send-btn"
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim() || isSending}
+                  >
+                    {isSending ? (
+                      <Spinner animation="border" size="sm" />
+                    ) : (
+                      <FontAwesomeIcon icon={faPaperPlane} />
+                    )}
+                  </Button>
+                </InputGroup>
+
+                <div className="footer-info">
+                  <div className="character-count">
+                    {newMessage.length}/1000 characters
+                  </div>
+                  <div className="connection-status">
+                    <div className="status-item">
+                      {isConnected ? (
+                        <span className="text-success">
+                          <FontAwesomeIcon icon={faCheckCircle} /> Connected
+                        </span>
+                      ) : (
+                        <span className="text-danger">
+                          <FontAwesomeIcon icon={faExclamationCircle} />{" "}
+                          Disconnected
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+    return createPortal(popupContent, document.body);
   };
 
   return (
@@ -2354,7 +2001,10 @@ function TeamChats({
           <div className="chat-list">
             {loading ? (
               Array.from({length: 5}).map((_, index) => (
-                <div key={index} className="chat-item loading">
+                <div
+                  key={`loading-item-${index}`}
+                  className="chat-item loading"
+                >
                   <div className="chat-avatar-container">
                     <div
                       className="chat-avatar"
@@ -2403,9 +2053,9 @@ function TeamChats({
                 </div>
               </div>
             ) : filteredParties.length > 0 ? (
-              filteredParties.map((party) => (
+              filteredParties.map((party, index) => (
                 <div
-                  key={party.id}
+                  key={`party-${party.id || party._id || index}`}
                   className={`chat-item ${
                     !party.canChat || !party.chatCompanyId ? "opacity-75" : ""
                   }`}
@@ -2565,478 +2215,8 @@ function TeamChats({
         </Card>
       </div>
 
-      {/* Chat Popup */}
-      {chatPopupOpen && selectedParty && (
-        <>
-          <div className="chat-overlay" onClick={closeChatPopup}></div>
-          <div className="chat-popup">
-            {/* Popup Header */}
-            <div className="popup-header">
-              <div className="popup-header-left">
-                <div
-                  className="popup-avatar"
-                  style={{backgroundColor: getAvatarColor(selectedParty.name)}}
-                >
-                  {generateInitials(selectedParty.name)}
-                </div>
-                <div className="popup-user-info">
-                  <div className="popup-user-name">{selectedParty.name}</div>
-                  <div className="popup-user-status">
-                    <FontAwesomeIcon icon={faBuilding} className="online-dot" />
-                    {selectedParty.chatCompanyName}
-                    <span className="ms-2">
-                      • {formatPartyType(selectedParty.partyType)}
-                    </span>
-                    <span
-                      className={`ms-2 rounded-circle ${
-                        isConnected ? "bg-success" : "bg-danger"
-                      }`}
-                      style={{
-                        width: "8px",
-                        height: "8px",
-                        display: "inline-block",
-                      }}
-                      title={isConnected ? "Connected" : "Disconnected"}
-                    />
-                    <span
-                      className={`ms-1 rounded-circle ${
-                        mappingValidated ? "bg-success" : "bg-warning"
-                      }`}
-                      style={{
-                        width: "6px",
-                        height: "6px",
-                        display: "inline-block",
-                      }}
-                      title={
-                        mappingValidated
-                          ? "Company mapping validated"
-                          : "No company mapping"
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="popup-actions">
-                <Dropdown align="end" className="me-2">
-                  <Dropdown.Toggle
-                    variant="link"
-                    className="popup-action-btn border-0"
-                    id="chat-options"
-                  >
-                    <FontAwesomeIcon icon={faEllipsisV} />
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    <Dropdown.Item onClick={() => loadChatHistory(1, false)}>
-                      <FontAwesomeIcon icon={faSync} className="me-2" />
-                      Refresh Chat
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => loadMoreMessages()}>
-                      <FontAwesomeIcon icon={faHistory} className="me-2" />
-                      Load More Messages
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => loadChatParticipants()}>
-                      <FontAwesomeIcon icon={faUsers} className="me-2" />
-                      View Participants ({chatParticipants.length})
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      onClick={() => validatePartyCompanyMapping()}
-                    >
-                      <FontAwesomeIcon icon={faLink} className="me-2" />
-                      Validate Company Mapping
-                    </Dropdown.Item>
-                    <Dropdown.Item>
-                      <FontAwesomeIcon
-                        icon={faFileInvoiceDollar}
-                        className="me-2"
-                      />
-                      Send Statement
-                    </Dropdown.Item>
-                    <Dropdown.Item>
-                      <FontAwesomeIcon
-                        icon={faMoneyBillWave}
-                        className="me-2"
-                      />
-                      Payment Link
-                    </Dropdown.Item>
-                  </Dropdown.Menu>
-                </Dropdown>
-                <Button
-                  variant="link"
-                  className="popup-action-btn"
-                  title="Voice Call"
-                  onClick={() =>
-                    showToastMessage(
-                      `Voice call feature coming soon for ${selectedParty.name}`,
-                      "info"
-                    )
-                  }
-                >
-                  <FontAwesomeIcon icon={faPhone} />
-                </Button>
-                <Button
-                  variant="link"
-                  className="popup-action-btn"
-                  title="Video Call"
-                  onClick={() =>
-                    showToastMessage(
-                      `Video call feature coming soon for ${selectedParty.name}`,
-                      "info"
-                    )
-                  }
-                >
-                  <FontAwesomeIcon icon={faVideo} />
-                </Button>
-                <Button
-                  variant="link"
-                  className="popup-close-btn"
-                  onClick={closeChatPopup}
-                  title="Close Chat"
-                >
-                  <FontAwesomeIcon icon={faTimes} />
-                </Button>
-              </div>
-            </div>
-
-            {renderMappingInfo()}
-
-            {error && (
-              <Alert variant="danger" className="m-3 mb-0">
-                <FontAwesomeIcon
-                  icon={faExclamationTriangle}
-                  className="me-2"
-                />
-                {error}
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  className="ms-2"
-                  onClick={() => {
-                    setError(null);
-                    validatePartyCompanyMapping();
-                    if (mappingValidated) {
-                      initializeChat();
-                    }
-                  }}
-                >
-                  Retry
-                </Button>
-              </Alert>
-            )}
-
-            {/* Messages */}
-            <div className="popup-body">
-              {!mappingValidated ? (
-                <div className="text-center text-muted py-5">
-                  <FontAwesomeIcon
-                    icon={faLink}
-                    size="3x"
-                    className="mb-3 text-warning"
-                  />
-                  <h5>Company Mapping Required</h5>
-                  <p>
-                    This party needs to be linked to a company for chat
-                    functionality.
-                  </p>
-                  <small className="text-muted">
-                    Please ensure this party has a linkedCompanyId or
-                    externalCompanyId.
-                  </small>
-                  <div className="mt-3">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={validatePartyCompanyMapping}
-                    >
-                      <FontAwesomeIcon icon={faSync} className="me-1" />
-                      Re-validate Mapping
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {isLoadingMessages && (
-                    <div className="text-center p-3">
-                      <Spinner animation="border" size="sm" />
-                      <span className="ms-2">Loading messages...</span>
-                    </div>
-                  )}
-
-                  {hasMoreMessages &&
-                    !isLoadingMessages &&
-                    messages.length > 0 && (
-                      <div className="text-center p-2 border-bottom">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={loadMoreMessages}
-                          disabled={isLoadingMessages}
-                        >
-                          Load More Messages
-                        </Button>
-                      </div>
-                    )}
-
-                  <div
-                    ref={messagesContainerRef}
-                    className="messages-container"
-                  >
-                    {messages.length === 0 && !isLoadingMessages && (
-                      <div className="no-messages">
-                        <div>
-                          <FontAwesomeIcon
-                            icon={faComments}
-                            size="3x"
-                            className="mb-3 text-muted"
-                          />
-                          <p>No messages yet. Start a conversation!</p>
-                          <small className="text-muted">
-                            This is a company-to-company chat between{" "}
-                            {currentCompany?.businessName} and{" "}
-                            {selectedParty?.name}
-                          </small>
-                        </div>
-                      </div>
-                    )}
-
-                    {messages.map((message, index) => {
-                      const typeInfo = getMessageTypeIcon(message.messageType);
-                      const showDate =
-                        index === 0 ||
-                        formatDate(message.timestamp) !==
-                          formatDate(messages[index - 1].timestamp);
-
-                      return (
-                        <Fragment
-                          key={`message-wrapper-${message.id || index}`}
-                        >
-                          {showDate && (
-                            <div className="text-center my-3">
-                              <small className="bg-light px-3 py-1 rounded-pill text-muted">
-                                {formatDate(message.timestamp)}
-                              </small>
-                            </div>
-                          )}
-
-                          <div
-                            className={`message-bubble ${
-                              message.type === "sent"
-                                ? "message-sent"
-                                : "message-received"
-                            }`}
-                          >
-                            <div className="d-flex align-items-center mb-1">
-                              <FontAwesomeIcon
-                                icon={typeInfo.icon}
-                                style={{
-                                  color: typeInfo.color,
-                                  fontSize: "10px",
-                                }}
-                                className="me-1"
-                              />
-                              <small
-                                className={`${
-                                  message.type === "sent"
-                                    ? "text-white-50"
-                                    : "text-muted"
-                                }`}
-                                style={{fontSize: "9px"}}
-                              >
-                                {message.messageType.toUpperCase()}
-                                {message.senderCompanyName && (
-                                  <span className="ms-1">
-                                    • {message.senderCompanyName}
-                                  </span>
-                                )}
-                              </small>
-                            </div>
-
-                            <div
-                              style={{whiteSpace: "pre-wrap", fontSize: "13px"}}
-                              className="mb-1"
-                            >
-                              {message.content}
-                            </div>
-
-                            <div className="message-time">
-                              {formatTime(message.timestamp)}
-                              {message.type === "sent" && (
-                                <span className="message-status ms-1">
-                                  {getStatusIcon(message.status)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </Fragment>
-                      );
-                    })}
-
-                    {renderTypingIndicator()}
-
-                    <div ref={messagesEndRef} />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Message Input */}
-            <div className="popup-footer">
-              {mappingValidated && (
-                <>
-                  <div className="d-flex gap-1 flex-wrap mb-2">
-                    <Button
-                      variant={
-                        messageType === "whatsapp"
-                          ? "success"
-                          : "outline-success"
-                      }
-                      size="sm"
-                      onClick={() => setMessageType("whatsapp")}
-                      style={{fontSize: "10px"}}
-                    >
-                      <FontAwesomeIcon icon={faCommentDots} className="me-1" />
-                      WhatsApp
-                    </Button>
-                    <Button
-                      variant={
-                        messageType === "sms" ? "primary" : "outline-primary"
-                      }
-                      size="sm"
-                      onClick={() => setMessageType("sms")}
-                      style={{fontSize: "10px"}}
-                    >
-                      <FontAwesomeIcon icon={faMobileAlt} className="me-1" />
-                      SMS
-                    </Button>
-                    <Button
-                      variant={
-                        messageType === "email" ? "danger" : "outline-danger"
-                      }
-                      size="sm"
-                      onClick={() => setMessageType("email")}
-                      style={{fontSize: "10px"}}
-                    >
-                      <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                      Email
-                    </Button>
-                    <Button
-                      variant="outline-secondary"
-                      size="sm"
-                      onClick={() => setShowTemplates(!showTemplates)}
-                      disabled={isLoadingTemplates}
-                      style={{fontSize: "10px"}}
-                    >
-                      <FontAwesomeIcon
-                        icon={faClipboardList}
-                        className="me-1"
-                      />
-                      Templates
-                      {isLoadingTemplates && (
-                        <Spinner
-                          animation="border"
-                          size="sm"
-                          className="ms-1"
-                        />
-                      )}
-                    </Button>
-                  </div>
-
-                  {showTemplates && (
-                    <div
-                      className="p-2 border rounded bg-light mb-2"
-                      style={{maxHeight: "150px", overflowY: "auto"}}
-                    >
-                      {Object.keys(templates).length === 0 ? (
-                        <div className="text-center text-muted py-2">
-                          <FontAwesomeIcon
-                            icon={faClipboardList}
-                            className="me-2"
-                          />
-                          No templates available
-                        </div>
-                      ) : (
-                        renderTemplateButtons()
-                      )}
-                    </div>
-                  )}
-
-                  <InputGroup>
-                    <Form.Control
-                      ref={messageInputRef}
-                      as="textarea"
-                      rows={2}
-                      placeholder={`Type your ${messageType} message to ${selectedParty?.name}...`}
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      onKeyUp={handleTypingStop}
-                      disabled={isSending}
-                      style={{resize: "none", fontSize: "13px"}}
-                    />
-                    <Button
-                      variant="primary"
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim() || isSending}
-                    >
-                      {isSending ? (
-                        <Spinner animation="border" size="sm" />
-                      ) : (
-                        <FontAwesomeIcon icon={faPaperPlane} />
-                      )}
-                    </Button>
-                  </InputGroup>
-
-                  <div className="d-flex justify-content-between align-items-center mt-2">
-                    <small className="text-muted" style={{fontSize: "10px"}}>
-                      {newMessage.length}/1000 characters
-                      {conversationSummary && (
-                        <span className="ms-2">
-                          • {conversationSummary.totalMessages} messages
-                          {conversationSummary.unreadCount > 0 && (
-                            <span className="text-primary">
-                              {" "}
-                              • {conversationSummary.unreadCount} unread
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </small>
-                    <div className="d-flex gap-1">
-                      <small className="text-muted" style={{fontSize: "9px"}}>
-                        {isConnected ? (
-                          <span className="text-success">
-                            <FontAwesomeIcon icon={faCheckCircle} /> Connected
-                          </span>
-                        ) : (
-                          <span className="text-danger">
-                            <FontAwesomeIcon icon={faExclamationCircle} />{" "}
-                            Disconnected
-                          </span>
-                        )}
-                        {mappingValidated ? (
-                          <span className="ms-2 text-success">
-                            <FontAwesomeIcon icon={faLink} /> Mapped
-                          </span>
-                        ) : (
-                          <span className="ms-2 text-warning">
-                            <FontAwesomeIcon icon={faExclamationTriangle} /> No
-                            Mapping
-                          </span>
-                        )}
-                        {onlineUsers.length > 0 && (
-                          <span className="ms-2 text-info">
-                            <FontAwesomeIcon icon={faUsers} />{" "}
-                            {onlineUsers.length} online
-                          </span>
-                        )}
-                      </small>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </>
-      )}
+      {/* ✅ REPLACED: Chat Popup as Portal */}
+      {renderChatPopupAsPortal()}
 
       {/* Share Modal */}
       {showShareModal && selectedPartyForShare && (
@@ -3213,6 +2393,971 @@ function TeamChats({
         isQuickAdd={isQuickAdd}
         quickAddType={quickAddType}
       />
+
+      <style>{`
+      .team-chats {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-section {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-radius: 8px;
+}
+
+.chat-header {
+  padding: 1rem;
+  border-bottom: 1px solid #e9ecef;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 8px 8px 0 0;
+}
+
+.chat-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.members-count {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.section-toggle-container {
+  padding: 1rem;
+  border-bottom: 1px solid #e9ecef;
+  background-color: #f8f9fa;
+}
+
+.add-party-button {
+  width: 100%;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  border: none;
+  color: white;
+  font-weight: 500;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.add-party-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+  border-radius: 8px;
+}
+
+.filter-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.filter-buttons .btn {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+}
+
+.search-chat {
+  padding: 0 1rem 1rem;
+  background-color: #f8f9fa;
+}
+
+.search-chat .form-control,
+.search-chat .input-group-text {
+  border-radius: 8px;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.chat-item:hover {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  transform: translateX(2px);
+  border-radius: 8px;
+}
+
+.chat-item.loading {
+  opacity: 0.6;
+  cursor: default;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.chat-avatar-container {
+  position: relative;
+  margin-right: 0.75rem;
+}
+
+.chat-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.online-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #28a745;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.chat-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-info-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.chat-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #495057;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.linked-indicator {
+  color: #28a745;
+}
+
+.chat-time {
+  font-size: 0.7rem;
+  color: #6c757d;
+}
+
+.chat-preview {
+  font-size: 0.8rem;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.company-name {
+  font-weight: 500;
+  color: #495057;
+}
+
+.party-type {
+  font-size: 0.7rem;
+}
+
+.error-state, 
+.no-chats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  text-align: center;
+}
+
+.error-content, 
+.no-chats-content {
+  max-width: 250px;
+}
+
+body.chat-popup-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+.chat-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+.chat-popup {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 88vh;
+  max-height: 680px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: popupSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+  }
+}
+
+@keyframes popupSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.popup-header {
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 16px 16px 0 0;
+  flex-shrink: 0;
+  min-height: 80px;
+}
+
+.popup-header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.popup-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  margin-right: 1rem;
+  font-size: 1.1rem;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.popup-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.popup-user-name {
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin-bottom: 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.popup-user-status {
+  font-size: 0.75rem;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.popup-user-status .badge {
+  display: none;
+}
+
+.popup-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.popup-action-btn, 
+.popup-close-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  padding: 0.6rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+}
+
+.popup-action-btn:hover, 
+.popup-close-btn:hover,
+.popup-action-btn:focus,
+.popup-close-btn:focus {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: white;
+  text-decoration: none;
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.popup-action-btn:active,
+.popup-close-btn:active {
+  transform: translateY(0) scale(1);
+}
+
+.popup-body {
+  flex: 1;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  scroll-behavior: smooth;
+  background: transparent;
+}
+
+.no-messages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #6c757d;
+  padding: 2rem 1rem;
+}
+
+.no-messages div {
+  max-width: 280px;
+}
+
+.no-messages .fa-comments {
+  color: #dee2e6;
+  margin-bottom: 1rem;
+}
+
+.no-messages p {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.no-messages small {
+  font-size: 0.8rem;
+  color: #adb5bd;
+  line-height: 1.4;
+}
+
+.date-separator {
+  text-align: center;
+  margin: 1rem 0 0.6rem;
+}
+
+.date-separator small {
+  background: rgba(255, 255, 255, 0.95);
+  color: #6c757d;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+.message-wrapper {
+  display: flex;
+  margin-bottom: 0.6rem;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.message-wrapper.sent {
+  justify-content: flex-end;
+}
+
+.message-wrapper.received {
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  max-width: 75%;
+  min-width: 80px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 12px;
+  word-wrap: break-word;
+  position: relative;
+  animation: messageSlideIn 0.3s ease-out;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.message-bubble.sent {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-bottom-right-radius: 4px;
+  margin-left: auto;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+}
+
+.message-bubble.received {
+  background: rgba(255, 255, 255, 0.95);
+  color: #2d3748;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom-left-radius: 4px;
+  margin-right: auto;
+  backdrop-filter: blur(12px);
+}
+
+.message-type-indicator {
+  display: none;
+}
+
+.message-content {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  margin-bottom: 0.2rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-weight: 400;
+}
+
+.message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.2rem;
+  gap: 0.3rem;
+}
+
+.message-time {
+  font-size: 0.6rem;
+  opacity: 0.8;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.message-bubble.sent .message-time {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.message-bubble.received .message-time {
+  color: #6c757d;
+}
+
+.message-status {
+  font-size: 0.6rem;
+  opacity: 0.8;
+  color: white;
+}
+
+.message-status .fa-check,
+.message-status .fa-check-double {
+  font-size: 8px;
+  color: white;
+}
+
+.message-status .fa-check-double.text-success {
+  color: white;
+}
+
+.typing-indicator-wrapper {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.6rem;
+}
+
+.typing-indicator-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 0.4rem 0.6rem;
+  max-width: 75%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 2px;
+}
+
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #6c757d;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) { 
+  animation-delay: -0.32s; 
+}
+
+.typing-dots span:nth-child(2) { 
+  animation-delay: -0.16s; 
+}
+
+.typing-text {
+  font-size: 0.7rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+@keyframes typing {
+  0%, 80%, 100% { 
+    transform: scale(0.8); 
+    opacity: 0.5; 
+  }
+  40% { 
+    transform: scale(1.2); 
+    opacity: 1; 
+  }
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.popup-footer {
+  padding: 0.8rem;
+  border-top: 1px solid #e9ecef;
+  background: white;
+  border-radius: 0 0 16px 16px;
+  flex-shrink: 0;
+}
+
+.message-type-buttons {
+  display: none;
+}
+
+.templates-section {
+  display: none;
+}
+
+.message-input-group {
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.message-input {
+  border: none;
+  box-shadow: none;
+  resize: none;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.6rem 0.8rem;
+  background: white;
+}
+
+.message-input:focus {
+  border: none;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.message-send-btn {
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.6rem 0.8rem;
+  transition: all 0.2s ease;
+  min-width: 50px;
+}
+
+.message-send-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.message-send-btn:disabled {
+  opacity: 0.6;
+  transform: none;
+}
+
+.footer-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.4rem;
+  font-size: 0.6rem;
+  color: #6c757d;
+}
+
+.character-count {
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.connection-status {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.status-item .fa {
+  font-size: 7px;
+}
+
+@media (max-width: 768px) {
+  .chat-overlay {
+    padding: 0.5rem;
+  }
+
+  .chat-popup {
+    width: 100%;
+    height: 95vh;
+    max-height: none;
+    border-radius: 12px;
+  }
+
+  .popup-header {
+    padding: 1rem;
+    border-radius: 12px 12px 0 0;
+    min-height: 70px;
+  }
+
+  .popup-avatar {
+    width: 45px;
+    height: 45px;
+    font-size: 1rem;
+  }
+
+  .popup-user-name {
+    font-size: 1rem;
+  }
+
+  .popup-user-status {
+    font-size: 0.7rem;
+  }
+
+  .popup-action-btn, 
+  .popup-close-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0.5rem;
+    border-radius: 8px;
+  }
+
+  .popup-footer {
+    padding: 0.6rem;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .message-bubble {
+    max-width: 85%;
+    padding: 0.35rem 0.5rem;
+    border-radius: 10px;
+  }
+
+  .message-content {
+    font-size: 0.7rem;
+  }
+
+  .message-time {
+    font-size: 0.55rem;
+  }
+
+  .footer-info {
+    font-size: 0.6rem;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: flex-start;
+  }
+
+  .messages-container {
+    padding: 0.4rem;
+  }
+
+  .date-separator {
+    margin: 1rem 0 0.75rem;
+  }
+
+  .date-separator small {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-overlay {
+    padding: 0.25rem;
+  }
+
+  .chat-popup {
+    height: 98vh;
+    border-radius: 8px;
+  }
+
+  .popup-header {
+    padding: 0.75rem;
+    border-radius: 8px 8px 0 0;
+    min-height: 65px;
+  }
+
+  .popup-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 0.9rem;
+  }
+
+  .popup-user-name {
+    font-size: 0.95rem;
+  }
+
+  .popup-action-btn, 
+  .popup-close-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0.4rem;
+    border-radius: 6px;
+  }
+
+  .popup-footer {
+    padding: 0.5rem;
+    border-radius: 0 0 8px 8px;
+  }
+
+  .message-bubble {
+    max-width: 90%;
+    padding: 0.3rem 0.45rem;
+    border-radius: 8px;
+  }
+
+  .message-bubble.sent {
+    border-bottom-right-radius: 3px;
+  }
+
+  .message-bubble.received {
+    border-bottom-left-radius: 3px;
+  }
+
+  .message-content {
+    font-size: 0.65rem;
+  }
+
+  .message-time {
+    font-size: 0.5rem;
+  }
+
+  .date-separator small {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.4rem;
+  }
+}
+
+.chat-list::-webkit-scrollbar,
+.messages-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chat-list::-webkit-scrollbar-track,
+.messages-container::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.chat-list::-webkit-scrollbar-thumb,
+.messages-container::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.chat-list::-webkit-scrollbar-thumb:hover,
+.messages-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.form-control,
+.form-select,
+.btn,
+.input-group-text,
+.alert,
+.card,
+.modal-content {
+  border-radius: 8px;
+}
+
+.dropdown-menu {
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.dropdown-item {
+  border-radius: 6px;
+  margin: 2px 4px;
+  transition: all 0.2s ease;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background-color: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  border-radius: 6px;
+}
+
+.chat-item:focus,
+.popup-action-btn:focus,
+.popup-close-btn:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.chat-popup:focus {
+  outline: none;
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    opacity: 1; 
+  }
+  50% { 
+    opacity: 0.5; 
+  }
+}
+
+.modal {
+  z-index: 8000;
+}
+
+.modal-backdrop {
+  z-index: 7999;
+}
+
+.toast-container {
+  z-index: 10001;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chat-popup {
+    background-color: #1a1a1a;
+    color: white;
+  }
+
+  .popup-body {
+    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  }
+
+  .popup-footer {
+    background-color: #1a1a1a;
+    border-color: #444;
+  }
+
+  .message-bubble.received {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .message-input {
+    background-color: #2a2a2a;
+    color: white;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-popup,
+  .chat-overlay,
+  .message-bubble,
+  .popup-action-btn,
+  .popup-close-btn {
+    animation: none;
+    transition: none;
+  }
+
+  .chat-item:hover {
+    transform: none;
+  }
+} 
+      `}</style>
     </>
   );
 }

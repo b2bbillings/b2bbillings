@@ -8,7 +8,11 @@ const {validationResult} = require("express-validator");
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    const uploadPath = path.join(__dirname, "../../uploads/staff-documents");
+    const companyId = getCompanyId(req);
+    const uploadPath = path.join(
+      __dirname,
+      `../../uploads/staff-documents/${companyId}`
+    );
     try {
       await fs.mkdir(uploadPath, {recursive: true});
       cb(null, uploadPath);
@@ -18,19 +22,16 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      `${req.params.staffId || "temp"}-${uniqueSuffix}${path.extname(
-        file.originalname
-      )}`
-    );
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.params.staffId || "temp"}-${uniqueSuffix}${ext}`);
   },
 });
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 10,
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|pdf|doc|docx/;
@@ -44,7 +45,7 @@ const upload = multer({
     } else {
       cb(
         new Error(
-          "Only images (jpeg, jpg, png) and documents (pdf, doc, docx) are allowed!"
+          "Only images (jpeg, jpg, png) and documents (pdf, doc, docx) are allowed"
         )
       );
     }
@@ -58,7 +59,7 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 // Helper function to get company ID from request
 const getCompanyId = (req) => {
-  return req.companyId || req.user.companyId || req.headers["x-company-id"];
+  return req.companyId || req.user?.companyId || req.headers["x-company-id"];
 };
 
 // Helper function to validate company access
@@ -80,6 +81,7 @@ const validateCompanyAccess = async (req, res, next) => {
         message: "Company not found",
       });
     }
+
     req.company = company;
     req.companyId = companyId;
     next();
@@ -87,23 +89,83 @@ const validateCompanyAccess = async (req, res, next) => {
     return res.status(500).json({
       success: false,
       message: "Error validating company access",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
+  }
+};
+
+// Enhanced error handler
+const handleError = (error, req, res, operation) => {
+  let statusCode = 500;
+  let message = "Internal server error";
+
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed";
+    const validationErrors = Object.values(error.errors).map((err) => ({
+      field: err.path,
+      message: err.message,
+    }));
+    return res.status(statusCode).json({
+      success: false,
+      message,
+      errors: validationErrors,
+    });
+  }
+
+  if (error.code === 11000) {
+    statusCode = 409;
+    message = "Duplicate data detected";
+  }
+
+  if (error.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid data format";
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
+  });
+};
+
+// Generate unique employee ID
+const generateEmployeeId = async (companyId) => {
+  try {
+    const company = await Company.findById(companyId);
+    const companyPrefix = company?.name?.substring(0, 3).toUpperCase() || "EMP";
+    const staffCount = await Staff.countDocuments({companyId});
+    const employeeNumber = String(staffCount + 1).padStart(4, "0");
+    const employeeId = `${companyPrefix}${employeeNumber}`;
+
+    const existingStaff = await Staff.findOne({
+      employeeId,
+      companyId,
+    });
+
+    if (existingStaff) {
+      const timestamp = Date.now().toString().slice(-4);
+      return `${companyPrefix}${employeeNumber}${timestamp}`;
+    }
+
+    return employeeId;
+  } catch (error) {
+    const timestamp = Date.now().toString().slice(-6);
+    return `EMP${timestamp}`;
   }
 };
 
 // @desc    Create new staff member
 // @route   POST /api/staff
-// @access  Private (Any company user) - REMOVED admin/manager restriction
+// @access  Private
 const createStaff = asyncHandler(async (req, res) => {
   try {
-    console.log("🚀 Starting staff creation process...");
-    console.log("📝 Request body received:", JSON.stringify(req.body, null, 2));
-
-    // ✅ CHECK VALIDATION ERRORS FIRST
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log("❌ Validation errors found:", errors.array());
       return res.status(400).json({
         success: false,
         message: "Validation failed",
@@ -111,21 +173,10 @@ const createStaff = asyncHandler(async (req, res) => {
       });
     }
 
-    console.log("✅ Validation passed successfully");
-
-    // Get company ID and user info
     const companyId = getCompanyId(req);
     const currentUser = req.user;
 
-    console.log("🔍 Company ID validation:", companyId);
-    console.log("👤 Current user:", {
-      id: currentUser._id || currentUser.id,
-      email: currentUser.email,
-      role: currentUser.role,
-    });
-
     if (!companyId) {
-      console.log("❌ Company ID missing");
       return res.status(400).json({
         success: false,
         message: "Company ID is required",
@@ -147,11 +198,8 @@ const createStaff = asyncHandler(async (req, res) => {
       notifications,
     } = req.body;
 
-    // ✅ ADDITIONAL VALIDATION FOR REQUIRED FIELDS
-    console.log("🔍 Checking required fields...");
-
-    if (!name || !name.trim()) {
-      console.log("❌ Name validation failed");
+    // Basic validation
+    if (!name?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Name is required",
@@ -159,136 +207,86 @@ const createStaff = asyncHandler(async (req, res) => {
     }
 
     if (!role) {
-      console.log("❌ Role validation failed");
       return res.status(400).json({
         success: false,
         message: "Role is required",
       });
     }
 
-    if (
-      !mobileNumbers ||
-      !Array.isArray(mobileNumbers) ||
-      mobileNumbers.length === 0
-    ) {
-      console.log("❌ Mobile numbers validation failed", mobileNumbers);
+    if (!mobileNumbers?.length) {
       return res.status(400).json({
         success: false,
         message: "At least one mobile number is required",
       });
     }
 
-    if (!employment || !employment.joinDate) {
-      console.log("❌ Employment/Join date validation failed", employment);
+    if (!employment?.joinDate) {
       return res.status(400).json({
         success: false,
         message: "Join date is required",
       });
     }
 
-    if (!address || !address.street || !address.city || !address.state) {
-      console.log("❌ Address validation failed", address);
+    if (!address?.street || !address?.city || !address?.state) {
       return res.status(400).json({
         success: false,
-        message: "Complete address (street, city, state) is required",
+        message: "Complete address is required",
       });
     }
 
-    console.log("✅ All required fields validation passed");
-
-    // Check if staff with email already exists (if email provided)
+    // Check for duplicate email
     if (email) {
-      console.log("🔍 Checking email uniqueness...");
       const existingStaffByEmail = await Staff.findOne({
         email,
-        companyId: companyId,
+        companyId,
         isActive: true,
       });
       if (existingStaffByEmail) {
-        console.log("❌ Email already exists");
         return res.status(400).json({
           success: false,
           message: "Staff member with this email already exists",
         });
       }
-      console.log("✅ Email is unique");
     }
 
-    // Check if mobile number already exists
-    console.log("🔍 Checking mobile number uniqueness...");
+    // Check for duplicate mobile number
     const existingStaffByMobile = await Staff.findOne({
       mobileNumbers: {$in: mobileNumbers},
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
     if (existingStaffByMobile) {
-      console.log("❌ Mobile number already exists");
       return res.status(400).json({
         success: false,
         message: "Staff member with this mobile number already exists",
       });
     }
-    console.log("✅ Mobile number is unique");
 
-    // Validate reporting structure (prevent circular reference)
+    // Validate reporting structure
     if (employment?.reportingTo) {
-      console.log("🔍 Validating reporting structure...");
       const reportingManager = await Staff.findOne({
         _id: employment.reportingTo,
-        companyId: companyId,
+        companyId,
         isActive: true,
       });
       if (!reportingManager) {
-        console.log("❌ Invalid reporting manager");
         return res.status(400).json({
           success: false,
           message: "Invalid reporting manager selected",
         });
       }
-      console.log("✅ Reporting structure is valid");
     }
 
-    // Generate employee ID
-    console.log("🔢 Generating employee ID...");
-    const generateEmployeeId = async () => {
-      try {
-        const company = await Company.findById(companyId);
-        const companyPrefix =
-          company?.name?.substring(0, 3).toUpperCase() || "EMP";
-        const staffCount = await Staff.countDocuments({companyId: companyId});
-        const employeeNumber = String(staffCount + 1).padStart(4, "0");
-        const employeeId = `${companyPrefix}${employeeNumber}`;
+    const employeeId = await generateEmployeeId(companyId);
 
-        const existingStaff = await Staff.findOne({
-          employeeId: employeeId,
-          companyId: companyId,
-        });
-
-        if (existingStaff) {
-          const timestamp = Date.now().toString().slice(-4);
-          return `${companyPrefix}${employeeNumber}${timestamp}`;
-        }
-
-        return employeeId;
-      } catch (error) {
-        console.error("Error generating employee ID:", error);
-        const timestamp = Date.now().toString().slice(-6);
-        return `EMP${timestamp}`;
-      }
-    };
-
-    const employeeId = await generateEmployeeId();
-    console.log("✅ Generated employee ID:", employeeId);
-
-    // Create staff member
     const staffData = {
-      companyId: companyId,
-      employeeId: employeeId,
-      name: name?.trim(),
+      companyId,
+      employeeId,
+      name: name.trim(),
       role,
       post,
       mobileNumbers: mobileNumbers
-        ?.map((num) => num.trim())
+        .map((num) => num.trim())
         .filter((num) => num),
       email: email?.trim().toLowerCase() || null,
       address,
@@ -301,92 +299,27 @@ const createStaff = asyncHandler(async (req, res) => {
       status: "active",
     };
 
-    console.log(
-      "💾 Staff data to be saved:",
-      JSON.stringify(staffData, null, 2)
-    );
-
     const staff = new Staff(staffData);
-
-    console.log("🔄 Saving staff to database...");
     await staff.save();
-    console.log("✅ Staff saved successfully with ID:", staff._id);
 
-    // Populate created staff with references
-    console.log("🔗 Populating staff references...");
     await staff.populate([
       {path: "employment.reportingTo", select: "name role employeeId"},
       {path: "createdBy", select: "name role"},
     ]);
 
-    console.log("🎉 Staff creation completed successfully");
-
-    // ✅ ENSURE PROPER SUCCESS RESPONSE
-    const response = {
+    res.status(201).json({
       success: true,
       message: "Staff member created successfully",
       data: staff,
-    };
-
-    console.log("📤 Sending success response:", {
-      success: response.success,
-      message: response.message,
-      dataId: response.data._id,
     });
-
-    return res.status(201).json(response);
   } catch (error) {
-    console.error("❌ Create staff error:", error);
-    console.error("❌ Error stack:", error.stack);
-
-    // ✅ HANDLE MONGOOSE VALIDATION ERRORS
-    if (error.name === "ValidationError") {
-      console.log("❌ Mongoose validation error detected");
-      const validationErrors = Object.values(error.errors).map((err) => ({
-        field: err.path,
-        message: err.message,
-        value: err.value,
-      }));
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: validationErrors,
-      });
-    }
-
-    // ✅ HANDLE DUPLICATE KEY ERRORS
-    if (error.code === 11000) {
-      console.log("❌ Duplicate key error detected");
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate field value entered",
-        error: "Staff member with this information already exists",
-      });
-    }
-
-    // ✅ HANDLE CAST ERRORS (ObjectId casting issues)
-    if (error.name === "CastError") {
-      console.log("❌ Cast error detected");
-      return res.status(400).json({
-        success: false,
-        message: "Invalid data format",
-        error: `Invalid ${error.path}: ${error.value}`,
-      });
-    }
-
-    console.log("❌ Unknown error occurred");
-    return res.status(500).json({
-      success: false,
-      message: "Error creating staff member",
-      error: error.message,
-    });
+    handleError(error, req, res, "createStaff");
   }
 });
 
 // @desc    Get all staff members for company
 // @route   GET /api/staff
-// @access  Private (Any company user)
+// @access  Private
 const getAllStaff = asyncHandler(async (req, res) => {
   try {
     const {
@@ -401,19 +334,13 @@ const getAllStaff = asyncHandler(async (req, res) => {
     } = req.query;
 
     const companyId = getCompanyId(req);
-
-    // Build query
-    const query = {
-      companyId: companyId,
-      isActive: true,
-    };
+    const query = {companyId, isActive: true};
 
     if (role && role !== "all") query.role = role;
     if (status && status !== "all") query.status = status;
     if (department && department !== "all")
       query["employment.department"] = department;
 
-    // Handle search
     if (search) {
       query.$or = [
         {name: {$regex: search, $options: "i"}},
@@ -423,16 +350,13 @@ const getAllStaff = asyncHandler(async (req, res) => {
       ];
     }
 
-    // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Sort options
     const sortOptions = {};
     sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-    // Get staff with pagination
     const [staff, totalCount] = await Promise.all([
       Staff.find(query)
         .populate("employment.reportingTo", "name role employeeId")
@@ -444,10 +368,7 @@ const getAllStaff = asyncHandler(async (req, res) => {
       Staff.countDocuments(query),
     ]);
 
-    // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
 
     res.status(200).json({
       success: true,
@@ -458,30 +379,25 @@ const getAllStaff = asyncHandler(async (req, res) => {
         totalPages,
         totalCount,
         limit: limitNum,
-        hasNextPage,
-        hasPrevPage,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
       },
     });
   } catch (error) {
-    console.error("Get all staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching staff members",
-      error: error.message,
-    });
+    handleError(error, req, res, "getAllStaff");
   }
 });
 
 // @desc    Get single staff member
 // @route   GET /api/staff/:id
-// @access  Private (Any company user)
+// @access  Private
 const getStaffById = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     })
       .populate("employment.reportingTo", "name role employeeId")
@@ -502,18 +418,13 @@ const getStaffById = asyncHandler(async (req, res) => {
       data: staff,
     });
   } catch (error) {
-    console.error("Get staff by ID error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching staff member",
-      error: error.message,
-    });
+    handleError(error, req, res, "getStaffById");
   }
 });
 
 // @desc    Update staff member
 // @route   PUT /api/staff/:id
-// @access  Private (Any company user) - REMOVED admin/manager/self restriction
+// @access  Private
 const updateStaff = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -521,7 +432,7 @@ const updateStaff = asyncHandler(async (req, res) => {
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -532,18 +443,14 @@ const updateStaff = asyncHandler(async (req, res) => {
       });
     }
 
-    // REMOVED: Permission check - now any company user can update staff
-
     const updateData = {...req.body};
-
-    // Add updatedBy field
     updateData.updatedBy = currentUser._id || currentUser.id;
 
-    // Handle email uniqueness check
+    // Check email uniqueness
     if (updateData.email && updateData.email !== staff.email) {
       const existingStaff = await Staff.findOne({
         email: updateData.email,
-        companyId: companyId,
+        companyId,
         _id: {$ne: staff._id},
         isActive: true,
       });
@@ -555,11 +462,11 @@ const updateStaff = asyncHandler(async (req, res) => {
       }
     }
 
-    // Handle mobile number uniqueness check
+    // Check mobile number uniqueness
     if (updateData.mobileNumbers) {
       const existingStaff = await Staff.findOne({
         mobileNumbers: {$in: updateData.mobileNumbers},
-        companyId: companyId,
+        companyId,
         _id: {$ne: staff._id},
         isActive: true,
       });
@@ -582,7 +489,7 @@ const updateStaff = asyncHandler(async (req, res) => {
 
       const reportingManager = await Staff.findOne({
         _id: updateData.employment.reportingTo,
-        companyId: companyId,
+        companyId,
         isActive: true,
       });
       if (!reportingManager) {
@@ -606,7 +513,6 @@ const updateStaff = asyncHandler(async (req, res) => {
 
     await staff.save();
 
-    // Populate updated staff
     await staff.populate([
       {path: "employment.reportingTo", select: "name role employeeId"},
       {path: "createdBy", select: "name role"},
@@ -619,29 +525,24 @@ const updateStaff = asyncHandler(async (req, res) => {
       data: staff,
     });
   } catch (error) {
-    console.error("Update staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating staff member",
-      error: error.message,
-    });
+    handleError(error, req, res, "updateStaff");
   }
 });
 
-// @desc    Delete staff member (soft delete by default, hard delete with query param)
+// @desc    Delete staff member
 // @route   DELETE /api/staff/:id?permanent=true
-// @access  Private (Any company user)
+// @access  Private
 const deleteStaff = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const currentUser = req.user;
-    const {permanent} = req.query; // Check for permanent delete flag
-    const {reason} = req.body; // Get deletion reason from request body
+    const {permanent} = req.query;
+    const {reason} = req.body;
     const isHardDelete = permanent === "true";
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -652,43 +553,8 @@ const deleteStaff = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check for active dependencies before deletion
     if (isHardDelete) {
-      // Add business logic checks for hard delete
-      // Example: Check if staff has pending tasks, sales records, etc.
-
-      // You can add more checks here based on your business requirements
-      console.log("⚠️ Performing hard delete - checking dependencies...");
-
-      // Example dependency check (uncomment and modify as needed):
-      /*
-      const hasPendingTasks = await Task.countDocuments({
-        assignedTo: staff._id,
-        status: { $in: ['pending', 'in-progress'] }
-      });
-      
-      if (hasPendingTasks > 0) {
-        return res.status(409).json({
-          success: false,
-          message: "Cannot permanently delete staff member with pending tasks",
-        });
-      }
-      */
-    }
-
-    if (isHardDelete) {
-      // ✅ HARD DELETE - Permanently remove from database
-      console.log("🗑️ Performing hard delete for staff:", staff._id);
-
-      // Log the deletion with reason
-      if (reason) {
-        console.log("📝 Deletion reason:", reason);
-      }
-
       await Staff.findByIdAndDelete(staff._id);
-
-      console.log("✅ Staff permanently deleted from database");
-
       res.status(200).json({
         success: true,
         message: "Staff member permanently deleted successfully",
@@ -699,23 +565,16 @@ const deleteStaff = asyncHandler(async (req, res) => {
         },
       });
     } else {
-      // ✅ SOFT DELETE - Mark as inactive (existing logic)
-      console.log("🔄 Performing soft delete for staff:", staff._id);
-
       staff.isActive = false;
       staff.status = "terminated";
       staff.updatedBy = currentUser._id || currentUser.id;
-      staff.deletedAt = new Date(); // Add deletion timestamp
+      staff.deletedAt = new Date();
 
-      // Store deletion reason if provided
       if (reason) {
         staff.deletionReason = reason;
-        console.log("📝 Deletion reason stored:", reason);
       }
 
       await staff.save();
-
-      console.log("✅ Staff soft deleted (marked as inactive)");
 
       res.status(200).json({
         success: true,
@@ -728,18 +587,13 @@ const deleteStaff = asyncHandler(async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Delete staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting staff member",
-      error: error.message,
-    });
+    handleError(error, req, res, "deleteStaff");
   }
 });
 
-// @desc    Restore deleted staff member (soft-deleted only)
+// @desc    Restore deleted staff member
 // @route   PUT /api/staff/:id/restore
-// @access  Private (Any company user)
+// @access  Private
 const restoreStaff = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -747,8 +601,8 @@ const restoreStaff = asyncHandler(async (req, res) => {
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
-      isActive: false, // Look for inactive/deleted staff
+      companyId,
+      isActive: false,
     });
 
     if (!staff) {
@@ -758,19 +612,14 @@ const restoreStaff = asyncHandler(async (req, res) => {
       });
     }
 
-    // Restore the staff member
     staff.isActive = true;
     staff.status = "active";
     staff.updatedBy = currentUser._id || currentUser.id;
     staff.restoredAt = new Date();
-
-    // Clear deletion fields
     staff.deletedAt = undefined;
     staff.deletionReason = undefined;
 
     await staff.save();
-
-    console.log("✅ Staff member restored:", staff._id);
 
     res.status(200).json({
       success: true,
@@ -778,18 +627,13 @@ const restoreStaff = asyncHandler(async (req, res) => {
       data: staff,
     });
   } catch (error) {
-    console.error("Restore staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error restoring staff member",
-      error: error.message,
-    });
+    handleError(error, req, res, "restoreStaff");
   }
 });
 
-// @desc    Get deleted staff members (soft-deleted only)
+// @desc    Get deleted staff members
 // @route   GET /api/staff/deleted
-// @access  Private (Any company user)
+// @access  Private
 const getDeletedStaff = asyncHandler(async (req, res) => {
   try {
     const {
@@ -801,15 +645,12 @@ const getDeletedStaff = asyncHandler(async (req, res) => {
     } = req.query;
 
     const companyId = getCompanyId(req);
-
-    // Build query for deleted staff
     const query = {
-      companyId: companyId,
-      isActive: false, // Only get soft-deleted staff
+      companyId,
+      isActive: false,
       status: "terminated",
     };
 
-    // Handle search
     if (search) {
       query.$or = [
         {name: {$regex: search, $options: "i"}},
@@ -818,16 +659,13 @@ const getDeletedStaff = asyncHandler(async (req, res) => {
       ];
     }
 
-    // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Sort options
     const sortOptions = {};
     sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-    // Get deleted staff with pagination
     const [staff, totalCount] = await Promise.all([
       Staff.find(query)
         .populate("employment.reportingTo", "name role employeeId")
@@ -839,10 +677,7 @@ const getDeletedStaff = asyncHandler(async (req, res) => {
       Staff.countDocuments(query),
     ]);
 
-    // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
 
     res.status(200).json({
       success: true,
@@ -853,30 +688,25 @@ const getDeletedStaff = asyncHandler(async (req, res) => {
         totalPages,
         totalCount,
         limit: limitNum,
-        hasNextPage,
-        hasPrevPage,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
       },
     });
   } catch (error) {
-    console.error("Get deleted staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching deleted staff members",
-      error: error.message,
-    });
+    handleError(error, req, res, "getDeletedStaff");
   }
 });
 
 // @desc    Upload staff documents
 // @route   POST /api/staff/:id/documents
-// @access  Private (Any company user) - REMOVED admin/manager/self restriction
+// @access  Private
 const uploadDocuments = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -887,7 +717,6 @@ const uploadDocuments = asyncHandler(async (req, res) => {
       });
     }
 
-    // Use multer middleware
     upload.array("documents", 10)(req, res, async (err) => {
       if (err) {
         return res.status(400).json({
@@ -897,7 +726,7 @@ const uploadDocuments = asyncHandler(async (req, res) => {
         });
       }
 
-      if (!req.files || req.files.length === 0) {
+      if (!req.files?.length) {
         return res.status(400).json({
           success: false,
           message: "No files uploaded",
@@ -905,10 +734,10 @@ const uploadDocuments = asyncHandler(async (req, res) => {
       }
 
       try {
-        const uploadedDocs = req.files.map((file) => ({
+        const uploadedDocs = req.files.map((file, index) => ({
           id: Date.now() + Math.random().toString(36).substr(2, 9),
           name: file.originalname,
-          type: req.body.documentTypes?.[req.files.indexOf(file)] || "Other",
+          type: req.body.documentTypes?.[index] || "Other",
           size: file.size,
           filePath: file.path,
           uploadDate: new Date(),
@@ -925,40 +754,28 @@ const uploadDocuments = asyncHandler(async (req, res) => {
         });
       } catch (error) {
         // Clean up uploaded files if database operation fails
-        req.files.forEach(async (file) => {
-          try {
-            await fs.unlink(file.path);
-          } catch (unlinkError) {
-            console.error("Error deleting file:", unlinkError);
-          }
-        });
-
+        await Promise.all(
+          req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+        );
         throw error;
       }
     });
   } catch (error) {
-    console.error("Upload documents error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error uploading documents",
-      error: error.message,
-    });
+    handleError(error, req, res, "uploadDocuments");
   }
 });
 
 // @desc    Verify document
 // @route   PUT /api/staff/:staffId/documents/:docId/verify
-// @access  Private (Any company user) - REMOVED admin/manager restriction
+// @access  Private
 const verifyDocument = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const currentUser = req.user;
 
-    // REMOVED: Admin/Manager check - now any company user can verify documents
-
     const staff = await Staff.findOne({
       _id: req.params.staffId,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -989,18 +806,13 @@ const verifyDocument = asyncHandler(async (req, res) => {
       data: document,
     });
   } catch (error) {
-    console.error("Verify document error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error verifying document",
-      error: error.message,
-    });
+    handleError(error, req, res, "verifyDocument");
   }
 });
 
 // @desc    Set staff password
 // @route   PUT /api/staff/:id/password
-// @access  Private (Any company user) - REMOVED admin/self restriction
+// @access  Private
 const setPassword = asyncHandler(async (req, res) => {
   try {
     const {password, confirmPassword} = req.body;
@@ -1020,11 +832,10 @@ const setPassword = asyncHandler(async (req, res) => {
     }
 
     const companyId = getCompanyId(req);
-    const currentUser = req.user;
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     }).select("+loginCredentials.password");
 
@@ -1035,8 +846,6 @@ const setPassword = asyncHandler(async (req, res) => {
       });
     }
 
-    // REMOVED: Permission check - now any company user can set passwords
-
     staff.loginCredentials.password = password;
     await staff.save();
 
@@ -1045,29 +854,22 @@ const setPassword = asyncHandler(async (req, res) => {
       message: "Password set successfully",
     });
   } catch (error) {
-    console.error("Set password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error setting password",
-      error: error.message,
-    });
+    handleError(error, req, res, "setPassword");
   }
 });
 
 // @desc    Get staff statistics
 // @route   GET /api/staff/statistics
-// @access  Private (Any company user)
+// @access  Private
 const getStaffStatistics = asyncHandler(async (req, res) => {
   try {
     const companyId = getCompanyId(req);
 
-    // Use the Staff model's static method if available
     let stats;
     if (Staff.getStaffStats) {
       const [statsResult] = await Staff.getStaffStats(companyId);
       stats = statsResult;
     } else {
-      // Fallback manual calculation
       const totalStaff = await Staff.countDocuments({
         companyId,
         isActive: true,
@@ -1090,48 +892,36 @@ const getStaffStatistics = asyncHandler(async (req, res) => {
       };
     }
 
-    const roleDistribution = await Staff.aggregate([
-      {$match: {companyId: companyId, isActive: true}},
-      {$group: {_id: "$role", count: {$sum: 1}}},
-      {$sort: {count: -1}},
-    ]);
-
-    const departmentDistribution = await Staff.aggregate([
-      {$match: {companyId: companyId, isActive: true}},
-      {$group: {_id: "$employment.department", count: {$sum: 1}}},
-      {$sort: {count: -1}},
+    const [roleDistribution, departmentDistribution] = await Promise.all([
+      Staff.aggregate([
+        {$match: {companyId, isActive: true}},
+        {$group: {_id: "$role", count: {$sum: 1}}},
+        {$sort: {count: -1}},
+      ]),
+      Staff.aggregate([
+        {$match: {companyId, isActive: true}},
+        {$group: {_id: "$employment.department", count: {$sum: 1}}},
+        {$sort: {count: -1}},
+      ]),
     ]);
 
     res.status(200).json({
       success: true,
       message: "Staff statistics retrieved successfully",
       data: {
-        overall: stats || {
-          totalStaff: 0,
-          activeStaff: 0,
-          inactiveStaff: 0,
-          totalTasks: 0,
-          completedTasks: 0,
-          taskCompletionRate: 0,
-          averageAttendance: 0,
-        },
+        overall: stats,
         roleDistribution,
         departmentDistribution,
       },
     });
   } catch (error) {
-    console.error("Get staff statistics error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching staff statistics",
-      error: error.message,
-    });
+    handleError(error, req, res, "getStaffStatistics");
   }
 });
 
 // @desc    Search staff members
 // @route   GET /api/staff/search
-// @access  Private (Any company user)
+// @access  Private
 const searchStaff = asyncHandler(async (req, res) => {
   try {
     const {q, role, status, limit = 10} = req.query;
@@ -1144,35 +934,34 @@ const searchStaff = asyncHandler(async (req, res) => {
     }
 
     const companyId = getCompanyId(req);
+    const searchTerm = q.trim();
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
 
-    const options = {
-      role: role && role !== "all" ? role : undefined,
-      status: status && status !== "all" ? status : undefined,
-      limit: parseInt(limit),
-    };
-
-    // Use Staff model's search method if available, otherwise manual search
     let staff;
     if (Staff.searchStaff) {
-      staff = await Staff.searchStaff(companyId, q.trim(), options);
+      const options = {
+        role: role && role !== "all" ? role : undefined,
+        status: status && status !== "all" ? status : undefined,
+        limit: limitNum,
+      };
+      staff = await Staff.searchStaff(companyId, searchTerm, options);
     } else {
-      // Fallback manual search
       const query = {
-        companyId: companyId,
+        companyId,
         isActive: true,
         $or: [
-          {name: {$regex: q.trim(), $options: "i"}},
-          {employeeId: {$regex: q.trim(), $options: "i"}},
-          {email: {$regex: q.trim(), $options: "i"}},
-          {mobileNumbers: {$regex: q.trim(), $options: "i"}},
+          {name: {$regex: searchTerm, $options: "i"}},
+          {employeeId: {$regex: searchTerm, $options: "i"}},
+          {email: {$regex: searchTerm, $options: "i"}},
+          {mobileNumbers: {$regex: searchTerm, $options: "i"}},
         ],
       };
 
-      if (options.role) query.role = options.role;
-      if (options.status) query.status = options.status;
+      if (role && role !== "all") query.role = role;
+      if (status && status !== "all") query.status = status;
 
       staff = await Staff.find(query)
-        .limit(options.limit)
+        .limit(limitNum)
         .populate("employment.reportingTo", "name role employeeId")
         .lean();
     }
@@ -1184,33 +973,26 @@ const searchStaff = asyncHandler(async (req, res) => {
       count: staff.length,
     });
   } catch (error) {
-    console.error("Search staff error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error searching staff members",
-      error: error.message,
-    });
+    handleError(error, req, res, "searchStaff");
   }
 });
 
 // @desc    Get staff by role
 // @route   GET /api/staff/by-role/:role
-// @access  Private (Any company user)
+// @access  Private
 const getStaffByRole = asyncHandler(async (req, res) => {
   try {
     const {role} = req.params;
     const {status = "active"} = req.query;
     const companyId = getCompanyId(req);
 
-    // Use Staff model's method if available, otherwise manual query
     let staff;
     if (Staff.findByCompany) {
       staff = await Staff.findByCompany(companyId, {role, status});
     } else {
-      // Fallback manual query
       const query = {
-        companyId: companyId,
-        role: role,
+        companyId,
+        role,
         isActive: true,
       };
 
@@ -1230,18 +1012,13 @@ const getStaffByRole = asyncHandler(async (req, res) => {
       count: staff.length,
     });
   } catch (error) {
-    console.error("Get staff by role error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching staff by role",
-      error: error.message,
-    });
+    handleError(error, req, res, "getStaffByRole");
   }
 });
 
 // @desc    Update staff status
 // @route   PUT /api/staff/:id/status
-// @access  Private (Any company user) - REMOVED admin/manager restriction
+// @access  Private
 const updateStaffStatus = asyncHandler(async (req, res) => {
   try {
     const {status} = req.body;
@@ -1262,7 +1039,7 @@ const updateStaffStatus = asyncHandler(async (req, res) => {
 
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -1273,12 +1050,9 @@ const updateStaffStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    // REMOVED: Admin/Manager check - now any company user can update status
-
     staff.status = status;
     staff.updatedBy = currentUser._id || currentUser.id;
 
-    // If terminating, mark as inactive
     if (status === "terminated") {
       staff.isActive = false;
     }
@@ -1291,29 +1065,22 @@ const updateStaffStatus = asyncHandler(async (req, res) => {
       data: {status: staff.status, isActive: staff.isActive},
     });
   } catch (error) {
-    console.error("Update staff status error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating staff status",
-      error: error.message,
-    });
+    handleError(error, req, res, "updateStaffStatus");
   }
 });
 
 // @desc    Assign task to staff
 // @route   POST /api/staff/:id/assign-task
-// @access  Private (Any company user) - REMOVED admin/manager restriction
+// @access  Private
 const assignTask = asyncHandler(async (req, res) => {
   try {
     const {taskId} = req.body;
     const companyId = getCompanyId(req);
     const currentUser = req.user;
 
-    // REMOVED: Admin/Manager check - now any company user can assign tasks
-
     const staff = await Staff.findOne({
       _id: req.params.id,
-      companyId: companyId,
+      companyId,
       isActive: true,
     });
 
@@ -1324,16 +1091,14 @@ const assignTask = asyncHandler(async (req, res) => {
       });
     }
 
-    // Use Staff model's method if available
     if (staff.assignTask) {
       await staff.assignTask(taskId);
     } else {
-      // Fallback manual assignment
       if (!staff.assignedTasks) {
         staff.assignedTasks = [];
       }
       staff.assignedTasks.push({
-        taskId: taskId,
+        taskId,
         assignedDate: new Date(),
         assignedBy: currentUser._id || currentUser.id,
       });
@@ -1358,12 +1123,7 @@ const assignTask = asyncHandler(async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Assign task error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error assigning task",
-      error: error.message,
-    });
+    handleError(error, req, res, "assignTask");
   }
 });
 
@@ -1372,9 +1132,9 @@ module.exports = {
   getAllStaff,
   getStaffById,
   updateStaff,
-  deleteStaff, // Updated function
-  restoreStaff, // New function
-  getDeletedStaff, // New function
+  deleteStaff,
+  restoreStaff,
+  getDeletedStaff,
   uploadDocuments,
   verifyDocument,
   setPassword,

@@ -123,8 +123,6 @@ const itemController = {
       const {companyId} = req.params;
       const itemData = req.body;
 
-      console.log(`🔍 Creating item for company ${companyId}:`, itemData.name);
-
       if (!companyId) {
         return res.status(400).json({
           success: false,
@@ -218,12 +216,6 @@ const itemController = {
 
       await newItem.save();
 
-      // ✅ Log for admin notification
-      console.log(
-        `🔔 NEW ITEM NEEDS VERIFICATION: "${itemData.name}" from company ${companyId}`
-      );
-      console.log(`📋 Item created successfully with ID: ${newItem._id}`);
-
       // ✅ Enhanced response with verification status
       res.status(201).json({
         success: true,
@@ -266,8 +258,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error creating item:", error);
-
       if (error.code === 11000) {
         return res.status(400).json({
           success: false,
@@ -421,13 +411,6 @@ const itemController = {
       const {companyId, itemId} = req.params;
       const {adjustmentType, quantity, newStock, reason, asOfDate} = req.body;
 
-      console.log(`🔧 Adjusting stock for item ${itemId}:`, {
-        adjustmentType,
-        quantity,
-        newStock,
-        reason,
-      });
-
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
         return res.status(400).json({
           success: false,
@@ -537,14 +520,6 @@ const itemController = {
         {new: true, runValidators: true}
       );
 
-      console.log(`✅ Stock adjusted successfully:`, {
-        itemName: item.name,
-        previousStock,
-        newStock: finalStock,
-        adjustment: actualQuantity,
-        reason: stockHistoryEntry.reason,
-      });
-
       res.json({
         success: true,
         message: "Stock adjusted successfully",
@@ -567,7 +542,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error adjusting stock:", error);
       res.status(500).json({
         success: false,
         message: "Error adjusting stock",
@@ -947,8 +921,6 @@ const itemController = {
         });
       }
 
-      console.log(`🔍 Getting transactions for item: ${item.name} (${itemId})`);
-
       // Build date filter
       const dateFilter = {};
       if (dateFrom || dateTo) {
@@ -1206,10 +1178,6 @@ const itemController = {
           .reduce((sum, t) => sum + (t.totalAmount || 0), 0),
       };
 
-      console.log(
-        `✅ Retrieved ${allTransactions.length} transactions for item: ${item.name}`
-      );
-
       res.json({
         success: true,
         data: {
@@ -1227,7 +1195,6 @@ const itemController = {
         message: `Found ${allTransactions.length} transactions for item`,
       });
     } catch (error) {
-      console.error("❌ Error getting item transactions:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch item transactions",
@@ -1254,8 +1221,6 @@ const itemController = {
         status = "completed",
         reason,
       } = req.body;
-
-      console.log("🔍 Creating transaction for item:", itemId);
 
       // Validate companyId
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
@@ -1408,7 +1373,6 @@ const itemController = {
         message: "Transaction created successfully",
       });
     } catch (error) {
-      console.error("❌ Error creating item transaction:", error);
       res.status(500).json({
         success: false,
         message: "Failed to create item transaction",
@@ -1425,13 +1389,6 @@ const itemController = {
     try {
       const {companyId, itemId, transactionId} = req.params;
       const updateData = req.body;
-
-      console.log(
-        "🔍 Updating transaction:",
-        transactionId,
-        "for item:",
-        itemId
-      );
 
       // Validate IDs
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
@@ -1504,7 +1461,6 @@ const itemController = {
         message: "Transaction not found",
       });
     } catch (error) {
-      console.error("❌ Error updating item transaction:", error);
       res.status(500).json({
         success: false,
         message: "Failed to update item transaction",
@@ -1516,13 +1472,6 @@ const itemController = {
   deleteItemTransaction: async (req, res) => {
     try {
       const {companyId, itemId, transactionId} = req.params;
-
-      console.log(
-        "🔍 Deleting transaction:",
-        transactionId,
-        "for item:",
-        itemId
-      );
 
       // Validate IDs
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
@@ -1603,7 +1552,6 @@ const itemController = {
         message: "Transaction not found",
       });
     } catch (error) {
-      console.error("❌ Error deleting item transaction:", error);
       res.status(500).json({
         success: false,
         message: "Failed to delete item transaction",
@@ -1615,10 +1563,6 @@ const itemController = {
   // ✅ FIXED: Admin functions as object methods (not const declarations)
   getAllItemsAdmin: async (req, res) => {
     try {
-      console.log(
-        "🔍 Admin items access - Development Mode (No Auth Required)"
-      );
-
       const {
         page = 1,
         limit = 50,
@@ -1808,8 +1752,6 @@ const itemController = {
         ),
       }));
 
-      console.log(`✅ Admin: Retrieved ${formattedItems.length} items`);
-
       res.json({
         success: true,
         message: `Retrieved ${formattedItems.length} items for admin dashboard`,
@@ -1826,7 +1768,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error in getAllItemsAdmin:", error);
       res.status(500).json({
         success: false,
         message: "Error retrieving items for admin",
@@ -1837,8 +1778,6 @@ const itemController = {
 
   getAdminItemStats: async (req, res) => {
     try {
-      console.log("📊 Admin item stats access - Development Mode");
-
       // Basic counts
       const totalItems = await Item.countDocuments();
       const totalProducts = await Item.countDocuments({type: "product"});
@@ -1982,15 +1921,12 @@ const itemController = {
         })),
       };
 
-      console.log("✅ Admin item stats calculated successfully");
-
       res.json({
         success: true,
         message: "Admin item statistics retrieved successfully",
         data: formattedStats,
       });
     } catch (error) {
-      console.error("❌ Error in getAdminItemStats:", error);
       res.status(500).json({
         success: false,
         message: "Error retrieving admin item statistics",
@@ -2001,8 +1937,6 @@ const itemController = {
 
   exportAllItemsAdmin: async (req, res) => {
     try {
-      console.log("📊 Admin export items access - Development Mode");
-
       const {format = "csv", ...filters} = req.query;
 
       // Build filter object (same as getAllItemsAdmin)
@@ -2091,7 +2025,6 @@ const itemController = {
         res.send(csv);
       }
     } catch (error) {
-      console.error("❌ Error in exportAllItemsAdmin:", error);
       res.status(500).json({
         success: false,
         message: "Error exporting items",
@@ -2102,8 +2035,6 @@ const itemController = {
 
   getAllLowStockItemsAdmin: async (req, res) => {
     try {
-      console.log("📊 Admin low stock items access - Development Mode");
-
       const {limit = 100, companyId = ""} = req.query;
 
       const filter = {
@@ -2166,7 +2097,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error in getAllLowStockItemsAdmin:", error);
       res.status(500).json({
         success: false,
         message: "Error fetching admin low stock items",
@@ -2183,8 +2113,6 @@ const itemController = {
    */
   getPendingVerificationItems: async (req, res) => {
     try {
-      console.log("🔍 Admin: Getting ALL items for name verification review");
-
       const {
         page = 1,
         limit = 50,
@@ -2324,10 +2252,6 @@ const itemController = {
         hasPrevPage: pageNum > 1,
       };
 
-      console.log(
-        `✅ Admin: Retrieved ${formattedItems.length} items for verification review`
-      );
-
       res.json({
         success: true,
         data: {
@@ -2342,7 +2266,6 @@ const itemController = {
         message: `Found ${formattedItems.length} items for verification review`,
       });
     } catch (error) {
-      console.error("❌ Error getting items for verification:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch items for verification",
@@ -2359,8 +2282,6 @@ const itemController = {
     try {
       const {itemId} = req.params;
       const {correctedName, adminId = "admin", adminNotes = ""} = req.body;
-
-      console.log(`🔍 Admin: Reviewing item ${itemId} for name verification`);
 
       if (!mongoose.Types.ObjectId.isValid(itemId)) {
         return res.status(400).json({
@@ -2444,11 +2365,9 @@ const itemController = {
       );
 
       if (wasNameCorrected) {
-        console.log(
-          `✅ Admin: Name CORRECTED - "${originalName}" → "${finalName}"`
-        );
+        // Name was corrected
       } else {
-        console.log(`✅ Admin: Name APPROVED as submitted - "${finalName}"`);
+        // Name was approved as submitted
       }
 
       res.json({
@@ -2476,7 +2395,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error approving item name:", error);
       res.status(500).json({
         success: false,
         message: "Failed to approve item name",
@@ -2489,8 +2407,6 @@ const itemController = {
   quickApproveItems: async (req, res) => {
     try {
       const {itemIds, adminId = "admin"} = req.body;
-
-      console.log(`🔍 Admin: Quick approving ${itemIds?.length || 0} items`);
 
       if (!Array.isArray(itemIds) || itemIds.length === 0) {
         return res.status(400).json({
@@ -2559,17 +2475,12 @@ const itemController = {
         }
       }
 
-      console.log(
-        `✅ Admin: Quick approval completed - ${results.approved.length} approved, ${results.failed.length} failed`
-      );
-
       res.json({
         success: true,
         message: `Quick approval completed: ${results.approved.length} approved, ${results.failed.length} failed`,
         data: results,
       });
     } catch (error) {
-      console.error("❌ Error in quick approve:", error);
       res.status(500).json({
         success: false,
         message: "Failed to quick approve items",
@@ -2586,8 +2497,6 @@ const itemController = {
     try {
       const {itemId} = req.params;
       const {rejectionReason, adminId, suggestedName} = req.body;
-
-      console.log(`🔍 Admin: Rejecting name for item ${itemId}`);
 
       if (!mongoose.Types.ObjectId.isValid(itemId)) {
         return res.status(400).json({
@@ -2648,10 +2557,6 @@ const itemController = {
         {new: true}
       );
 
-      console.log(
-        `❌ Admin: Name rejected - "${item.nameVerification.originalName}" - Reason: ${rejectionReason}`
-      );
-
       // Optional: Send notification to company
       // await notifyCompanyNameRejected(item.companyId, item.name, rejectionReason);
 
@@ -2674,7 +2579,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error rejecting item name:", error);
       res.status(500).json({
         success: false,
         message: "Failed to reject item name",
@@ -2690,8 +2594,6 @@ const itemController = {
   getVerificationHistory: async (req, res) => {
     try {
       const {itemId} = req.params;
-
-      console.log(`🔍 Admin: Getting verification history for item ${itemId}`);
 
       if (!mongoose.Types.ObjectId.isValid(itemId)) {
         return res.status(400).json({
@@ -2746,7 +2648,6 @@ const itemController = {
         message: "Verification history retrieved successfully",
       });
     } catch (error) {
-      console.error("❌ Error getting verification history:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch verification history",
@@ -2761,8 +2662,6 @@ const itemController = {
    */
   getVerificationStats: async (req, res) => {
     try {
-      console.log("📊 Admin: Getting verification statistics");
-
       const {companyId} = req.query;
 
       // Build match filter
@@ -2861,15 +2760,12 @@ const itemController = {
         });
       }
 
-      console.log("✅ Admin: Verification statistics calculated");
-
       res.json({
         success: true,
         data: formattedStats,
         message: "Verification statistics retrieved successfully",
       });
     } catch (error) {
-      console.error("❌ Error getting verification stats:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch verification statistics",
@@ -2885,8 +2781,6 @@ const itemController = {
   bulkApproveItems: async (req, res) => {
     try {
       const {items, adminId} = req.body; // items: [{ itemId, verifiedName }]
-
-      console.log(`🔍 Admin: Bulk approving ${items?.length || 0} items`);
 
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
@@ -2965,17 +2859,12 @@ const itemController = {
         }
       }
 
-      console.log(
-        `✅ Admin: Bulk approval completed - ${results.approved.length} approved, ${results.failed.length} failed`
-      );
-
       res.json({
         success: true,
         message: `Bulk approval completed: ${results.approved.length} approved, ${results.failed.length} failed`,
         data: results,
       });
     } catch (error) {
-      console.error("❌ Error in bulk approve:", error);
       res.status(500).json({
         success: false,
         message: "Failed to bulk approve items",
@@ -2992,8 +2881,6 @@ const itemController = {
     try {
       const {itemId} = req.params;
       const {newName, resubmissionReason} = req.body;
-
-      console.log(`🔍 Resubmitting item ${itemId} for verification`);
 
       if (!mongoose.Types.ObjectId.isValid(itemId)) {
         return res.status(400).json({
@@ -3051,8 +2938,6 @@ const itemController = {
         {new: true}
       );
 
-      console.log(`✅ Item resubmitted for verification: ${newName.trim()}`);
-
       res.json({
         success: true,
         message: "Item resubmitted for verification successfully",
@@ -3065,7 +2950,6 @@ const itemController = {
         },
       });
     } catch (error) {
-      console.error("❌ Error resubmitting item:", error);
       res.status(500).json({
         success: false,
         message: "Failed to resubmit item for verification",

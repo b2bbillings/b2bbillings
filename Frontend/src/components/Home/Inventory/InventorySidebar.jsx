@@ -75,7 +75,6 @@ function InventorySidebar({
   // Three-dot menu handlers
   const handleEditItem = (item, e) => {
     e.stopPropagation();
-    console.log("🔧 InventorySidebar: Edit item clicked:", item);
     if (item && onEditItem) {
       onEditItem(item);
     }
@@ -84,7 +83,6 @@ function InventorySidebar({
   const handleDeleteClick = (item, e) => {
     e.stopPropagation();
     if (item) {
-      console.log("🗑️ InventorySidebar: Delete clicked for item:", item);
       setItemToDelete(item);
       setShowDeleteModal(true);
     }
@@ -97,15 +95,10 @@ function InventorySidebar({
 
     try {
       setIsDeleting(true);
-      console.log(
-        "🗑️ InventorySidebar: Confirming delete for item:",
-        itemToDelete
-      );
 
       const success = await onDeleteItem(itemToDelete);
 
       if (success) {
-        console.log("✅ InventorySidebar: Item deleted successfully");
       } else {
         console.error("❌ InventorySidebar: Delete operation failed");
       }

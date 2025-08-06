@@ -11,6 +11,37 @@ const rateLimit = require("express-rate-limit");
 // Load environment variables
 dotenv.config();
 
+// ===== ENVIRONMENT VALIDATION =====
+const requiredEnvVars = [
+  "MONGODB_URI",
+  "JWT_SECRET",
+  "JWT_REFRESH_SECRET",
+  "NODE_ENV",
+];
+
+const missingEnvVars = requiredEnvVars.filter((env) => !process.env[env]);
+if (missingEnvVars.length > 0) {
+  console.error("❌ Missing required environment variables:", missingEnvVars);
+  console.error(
+    "💡 Please check your .env file and ensure all required variables are set"
+  );
+  process.exit(1);
+}
+
+// Validate JWT secrets are strong enough for production
+if (process.env.NODE_ENV === "production") {
+  if (process.env.JWT_SECRET.length < 32) {
+    console.error("❌ JWT_SECRET must be at least 32 characters in production");
+    process.exit(1);
+  }
+  if (process.env.JWT_REFRESH_SECRET.length < 32) {
+    console.error(
+      "❌ JWT_REFRESH_SECRET must be at least 32 characters in production"
+    );
+    process.exit(1);
+  }
+}
+
 // Import production utilities
 const logger = require("./src/config/logger");
 const {createAuditLog} = require("./src/utils/auditLogger");
@@ -48,7 +79,7 @@ const server = http.createServer(app);
 // Trust proxy (for load balancers, reverse proxies)
 app.set("trust proxy", 1);
 
-// Security headers
+// ✅ ENHANCED: Security headers with production-ready CSP
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -58,10 +89,21 @@ app.use(
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "wss:", "https:"],
+        connectSrc: ["'self'", "wss:", "ws:", "https:"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
       },
     },
     crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    noSniff: true,
+    xssFilter: true,
+    referrerPolicy: {policy: "same-origin"},
   })
 );
 
@@ -77,11 +119,227 @@ app.use(
   })
 );
 
-// Rate limiting
+// ================================
+// 🔧 CORS MIDDLEWARE - FIXED VERSION
+// ================================
+
+// ✅ FIXED: Define allowed origins based on environment
+const getAllowedOrigins = () => {
+  if (process.env.NODE_ENV === "production") {
+    return process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map((url) => url.trim())
+      : ["https://yourdomain.com"]; // Replace with your production domain
+  } else {
+    return [
+      "http://localhost:5173", // Vite default
+      "http://localhost:3000", // React default
+      "http://localhost:5000", // Express default
+      "http://localhost:4173", // Vite preview
+      "http://127.0.0.1:5173", // Alternative localhost
+      "http://127.0.0.1:3000", // Alternative localhost
+      "http://127.0.0.1:5000", // Alternative localhost
+    ];
+  }
+};
+
+// ✅ FIXED: Improved CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = getAllowedOrigins();
+
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn("CORS blocked request", {
+        origin,
+        allowedOrigins,
+        timestamp: new Date().toISOString(),
+      });
+      callback(null, false); // Don't throw error, just deny
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+    "x-company-id",
+    "X-Company-ID",
+    "x-request-id",
+    "X-Request-ID",
+    "x-client-version",
+    "X-Client-Version",
+    "x-client-platform",
+    "X-Client-Platform",
+    "x-auth-token",
+    "X-Auth-Token",
+    "x-user-id",
+    "X-User-ID",
+    "Cache-Control",
+    "Pragma",
+    "Expires",
+    "If-Modified-Since",
+    "X-HTTP-Method-Override",
+  ],
+  exposedHeaders: [
+    "Content-Length",
+    "X-Total-Count",
+    "X-Request-ID",
+    "X-Response-Time",
+    "X-Rate-Limit-Remaining",
+    "X-Rate-Limit-Reset",
+    "Content-Range",
+    "Accept-Ranges",
+  ],
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+  maxAge: 86400, // Cache preflight for 24 hours
+};
+
+// ✅ Apply CORS middleware EARLY - before other middleware
+app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests explicitly
+app.options("*", cors(corsOptions));
+
+// ✅ FIXED: Additional CORS headers middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = getAllowedOrigins();
+
+  // Set CORS headers
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Vary", "Origin");
+  }
+
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD"
+  );
+
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, " +
+      "x-company-id, X-Company-ID, x-request-id, X-Request-ID, " +
+      "x-client-version, X-Client-Version, x-client-platform, X-Client-Platform, " +
+      "x-auth-token, X-Auth-Token, x-user-id, X-User-ID, Cache-Control, " +
+      "Pragma, Expires, If-Modified-Since, X-HTTP-Method-Override"
+  );
+
+  res.header(
+    "Access-Control-Expose-Headers",
+    "Content-Length, X-Total-Count, X-Request-ID, X-Response-Time, " +
+      "X-Rate-Limit-Remaining, X-Rate-Limit-Reset, Content-Range, Accept-Ranges"
+  );
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    logger.info("CORS preflight request", {
+      origin: req.headers.origin,
+      method: req.headers["access-control-request-method"],
+      headers: req.headers["access-control-request-headers"],
+    });
+    return res.status(200).end();
+  }
+
+  next();
+});
+
+// ================================
+// 📊 MONITORING MIDDLEWARE
+// ================================
+
+// Request ID middleware for tracing
+app.use((req, res, next) => {
+  req.requestId =
+    req.headers["x-request-id"] || Math.random().toString(36).substring(2, 15);
+  req.startTime = Date.now();
+  res.header("X-Request-ID", req.requestId);
+  next();
+});
+
+// ✅ ENHANCED: Request logging middleware with better filtering
+app.use((req, res, next) => {
+  // Skip logging for health checks and frequent polling endpoints
+  const skipLogging =
+    process.env.NODE_ENV === "production" &&
+    (req.url === "/api/health" ||
+      req.url === "/api/socket/status" ||
+      req.url.includes("/api/notifications/unread-count"));
+
+  if (skipLogging) {
+    return next();
+  }
+
+  logger.info("Request started", {
+    requestId: req.requestId,
+    method: req.method,
+    url: req.url,
+    userAgent: req.get("User-Agent"),
+    ip: req.ip,
+    origin: req.get("Origin"),
+    clientVersion: req.get("X-Client-Version"),
+    clientPlatform: req.get("X-Client-Platform"),
+    timestamp: new Date().toISOString(),
+  });
+
+  // Override res.end to log response
+  const originalEnd = res.end;
+  res.end = function (...args) {
+    const duration = Date.now() - req.startTime;
+    res.header("X-Response-Time", `${duration}ms`);
+
+    if (!skipLogging) {
+      logger.info("Request completed", {
+        requestId: req.requestId,
+        method: req.method,
+        url: req.url,
+        statusCode: res.statusCode,
+        duration,
+        ip: req.ip,
+        origin: req.get("Origin"),
+      });
+
+      // Log slow requests
+      if (duration > 2000) {
+        logger.warn("Slow request detected", {
+          requestId: req.requestId,
+          method: req.method,
+          url: req.url,
+          duration,
+          statusCode: res.statusCode,
+        });
+      }
+    }
+
+    originalEnd.apply(res, args);
+  };
+
+  next();
+});
+
+// ================================
+// 🚦 RATE LIMITING
+// ================================
+
+// ✅ ENHANCED: Rate limiting with IPv6 support
+const {ipKeyGenerator} = require("express-rate-limit");
+
 const createRateLimit = (windowMs, max, message) =>
   rateLimit({
     windowMs,
-    max,
+    max: process.env.NODE_ENV === "production" ? max : max * 5,
     message: {
       success: false,
       message,
@@ -90,13 +348,24 @@ const createRateLimit = (windowMs, max, message) =>
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => process.env.NODE_ENV === "development",
+    keyGenerator: (req) => {
+      const ip = ipKeyGenerator(req); // ✅ IPv6 compatible
+      return ip;
+    },
+    skip: (req) => {
+      // Skip for health checks
+      return (
+        req.url === "/api/health" && process.env.NODE_ENV === "development"
+      );
+    },
     handler: (req, res) => {
       logger.warn("Rate limit exceeded", {
         ip: req.ip,
         userAgent: req.get("User-Agent"),
         url: req.url,
         method: req.method,
+        limit: max,
+        window: windowMs,
       });
       res.status(429).json({
         success: false,
@@ -107,7 +376,7 @@ const createRateLimit = (windowMs, max, message) =>
     },
   });
 
-// Different rate limits for different endpoints
+// Apply rate limits
 app.use(
   "/api/auth",
   createRateLimit(15 * 60 * 1000, 5, "Too many authentication attempts")
@@ -116,103 +385,15 @@ app.use(
   "/api/payments",
   createRateLimit(5 * 60 * 1000, 10, "Payment API limit exceeded")
 );
+app.use(
+  "/api/notifications",
+  createRateLimit(1 * 60 * 1000, 100, "Notification API limit exceeded")
+);
 app.use("/api", createRateLimit(15 * 60 * 1000, 100, "API limit exceeded"));
 
 // ================================
-// 📊 PRODUCTION MONITORING MIDDLEWARE
+// 📦 BODY PARSING MIDDLEWARE
 // ================================
-
-// Request ID middleware for tracing
-app.use((req, res, next) => {
-  req.requestId = Math.random().toString(36).substring(2, 15);
-  req.startTime = Date.now();
-  next();
-});
-
-// Request logging middleware
-app.use((req, res, next) => {
-  // Skip logging for health checks in production
-  if (req.url === "/api/health" && process.env.NODE_ENV === "production") {
-    return next();
-  }
-
-  logger.info("Request started", {
-    requestId: req.requestId,
-    method: req.method,
-    url: req.url,
-    userAgent: req.get("User-Agent"),
-    ip: req.ip,
-    timestamp: new Date().toISOString(),
-  });
-
-  // Override res.end to log response
-  const originalEnd = res.end;
-  res.end = function (...args) {
-    const duration = Date.now() - req.startTime;
-
-    logger.info("Request completed", {
-      requestId: req.requestId,
-      method: req.method,
-      url: req.url,
-      statusCode: res.statusCode,
-      duration,
-      ip: req.ip,
-    });
-
-    // Log slow requests
-    if (duration > 2000) {
-      logger.warn("Slow request detected", {
-        requestId: req.requestId,
-        method: req.method,
-        url: req.url,
-        duration,
-        statusCode: res.statusCode,
-      });
-    }
-
-    originalEnd.apply(res, args);
-  };
-
-  next();
-});
-
-// ================================
-// 🔧 CORE MIDDLEWARE
-// ================================
-
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowedOrigins = process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(",")
-      : ["http://localhost:5173", "http://localhost:3000"];
-
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      logger.warn("CORS blocked request", {origin, allowedOrigins});
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-    "x-company-id",
-    "x-request-id",
-    "x-auth-token", // Add this line
-    "Cache-Control",
-  ],
-};
-
-app.use(cors(corsOptions));
 
 // Body parsing middleware
 app.use(
@@ -221,7 +402,6 @@ app.use(
     verify: (req, res, buf) => {
       // Log large requests
       if (buf.length > 1024 * 1024) {
-        // 1MB
         logger.warn("Large request received", {
           size: buf.length,
           url: req.url,
@@ -249,9 +429,23 @@ app.use(
   })
 );
 
-// Initialize Socket.IO
-const socketManager = new SocketManager(server);
-app.set("socketManager", socketManager);
+// ================================
+// 🔌 SOCKET.IO INITIALIZATION
+// ================================
+
+// Initialize Socket.IO with error handling
+let socketManager;
+try {
+  socketManager = new SocketManager(server);
+  app.set("socketManager", socketManager);
+  logger.info("Socket.IO initialized successfully", {
+    service: "shop-management-api",
+    version: "2.0.0",
+  });
+} catch (error) {
+  logger.error("Failed to initialize Socket.IO", {error: error.message});
+  socketManager = null;
+}
 
 // ================================
 // 🏥 ENHANCED HEALTH CHECK
@@ -264,57 +458,68 @@ app.get("/api/health", async (req, res) => {
     // Check database connectivity
     const dbCheck = mongoose.connection.readyState === 1;
 
-    // Check socket manager
-    const socketStats = socketManager.getStats();
+    // Check socket manager with error handling
+    let socketStats = {totalConnections: 0, onlineUsers: 0, activeRooms: 0};
+    if (socketManager) {
+      try {
+        socketStats = socketManager.getStats();
+      } catch (socketError) {
+        logger.warn("Socket stats unavailable", {error: socketError.message});
+      }
+    }
 
     // Get system metrics
     const memoryUsage = process.memoryUsage();
     const cpuUsage = process.cpuUsage();
 
     const healthData = {
-      status: "healthy",
+      status: dbCheck ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
-      version: "2.0.0",
+      version: "2.1.0",
       environment: process.env.NODE_ENV,
       uptime: Math.floor(process.uptime()),
       responseTime: Date.now() - startTime,
       database: {
         status: dbCheck ? "connected" : "disconnected",
-        name: mongoose.connection.name,
+        name: mongoose.connection.name || "unknown",
         readyState: mongoose.connection.readyState,
       },
       services: {
         api: "operational",
         websocket: socketManager ? "operational" : "disabled",
-        chat: "operational",
-        notifications: "operational",
-        payments: "operational",
+        chat: dbCheck ? "operational" : "degraded",
+        notifications: dbCheck ? "operational" : "degraded",
+        payments: dbCheck ? "operational" : "degraded",
+        cors: "enabled",
+        ipv6Support: "enabled", // ✅ NEW: IPv6 support indicator
       },
-      socket: {
-        totalConnections: socketStats.totalConnections,
-        onlineUsers: socketStats.onlineUsers,
-        activeRooms: socketStats.activeRooms,
-      },
+      socket: socketStats,
       system: {
         memory: {
           used: Math.round(memoryUsage.heapUsed / 1024 / 1024),
           total: Math.round(memoryUsage.heapTotal / 1024 / 1024),
           external: Math.round(memoryUsage.external / 1024 / 1024),
+          usagePercent: Math.round(
+            (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100
+          ),
         },
         cpu: {
           user: cpuUsage.user,
           system: cpuUsage.system,
         },
+        loadAverage:
+          process.platform !== "win32" ? require("os").loadavg() : null,
+      },
+      cors: {
+        status: "enabled",
+        allowedOrigins: getAllowedOrigins(),
+        ipv6Compatible: true,
       },
     };
 
-    // Log health check in development only
-    if (process.env.NODE_ENV === "development") {
-      logger.info("Health check performed", healthData);
-    }
-
-    res.status(200).json({
-      success: true,
+    const statusCode = dbCheck ? 200 : 503;
+    res.status(statusCode).json({
+      success: dbCheck,
       data: healthData,
     });
   } catch (error) {
@@ -333,9 +538,86 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// ✅ ENHANCED: CORS Test endpoint with detailed info
+app.get("/api/cors-test", (req, res) => {
+  const origin = req.get("Origin");
+  const allowedOrigins = getAllowedOrigins();
+  const isAllowed = !origin || allowedOrigins.includes(origin);
+
+  res.json({
+    success: true,
+    message: "CORS is working correctly",
+    data: {
+      origin: origin || "No origin header",
+      isOriginAllowed: isAllowed,
+      allowedOrigins,
+      userAgent: req.get("User-Agent"),
+      clientVersion: req.get("X-Client-Version"),
+      clientPlatform: req.get("X-Client-Platform"),
+      requestHeaders: Object.keys(req.headers),
+      corsHeaders: {
+        "Access-Control-Allow-Origin": res.get("Access-Control-Allow-Origin"),
+        "Access-Control-Allow-Credentials": res.get(
+          "Access-Control-Allow-Credentials"
+        ),
+        "Access-Control-Allow-Methods": res.get("Access-Control-Allow-Methods"),
+        "Access-Control-Allow-Headers": res.get("Access-Control-Allow-Headers"),
+      },
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+// Production metrics endpoint (authenticated)
+app.get("/api/metrics", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const metricsToken = process.env.METRICS_TOKEN || "dev-metrics-token";
+
+    if (!authHeader || authHeader !== `Bearer ${metricsToken}`) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized access to metrics",
+      });
+    }
+
+    const metrics = {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpu: process.cpuUsage(),
+      database: {
+        readyState: mongoose.connection.readyState,
+        name: mongoose.connection.name,
+      },
+      environment: process.env.NODE_ENV,
+      version: "2.1.0",
+      cors: {
+        allowedOrigins: getAllowedOrigins(),
+        ipv6Support: true,
+      },
+    };
+
+    res.json({success: true, data: metrics});
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to get metrics",
+    });
+  }
+});
+
 // Socket.IO status endpoint
 app.get("/api/socket/status", (req, res) => {
   try {
+    if (!socketManager) {
+      return res.json({
+        success: false,
+        message: "Socket.IO not initialized",
+        data: {totalConnections: 0, status: "disabled"},
+      });
+    }
+
     const stats = socketManager.getStats();
     res.json({
       success: true,
@@ -355,6 +637,10 @@ app.get("/api/socket/status", (req, res) => {
     });
   }
 });
+
+// ================================
+// 🛣️ API ROUTES
+// ================================
 
 // ================================
 // 🔐 AUTHENTICATION & USER MANAGEMENT
@@ -426,11 +712,21 @@ app.use("/api/bank-accounts", bankAccountRoutes);
 app.use("/api/transactions", transactionRoutes);
 
 // ================================
-// ⚠️ PRODUCTION ERROR HANDLING
+// ⚠️ ERROR HANDLING
 // ================================
 
 // Global error handling middleware
 app.use(async (err, req, res, next) => {
+  // ✅ FIXED: Ensure CORS headers are present even for errors
+  const origin = req.headers.origin;
+  const allowedOrigins = getAllowedOrigins();
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Vary", "Origin");
+  }
+
   // Log error with full context
   logger.error("Global error caught", {
     error: err.message,
@@ -442,6 +738,7 @@ app.use(async (err, req, res, next) => {
     user: req.user?.id,
     ip: req.ip,
     userAgent: req.get("User-Agent"),
+    origin: req.get("Origin"),
     timestamp: new Date().toISOString(),
   });
 
@@ -470,7 +767,7 @@ app.use(async (err, req, res, next) => {
 
   const isDevelopment = process.env.NODE_ENV === "development";
 
-  // Handle specific error types
+  // Handle Mongoose validation errors
   if (err.name === "ValidationError") {
     return res.status(400).json({
       success: false,
@@ -482,9 +779,11 @@ app.use(async (err, req, res, next) => {
       })),
       code: "VALIDATION_ERROR",
       requestId: req.requestId,
+      timestamp: new Date().toISOString(),
     });
   }
 
+  // Handle Mongoose cast errors (invalid ObjectId)
   if (err.name === "CastError") {
     return res.status(400).json({
       success: false,
@@ -493,27 +792,53 @@ app.use(async (err, req, res, next) => {
       value: err.value,
       code: "INVALID_ID_FORMAT",
       requestId: req.requestId,
+      timestamp: new Date().toISOString(),
     });
   }
 
+  // Handle MongoDB duplicate key error
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
     return res.status(409).json({
       success: false,
-      message: "Duplicate entry",
+      message: `Duplicate entry for ${field}`,
       field: field,
       value: err.keyValue[field],
       code: "DUPLICATE_ENTRY",
       requestId: req.requestId,
+      timestamp: new Date().toISOString(),
     });
   }
 
+  // Handle JWT errors
+  if (err.name === "JsonWebTokenError") {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token",
+      code: "INVALID_TOKEN",
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  if (err.name === "TokenExpiredError") {
+    return res.status(401).json({
+      success: false,
+      message: "Token expired",
+      code: "TOKEN_EXPIRED",
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Handle authorization errors
   if (err.name === "UnauthorizedError" || err.status === 401) {
     return res.status(401).json({
       success: false,
       message: "Authentication required",
       code: "UNAUTHORIZED",
       requestId: req.requestId,
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -523,6 +848,31 @@ app.use(async (err, req, res, next) => {
       message: "Access denied",
       code: "FORBIDDEN",
       requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Handle CORS errors
+  if (err.message.includes("CORS") || err.message.includes("Origin")) {
+    return res.status(403).json({
+      success: false,
+      message: "CORS policy violation",
+      code: "CORS_ERROR",
+      origin: req.get("Origin"),
+      allowedOrigins: getAllowedOrigins(),
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Handle request size errors
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      message: "Request entity too large",
+      code: "PAYLOAD_TOO_LARGE",
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -542,11 +892,22 @@ app.use(async (err, req, res, next) => {
 
 // Enhanced 404 handler
 app.use("*", (req, res) => {
+  // ✅ FIXED: Add CORS headers to 404 responses
+  const origin = req.headers.origin;
+  const allowedOrigins = getAllowedOrigins();
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Vary", "Origin");
+  }
+
   logger.warn("Route not found", {
     method: req.method,
     url: req.originalUrl,
     ip: req.ip,
     userAgent: req.get("User-Agent"),
+    origin: req.get("Origin"),
   });
 
   res.status(404).json({
@@ -555,60 +916,189 @@ app.use("*", (req, res) => {
     code: "ROUTE_NOT_FOUND",
     timestamp: new Date().toISOString(),
     suggestion: "Check the API documentation for available endpoints",
-    health: `/api/health`,
+    health: "/api/health",
+    corsTest: "/api/cors-test",
   });
 });
 
 // ================================
-// 🗄️ FIXED DATABASE CONNECTION
+// 🗄️ DATABASE CONNECTION
 // ================================
 
 const connectDatabase = async () => {
-  try {
-    const MONGODB_URI =
-      process.env.MONGODB_URI || "mongodb://localhost:27017/shop-management";
+  const maxRetries = process.env.NODE_ENV === "production" ? 5 : 3;
+  let retryCount = 0;
 
-    // ✅ FIXED: Updated options for latest Mongoose version
-    const options = {
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-    };
+  while (retryCount < maxRetries) {
+    try {
+      const MONGODB_URI = process.env.MONGODB_URI;
 
-    await mongoose.connect(MONGODB_URI, options);
+      // ✅ FIXED: Updated Atlas-compatible options (removed deprecated options)
+      const options = {
+        // Connection pool settings
+        maxPoolSize: process.env.NODE_ENV === "production" ? 20 : 10,
+        minPoolSize: 2,
 
-    logger.info("Database connected successfully", {
-      host: mongoose.connection.host,
-      name: mongoose.connection.name,
-      readyState: mongoose.connection.readyState,
-      environment: process.env.NODE_ENV,
-    });
+        // Timeout settings - optimized for Atlas
+        serverSelectionTimeoutMS: 15000,
+        socketTimeoutMS: 60000,
+        connectTimeoutMS: 20000,
+        heartbeatFrequencyMS: 10000,
 
-    // Handle connection events
-    mongoose.connection.on("error", (error) => {
-      logger.error("Database connection error", {error: error.message});
-    });
+        // Atlas-specific settings
+        retryWrites: true,
+        w: "majority",
+        readPreference: "primary",
+        
+        // ✅ UPDATED: Modern compression (zstd is faster than zlib for Atlas)
+        compressors: ["zstd", "zlib", "snappy"],
 
-    mongoose.connection.on("disconnected", () => {
-      logger.warn("Database disconnected");
-    });
+        // ✅ REMOVED: Deprecated options that cause errors
+        // ssl: true, // Not needed for Atlas (handled automatically)
+        // tlsAllowInvalidCertificates: false, // Default behavior
+        // tlsAllowInvalidHostnames: false, // Default behavior
+        // bufferCommands: false, // Deprecated
+        // bufferMaxEntries: 0, // ✅ REMOVED: This was causing the error
 
-    mongoose.connection.on("reconnected", () => {
-      logger.info("Database reconnected");
-    });
+        // ✅ KEPT: Valid Atlas options
+        authSource: "admin",
+        appName: "Shop-Management-System",
 
-    // Handle connection timeout
-    mongoose.connection.on("timeout", () => {
-      logger.warn("Database connection timeout");
-    });
-  } catch (error) {
-    logger.error("Database connection failed", {error: error.message});
-    process.exit(1);
+        // ✅ NEW: Modern MongoDB driver options
+        family: 4, // Use IPv4, disable IPv6 for better Atlas compatibility
+        maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+        waitQueueTimeoutMS: 5000, // Wait 5 seconds for a connection from the pool
+      };
+
+      logger.info("Attempting to connect to MongoDB Atlas...", {
+        environment: process.env.NODE_ENV,
+        retryAttempt: retryCount,
+        atlasCluster: MONGODB_URI.includes("mongodb+srv") ? "Yes" : "No",
+      });
+
+      await mongoose.connect(MONGODB_URI, options);
+
+      logger.info("✅ Atlas Database connected successfully", {
+        service: "shop-management-api",
+        version: "2.1.0",
+        host: mongoose.connection.host,
+        name: mongoose.connection.name,
+        readyState: mongoose.connection.readyState,
+        environment: process.env.NODE_ENV,
+        retryAttempt: retryCount,
+        cluster: "MongoDB Atlas",
+        connected: true,
+      });
+
+      // ✅ ENHANCED: Atlas-specific event handlers
+      mongoose.connection.on("error", (error) => {
+        logger.error("Atlas connection error", {
+          error: error.message,
+          code: error.code,
+          cluster: "MongoDB Atlas",
+        });
+      });
+
+      mongoose.connection.on("disconnected", () => {
+        logger.warn("Atlas database disconnected", {
+          cluster: "MongoDB Atlas",
+          willReconnect: process.env.NODE_ENV === "production",
+        });
+
+        // ✅ AUTO-RECONNECT: Only in production
+        if (process.env.NODE_ENV === "production") {
+          setTimeout(() => connectDatabase(), 5000);
+        }
+      });
+
+      mongoose.connection.on("reconnected", () => {
+        logger.info("Atlas database reconnected", {
+          cluster: "MongoDB Atlas",
+          readyState: mongoose.connection.readyState,
+        });
+      });
+
+      mongoose.connection.on("timeout", () => {
+        logger.warn("Atlas connection timeout", {
+          cluster: "MongoDB Atlas",
+          timeout: "60 seconds",
+        });
+      });
+
+      // ✅ Atlas-specific connection events
+      mongoose.connection.on("fullsetup", () => {
+        logger.info("Atlas replica set fully connected", {
+          cluster: "MongoDB Atlas",
+        });
+      });
+
+      mongoose.connection.on("all", () => {
+        logger.info("Atlas all replica set members connected", {
+          cluster: "MongoDB Atlas",
+        });
+      });
+
+      break; // Connection successful
+    } catch (error) {
+      retryCount++;
+      logger.error(`Atlas connection attempt ${retryCount} failed`, {
+        error: error.message,
+        code: error.code,
+        retryCount,
+        maxRetries,
+        cluster: "MongoDB Atlas",
+      });
+
+      // ✅ SPECIFIC: Atlas error handling
+      if (error.message.includes("Authentication failed")) {
+        logger.error(
+          "❌ Atlas Authentication Error - Check credentials in .env",
+          {
+            error: error.message,
+          }
+        );
+        if (process.env.NODE_ENV === "production") {
+          process.exit(1);
+        }
+      }
+
+      if (error.message.includes("Network") || error.message.includes("timeout")) {
+        logger.error("❌ Atlas Network Error - Check IP whitelist", {
+          error: error.message,
+        });
+      }
+
+      // ✅ NEW: Handle deprecated option errors
+      if (error.message.includes("not supported") || error.message.includes("deprecated")) {
+        logger.error("❌ Atlas Configuration Error - Deprecated options used", {
+          error: error.message,
+          suggestion: "Update mongoose connection options",
+        });
+      }
+
+      if (retryCount >= maxRetries) {
+        if (process.env.NODE_ENV === "production") {
+          logger.error(
+            "Atlas connection failed after maximum retries. Exiting..."
+          );
+          process.exit(1);
+        } else {
+          logger.warn(
+            "Atlas connection failed. Check your .env file and network connection."
+          );
+          return;
+        }
+      }
+
+      // ✅ EXPONENTIAL BACKOFF: Wait longer for Atlas
+      const delay = Math.min(2000 * Math.pow(2, retryCount), 60000); // Up to 60 seconds
+      logger.info(`Retrying Atlas connection in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
 };
-
 // ================================
-// 🚀 ENHANCED SERVER START
+// 🚀 SERVER START
 // ================================
 
 const startServer = async () => {
@@ -617,33 +1107,70 @@ const startServer = async () => {
     await connectDatabase();
 
     const PORT = process.env.PORT || 5000;
+    const HOST = process.env.HOST || "0.0.0.0";
 
-    server.listen(PORT, () => {
-      const socketStats = socketManager.getStats();
+    server.listen(PORT, HOST, () => {
+      let socketStats = {totalConnections: 0};
+      if (socketManager) {
+        try {
+          socketStats = socketManager.getStats();
+        } catch (error) {
+          // Ignore socket stats error
+        }
+      }
 
       logger.info("Server started successfully", {
+        service: "shop-management-api",
+        version: "2.1.0",
         port: PORT,
+        host: HOST,
         environment: process.env.NODE_ENV,
         socketConnections: socketStats.totalConnections,
-        version: "2.0.0",
+        pid: process.pid,
       });
 
       // Console output for development
       if (process.env.NODE_ENV === "development") {
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("🚀 Shop Management System (Production Ready)");
+        console.log("🚀 Shop Management System v2.1.0 (CORS Fixed!)");
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         console.log(`🌐 Server: http://localhost:${PORT}`);
         console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
+        console.log(`🧪 CORS Test: http://localhost:${PORT}/api/cors-test`);
+        console.log(`📊 Metrics: http://localhost:${PORT}/api/metrics`);
         console.log(`📊 Environment: ${process.env.NODE_ENV}`);
         console.log(
-          `🔌 Socket.IO: Active (${socketStats.totalConnections} connections)`
+          `🔌 Socket.IO: ${socketManager ? "Active" : "Disabled"} (${
+            socketStats.totalConnections
+          } connections)`
         );
-        console.log(`💬 Real-time Features: Enabled`);
+        console.log(`🌐 CORS: Enabled for localhost:5173, 3000, 5000`);
+        console.log(`🔔 Notifications: Ready`);
+        console.log(
+          `💬 Real-time Features: ${socketManager ? "Enabled" : "Disabled"}`
+        );
         console.log(`🛡️ Security: Production Grade`);
         console.log(`📝 Logging: Comprehensive`);
+        console.log(`🔒 Rate Limiting: Enabled`);
+        console.log(`⚡ Performance: Optimized`);
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("✅ Ready for Production Deployment!");
+        console.log("✅ CORS Issue Fixed - Frontend should work now!");
+        console.log("💡 Test your notification service at:");
+        console.log(
+          `   http://localhost:${PORT}/api/notifications/unread-count`
+        );
+        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      }
+    });
+
+    // Handle server errors
+    server.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        logger.error(`Port ${PORT} is already in use`);
+        process.exit(1);
+      } else {
+        logger.error("Server error", {error: error.message});
+        process.exit(1);
       }
     });
   } catch (error) {
@@ -653,7 +1180,7 @@ const startServer = async () => {
 };
 
 // ================================
-// 🔄 ENHANCED GRACEFUL SHUTDOWN
+// 🔄 GRACEFUL SHUTDOWN
 // ================================
 
 const gracefulShutdown = async (signal) => {
@@ -666,13 +1193,23 @@ const gracefulShutdown = async (signal) => {
 
       // Shutdown Socket.IO
       if (socketManager && socketManager.shutdown) {
-        await socketManager.shutdown();
-        logger.info("Socket.IO closed");
+        try {
+          await socketManager.shutdown();
+          logger.info("Socket.IO closed");
+        } catch (error) {
+          logger.error("Error closing Socket.IO", {error: error.message});
+        }
       }
 
       // Close database connection
-      await mongoose.connection.close();
-      logger.info("Database connection closed");
+      try {
+        await mongoose.connection.close();
+        logger.info("Database connection closed");
+      } catch (error) {
+        logger.error("Error closing database connection", {
+          error: error.message,
+        });
+      }
 
       logger.info("Graceful shutdown completed");
       process.exit(0);

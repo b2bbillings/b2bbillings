@@ -1,13 +1,13 @@
 const express = require("express");
-const {body, param, query} = require("express-validator");
+const {body, param, query, validationResult} = require("express-validator");
 const {
   createStaff,
   getAllStaff,
   getStaffById,
   updateStaff,
   deleteStaff,
-  restoreStaff, // ✅ NEW: Import restore function
-  getDeletedStaff, // ✅ NEW: Import get deleted function
+  restoreStaff,
+  getDeletedStaff,
   uploadDocuments,
   verifyDocument,
   setPassword,
@@ -35,7 +35,86 @@ router.use(requireCompanyAccess);
 // 🔧 VALIDATION MIDDLEWARE
 // ================================
 
-// Validation middleware for staff creation
+// Validation error handler
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: errors.array(),
+    });
+  }
+  next();
+};
+
+// Valid role options (updated to match controller exactly)
+const VALID_ROLES = [
+  "admin",
+  "manager",
+  "supervisor",
+  "cashier",
+  "salesperson",
+  "inventory",
+  "accountant",
+  "delivery",
+  "security",
+  "cleaner",
+  "technician",
+];
+
+const VALID_POSTS = [
+  "junior",
+  "senior",
+  "assistant",
+  "executive",
+  "officer",
+  "head",
+  "lead",
+  "trainee",
+];
+
+const VALID_DEPARTMENTS = [
+  "Sales",
+  "Marketing",
+  "Finance",
+  "Operations",
+  "Human Resources",
+  "IT",
+  "Customer Service",
+  "Inventory",
+  "Security",
+  "Administration",
+];
+
+const VALID_EMPLOYMENT_TYPES = [
+  "full-time",
+  "part-time",
+  "contract",
+  "internship",
+];
+
+const VALID_STATUSES = [
+  "active",
+  "inactive",
+  "terminated",
+  "on-leave",
+  "suspended",
+];
+
+const VALID_PERMISSIONS = [
+  "dashboard",
+  "sales",
+  "purchases",
+  "inventory",
+  "customers",
+  "suppliers",
+  "staff",
+  "reports",
+  "settings",
+];
+
+// Create staff validation
 const createStaffValidation = [
   body("name")
     .trim()
@@ -47,33 +126,12 @@ const createStaffValidation = [
   body("role")
     .notEmpty()
     .withMessage("Role is required")
-    .isIn([
-      "admin",
-      "manager",
-      "supervisor",
-      "cashier",
-      "salesperson",
-      "inventory",
-      "accountant",
-      "delivery",
-      "security",
-      "cleaner",
-      "technician",
-    ])
+    .isIn(VALID_ROLES)
     .withMessage("Invalid role selected"),
 
   body("post")
     .optional()
-    .isIn([
-      "junior",
-      "senior",
-      "assistant",
-      "executive",
-      "officer",
-      "head",
-      "lead",
-      "trainee",
-    ])
+    .isIn(VALID_POSTS)
     .withMessage("Invalid post selected"),
 
   body("mobileNumbers")
@@ -92,7 +150,10 @@ const createStaffValidation = [
     .withMessage("Please provide a valid email address")
     .normalizeEmail(),
 
-  body("address.street").trim().notEmpty().withMessage("Address is required"),
+  body("address.street")
+    .trim()
+    .notEmpty()
+    .withMessage("Street address is required"),
 
   body("address.city").trim().notEmpty().withMessage("City is required"),
 
@@ -118,23 +179,12 @@ const createStaffValidation = [
 
   body("employment.department")
     .optional()
-    .isIn([
-      "Sales",
-      "Marketing",
-      "Finance",
-      "Operations",
-      "Human Resources",
-      "IT",
-      "Customer Service",
-      "Inventory",
-      "Security",
-      "Administration",
-    ])
+    .isIn(VALID_DEPARTMENTS)
     .withMessage("Invalid department selected"),
 
   body("employment.employmentType")
     .optional()
-    .isIn(["full-time", "part-time", "contract", "internship"])
+    .isIn(VALID_EMPLOYMENT_TYPES)
     .withMessage("Invalid employment type"),
 
   body("permissions")
@@ -142,18 +192,7 @@ const createStaffValidation = [
     .isArray()
     .withMessage("Permissions must be an array")
     .custom((permissions) => {
-      const validPermissions = [
-        "dashboard",
-        "sales",
-        "purchases",
-        "inventory",
-        "customers",
-        "suppliers",
-        "staff",
-        "reports",
-        "settings",
-      ];
-      if (!permissions.every((perm) => validPermissions.includes(perm))) {
+      if (!permissions.every((perm) => VALID_PERMISSIONS.includes(perm))) {
         throw new Error("Invalid permission detected");
       }
       return true;
@@ -163,9 +202,11 @@ const createStaffValidation = [
     .optional()
     .matches(/^\d{10}$/)
     .withMessage("Emergency contact number must be 10 digits"),
+
+  handleValidationErrors,
 ];
 
-// Validation for staff update
+// Update staff validation
 const updateStaffValidation = [
   param("id").isMongoId().withMessage("Invalid staff ID"),
 
@@ -174,6 +215,11 @@ const updateStaffValidation = [
     .trim()
     .isLength({min: 2, max: 100})
     .withMessage("Name must be between 2 and 100 characters"),
+
+  body("role")
+    .optional()
+    .isIn(VALID_ROLES)
+    .withMessage("Invalid role selected"),
 
   body("email")
     .optional()
@@ -191,9 +237,21 @@ const updateStaffValidation = [
       }
       return true;
     }),
+
+  body("employment.department")
+    .optional()
+    .isIn(VALID_DEPARTMENTS)
+    .withMessage("Invalid department selected"),
+
+  body("employment.employmentType")
+    .optional()
+    .isIn(VALID_EMPLOYMENT_TYPES)
+    .withMessage("Invalid employment type"),
+
+  handleValidationErrors,
 ];
 
-// ✅ NEW: Validation for deletion reason
+// Delete staff validation
 const deleteStaffValidation = [
   param("id").isMongoId().withMessage("Invalid staff ID"),
   query("permanent")
@@ -205,9 +263,10 @@ const deleteStaffValidation = [
     .trim()
     .isLength({max: 500})
     .withMessage("Deletion reason cannot exceed 500 characters"),
+  handleValidationErrors,
 ];
 
-// Validation for password setting
+// Password validation
 const setPasswordValidation = [
   param("id").isMongoId().withMessage("Invalid staff ID"),
 
@@ -225,9 +284,11 @@ const setPasswordValidation = [
     }
     return true;
   }),
+
+  handleValidationErrors,
 ];
 
-// Validation for search
+// Search validation
 const searchValidation = [
   query("q")
     .trim()
@@ -238,9 +299,11 @@ const searchValidation = [
     .optional()
     .isInt({min: 1, max: 100})
     .withMessage("Limit must be between 1 and 100"),
+
+  handleValidationErrors,
 ];
 
-// Validation for pagination
+// Pagination validation
 const paginationValidation = [
   query("page")
     .optional()
@@ -251,124 +314,75 @@ const paginationValidation = [
     .optional()
     .isInt({min: 1, max: 100})
     .withMessage("Limit must be between 1 and 100"),
+
+  handleValidationErrors,
 ];
 
-// Validation for MongoDB ID
+// MongoDB ID validation
 const mongoIdValidation = [
   param("id").isMongoId().withMessage("Invalid staff ID"),
+  handleValidationErrors,
 ];
 
-// Validation for status update
+// Status update validation
 const statusUpdateValidation = [
   param("id").isMongoId().withMessage("Invalid staff ID"),
 
-  body("status")
-    .isIn(["active", "inactive", "terminated", "on-leave", "suspended"])
-    .withMessage("Invalid status value"),
+  body("status").isIn(VALID_STATUSES).withMessage("Invalid status value"),
+
+  handleValidationErrors,
+];
+
+// Task assignment validation
+const assignTaskValidation = [
+  param("id").isMongoId().withMessage("Invalid staff ID"),
+  body("taskId").isMongoId().withMessage("Invalid task ID"),
+  handleValidationErrors,
 ];
 
 // ================================
-// 📊 STAFF STATISTICS (Keep at top - most specific)
+// 📊 SPECIFIC ROUTES (Must come first)
 // ================================
 
-// @route   GET /api/staff/statistics
-// @desc    Get staff statistics
-// @access  Private (Any company user)
+// Staff statistics
 router.get("/statistics", getStaffStatistics);
 
-// ================================
-// ✅ NEW: DELETED STAFF MANAGEMENT (Specific routes before generic)
-// ================================
-
-// @route   GET /api/staff/deleted
-// @desc    Get soft-deleted staff members
-// @access  Private (Any company user)
+// Deleted staff management
 router.get("/deleted", paginationValidation, getDeletedStaff);
 
-// ================================
-// 🔍 SEARCH & FILTER ROUTES (Specific routes before generic)
-// ================================
-
-// @route   GET /api/staff/search
-// @desc    Search staff members
-// @access  Private (Any company user)
+// Search functionality
 router.get("/search", searchValidation, searchStaff);
 
-// @route   GET /api/staff/by-role/:role
-// @desc    Get staff by role
-// @access  Private (Any company user)
+// Get staff by role
 router.get(
   "/by-role/:role",
-  param("role")
-    .isIn([
-      "admin",
-      "manager",
-      "supervisor",
-      "cashier",
-      "salesperson",
-      "inventory",
-      "accountant",
-      "delivery",
-      "security",
-      "cleaner",
-      "technician",
-    ])
-    .withMessage("Invalid role"),
+  param("role").isIn(VALID_ROLES).withMessage("Invalid role"),
+  handleValidationErrors,
   getStaffByRole
 );
 
 // ================================
-// 📋 MAIN CRUD ROUTES (Critical order: POST before GET /:id)
+// 📋 MAIN CRUD ROUTES
 // ================================
 
-// ✅ POST ROUTE MUST COME BEFORE /:id ROUTES
-// @route   POST /api/staff
-// @desc    Create new staff member
-// @access  Private (Any company user)
+// Create staff (POST must come before /:id routes)
 router.post("/", createStaffValidation, createStaff);
 
-// @route   GET /api/staff
-// @desc    Get all staff members with pagination and filters
-// @access  Private (Any company user)
+// Get all staff with filters
 router.get(
   "/",
   paginationValidation,
   query("role")
     .optional()
-    .isIn([
-      "all",
-      "admin",
-      "manager",
-      "supervisor",
-      "cashier",
-      "salesperson",
-      "inventory",
-      "accountant",
-      "delivery",
-      "security",
-      "cleaner",
-      "technician",
-    ])
+    .isIn(["all", ...VALID_ROLES])
     .withMessage("Invalid role filter"),
   query("status")
     .optional()
-    .isIn(["all", "active", "inactive", "terminated", "on-leave", "suspended"])
+    .isIn(["all", ...VALID_STATUSES])
     .withMessage("Invalid status filter"),
   query("department")
     .optional()
-    .isIn([
-      "all",
-      "Sales",
-      "Marketing",
-      "Finance",
-      "Operations",
-      "Human Resources",
-      "IT",
-      "Customer Service",
-      "Inventory",
-      "Security",
-      "Administration",
-    ])
+    .isIn(["all", ...VALID_DEPARTMENTS])
     .withMessage("Invalid department filter"),
   query("sortBy")
     .optional()
@@ -379,7 +393,7 @@ router.get(
       "status",
       "createdAt",
       "employment.joinDate",
-      "deletedAt", // ✅ NEW: Allow sorting by deletion date
+      "deletedAt",
     ])
     .withMessage("Invalid sort field"),
   query("sortOrder")
@@ -389,72 +403,37 @@ router.get(
   getAllStaff
 );
 
-// ✅ GENERIC /:id ROUTES COME AFTER POST
-// @route   GET /api/staff/:id
-// @desc    Get single staff member by ID
-// @access  Private (Any company user)
+// Individual staff operations
 router.get("/:id", mongoIdValidation, getStaffById);
-
-// @route   PUT /api/staff/:id
-// @desc    Update staff member
-// @access  Private (Any company user)
 router.put("/:id", updateStaffValidation, updateStaff);
-
-// ✅ ENHANCED: DELETE route with soft/hard delete support
-// @route   DELETE /api/staff/:id?permanent=true
-// @desc    Delete staff member (soft delete by default, hard delete with permanent=true)
-// @access  Private (Any company user)
 router.delete("/:id", deleteStaffValidation, deleteStaff);
 
-// ✅ NEW: RESTORE route for soft-deleted staff
-// @route   PUT /api/staff/:id/restore
-// @desc    Restore soft-deleted staff member
-// @access  Private (Any company user)
+// Restore deleted staff
 router.put("/:id/restore", mongoIdValidation, restoreStaff);
 
 // ================================
 // 🔧 STATUS & TASK MANAGEMENT
 // ================================
 
-// @route   PUT /api/staff/:id/status
-// @desc    Update staff status
-// @access  Private (Any company user)
+// Update staff status
 router.put("/:id/status", statusUpdateValidation, updateStaffStatus);
 
-// @route   POST /api/staff/:id/assign-task
-// @desc    Assign task to staff member
-// @access  Private (Any company user)
-router.post(
-  "/:id/assign-task",
-  param("id").isMongoId().withMessage("Invalid staff ID"),
-  body("taskId").isMongoId().withMessage("Invalid task ID"),
-  assignTask
-);
+// Assign task to staff
+router.post("/:id/assign-task", assignTaskValidation, assignTask);
 
 // ================================
 // 📄 DOCUMENT MANAGEMENT
 // ================================
 
-// @route   POST /api/staff/:id/documents
-// @desc    Upload documents for staff member
-// @access  Private (Any company user)
-router.post(
-  "/:id/documents",
-  mongoIdValidation,
-  body("documentTypes")
-    .optional()
-    .isArray()
-    .withMessage("Document types must be an array"),
-  uploadDocuments
-);
+// Upload documents
+router.post("/:id/documents", mongoIdValidation, uploadDocuments);
 
-// @route   PUT /api/staff/:staffId/documents/:docId/verify
-// @desc    Verify uploaded document
-// @access  Private (Any company user)
+// Verify document
 router.put(
   "/:staffId/documents/:docId/verify",
   param("staffId").isMongoId().withMessage("Invalid staff ID"),
   param("docId").notEmpty().withMessage("Document ID is required"),
+  handleValidationErrors,
   verifyDocument
 );
 
@@ -462,30 +441,44 @@ router.put(
 // 🔐 PASSWORD & PROFILE MANAGEMENT
 // ================================
 
-// @route   PUT /api/staff/:id/password
-// @desc    Set password for staff member
-// @access  Private (Any company user)
+// Set password
 router.put("/:id/password", setPasswordValidation, setPassword);
 
-// @route   PUT /api/staff/:id/profile
-// @desc    Update staff profile
-// @access  Private (Any company user)
+// Update profile (cleaned up version)
 router.put(
   "/:id/profile",
   param("id").isMongoId().withMessage("Invalid staff ID"),
-  body("name").optional().trim().isLength({min: 2, max: 100}),
-  body("email").optional().isEmail().normalizeEmail(),
-  body("address").optional().isObject(),
-  body("emergencyContact").optional().isObject(),
-  body("notifications").optional().isObject(),
+  body("name")
+    .optional()
+    .trim()
+    .isLength({min: 2, max: 100})
+    .withMessage("Name must be between 2 and 100 characters"),
+  body("email")
+    .optional()
+    .isEmail()
+    .withMessage("Invalid email format")
+    .normalizeEmail(),
+  body("address")
+    .optional()
+    .isObject()
+    .withMessage("Address must be an object"),
+  body("emergencyContact")
+    .optional()
+    .isObject()
+    .withMessage("Emergency contact must be an object"),
+  body("notifications")
+    .optional()
+    .isObject()
+    .withMessage("Notifications must be an object"),
+  handleValidationErrors,
   async (req, res, next) => {
     try {
       const currentUser = req.user;
-      const requestedStaffId = req.params.id;
+      const companyId = req.companyId;
 
       const staff = await require("../models/Staff").findOne({
-        _id: requestedStaffId,
-        companyId: req.companyId,
+        _id: req.params.id,
+        companyId,
         isActive: true,
       });
 
@@ -504,8 +497,8 @@ router.put(
         "emergencyContact",
         "notifications",
       ];
-      const updateData = {};
 
+      const updateData = {};
       allowedFields.forEach((field) => {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field];
@@ -535,11 +528,11 @@ router.put(
         },
       });
     } catch (error) {
-      console.error("Update staff profile error:", error);
       res.status(500).json({
         success: false,
         message: "Error updating profile",
-        error: error.message,
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   }
@@ -549,16 +542,12 @@ router.put(
 // 📊 PERFORMANCE & TASK TRACKING
 // ================================
 
-// @route   GET /api/staff/:id/tasks
-// @desc    Get assigned tasks for staff member
-// @access  Private (Any company user)
+// Get staff tasks
 router.get("/:id/tasks", mongoIdValidation, async (req, res, next) => {
   try {
-    const requestedStaffId = req.params.id;
-
     const staff = await require("../models/Staff")
       .findOne({
-        _id: requestedStaffId,
+        _id: req.params.id,
         companyId: req.companyId,
         isActive: true,
       })
@@ -580,25 +569,20 @@ router.get("/:id/tasks", mongoIdValidation, async (req, res, next) => {
       data: staff.assignedTasks || [],
     });
   } catch (error) {
-    console.error("Get staff tasks error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching staff tasks",
-      error: error.message,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
 
-// @route   GET /api/staff/:id/performance
-// @desc    Get performance metrics for staff member
-// @access  Private (Any company user)
+// Get staff performance
 router.get("/:id/performance", mongoIdValidation, async (req, res, next) => {
   try {
-    const requestedStaffId = req.params.id;
-
     const staff = await require("../models/Staff")
       .findOne({
-        _id: requestedStaffId,
+        _id: req.params.id,
         companyId: req.companyId,
         isActive: true,
       })
@@ -624,11 +608,10 @@ router.get("/:id/performance", mongoIdValidation, async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("Get staff performance error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching staff performance",
-      error: error.message,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
@@ -637,39 +620,34 @@ router.get("/:id/performance", mongoIdValidation, async (req, res, next) => {
 // 🚨 ERROR HANDLING MIDDLEWARE
 // ================================
 
-// Error handling middleware for this router
 router.use((error, req, res, next) => {
-  console.error("Staff routes error:", error);
+  let statusCode = 500;
+  let message = "Internal server error";
 
   if (error.name === "ValidationError") {
-    return res.status(400).json({
+    statusCode = 400;
+    message = "Validation failed";
+    return res.status(statusCode).json({
       success: false,
-      message: "Validation Error",
+      message,
       errors: Object.values(error.errors).map((err) => err.message),
     });
   }
 
   if (error.name === "CastError") {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid ID format",
-    });
+    statusCode = 400;
+    message = "Invalid ID format";
   }
 
   if (error.code === 11000) {
-    return res.status(400).json({
-      success: false,
-      message: "Duplicate field value entered",
-    });
+    statusCode = 409;
+    message = "Duplicate field value";
   }
 
-  res.status(500).json({
+  res.status(statusCode).json({
     success: false,
-    message: "Internal Server Error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? error.message
-        : "Something went wrong",
+    message,
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
   });
 });
 

@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from "react";
+import React, {useState, useEffect, useCallback, useMemo} from "react";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 import {
   Alert,
@@ -17,8 +17,9 @@ import {
   faTimesCircle,
   faExclamationCircle,
 } from "@fortawesome/free-solid-svg-icons";
+import PropTypes from "prop-types";
 
-// Import components - UPDATED IMPORTS
+// Import components
 import DayBook from "../components/Home/DayBook";
 import Parties from "../components/Home/Parties";
 import Sales from "../components/Home/Sales";
@@ -34,7 +35,7 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import Loading from "../components/Loading";
 import {useOnlineStatus} from "../hooks/useOnlineStatus";
 
-// ✅ UPDATED: Import proper services
+// Import services
 import authService from "../services/authService";
 import bankAccountService from "../services/bankAccountService";
 import companyService from "../services/companyService";
@@ -49,11 +50,12 @@ import transactionService from "../services/transactionService";
 
 import "./HomePage.css";
 
+// ✅ FIXED: Use JavaScript default parameters instead of defaultProps
 function HomePage({
-  currentCompany: propCurrentCompany,
-  onCompanyChange,
-  companies,
-  currentUser,
+  currentCompany: propCurrentCompany = null,
+  onCompanyChange = null,
+  companies = [],
+  currentUser = null,
 }) {
   const {companyId} = useParams();
   const navigate = useNavigate();
@@ -67,13 +69,13 @@ function HomePage({
   const [companyError, setCompanyError] = useState(null);
   const [toasts, setToasts] = useState([]);
 
-  // ✅ FIXED: Enhanced path to view mapping with /add and /edit support
-  const getViewFromPath = () => {
+  // Enhanced path to view mapping with production URLs
+  const getViewFromPath = useCallback(() => {
     const pathParts = location.pathname.split("/").filter((part) => part);
     const lastPart = pathParts[pathParts.length - 1];
     const secondLastPart = pathParts[pathParts.length - 2];
 
-    // ✅ Handle /add routes specifically
+    // Handle /add routes
     if (lastPart === "add" && secondLastPart) {
       const addRouteMap = {
         "purchase-orders": "createPurchaseOrder",
@@ -85,16 +87,12 @@ function HomePage({
         items: "createItem",
       };
 
-      if (addRouteMap[secondLastPart]) {
-        return addRouteMap[secondLastPart];
-      }
+      return addRouteMap[secondLastPart] || "dailySummary";
     }
 
-    // ✅ Handle /edit routes
+    // Handle /edit routes
     if (lastPart === "edit" && pathParts.length >= 4) {
       const editType = pathParts[pathParts.length - 3];
-      const editId = pathParts[pathParts.length - 2];
-
       const editRouteMap = {
         "purchase-orders": "editPurchaseOrder",
         purchases: "editPurchaseBill",
@@ -105,26 +103,26 @@ function HomePage({
         items: "editItem",
       };
 
-      if (editRouteMap[editType]) {
-        return editRouteMap[editType];
-      }
+      return editRouteMap[editType] || "dailySummary";
     }
 
-    // ✅ Handle /new routes (legacy support)
-    if (lastPart === "new" && secondLastPart) {
-      const newRouteMap = {
-        purchases: "createPurchaseBill",
-        products: "createProduct",
-        parties: "createParty",
-        items: "createItem",
+    // Handle view/detail routes
+    if (pathParts.length >= 4 && pathParts[pathParts.length - 2] !== "add") {
+      const viewType = pathParts[pathParts.length - 2];
+      const detailRouteMap = {
+        "purchase-orders": "viewPurchaseOrder",
+        purchases: "viewPurchaseBill",
+        quotations: "viewQuotation",
+        "sales-orders": "viewSalesOrder",
+        products: "viewProduct",
+        parties: "viewParty",
+        items: "viewItem",
       };
 
-      if (newRouteMap[secondLastPart]) {
-        return newRouteMap[secondLastPart];
-      }
+      return detailRouteMap[viewType] || "dailySummary";
     }
 
-    // URL path to view mapping (list views)
+    // Standard path mapping
     const pathViewMap = {
       dashboard: "dailySummary",
       daybook: "dailySummary",
@@ -155,15 +153,17 @@ function HomePage({
     };
 
     return pathViewMap[lastPart] || "dailySummary";
-  };
+  }, [location.pathname]);
 
   // Update view when URL changes
   useEffect(() => {
     const newView = getViewFromPath();
-    setCurrentView(newView);
-  }, [location.pathname]);
+    if (newView !== currentView) {
+      setCurrentView(newView);
+    }
+  }, [getViewFromPath, currentView]);
 
-  // Update company state
+  // Enhanced company state management
   useEffect(() => {
     if (companyId && companies.length > 0) {
       const foundCompany = companies.find((c) => (c.id || c._id) === companyId);
@@ -185,113 +185,164 @@ function HomePage({
     }
   }, [companyId, companies, propCurrentCompany]);
 
-  // ✅ Toast management
+  // Enhanced toast management with production limits
   const addToast = useCallback((message, type = "info", duration = 5000) => {
-    const id = Date.now() + Math.random();
-    const toast = {id, message, type, duration};
-    setToasts((prev) => [...prev.slice(-4), toast]);
+    try {
+      const id = Date.now() + Math.random();
+      const toast = {
+        id,
+        message: String(message).slice(0, 200), // Limit message length
+        type,
+        duration: Math.min(duration, 10000), // Max 10 seconds
+        timestamp: new Date().toISOString(),
+      };
 
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, duration);
+      setToasts((prev) => {
+        // Keep only last 3 toasts for performance
+        const newToasts = [...prev.slice(-2), toast];
+        return newToasts;
+      });
+
+      // Auto-remove toast
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, toast.duration);
+    } catch (error) {
+      console.error("Error adding toast:", error);
+    }
   }, []);
 
   const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // ✅ FIXED: Enhanced navigation handler with proper routing
+  // Enhanced navigation handler with production routing
   const handleNavigation = useCallback(
     (page, params = {}) => {
-      if (!currentCompany?.id && !currentCompany?._id) {
-        addToast(
-          "Please select a company first to access this feature",
-          "warning"
-        );
-        return;
-      }
+      try {
+        if (!currentCompany?.id && !currentCompany?._id) {
+          addToast(
+            "Please select a company first to access this feature",
+            "warning"
+          );
+          return;
+        }
 
-      const companyId = currentCompany.id || currentCompany._id;
+        const companyId = currentCompany.id || currentCompany._id;
 
-      // ✅ FIXED: Updated view path map with consistent /add routes
-      const viewPathMap = {
-        dailySummary: "dashboard",
-        transactions: "transactions",
-        cashAndBank: "cash-bank",
-        parties: "parties",
-        invoices: "sales",
-        quotations: "quotations",
-        salesOrders: "sales-orders",
-        purchaseBills: "purchases",
-        purchaseOrders: "purchase-orders",
-        inventory: "inventory",
-        allProducts: "products",
-        items: "items",
-        lowStock: "low-stock",
-        stockMovement: "stock-movement",
-        bankAccounts: "bank-accounts",
-        cashAccounts: "cash-accounts",
-        bankTransactions: "bank-transactions",
-        bankReconciliation: "bank-reconciliation",
-        cashFlow: "cash-flow",
-        staff: "staff",
-        insights: "insights",
-        reports: "reports",
-        settings: "settings",
+        // Production URL mapping
+        const viewPathMap = {
+          // Dashboard and core views
+          dailySummary: "dashboard",
+          transactions: "transactions",
+          cashAndBank: "cash-bank",
 
-        // ✅ FIXED: Create actions with /add routes
-        createQuotation: "quotations/add",
-        editQuotation: `quotations/${params.quotationId}/edit`,
-        createSalesOrder: "sales-orders/add",
-        editSalesOrder: `sales-orders/${params.salesOrderId}/edit`,
-        createPurchaseOrder: "purchase-orders/add",
-        editPurchaseOrder: `purchase-orders/${params.purchaseOrderId}/edit`,
-        createPurchaseBill: "purchases/add", // ✅ Changed from /new to /add
-        editPurchaseBill: `purchases/${params.purchaseBillId}/edit`,
-        createItem: "products/add", // ✅ Changed from /new to /add
-        editItem: `products/${params.itemId}/edit`,
-        createProduct: "products/add", // ✅ Changed from /new to /add
-        editProduct: `products/${params.productId}/edit`,
-        createParty: "parties/add", // ✅ Changed from /new to /add
-        editParty: `parties/${params.partyId}/edit`,
-      };
+          // Management views
+          parties: "parties",
+          invoices: "sales",
+          quotations: "quotations",
+          salesOrders: "sales-orders",
+          purchaseBills: "purchases",
+          purchaseOrders: "purchase-orders",
 
-      const urlPath = viewPathMap[page] || "dashboard";
+          // Inventory views
+          inventory: "inventory",
+          allProducts: "products",
+          items: "items",
+          lowStock: "low-stock",
+          stockMovement: "stock-movement",
 
-      console.log(
-        `🔄 Navigation: ${page} -> /companies/${companyId}/${urlPath}`
-      );
+          // Financial views
+          bankAccounts: "bank-accounts",
+          cashAccounts: "cash-accounts",
+          bankTransactions: "bank-transactions",
+          bankReconciliation: "bank-reconciliation",
+          cashFlow: "cash-flow",
 
-      // Handle navigation with state for duplication
-      if (params.duplicateData) {
-        navigate(`/companies/${companyId}/${urlPath}`, {
-          state: {duplicateData: params.duplicateData},
-        });
-      } else {
-        navigate(`/companies/${companyId}/${urlPath}`);
-      }
+          // Other views
+          staff: "staff",
+          insights: "insights",
+          reports: "reports",
+          settings: "settings",
 
-      // ✅ Add navigation toast
-      const pageDisplayNames = {
-        createPurchaseOrder: "Create Purchase Order",
-        createPurchaseBill: "Create Purchase Bill",
-        createQuotation: "Create Quotation",
-        createSalesOrder: "Create Sales Order",
-        createProduct: "Create Product",
-        createParty: "Create Party",
-        createItem: "Create Item",
-      };
+          // Create actions
+          createQuotation: "quotations/add",
+          createSalesOrder: "sales-orders/add",
+          createPurchaseOrder: "purchase-orders/add",
+          createPurchaseBill: "purchases/add",
+          createItem: "products/add",
+          createProduct: "products/add",
+          createParty: "parties/add",
 
-      if (pageDisplayNames[page]) {
-        addToast(`Opening ${pageDisplayNames[page]}...`, "info", 2000);
+          // Edit actions
+          editQuotation: `quotations/${params.quotationId || params.id}/edit`,
+          editSalesOrder: `sales-orders/${
+            params.salesOrderId || params.id
+          }/edit`,
+          editPurchaseOrder: `purchase-orders/${
+            params.purchaseOrderId || params.id
+          }/edit`,
+          editPurchaseBill: `purchases/${
+            params.purchaseBillId || params.id
+          }/edit`,
+          editItem: `products/${params.itemId || params.id}/edit`,
+          editProduct: `products/${params.productId || params.id}/edit`,
+          editParty: `parties/${params.partyId || params.id}/edit`,
+
+          // View actions
+          viewQuotation: `quotations/${params.quotationId || params.id}`,
+          viewSalesOrder: `sales-orders/${params.salesOrderId || params.id}`,
+          viewPurchaseOrder: `purchase-orders/${
+            params.purchaseOrderId || params.id
+          }`,
+          viewPurchaseBill: `purchases/${params.purchaseBillId || params.id}`,
+          viewItem: `products/${params.itemId || params.id}`,
+          viewProduct: `products/${params.productId || params.id}`,
+          viewParty: `parties/${params.partyId || params.id}`,
+        };
+
+        const urlPath = viewPathMap[page] || "dashboard";
+        const fullPath = `/companies/${companyId}/${urlPath}`;
+
+        // Handle navigation with state
+        const navigationOptions = {};
+        if (params.state || params.duplicateData) {
+          navigationOptions.state = {
+            ...params.state,
+            duplicateData: params.duplicateData,
+          };
+        }
+
+        console.log(`🔄 Navigation: ${page} -> ${fullPath}`);
+        navigate(fullPath, navigationOptions);
+
+        // Success feedback for create actions
+        const createActionNames = {
+          createPurchaseOrder: "Create Purchase Order",
+          createPurchaseBill: "Create Purchase Bill",
+          createQuotation: "Create Quotation",
+          createSalesOrder: "Create Sales Order",
+          createProduct: "Create Product",
+          createParty: "Create Party",
+          createItem: "Create Item",
+        };
+
+        if (createActionNames[page]) {
+          addToast(`Opening ${createActionNames[page]}...`, "info", 2000);
+        }
+      } catch (error) {
+        console.error("Navigation error:", error);
+        addToast("Navigation failed. Please try again.", "error");
       }
     },
     [currentCompany, navigate, addToast]
   );
 
-  // ✅ Company change handler
+  // Enhanced company change handler
   const handleCompanyChange = useCallback(
     async (company) => {
+      if (isLoadingCompany) return; // Prevent concurrent changes
+
       setIsLoadingCompany(true);
       setCompanyError(null);
 
@@ -304,100 +355,141 @@ function HomePage({
 
         if (company) {
           const companyName = company.businessName || company.name;
-          addToast(`Company changed to ${companyName}`, "success", 3000);
+          addToast(`Switched to ${companyName}`, "success", 3000);
+
           const companyId = company.id || company._id;
-          navigate(`/companies/${companyId}/dashboard`);
+          navigate(`/companies/${companyId}/dashboard`, {replace: true});
         }
 
         if (onCompanyChange) {
-          onCompanyChange(company);
+          await onCompanyChange(company);
         }
       } catch (error) {
+        console.error("Company change error:", error);
         setCompanyError(error.message);
         addToast("Failed to change company: " + error.message, "error");
       } finally {
         setIsLoadingCompany(false);
       }
     },
-    [onCompanyChange, addToast, navigate]
+    [onCompanyChange, addToast, navigate, isLoadingCompany]
   );
 
-  // ✅ Common props with services
-  const commonProps = {
-    currentCompany,
-    currentUser,
-    onNavigate: handleNavigation,
-    onCompanyChange: handleCompanyChange,
-    isOnline,
-    lastChecked,
-    addToast,
-    companyId: currentCompany?.id || currentCompany?._id,
-  };
-
-  // ✅ Service props using actual service files
-  const serviceProps = {
-    authService: authService,
-    companyService: companyService,
-    saleOrderService: saleOrderService,
-    salesService: salesService,
-    purchaseOrderService: purchaseOrderService,
-    purchaseService: purchaseService,
-    itemService: itemService,
-    inventoryService: itemService,
-    partyService: partyService,
-    partiesService: partyService,
-    bankAccountService: bankAccountService,
-    bankService: bankAccountService,
-    paymentService: paymentService,
-    transactionService: transactionService,
-  };
-
-  // ✅ Render states
-  const renderLoadingState = (message = "Loading...") => (
-    <div className="homepage-container">
-      <Container className="d-flex justify-content-center align-items-center min-vh-100">
-        <Loading message={message} size="lg" />
-      </Container>
-    </div>
+  // Memoized common props for better performance
+  const commonProps = useMemo(
+    () => ({
+      currentCompany,
+      currentUser,
+      onNavigate: handleNavigation,
+      onCompanyChange: handleCompanyChange,
+      isOnline,
+      lastChecked,
+      addToast,
+      companyId: currentCompany?.id || currentCompany?._id,
+    }),
+    [
+      currentCompany,
+      currentUser,
+      handleNavigation,
+      handleCompanyChange,
+      isOnline,
+      lastChecked,
+      addToast,
+    ]
   );
 
-  const renderErrorState = (error, onRetry = null) => (
-    <div className="homepage-container">
-      <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
-        <FontAwesomeIcon
-          icon={faExclamationTriangle}
-          size="3x"
-          className="text-danger mb-3"
-        />
-        <h4 className="text-danger">Something went wrong</h4>
-        <p className="text-muted text-center mb-3">{error}</p>
-        {onRetry && (
-          <button className="btn btn-outline-primary" onClick={onRetry}>
-            Try Again
+  // Memoized service props
+  const serviceProps = useMemo(
+    () => ({
+      authService,
+      companyService,
+      saleOrderService,
+      salesService,
+      purchaseOrderService,
+      purchaseService,
+      itemService,
+      inventoryService: itemService,
+      partyService,
+      partiesService: partyService,
+      bankAccountService,
+      bankService: bankAccountService,
+      paymentService,
+      transactionService,
+    }),
+    []
+  );
+
+  // Enhanced render helpers
+  const renderLoadingState = useCallback(
+    (message = "Loading...") => (
+      <div className="homepage-container">
+        <Container className="d-flex justify-content-center align-items-center min-vh-100">
+          <div className="text-center">
+            <Spinner
+              animation="border"
+              variant="primary"
+              className="mb-3"
+              style={{width: "3rem", height: "3rem"}}
+            />
+            <h5 className="text-muted">{message}</h5>
+          </div>
+        </Container>
+      </div>
+    ),
+    []
+  );
+
+  const renderErrorState = useCallback(
+    (error, onRetry = null) => (
+      <div className="homepage-container">
+        <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
+          <FontAwesomeIcon
+            icon={faExclamationTriangle}
+            size="3x"
+            className="text-danger mb-3"
+          />
+          <h4 className="text-danger">Something went wrong</h4>
+          <p className="text-muted text-center mb-3">{error}</p>
+          {onRetry && (
+            <button className="btn btn-outline-primary" onClick={onRetry}>
+              <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+              Try Again
+            </button>
+          )}
+        </Container>
+      </div>
+    ),
+    []
+  );
+
+  const renderNoCompanyState = useCallback(
+    (componentName) => (
+      <div className="homepage-container">
+        <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
+          <FontAwesomeIcon
+            icon={faBuilding}
+            size="3x"
+            className="text-muted mb-3"
+          />
+          <h4 className="text-muted">No Company Selected</h4>
+          <p className="text-muted text-center">
+            Please select a company from the header to access {componentName}.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate("/dashboard")}
+          >
+            <FontAwesomeIcon icon={faBuilding} className="me-2" />
+            Go to Dashboard
           </button>
-        )}
-      </Container>
-    </div>
+        </Container>
+      </div>
+    ),
+    [navigate]
   );
 
-  const renderNoCompanyState = (componentName) => (
-    <div className="homepage-container">
-      <Container className="d-flex flex-column justify-content-center align-items-center min-vh-100">
-        <FontAwesomeIcon
-          icon={faBuilding}
-          size="3x"
-          className="text-muted mb-3"
-        />
-        <h4 className="text-muted">No Company Selected</h4>
-        <p className="text-muted text-center">
-          Please select a company from the header to access {componentName}.
-        </p>
-      </Container>
-    </div>
-  );
-
-  // ✅ Check if component requires company
-  const requiresCompany = (viewName) => {
+  // Check if component requires company
+  const requiresCompany = useCallback((viewName) => {
     const companyRequiredViews = [
       "inventory",
       "allProducts",
@@ -414,7 +506,7 @@ function HomePage({
       "bankReconciliation",
       "cashFlow",
       "parties",
-      // Form views also require company
+      // Form views
       "createPurchaseOrder",
       "createPurchaseBill",
       "createQuotation",
@@ -422,6 +514,7 @@ function HomePage({
       "createProduct",
       "createParty",
       "createItem",
+      // Edit views
       "editPurchaseOrder",
       "editPurchaseBill",
       "editQuotation",
@@ -429,12 +522,20 @@ function HomePage({
       "editProduct",
       "editParty",
       "editItem",
+      // View/Detail views
+      "viewPurchaseOrder",
+      "viewPurchaseBill",
+      "viewQuotation",
+      "viewSalesOrder",
+      "viewProduct",
+      "viewParty",
+      "viewItem",
     ];
     return companyRequiredViews.includes(viewName);
-  };
+  }, []);
 
-  // ✅ FIXED: Enhanced content rendering with form views
-  const renderContent = () => {
+  // Enhanced content rendering with better error boundaries
+  const renderContent = useCallback(() => {
     if (isLoadingCompany) {
       return renderLoadingState("Loading company data...");
     }
@@ -477,419 +578,511 @@ function HomePage({
         cashFlow: "Cash Flow",
         parties: "Parties Management",
       };
+
       return renderNoCompanyState(
         componentNameMap[currentView] || "this feature"
       );
     }
 
     const wrapWithErrorBoundary = (component) => (
-      <ErrorBoundary>{component}</ErrorBoundary>
+      <ErrorBoundary
+        fallback={
+          <div className="text-center p-5">
+            <FontAwesomeIcon
+              icon={faExclamationTriangle}
+              size="2x"
+              className="text-danger mb-3"
+            />
+            <h5>Component Error</h5>
+            <p className="text-muted">This component encountered an error.</p>
+            <button
+              className="btn btn-outline-primary"
+              onClick={() => window.location.reload()}
+            >
+              Reload Page
+            </button>
+          </div>
+        }
+      >
+        {component}
+      </ErrorBoundary>
     );
 
-    switch (currentView) {
-      // Day Book and transaction views
-      case "dailySummary":
-      case "transactions":
-      case "cashAndBank":
-        return wrapWithErrorBoundary(
-          <DayBook
-            view={currentView}
-            {...commonProps}
-            transactionService={serviceProps.transactionService}
-            bankAccountService={serviceProps.bankAccountService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+    try {
+      switch (currentView) {
+        // Dashboard and transactions
+        case "dailySummary":
+        case "transactions":
+        case "cashAndBank":
+          return wrapWithErrorBoundary(
+            <DayBook
+              view={currentView}
+              {...commonProps}
+              transactionService={serviceProps.transactionService}
+              bankAccountService={serviceProps.bankAccountService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
 
-      // Parties management
-      case "parties":
-        return wrapWithErrorBoundary(
-          <Parties
-            {...commonProps}
-            partyService={serviceProps.partyService}
-            partiesService={serviceProps.partiesService}
-          />
-        );
+        // Parties management
+        case "parties":
+          return wrapWithErrorBoundary(
+            <Parties
+              {...commonProps}
+              partyService={serviceProps.partyService}
+              partiesService={serviceProps.partiesService}
+            />
+          );
 
-      // Quotations
-      case "quotations":
-        return wrapWithErrorBoundary(
-          <Quotations
-            view="quotations"
-            {...commonProps}
-            saleOrderService={serviceProps.saleOrderService}
-          />
-        );
+        // Quotations
+        case "quotations":
+          return wrapWithErrorBoundary(
+            <Quotations
+              view="quotations"
+              {...commonProps}
+              saleOrderService={serviceProps.saleOrderService}
+            />
+          );
 
-      // Sales views
-      case "invoices":
-        return wrapWithErrorBoundary(
-          <Sales
-            view="invoices"
-            {...commonProps}
-            salesService={serviceProps.salesService}
-            saleOrderService={serviceProps.saleOrderService}
-          />
-        );
+        // Sales views
+        case "invoices":
+          return wrapWithErrorBoundary(
+            <Sales
+              view="invoices"
+              {...commonProps}
+              salesService={serviceProps.salesService}
+              saleOrderService={serviceProps.saleOrderService}
+            />
+          );
 
-      case "salesOrders":
-        return wrapWithErrorBoundary(
-          <Sales
-            view="salesOrders"
-            {...commonProps}
-            saleOrderService={serviceProps.saleOrderService}
-            salesService={serviceProps.salesService}
-          />
-        );
+        case "salesOrders":
+          return wrapWithErrorBoundary(
+            <Sales
+              view="salesOrders"
+              {...commonProps}
+              saleOrderService={serviceProps.saleOrderService}
+              salesService={serviceProps.salesService}
+            />
+          );
 
-      // Purchase management
-      case "purchaseBills":
-        return wrapWithErrorBoundary(
-          <PurchaseBills
-            {...commonProps}
-            purchaseService={serviceProps.purchaseService}
-            purchaseOrderService={serviceProps.purchaseOrderService}
-          />
-        );
+        // Purchase management
+        case "purchaseBills":
+          return wrapWithErrorBoundary(
+            <PurchaseBills
+              {...commonProps}
+              purchaseService={serviceProps.purchaseService}
+              purchaseOrderService={serviceProps.purchaseOrderService}
+            />
+          );
 
-      case "purchaseOrders":
-        return wrapWithErrorBoundary(
-          <PurchaseOrder
-            {...commonProps}
-            purchaseOrderService={serviceProps.purchaseOrderService}
-            purchaseService={serviceProps.purchaseService}
-          />
-        );
+        case "purchaseOrders":
+          return wrapWithErrorBoundary(
+            <PurchaseOrder
+              {...commonProps}
+              purchaseOrderService={serviceProps.purchaseOrderService}
+              purchaseService={serviceProps.purchaseService}
+            />
+          );
 
-      // ✅ NEW: Form views for creating items
-      case "createPurchaseOrder":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("purchaseOrders")}
-                >
-                  ← Back to Purchase Orders
-                </button>
-                <h2 className="mb-0">Create Purchase Order</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Purchase Order form component will be implemented here.
-                <div className="mt-2">
+        // Create form views
+        case "createPurchaseOrder":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("purchaseOrders")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Purchase Orders
                   </button>
+                  <h2 className="mb-0">Create Purchase Order</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Purchase Order form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      case "createPurchaseBill":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("purchaseBills")}
-                >
-                  ← Back to Purchase Bills
-                </button>
-                <h2 className="mb-0">Create Purchase Bill</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Purchase Bill form component will be implemented here.
-                <div className="mt-2">
+        case "createPurchaseBill":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("purchaseBills")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Purchase Bills
                   </button>
+                  <h2 className="mb-0">Create Purchase Bill</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Purchase Bill form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      case "createQuotation":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("quotations")}
-                >
-                  ← Back to Quotations
-                </button>
-                <h2 className="mb-0">Create Quotation</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Quotation form component will be implemented here.
-                <div className="mt-2">
+        case "createQuotation":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("quotations")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Quotations
                   </button>
+                  <h2 className="mb-0">Create Quotation</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Quotation form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      case "createSalesOrder":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("salesOrders")}
-                >
-                  ← Back to Sales Orders
-                </button>
-                <h2 className="mb-0">Create Sales Order</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Sales Order form component will be implemented here.
-                <div className="mt-2">
+        case "createSalesOrder":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("salesOrders")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Sales Orders
                   </button>
+                  <h2 className="mb-0">Create Sales Order</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Sales Order form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      case "createProduct":
-      case "createItem":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("allProducts")}
-                >
-                  ← Back to Products
-                </button>
-                <h2 className="mb-0">Create Product</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Product form component will be implemented here.
-                <div className="mt-2">
+        case "createProduct":
+        case "createItem":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("allProducts")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Products
                   </button>
+                  <h2 className="mb-0">Create Product</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Product form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      case "createParty":
-        return wrapWithErrorBoundary(
-          <div className="form-container">
-            <Container className="py-4">
-              <div className="d-flex align-items-center mb-4">
-                <button
-                  className="btn btn-outline-secondary me-3"
-                  onClick={() => handleNavigation("parties")}
-                >
-                  ← Back to Parties
-                </button>
-                <h2 className="mb-0">Create Party</h2>
-              </div>
-              <div className="alert alert-info">
-                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                Party form component will be implemented here.
-                <div className="mt-2">
+        case "createParty":
+          return wrapWithErrorBoundary(
+            <div className="form-container">
+              <Container className="py-4">
+                <div className="d-flex align-items-center mb-4">
                   <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      addToast("Form integration coming soon!", "info")
-                    }
+                    className="btn btn-outline-secondary me-3"
+                    onClick={() => handleNavigation("parties")}
                   >
-                    Continue Setup
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-2" />←
+                    Back to Parties
                   </button>
+                  <h2 className="mb-0">Create Party</h2>
                 </div>
-              </div>
-            </Container>
-          </div>
-        );
+                <div className="alert alert-info">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  Party form component will be implemented here.
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        addToast("Form integration coming soon!", "info")
+                      }
+                    >
+                      Continue Setup
+                    </button>
+                  </div>
+                </div>
+              </Container>
+            </div>
+          );
 
-      // Bank & Cash management
-      case "bankAccounts":
-        return wrapWithErrorBoundary(
-          <Bank
-            view="bankAccounts"
-            activeType="bank"
-            {...commonProps}
-            bankAccountService={serviceProps.bankAccountService}
-            bankService={serviceProps.bankService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+        // Bank & Cash management
+        case "bankAccounts":
+          return wrapWithErrorBoundary(
+            <Bank
+              view="bankAccounts"
+              activeType="bank"
+              {...commonProps}
+              bankAccountService={serviceProps.bankAccountService}
+              bankService={serviceProps.bankService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
 
-      case "cashAccounts":
-        return wrapWithErrorBoundary(
-          <Bank
-            view="cashAccounts"
-            activeType="cash"
-            {...commonProps}
-            bankAccountService={serviceProps.bankAccountService}
-            bankService={serviceProps.bankService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+        case "cashAccounts":
+          return wrapWithErrorBoundary(
+            <Bank
+              view="cashAccounts"
+              activeType="cash"
+              {...commonProps}
+              bankAccountService={serviceProps.bankAccountService}
+              bankService={serviceProps.bankService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
 
-      case "bankTransactions":
-        return wrapWithErrorBoundary(
-          <Bank
-            view="bankTransactions"
-            {...commonProps}
-            bankAccountService={serviceProps.bankAccountService}
-            bankService={serviceProps.bankService}
-            transactionService={serviceProps.transactionService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+        case "bankTransactions":
+          return wrapWithErrorBoundary(
+            <Bank
+              view="bankTransactions"
+              {...commonProps}
+              bankAccountService={serviceProps.bankAccountService}
+              bankService={serviceProps.bankService}
+              transactionService={serviceProps.transactionService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
 
-      case "bankReconciliation":
-        return wrapWithErrorBoundary(
-          <Bank
-            view="bankReconciliation"
-            {...commonProps}
-            bankAccountService={serviceProps.bankAccountService}
-            bankService={serviceProps.bankService}
-            transactionService={serviceProps.transactionService}
-          />
-        );
+        case "bankReconciliation":
+          return wrapWithErrorBoundary(
+            <Bank
+              view="bankReconciliation"
+              {...commonProps}
+              bankAccountService={serviceProps.bankAccountService}
+              bankService={serviceProps.bankService}
+              transactionService={serviceProps.transactionService}
+            />
+          );
 
-      case "cashFlow":
-        return wrapWithErrorBoundary(
-          <Bank
-            view="cashFlow"
-            {...commonProps}
-            bankAccountService={serviceProps.bankAccountService}
-            bankService={serviceProps.bankService}
-            transactionService={serviceProps.transactionService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+        case "cashFlow":
+          return wrapWithErrorBoundary(
+            <Bank
+              view="cashFlow"
+              {...commonProps}
+              bankAccountService={serviceProps.bankAccountService}
+              bankService={serviceProps.bankService}
+              transactionService={serviceProps.transactionService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
 
-      // Inventory management
-      case "inventory":
-      case "allProducts":
-      case "lowStock":
-      case "stockMovement":
-        return wrapWithErrorBoundary(
-          <Inventory
-            view={currentView}
-            {...commonProps}
-            itemService={serviceProps.itemService}
-            inventoryService={serviceProps.inventoryService}
-          />
-        );
+        // Inventory management
+        case "inventory":
+        case "allProducts":
+        case "lowStock":
+        case "stockMovement":
+          return wrapWithErrorBoundary(
+            <Inventory
+              view={currentView}
+              {...commonProps}
+              itemService={serviceProps.itemService}
+              inventoryService={serviceProps.inventoryService}
+            />
+          );
 
-      // Staff management
-      case "staff":
-        return wrapWithErrorBoundary(
-          <StaffManagement
-            view={currentView}
-            {...commonProps}
-            authService={serviceProps.authService}
-            companyService={serviceProps.companyService}
-          />
-        );
+        // Staff management
+        case "staff":
+          return wrapWithErrorBoundary(
+            <StaffManagement
+              view={currentView}
+              {...commonProps}
+              authService={serviceProps.authService}
+              companyService={serviceProps.companyService}
+            />
+          );
 
-      // Placeholder pages
-      case "insights":
-        return wrapWithErrorBoundary(
-          <div className="placeholder-content">
-            <Container className="py-5 text-center">
-              <h3>Insights Dashboard</h3>
-              <p className="text-muted">
-                Business insights and analytics coming soon...
-              </p>
-            </Container>
-          </div>
-        );
+        // Placeholder pages
+        case "insights":
+          return wrapWithErrorBoundary(
+            <div className="placeholder-content">
+              <Container className="py-5 text-center">
+                <FontAwesomeIcon
+                  icon={faInfoCircle}
+                  size="3x"
+                  className="text-primary mb-3"
+                />
+                <h3>Insights Dashboard</h3>
+                <p className="text-muted">
+                  Business insights and analytics coming soon...
+                </p>
+                <button
+                  className="btn btn-outline-primary"
+                  onClick={() =>
+                    addToast("Insights feature in development", "info")
+                  }
+                >
+                  Learn More
+                </button>
+              </Container>
+            </div>
+          );
 
-      case "reports":
-        return wrapWithErrorBoundary(
-          <div className="placeholder-content">
-            <Container className="py-5 text-center">
-              <h3>Reports & Analytics</h3>
-              <p className="text-muted">
-                Comprehensive reporting tools coming soon...
-              </p>
-            </Container>
-          </div>
-        );
+        case "reports":
+          return wrapWithErrorBoundary(
+            <div className="placeholder-content">
+              <Container className="py-5 text-center">
+                <FontAwesomeIcon
+                  icon={faInfoCircle}
+                  size="3x"
+                  className="text-success mb-3"
+                />
+                <h3>Reports & Analytics</h3>
+                <p className="text-muted">
+                  Comprehensive reporting tools coming soon...
+                </p>
+                <button
+                  className="btn btn-outline-success"
+                  onClick={() =>
+                    addToast("Reports feature in development", "info")
+                  }
+                >
+                  Learn More
+                </button>
+              </Container>
+            </div>
+          );
 
-      case "settings":
-        return wrapWithErrorBoundary(
-          <div className="placeholder-content">
-            <Container className="py-5 text-center">
-              <h3>Settings</h3>
-              <p className="text-muted">
-                Application settings and configuration...
-              </p>
-            </Container>
-          </div>
-        );
+        case "settings":
+          return wrapWithErrorBoundary(
+            <div className="placeholder-content">
+              <Container className="py-5 text-center">
+                <FontAwesomeIcon
+                  icon={faInfoCircle}
+                  size="3x"
+                  className="text-warning mb-3"
+                />
+                <h3>Settings</h3>
+                <p className="text-muted">
+                  Application settings and configuration...
+                </p>
+                <button
+                  className="btn btn-outline-warning"
+                  onClick={() =>
+                    addToast("Settings feature in development", "info")
+                  }
+                >
+                  Learn More
+                </button>
+              </Container>
+            </div>
+          );
 
-      // Default case
-      default:
-        return wrapWithErrorBoundary(
-          <DayBook
-            view="dailySummary"
-            {...commonProps}
-            transactionService={serviceProps.transactionService}
-            bankAccountService={serviceProps.bankAccountService}
-            paymentService={serviceProps.paymentService}
-          />
-        );
+        // Default fallback
+        default:
+          return wrapWithErrorBoundary(
+            <DayBook
+              view="dailySummary"
+              {...commonProps}
+              transactionService={serviceProps.transactionService}
+              bankAccountService={serviceProps.bankAccountService}
+              paymentService={serviceProps.paymentService}
+            />
+          );
+      }
+    } catch (error) {
+      console.error("Render error:", error);
+      return renderErrorState(
+        "Failed to render component: " + error.message,
+        () => window.location.reload()
+      );
     }
-  };
+  }, [
+    currentView,
+    isLoadingCompany,
+    companyError,
+    requiresCompany,
+    currentCompany,
+    commonProps,
+    serviceProps,
+    renderLoadingState,
+    renderErrorState,
+    renderNoCompanyState,
+    handleNavigation,
+    addToast,
+  ]);
 
   return (
     <div className="homepage-container">
       {/* Online/Offline Indicator */}
       <div className="position-fixed top-0 end-0 m-3" style={{zIndex: 1050}}>
-        <div className={`badge ${isOnline ? "bg-success" : "bg-danger"}`}>
+        <div
+          className={`badge ${isOnline ? "bg-success" : "bg-danger"}`}
+          title={`Status: ${
+            isOnline ? "Online" : "Offline"
+          } • Last checked: ${new Date(lastChecked).toLocaleTimeString()}`}
+        >
           <FontAwesomeIcon
             icon={isOnline ? faWifi : faTimesCircle}
             className="me-1"
@@ -949,6 +1142,9 @@ function HomePage({
                   ? "Warning"
                   : "Info"}
               </strong>
+              <small className="text-white-50">
+                {new Date(toast.timestamp).toLocaleTimeString()}
+              </small>
             </Toast.Header>
             <Toast.Body>{toast.message}</Toast.Body>
           </Toast>
@@ -960,5 +1156,15 @@ function HomePage({
     </div>
   );
 }
+
+// ✅ UPDATED: Keep PropTypes for development assistance
+HomePage.propTypes = {
+  currentCompany: PropTypes.object,
+  onCompanyChange: PropTypes.func,
+  companies: PropTypes.array,
+  currentUser: PropTypes.object,
+};
+
+// ✅ REMOVED: defaultProps (replaced with default parameters)
 
 export default HomePage;

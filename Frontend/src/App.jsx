@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from "react";
+import React, {useState, useEffect, useCallback, useRef, useMemo} from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -13,31 +13,18 @@ import Layout from "./Layout/Layout";
 import HomePage from "./Pages/HomePage";
 import AuthPage from "./Pages/AuthPage";
 import CommunityPage from "./Pages/CommunityPage";
-
-// Import Admin Dashboard
 import AdminDashboard from "./components/Admin/AdminDashboard";
-
-// ✅ Import MainDashboard component - NO LAYOUT
 import MainDashboard from "./components/MainDashboard/MainDashboard";
-
-// ✅ Import DailyTaskAssignment component
 import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
-
-// ✅ Import StaffManagement component
 import StaffManagement from "./components/Home/StaffManagement";
-
-// ✅ ADD: Import ChatProvider
+import NewUserWelcome from "./components/NewUserWelcome";
 import {ChatProvider} from "./context/chatContext";
-
-// Import services
 import companyService from "./services/companyService";
 import authService from "./services/authService";
 import purchaseService from "./services/purchaseService";
 import purchaseOrderService from "./services/purchaseOrderService";
 import salesService from "./services/salesService";
 import saleOrderService from "./services/saleOrderService";
-
-// Import form components
 import SalesForm from "./components/Home/Sales/SalesInvoice/SalesForm";
 import PurchaseForm from "./components/Home/Purchases/PurchaseForm";
 import SalesOrderForm from "./components/Home/Sales/SalesOrder/SalesOrderForm";
@@ -45,13 +32,12 @@ import EditSalesInvoice from "./components/Home/Sales/EditSalesInvoice";
 import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 
-// ✅ First-Time Welcome Animation Component
+// Welcome Animation Component
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete();
-    }, 3500); // Show for 3.5 seconds
-
+    }, 3500);
     return () => clearTimeout(timer);
   }, [onComplete]);
 
@@ -64,321 +50,174 @@ const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
           </div>
           <div className="logo-text">Shop Management</div>
         </div>
-
         <div className="welcome-message">
           <h2 className="mb-3">Welcome, {userFirstName}! 👋</h2>
           <p className="mb-4">
             Let's get you started with your business management
           </p>
         </div>
-
         <div className="loading-animation mb-3">
           <div className="loading-bar">
             <div className="loading-progress"></div>
           </div>
         </div>
-
         <div className="loading-dots">
           <span></span>
           <span></span>
           <span></span>
         </div>
       </div>
-
-      <style jsx>{`
-        .welcome-animation-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100vw;
-          height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-          animation: fadeIn 0.5s ease-out;
-        }
-
-        .welcome-content {
-          text-align: center;
-          color: white;
-          animation: slideInUp 0.8s ease-out;
-        }
-
-        .logo-animation {
-          animation: logoFloat 3s ease-in-out infinite;
-        }
-
-        .logo-icon {
-          font-size: 4rem;
-          margin-bottom: 1rem;
-          background: rgba(255, 255, 255, 0.2);
-          width: 100px;
-          height: 100px;
-          border-radius: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 1rem;
-          backdrop-filter: blur(10px);
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          animation: iconPulse 2s ease-in-out infinite;
-        }
-
-        .logo-text {
-          font-size: 1.5rem;
-          font-weight: 600;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-        }
-
-        .welcome-message h2 {
-          font-size: 2rem;
-          font-weight: 700;
-          animation: textGlow 2s ease-in-out infinite;
-        }
-
-        .welcome-message p {
-          font-size: 1.1rem;
-          opacity: 0.9;
-          animation: textFade 2s ease-in-out infinite;
-        }
-
-        .loading-animation {
-          width: 300px;
-          margin: 0 auto;
-        }
-
-        .loading-bar {
-          width: 100%;
-          height: 4px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 2px;
-          overflow: hidden;
-        }
-
-        .loading-progress {
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(
-            90deg,
-            rgba(255, 255, 255, 0.8) 0%,
-            rgba(255, 255, 255, 1) 50%,
-            rgba(255, 255, 255, 0.8) 100%
-          );
-          animation: progressSlide 2s ease-in-out infinite;
-        }
-
-        .loading-dots {
-          display: flex;
-          justify-content: center;
-          gap: 8px;
-        }
-
-        .loading-dots span {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: rgba(255, 255, 255, 0.8);
-          animation: dotWave 1.4s ease-in-out infinite both;
-        }
-
-        .loading-dots span:nth-child(1) {
-          animation-delay: -0.32s;
-        }
-        .loading-dots span:nth-child(2) {
-          animation-delay: -0.16s;
-        }
-        .loading-dots span:nth-child(3) {
-          animation-delay: 0s;
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes slideInUp {
-          from {
-            opacity: 0;
-            transform: translateY(50px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes logoFloat {
-          0%,
-          100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
-        }
-
-        @keyframes iconPulse {
-          0%,
-          100% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
-          }
-          50% {
-            transform: scale(1.05);
-            box-shadow: 0 0 0 20px rgba(255, 255, 255, 0);
-          }
-        }
-
-        @keyframes progressSlide {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-
-        @keyframes textGlow {
-          0%,
-          100% {
-            opacity: 0.9;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-
-        @keyframes textFade {
-          0%,
-          100% {
-            opacity: 0.7;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-
-        @keyframes dotWave {
-          0%,
-          80%,
-          100% {
-            transform: scale(0.8) translateY(0);
-            opacity: 0.5;
-          }
-          40% {
-            transform: scale(1.2) translateY(-10px);
-            opacity: 1;
-          }
-        }
-
-        /* Responsive design */
-        @media (max-width: 576px) {
-          .logo-icon {
-            width: 80px;
-            height: 80px;
-            font-size: 3rem;
-          }
-
-          .logo-text {
-            font-size: 1.2rem;
-          }
-
-          .welcome-message h2 {
-            font-size: 1.5rem;
-          }
-
-          .welcome-message p {
-            font-size: 1rem;
-          }
-
-          .loading-animation {
-            width: 250px;
-          }
-        }
-
-        /* Reduced motion support */
-        @media (prefers-reduced-motion: reduce) {
-          .logo-animation,
-          .logo-icon,
-          .loading-progress,
-          .loading-dots span,
-          .welcome-content {
-            animation: none !important;
-          }
-        }
-      `}</style>
     </div>
   );
 };
 
 function App() {
+  // Core State Management
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [currentCompany, setCurrentCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isAppInitialized, setIsAppInitialized] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // ✅ First-time visit animation state
-  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false);
+  // Refs for State Control
+  const mountedRef = useRef(true);
+  const authCheckRef = useRef(false);
+  const companiesLoadedRef = useRef(false);
+  const loadingRef = useRef(false);
+  const authCheckCompletedRef = useRef(false);
 
-  useEffect(() => {
-    checkExistingAuth();
-  }, []);
+  // Stable Values to Prevent Re-renders
+  const stableIsLoggedIn = useMemo(() => isLoggedIn, [isLoggedIn]);
+  const stableIsCheckingAuth = useMemo(() => isCheckingAuth, [isCheckingAuth]);
+  const stableCompaniesLength = useMemo(
+    () => companies.length,
+    [companies.length]
+  );
 
-  useEffect(() => {
-    if (isLoggedIn && companies.length === 0 && !isLoadingCompanies) {
-      loadCompanies();
+  // ✅ ENHANCED ADMIN CHECK FUNCTION - Multiple validation methods
+  const isUserAdmin = useCallback(() => {
+    if (!currentUser) return false;
+
+    // Primary admin checks
+    const roleBasedAdmin =
+      currentUser.role === "admin" ||
+      currentUser.role === "administrator" ||
+      currentUser.userType === "admin";
+
+    const propertyBasedAdmin = currentUser.isAdmin === true;
+
+    // Array-based role checks
+    const arrayRoleAdmin =
+      Array.isArray(currentUser.roles) && currentUser.roles.includes("admin");
+
+    const arrayPermissionAdmin =
+      Array.isArray(currentUser.permissions) &&
+      currentUser.permissions.includes("admin");
+
+    // Special admin emails (for development/testing)
+    const emailBasedAdmin =
+      currentUser.email === "admin@b2bbillings.com" ||
+      currentUser.email === "admin@shopmanagement.com" ||
+      currentUser.email === "superadmin@b2bbillings.com";
+
+    // Check against auth service
+    const authServiceAdmin = authService.isAdmin();
+
+    // Admin level checks (if your system uses levels)
+    const levelBasedAdmin =
+      currentUser.adminLevel === "super" ||
+      currentUser.adminLevel === "admin" ||
+      currentUser.accessLevel === "admin";
+
+    // Department-based admin check
+    const departmentAdmin =
+      currentUser.department === "administration" &&
+      currentUser.isManager === true;
+
+    // Combine all checks
+    const isAdmin =
+      roleBasedAdmin ||
+      propertyBasedAdmin ||
+      arrayRoleAdmin ||
+      arrayPermissionAdmin ||
+      emailBasedAdmin ||
+      authServiceAdmin ||
+      levelBasedAdmin ||
+      departmentAdmin;
+
+    // Additional validation: Must have user ID and email
+    const hasValidCredentials =
+      (currentUser.id || currentUser._id) &&
+      currentUser.email &&
+      currentUser.email.includes("@");
+
+    // Final result
+    const finalAdminStatus = isAdmin && hasValidCredentials;
+
+    // Log for debugging (only in development)
+    if (process.env.NODE_ENV === "development") {
+      console.log("🔐 Admin Check Debug:", {
+        currentUser: currentUser?.email || "no-user",
+        roleBasedAdmin,
+        propertyBasedAdmin,
+        arrayRoleAdmin,
+        arrayPermissionAdmin,
+        emailBasedAdmin,
+        authServiceAdmin,
+        levelBasedAdmin,
+        departmentAdmin,
+        hasValidCredentials,
+        finalResult: finalAdminStatus,
+      });
     }
-  }, [isLoggedIn, companies.length, isLoadingCompanies]);
 
+    return finalAdminStatus;
+  }, [currentUser]);
+
+  // Global helper functions to stop auth loops
   useEffect(() => {
-    const restoreCompanySelection = () => {
-      try {
-        const savedCompany = localStorage.getItem("currentCompany");
-        if (savedCompany) {
-          const company = JSON.parse(savedCompany);
-          setCurrentCompany(company);
-        }
-      } catch (error) {
-        localStorage.removeItem("currentCompany");
-      }
+    // Stop auth checks when on auth pages
+    window.stopAuthChecks = () => {
+      console.log("🛑 Stopping auth checks globally");
+      authCheckCompletedRef.current = true;
+      setIsCheckingAuth(false);
     };
 
-    if (isLoggedIn) {
-      restoreCompanySelection();
-    }
-  }, [isLoggedIn]);
+    // Debug helper
+    window.debugAuth = () => ({
+      isLoggedIn: stableIsLoggedIn,
+      isCheckingAuth: stableIsCheckingAuth,
+      currentUser: currentUser?.email || "none",
+      token: !!authService.getToken(),
+      path: window.location.pathname,
+      isAdmin: isUserAdmin(),
+    });
 
-  // ✅ Check if this is the first visit to dashboard/home
-  const checkFirstVisit = () => {
-    const hasVisitedBefore = localStorage.getItem("hasVisitedDashboard");
-    if (!hasVisitedBefore) {
-      localStorage.setItem("hasVisitedDashboard", "true");
-      return true;
-    }
-    return false;
-  };
+    return () => {
+      window.stopAuthChecks = null;
+      window.debugAuth = null;
+    };
+  }, [stableIsLoggedIn, stableIsCheckingAuth, currentUser, isUserAdmin]);
 
-  const loadCompanies = async () => {
-    if (isLoadingCompanies) {
+  // Load Companies Function
+  const loadCompanies = useCallback(async () => {
+    if (
+      loadingRef.current ||
+      companiesLoadedRef.current ||
+      !mountedRef.current ||
+      !isLoggedIn
+    ) {
       return;
     }
 
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        return;
-      }
+      if (!token) return;
 
+      loadingRef.current = true;
       setIsLoadingCompanies(true);
 
       const response = await companyService.getCompanies({
@@ -392,89 +231,163 @@ function App() {
         isActive: "true",
       });
 
-      const isSuccess =
-        response?.success === true || response?.status === "success";
+      if (!mountedRef.current) return;
 
-      if (isSuccess) {
+      if (response && (response.success === true || response.data)) {
         const companiesList =
           response.data?.companies || response.data || response.companies || [];
 
         setCompanies(companiesList);
+        companiesLoadedRef.current = true;
 
-        if (!currentCompany && companiesList.length > 0) {
-          await handleAutoCompanySelection(companiesList);
+        // Auto-select company from URL or saved selection
+        const savedCompany = localStorage.getItem("currentCompany");
+        let companyToSelect = null;
+
+        // Try to find company from URL first
+        const currentPath = window.location.pathname;
+        const companyIdFromUrl = currentPath.match(
+          /\/companies\/([^\/]+)/
+        )?.[1];
+
+        if (companyIdFromUrl && companiesList.length > 0) {
+          companyToSelect = companiesList.find(
+            (c) => (c.id || c._id) === companyIdFromUrl
+          );
         }
+
+        // If not found in URL, try saved company
+        if (!companyToSelect && savedCompany) {
+          try {
+            const company = JSON.parse(savedCompany);
+            companyToSelect = companiesList.find(
+              (c) => (c.id || c._id) === (company.id || company._id)
+            );
+          } catch (error) {
+            localStorage.removeItem("currentCompany");
+          }
+        }
+
+        // If still not found, select first company
+        if (!companyToSelect && companiesList.length > 0) {
+          companyToSelect = companiesList[0];
+        }
+
+        if (companyToSelect) {
+          await setCompanyAsActive(companyToSelect);
+        }
+
+        setIsAppInitialized(true);
       } else {
         setCompanies([]);
+        companiesLoadedRef.current = true;
+        setIsAppInitialized(true);
       }
     } catch (error) {
-      if (error.response?.status === 401) {
-        await authService.clearAuthData();
-        setIsLoggedIn(false);
-        setCurrentUser(null);
+      if (mountedRef.current) {
         setCompanies([]);
-        setCurrentCompany(null);
-      } else if (error.response?.status === 400) {
-        const errorMessage =
-          error.response.data?.message ||
-          error.response.data?.error?.message ||
-          "Invalid request parameters";
-        showToast(`Failed to load companies: ${errorMessage}`, "error");
-      } else {
-        const errorMessage = error.message || "Unknown error occurred";
-        showToast(`Failed to load companies: ${errorMessage}`, "error");
+        companiesLoadedRef.current = true;
+        setIsAppInitialized(true);
       }
-
-      setCompanies([]);
     } finally {
-      setIsLoadingCompanies(false);
+      loadingRef.current = false;
+      if (mountedRef.current) {
+        setIsLoadingCompanies(false);
+      }
     }
-  };
+  }, [isLoggedIn]);
 
-  const handleAutoCompanySelection = async (companiesList) => {
-    try {
-      if (!companiesList || companiesList.length === 0) {
-        return;
-      }
+  // Single Auth Check on Mount - Prevents refreshes
+  useEffect(() => {
+    mountedRef.current = true;
 
-      if (currentCompany) {
-        return;
-      }
+    if (!authCheckRef.current && !authCheckCompletedRef.current) {
+      authCheckRef.current = true;
+      checkExistingAuth();
+    }
 
-      const savedCompany = localStorage.getItem("currentCompany");
-      if (savedCompany) {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Load companies when authenticated
+  useEffect(() => {
+    if (
+      stableIsLoggedIn &&
+      !stableIsCheckingAuth &&
+      !companiesLoadedRef.current &&
+      authCheckCompletedRef.current
+    ) {
+      const timer = setTimeout(() => {
+        if (mountedRef.current && !loadingRef.current) {
+          loadCompanies();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [stableIsLoggedIn, stableIsCheckingAuth, loadCompanies]);
+
+  // Company Selection Restoration
+  useEffect(() => {
+    if (stableIsLoggedIn && stableCompaniesLength > 0 && !currentCompany) {
+      const restoreCompanySelection = () => {
         try {
-          const company = JSON.parse(savedCompany);
-          const companyId = company.id || company._id;
-          const foundCompany = companiesList.find(
-            (c) => (c.id || c._id) === companyId
-          );
+          // Check URL first
+          const currentPath = window.location.pathname;
+          const companyIdFromUrl = currentPath.match(
+            /\/companies\/([^\/]+)/
+          )?.[1];
 
-          if (foundCompany) {
-            await setCompanyAsActive(foundCompany);
-            return;
-          } else {
-            localStorage.removeItem("currentCompany");
+          if (companyIdFromUrl) {
+            const foundCompany = companies.find(
+              (c) => (c.id || c._id) === companyIdFromUrl
+            );
+            if (foundCompany) {
+              setCurrentCompany(foundCompany);
+              localStorage.setItem(
+                "currentCompany",
+                JSON.stringify(foundCompany)
+              );
+              return;
+            }
+          }
+
+          // Fallback to saved company
+          const savedCompany = localStorage.getItem("currentCompany");
+          if (savedCompany) {
+            const company = JSON.parse(savedCompany);
+            const foundCompany = companies.find(
+              (c) => (c.id || c._id) === (company.id || company._id)
+            );
+            if (foundCompany) {
+              setCurrentCompany(foundCompany);
+            } else {
+              localStorage.removeItem("currentCompany");
+            }
           }
         } catch (error) {
           localStorage.removeItem("currentCompany");
         }
-      }
+      };
 
-      const firstCompany = companiesList[0];
-      if (firstCompany) {
-        await setCompanyAsActive(firstCompany);
-      }
-    } catch (error) {
-      // Handle error silently
+      restoreCompanySelection();
     }
+  }, [stableIsLoggedIn, stableCompaniesLength, currentCompany, companies]);
+
+  // Utility Functions
+  const checkFirstVisit = () => {
+    const hasVisitedBefore = localStorage.getItem("hasVisitedDashboard");
+    if (!hasVisitedBefore) {
+      localStorage.setItem("hasVisitedDashboard", "true");
+      return true;
+    }
+    return false;
   };
 
-  const setCompanyAsActive = async (company) => {
+  const setCompanyAsActive = useCallback(async (company) => {
     try {
-      if (!company) {
-        return;
-      }
+      if (!company) return;
 
       const standardizedCompany = {
         id: company.id || company._id,
@@ -497,80 +410,172 @@ function App() {
         JSON.stringify(standardizedCompany)
       );
     } catch (error) {
-      // Handle error silently
+      // Silent error handling
     }
-  };
+  }, []);
 
+  // Authentication Check - Optimized to prevent refreshes
   const checkExistingAuth = async () => {
     try {
       const token = localStorage.getItem("token");
       const savedUser = localStorage.getItem("user");
 
       if (!token || !savedUser) {
-        setIsCheckingAuth(false);
+        if (mountedRef.current) {
+          setIsCheckingAuth(false);
+          setIsAppInitialized(true);
+          authCheckCompletedRef.current = true;
+        }
+        return;
+      }
+
+      // Only verify token if we're not on auth pages
+      const currentPath = window.location.pathname;
+      if (currentPath.includes("/auth") || currentPath.includes("/login")) {
+        if (mountedRef.current) {
+          setIsCheckingAuth(false);
+          setIsAppInitialized(true);
+          authCheckCompletedRef.current = true;
+        }
+        return;
+      }
+
+      // Quick validation first - don't call API if data is invalid
+      try {
+        const userData = JSON.parse(savedUser);
+        if (!userData || !userData.email || (!userData.id && !userData._id)) {
+          authService.clearAuthData();
+          if (mountedRef.current) {
+            setIsCheckingAuth(false);
+            setIsAppInitialized(true);
+            authCheckCompletedRef.current = true;
+          }
+          return;
+        }
+      } catch (parseError) {
+        authService.clearAuthData();
+        if (mountedRef.current) {
+          setIsCheckingAuth(false);
+          setIsAppInitialized(true);
+          authCheckCompletedRef.current = true;
+        }
         return;
       }
 
       const verificationResponse = await authService.verifyToken();
 
+      if (!mountedRef.current) return;
+
       if (verificationResponse && verificationResponse.success === true) {
         const userData = JSON.parse(savedUser);
         setCurrentUser(userData);
         setIsLoggedIn(true);
-
-        if (companies.length === 0 && !isLoadingCompanies) {
-          await loadCompanies();
-        }
-      } else if (verificationResponse?.shouldRetry) {
-        const userData = JSON.parse(savedUser);
-        setCurrentUser(userData);
-        setIsLoggedIn(true);
-
-        if (companies.length === 0 && !isLoadingCompanies) {
-          await loadCompanies();
-        }
       } else {
         await authService.clearAuthData();
         localStorage.removeItem("currentCompany");
+        setIsAppInitialized(true);
       }
     } catch (error) {
-      await authService.clearAuthData();
-      localStorage.removeItem("currentCompany");
+      if (mountedRef.current) {
+        await authService.clearAuthData();
+        localStorage.removeItem("currentCompany");
+        setIsAppInitialized(true);
+      }
     } finally {
-      setIsCheckingAuth(false);
+      if (mountedRef.current) {
+        setIsCheckingAuth(false);
+        authCheckCompletedRef.current = true;
+      }
     }
   };
 
+  // Authentication Handlers
   const handleLogin = async (userData) => {
     try {
       setIsLoggedIn(true);
       setCurrentUser(userData);
       localStorage.setItem("user", JSON.stringify(userData));
 
-      if (companies.length === 0 && !isLoadingCompanies) {
-        await loadCompanies();
-      }
+      // Reset companies data for fresh load
+      setCompanies([]);
+      setCurrentCompany(null);
+      setIsLoadingCompanies(false);
+      setIsAppInitialized(false);
+      companiesLoadedRef.current = false;
+      loadingRef.current = false;
+      authCheckCompletedRef.current = true;
     } catch (error) {
-      // Handle error silently
+      // Silent error handling
     }
   };
 
+  // Ultra Fast Logout - Prevents auth checking screen
   const handleLogout = async () => {
     try {
-      await authService.logout();
+      setIsLoggingOut(true);
+
+      // Immediate state cleanup
       setIsLoggedIn(false);
       setCurrentUser(null);
       setCurrentCompany(null);
       setCompanies([]);
-      localStorage.removeItem("currentCompany");
-      localStorage.removeItem("dashboard-active-view");
-      // ✅ Reset first visit flag on logout
-      localStorage.removeItem("hasVisitedDashboard");
+      setIsLoadingCompanies(false);
+      setIsAppInitialized(true);
+      setIsCheckingAuth(false);
+      companiesLoadedRef.current = false;
+      loadingRef.current = false;
+
+      // Clear storage immediately
+      const keysToRemove = [
+        "currentCompany",
+        "dashboard-active-view",
+        "hasVisitedDashboard",
+        "selectedCompanyId",
+        "companyId",
+      ];
+
+      keysToRemove.forEach((key) => {
+        try {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        } catch (error) {
+          // Silent fail
+        }
+      });
+
+      // Use instant logout - no network calls
+      authService.instantLogout();
+
+      // Reset refs to prevent background processes
+      authCheckRef.current = false;
+      companiesLoadedRef.current = false;
+      loadingRef.current = false;
+      authCheckCompletedRef.current = false;
+
+      if (window.showToast) {
+        window.showToast("Logged out successfully", "success");
+      }
+
+      setTimeout(() => {
+        setIsLoggingOut(false);
+        window.location.href = "/auth";
+      }, 100);
     } catch (error) {
-      // Handle error silently
+      // Ensure cleanup even if error occurs
+      authService.clearAuthData();
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setCurrentCompany(null);
+      setCompanies([]);
+      setIsCheckingAuth(false);
+      setIsAppInitialized(true);
+      setIsLoggingOut(false);
+      authCheckCompletedRef.current = false;
+      window.location.href = "/auth";
     }
   };
 
+  // Company Management Handlers
   const handleCompanyChange = async (company) => {
     try {
       if (company) {
@@ -580,7 +585,7 @@ function App() {
         localStorage.removeItem("currentCompany");
       }
     } catch (error) {
-      // Handle error silently
+      // Silent error handling
     }
   };
 
@@ -588,8 +593,10 @@ function App() {
     try {
       setCompanies((prev) => [...prev, newCompany]);
       await setCompanyAsActive(newCompany);
+      companiesLoadedRef.current = true;
+      setIsAppInitialized(true);
     } catch (error) {
-      // Handle error silently
+      // Silent error handling
     }
   };
 
@@ -612,10 +619,11 @@ function App() {
         await setCompanyAsActive(updatedCompany);
       }
     } catch (error) {
-      // Handle error silently
+      // Silent error handling
     }
   };
 
+  // Utility Functions
   const getCompanyId = () => {
     return (
       currentCompany?.id ||
@@ -627,7 +635,6 @@ function App() {
     );
   };
 
-  // ✅ Updated navigation handler for MainDashboard
   const navigateToListView = (section) => {
     const companyId = getCompanyId();
     if (companyId) {
@@ -635,7 +642,6 @@ function App() {
     }
   };
 
-  // ✅ Navigation handler specifically for MainDashboard
   const handleDashboardNavigation = (page) => {
     const companyId = getCompanyId();
     if (!companyId) {
@@ -643,7 +649,6 @@ function App() {
       return;
     }
 
-    // Map dashboard actions to proper routes
     const routeMap = {
       dailySummary: `/companies/${companyId}/daybook`,
       transactions: `/companies/${companyId}/transactions`,
@@ -677,18 +682,47 @@ function App() {
     }
   };
 
+  // Toast Notifications
   const showToast = (message, type = "info") => {
-    if (type === "error") {
-      alert(`Error: ${message}`);
-    } else if (type === "warning") {
-      alert(`Warning: ${message}`);
-    } else if (type === "success") {
-      alert(`Success: ${message}`);
-    } else {
-      alert(`Info: ${message}`);
+    if (typeof window !== "undefined" && window.bootstrap?.Toast) {
+      const toastContainer =
+        document.getElementById("toast-container") ||
+        document.createElement("div");
+      if (!document.getElementById("toast-container")) {
+        toastContainer.id = "toast-container";
+        toastContainer.className =
+          "toast-container position-fixed top-0 end-0 p-3";
+        document.body.appendChild(toastContainer);
+      }
+
+      const toastElement = document.createElement("div");
+      toastElement.className = `toast align-items-center text-white bg-${
+        type === "error"
+          ? "danger"
+          : type === "success"
+          ? "success"
+          : type === "warning"
+          ? "warning"
+          : "primary"
+      } border-0`;
+      toastElement.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+
+      toastContainer.appendChild(toastElement);
+      const toast = new window.bootstrap.Toast(toastElement);
+      toast.show();
+
+      toastElement.addEventListener("hidden.bs.toast", () => {
+        toastElement.remove();
+      });
     }
   };
 
+  // Form Save Handlers
   const handleSalesFormSave = async (saleData) => {
     try {
       const effectiveCompanyId =
@@ -696,7 +730,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -728,7 +761,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -760,7 +792,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -793,7 +824,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -829,7 +859,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -850,11 +879,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving purchase bill: " + error.message, "error");
-      return {
-        success: false,
-        error: error.message,
-        message: error.message,
-      };
+      return {success: false, error: error.message, message: error.message};
     }
   };
 
@@ -865,7 +890,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -886,11 +910,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error updating purchase bill: " + error.message, "error");
-      return {
-        success: false,
-        error: error.message,
-        message: error.message,
-      };
+      return {success: false, error: error.message, message: error.message};
     }
   };
 
@@ -918,7 +938,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -967,7 +986,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -1003,7 +1021,6 @@ function App() {
         getCompanyId() ||
         currentCompany?.id ||
         currentCompany?._id;
-
       if (!effectiveCompanyId) {
         throw new Error("Company ID is required");
       }
@@ -1029,27 +1046,9 @@ function App() {
     }
   };
 
-  // ✅ MainDashboard Wrapper Component with Welcome Animation
+  // Main Dashboard Wrapper
   const MainDashboardWrapper = () => {
-    const [showDashboard, setShowDashboard] = useState(false);
-
-    useEffect(() => {
-      // ✅ Check if this is first visit when component mounts
-      if (isLoggedIn && currentCompany && !isLoadingCompanies) {
-        const isFirstVisit = checkFirstVisit();
-        if (isFirstVisit) {
-          setShowWelcomeAnimation(true);
-        } else {
-          setShowDashboard(true);
-        }
-      }
-    }, [isLoggedIn, currentCompany, isLoadingCompanies]);
-
-    if (!isLoggedIn) {
-      return <Navigate to="/auth" replace />;
-    }
-
-    if (!currentCompany || isLoadingCompanies) {
+    if (isLoggingOut) {
       return (
         <div
           className="d-flex justify-content-center align-items-center"
@@ -1059,19 +1058,67 @@ function App() {
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p>Loading your dashboard...</p>
+            <p>Logging out...</p>
           </div>
         </div>
       );
     }
 
-    // ✅ Show welcome animation for first-time visitors
-    if (showWelcomeAnimation) {
+    if (stableIsCheckingAuth || !isAppInitialized) {
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Checking authentication...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!stableIsLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    if (isLoadingCompanies || !companiesLoadedRef.current) {
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading your companies...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // No companies found
+    if (stableCompaniesLength === 0) {
+      return (
+        <NewUserWelcome
+          currentUser={currentUser}
+          onCreateCompany={handleCompanyCreated}
+          showToast={showToast}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    // First visit welcome animation
+    const isFirstVisit = checkFirstVisit();
+    if (isFirstVisit && stableCompaniesLength > 0 && currentCompany) {
       return (
         <WelcomeAnimation
           onComplete={() => {
-            setShowWelcomeAnimation(false);
-            setShowDashboard(true);
+            // Re-render will happen automatically
           }}
           userFirstName={
             currentUser?.name?.split(" ")[0] || currentUser?.firstName || "User"
@@ -1080,7 +1127,7 @@ function App() {
       );
     }
 
-    // ✅ Show main dashboard
+    // Main dashboard
     return (
       <MainDashboard
         currentCompany={currentCompany}
@@ -1098,15 +1145,81 @@ function App() {
     );
   };
 
-  // ✅ StaffManagement Wrapper Component
-  const StaffManagementWrapper = () => {
+  // Company Route Wrapper
+  const CompanyRouteWrapper = ({children}) => {
     const {companyId} = useParams();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+      if (companyId && companies.length > 0 && !currentCompany) {
+        const foundCompany = companies.find(
+          (c) => (c.id || c._id) === companyId
+        );
+        if (foundCompany) {
+          setCompanyAsActive(foundCompany);
+        } else if (companiesLoadedRef.current) {
+          navigate("/dashboard", {replace: true});
+        }
+      }
+    }, [companyId, companies, currentCompany, navigate]);
 
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
     }
 
-    if (!currentCompany) {
+    if (isLoggingOut) {
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Logging out...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (isCheckingAuth || !isAppInitialized) {
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (isLoadingCompanies || !companiesLoadedRef.current) {
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading your companies...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (companies.length === 0) {
+      return <Navigate to="/dashboard" replace />;
+    }
+
+    if (companyId && !currentCompany) {
       return (
         <div
           className="d-flex justify-content-center align-items-center"
@@ -1122,38 +1235,20 @@ function App() {
       );
     }
 
-    return (
-      <StaffManagement
-        companyData={currentCompany}
-        userData={currentUser}
-        addToast={showToast}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        companyId={companyId}
-        onNavigate={(page) => {
-          const routeMap = {
-            dashboard: `/companies/${companyId}/dashboard`,
-            dailyTaskAssignment: `/companies/${companyId}/staff/daily-task-assignment`,
-          };
-          const targetRoute = routeMap[page];
-          if (targetRoute) {
-            window.location.href = targetRoute;
-          }
-        }}
-        isOnline={true}
-      />
-    );
+    return children;
   };
 
-  // ✅ Daily Task Assignment Wrapper Component
-  const DailyTaskAssignmentWrapper = () => {
-    const {companyId} = useParams();
-
+  // ✅ ADMIN ROUTE PROTECTION COMPONENT
+  const AdminRouteWrapper = ({children}) => {
+    // Check if user is logged in
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
     }
 
-    if (!currentCompany) {
+    // Check if user has admin privileges
+    const userIsAdmin = isUserAdmin();
+
+    if (isLoggingOut) {
       return (
         <div
           className="d-flex justify-content-center align-items-center"
@@ -1163,44 +1258,13 @@ function App() {
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p>Loading company information...</p>
+            <p>Logging out...</p>
           </div>
         </div>
       );
     }
 
-    return (
-      <DailyTaskAssignment
-        companyData={currentCompany}
-        userData={currentUser}
-        addToast={showToast}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        companyId={companyId}
-        onNavigate={(page) => {
-          const routeMap = {
-            staff: `/companies/${companyId}/staff`,
-            staffList: `/companies/${companyId}/staff`,
-            dashboard: `/companies/${companyId}/dashboard`,
-          };
-          const targetRoute = routeMap[page];
-          if (targetRoute) {
-            window.location.href = targetRoute;
-          }
-        }}
-        isOnline={true}
-      />
-    );
-  };
-
-  const CommunityPageWrapper = () => {
-    const {companyId} = useParams();
-
-    if (!isLoggedIn) {
-      return <Navigate to="/auth" replace />;
-    }
-
-    if (!currentCompany) {
+    if (stableIsCheckingAuth || !isAppInitialized) {
       return (
         <div
           className="d-flex justify-content-center align-items-center"
@@ -1210,29 +1274,72 @@ function App() {
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p>Loading community...</p>
+            <p>Verifying admin privileges...</p>
           </div>
         </div>
       );
     }
 
-    return (
-      <CommunityPage
-        currentUser={currentUser}
-        currentCompany={currentCompany}
-        companyId={companyId}
-        addToast={showToast}
-        onLogout={handleLogout}
-        companies={companies}
-        onCompanyChange={handleCompanyChange}
-      />
-    );
-  };
+    // ✅ ADMIN ACCESS DENIED SCREEN
+    if (!userIsAdmin) {
+      console.warn(
+        "🚫 Admin access denied for user:",
+        currentUser?.email || "unknown"
+      );
 
-  const AdminDashboardWrapper = () => {
-    if (!isLoggedIn) {
-      return <Navigate to="/auth" replace />;
+      return (
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh", backgroundColor: "#f8f9fa"}}
+        >
+          <div className="text-center">
+            <div className="mb-4">
+              <i
+                className="fas fa-shield-alt text-danger"
+                style={{fontSize: "4rem"}}
+              ></i>
+            </div>
+            <h2 className="text-danger mb-3">Access Denied</h2>
+            <p className="text-muted mb-4">
+              Administrator privileges are required to access this area.
+            </p>
+            <div className="mb-4">
+              <p className="small text-muted">
+                Current User: {currentUser?.email || "Unknown"}
+              </p>
+              <p className="small text-muted">
+                Role: {currentUser?.role || "User"}
+              </p>
+            </div>
+            <div className="d-flex gap-3 justify-content-center">
+              <button
+                className="btn btn-primary"
+                onClick={() => (window.location.href = "/dashboard")}
+              >
+                <i className="fas fa-home me-2"></i>
+                Go to Dashboard
+              </button>
+              <button
+                className="btn btn-outline-secondary"
+                onClick={handleLogout}
+              >
+                <i className="fas fa-sign-out-alt me-2"></i>
+                Logout
+              </button>
+            </div>
+            <div className="mt-4">
+              <small className="text-muted">
+                If you believe this is an error, please contact your system
+                administrator.
+              </small>
+            </div>
+          </div>
+        </div>
+      );
     }
+
+    // ✅ ADMIN ACCESS GRANTED - LOG AND RENDER
+    console.log("✅ Admin access granted for user:", currentUser?.email);
 
     return (
       <div
@@ -1250,53 +1357,127 @@ function App() {
           overflow: "hidden",
         }}
       >
+        {children}
+      </div>
+    );
+  };
+
+  // Component Wrappers
+  const StaffManagementWrapper = () => {
+    const {companyId} = useParams();
+
+    return (
+      <CompanyRouteWrapper>
+        <StaffManagement
+          companyData={currentCompany}
+          userData={currentUser}
+          addToast={showToast}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          onNavigate={(page) => {
+            const routeMap = {
+              dashboard: `/companies/${companyId}/dashboard`,
+              dailyTaskAssignment: `/companies/${companyId}/staff/daily-task-assignment`,
+            };
+            const targetRoute = routeMap[page];
+            if (targetRoute) {
+              window.location.href = targetRoute;
+            }
+          }}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const DailyTaskAssignmentWrapper = () => {
+    const {companyId} = useParams();
+
+    return (
+      <CompanyRouteWrapper>
+        <DailyTaskAssignment
+          companyData={currentCompany}
+          userData={currentUser}
+          addToast={showToast}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          onNavigate={(page) => {
+            const routeMap = {
+              staff: `/companies/${companyId}/staff`,
+              staffList: `/companies/${companyId}/staff`,
+              dashboard: `/companies/${companyId}/dashboard`,
+            };
+            const targetRoute = routeMap[page];
+            if (targetRoute) {
+              window.location.href = targetRoute;
+            }
+          }}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const CommunityPageWrapper = () => {
+    const {companyId} = useParams();
+
+    return (
+      <CompanyRouteWrapper>
+        <CommunityPage
+          currentUser={currentUser}
+          currentCompany={currentCompany}
+          companyId={companyId}
+          addToast={showToast}
+          onLogout={handleLogout}
+          companies={companies}
+          onCompanyChange={handleCompanyChange}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  // ✅ ENHANCED ADMIN DASHBOARD WRAPPER WITH PROPER PROTECTION
+  const AdminDashboardWrapper = () => {
+    return (
+      <AdminRouteWrapper>
         <AdminDashboard
           currentUser={currentUser}
           isOnline={true}
           addToast={showToast}
           onLogout={handleLogout}
+          isUserAdmin={isUserAdmin}
         />
-      </div>
+      </AdminRouteWrapper>
     );
   };
 
   const SalesFormWrapper = ({isEdit = false}) => {
     const {companyId} = useParams();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <SalesForm
-        onSave={isEdit ? handleSalesFormUpdate : handleSalesFormSave}
-        onCancel={() =>
-          (window.location.href = `/companies/${companyId}/sales`)
-        }
-        onExit={() => (window.location.href = `/companies/${companyId}/sales`)}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        companyId={companyId}
-        isEdit={isEdit}
-        editMode={isEdit}
-        mode="invoices"
-        documentType="invoice"
-        formType="sales"
-        pageTitle={isEdit ? "Edit Sales Invoice" : "Create Sales Invoice"}
-        addToast={showToast}
-      />
+      <CompanyRouteWrapper>
+        <SalesForm
+          onSave={isEdit ? handleSalesFormUpdate : handleSalesFormSave}
+          onCancel={() =>
+            (window.location.href = `/companies/${companyId}/sales`)
+          }
+          onExit={() =>
+            (window.location.href = `/companies/${companyId}/sales`)
+          }
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          isEdit={isEdit}
+          editMode={isEdit}
+          mode="invoices"
+          documentType="invoice"
+          formType="sales"
+          pageTitle={isEdit ? "Edit Sales Invoice" : "Create Sales Invoice"}
+          addToast={showToast}
+        />
+      </CompanyRouteWrapper>
     );
   };
 
@@ -1304,85 +1485,57 @@ function App() {
     const {companyId, quotationId} = useParams();
     const navigate = useNavigate();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <SalesOrderForm
-        isPageMode={true}
-        show={true}
-        orderType="quotation"
-        editMode={isEdit}
-        orderId={quotationId}
-        onSaveOrder={isEdit ? handleQuotationUpdate : handleQuotationSave}
-        onHide={() => navigate(`/companies/${companyId}/quotations`)}
-        onCancel={() => navigate(`/companies/${companyId}/quotations`)}
-        companyId={companyId}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        addToast={showToast}
-        onNavigate={(page) => {
-          if (page === "quotations") {
-            navigate(`/companies/${companyId}/quotations`);
-          }
-        }}
-        isOnline={true}
-      />
+      <CompanyRouteWrapper>
+        <SalesOrderForm
+          isPageMode={true}
+          show={true}
+          orderType="quotation"
+          editMode={isEdit}
+          orderId={quotationId}
+          onSaveOrder={isEdit ? handleQuotationUpdate : handleQuotationSave}
+          onHide={() => navigate(`/companies/${companyId}/quotations`)}
+          onCancel={() => navigate(`/companies/${companyId}/quotations`)}
+          companyId={companyId}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          addToast={showToast}
+          onNavigate={(page) => {
+            if (page === "quotations") {
+              navigate(`/companies/${companyId}/quotations`);
+            }
+          }}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
     );
   };
 
   const PurchaseFormWrapper = ({isEdit = false}) => {
     const {companyId} = useParams();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <PurchaseForm
-        onSave={isEdit ? handlePurchaseFormUpdate : handlePurchaseFormSave}
-        onCancel={() =>
-          (window.location.href = `/companies/${companyId}/purchases`)
-        }
-        onExit={() =>
-          (window.location.href = `/companies/${companyId}/purchases`)
-        }
-        inventoryItems={[]}
-        categories={[]}
-        bankAccounts={[]}
-        addToast={showToast}
-        isEdit={isEdit}
-        companyId={companyId}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        mode="purchases"
-        documentType="purchase_bill"
-      />
+      <CompanyRouteWrapper>
+        <PurchaseForm
+          onSave={isEdit ? handlePurchaseFormUpdate : handlePurchaseFormSave}
+          onCancel={() =>
+            (window.location.href = `/companies/${companyId}/purchases`)
+          }
+          onExit={() =>
+            (window.location.href = `/companies/${companyId}/purchases`)
+          }
+          inventoryItems={[]}
+          categories={[]}
+          bankAccounts={[]}
+          addToast={showToast}
+          isEdit={isEdit}
+          companyId={companyId}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          mode="purchases"
+          documentType="purchase_bill"
+        />
+      </CompanyRouteWrapper>
     );
   };
 
@@ -1390,120 +1543,80 @@ function App() {
     const {companyId, id} = useParams();
     const navigate = useNavigate();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <PurchaseOrderForm
-        onSave={isEdit ? handlePurchaseOrderUpdate : handlePurchaseOrderSave}
-        onCancel={() => navigate(`/companies/${companyId}/purchase-orders`)}
-        editingOrder={isEdit && id ? {id} : null}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        companyId={companyId}
-        addToast={showToast}
-        onNavigate={(page) => {
-          if (page === "purchase-orders") {
-            navigate(`/companies/${companyId}/purchase-orders`);
-          } else if (page) {
-            navigate(`/companies/${companyId}/${page}`);
-          }
-        }}
-      />
+      <CompanyRouteWrapper>
+        <PurchaseOrderForm
+          onSave={isEdit ? handlePurchaseOrderUpdate : handlePurchaseOrderSave}
+          onCancel={() => navigate(`/companies/${companyId}/purchase-orders`)}
+          editingOrder={isEdit && id ? {id} : null}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          onNavigate={(page) => {
+            if (page === "purchase-orders") {
+              navigate(`/companies/${companyId}/purchase-orders`);
+            } else if (page) {
+              navigate(`/companies/${companyId}/${page}`);
+            }
+          }}
+        />
+      </CompanyRouteWrapper>
     );
   };
 
   const EditSalesInvoiceWrapper = ({mode, documentType}) => {
     const {companyId, transactionId} = useParams();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <EditSalesInvoice
-        addToast={showToast}
-        mode={mode}
-        documentType={documentType}
-        companyId={companyId}
-        transactionId={transactionId}
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        companies={companies}
-        onSave={
-          mode === "quotations" ? handleQuotationUpdate : handleSalesFormUpdate
-        }
-        onCancel={() =>
-          (window.location.href = `/companies/${companyId}/${
-            mode === "quotations" ? "quotations" : "sales"
-          }`)
-        }
-      />
+      <CompanyRouteWrapper>
+        <EditSalesInvoice
+          addToast={showToast}
+          mode={mode}
+          documentType={documentType}
+          companyId={companyId}
+          transactionId={transactionId}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companies={companies}
+          onSave={
+            mode === "quotations"
+              ? handleQuotationUpdate
+              : handleSalesFormUpdate
+          }
+          onCancel={() =>
+            (window.location.href = `/companies/${companyId}/${
+              mode === "quotations" ? "quotations" : "sales"
+            }`)
+          }
+        />
+      </CompanyRouteWrapper>
     );
   };
 
   const SalesOrderFormWrapper = ({isEdit = false}) => {
     const {companyId, id} = useParams();
 
-    if (!currentCompany) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading company information...</p>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <SalesOrderForm
-        show={true}
-        onHide={() =>
-          (window.location.href = `/companies/${companyId}/sales-orders`)
-        }
-        onSaveOrder={handleSalesOrderSave}
-        orderType="sales_order"
-        currentCompany={currentCompany}
-        companyId={companyId}
-        addToast={showToast}
-        onNavigate={navigateToListView}
-        isEdit={isEdit}
-        orderId={id}
-        editMode={isEdit}
-        isPageMode={true}
-        currentUser={currentUser}
-      />
+      <CompanyRouteWrapper>
+        <SalesOrderForm
+          show={true}
+          onHide={() =>
+            (window.location.href = `/companies/${companyId}/sales-orders`)
+          }
+          onSaveOrder={handleSalesOrderSave}
+          orderType="sales_order"
+          currentCompany={currentCompany}
+          companyId={companyId}
+          addToast={showToast}
+          onNavigate={navigateToListView}
+          isEdit={isEdit}
+          orderId={id}
+          editMode={isEdit}
+          isPageMode={true}
+          currentUser={currentUser}
+        />
+      </CompanyRouteWrapper>
     );
   };
 
@@ -1528,20 +1641,24 @@ function App() {
     );
   };
 
-  // ✅ Updated AutoRedirect to go to /dashboard instead of /home
   const AutoRedirect = () => {
     useEffect(() => {
-      if (companies.length > 0 && currentCompany) {
+      if (stableIsLoggedIn && !stableIsCheckingAuth) {
         window.location.replace("/dashboard");
       }
-    }, [companies, currentCompany]);
+    }, [stableIsLoggedIn, stableIsCheckingAuth]);
 
-    if (companies.length === 0 && !isLoadingCompanies) {
+    if (stableIsCheckingAuth) {
       return (
-        <div className="container mt-5">
+        <div
+          className="d-flex justify-content-center align-items-center"
+          style={{minHeight: "100vh"}}
+        >
           <div className="text-center">
-            <h3>Welcome! 🏢</h3>
-            <p>Please create your first company to get started.</p>
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p>Checking authentication...</p>
           </div>
         </div>
       );
@@ -1556,13 +1673,34 @@ function App() {
           <div className="spinner-border text-primary mb-3" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
-          <p>Setting up your workspace...</p>
+          <p>Redirecting...</p>
         </div>
       </div>
     );
   };
 
-  if (isCheckingAuth) {
+  // Main Loading Screen
+  if (isLoggingOut) {
+    return (
+      <div
+        className="d-flex justify-content-center align-items-center"
+        style={{minHeight: "100vh"}}
+      >
+        <div className="text-center">
+          <div className="spinner-border text-success mb-3" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Logging out...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Only show checking auth if actually checking AND not completed
+  if (
+    (stableIsCheckingAuth && !authCheckCompletedRef.current) ||
+    !isAppInitialized
+  ) {
     return (
       <div
         className="d-flex justify-content-center align-items-center"
@@ -1578,16 +1716,17 @@ function App() {
     );
   }
 
+  // Main App Routes
   return (
-    <Router>
-      {/* ✅ UPDATED: Wrap entire Router with ChatProvider */}
+    <Router future={{v7_startTransition: true, v7_relativeSplatPath: true}}>
       <ChatProvider>
         <div className="App">
           <Routes>
+            {/* Single auth route - no conflicts */}
             <Route
               path="/auth"
               element={
-                isLoggedIn ? (
+                stableIsLoggedIn ? (
                   <Navigate to="/dashboard" replace />
                 ) : (
                   <AuthPage onLogin={handleLogin} />
@@ -1595,18 +1734,24 @@ function App() {
               }
             />
 
+            {/* Redirect /login to /auth */}
+            <Route path="/login" element={<Navigate to="/auth" replace />} />
+
+            {/* Root redirect */}
             <Route
               path="/"
               element={
-                <ProtectedRoute>
-                  <AutoRedirect />
-                </ProtectedRoute>
+                stableIsLoggedIn ? (
+                  <Navigate to="/dashboard" replace />
+                ) : (
+                  <Navigate to="/auth" replace />
+                )
               }
             />
 
+            {/* ✅ PROTECTED ADMIN ROUTES - Only accessible by administrators */}
             <Route path="/admin/*" element={<AdminDashboardWrapper />} />
 
-            {/* ✅ Main Dashboard Routes - Both /home and /dashboard */}
             <Route path="/home" element={<MainDashboardWrapper />} />
             <Route path="/dashboard" element={<MainDashboardWrapper />} />
             <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
@@ -1616,7 +1761,6 @@ function App() {
               element={<CommunityPageWrapper />}
             />
 
-            {/* ✅ STAFF MANAGEMENT ROUTES - BEFORE THE CATCH-ALL */}
             <Route
               path="/companies/:companyId/staff"
               element={
@@ -1626,7 +1770,6 @@ function App() {
               }
             />
 
-            {/* ✅ Daily Task Assignment Route */}
             <Route
               path="/companies/:companyId/staff/daily-task-assignment"
               element={
@@ -1636,7 +1779,6 @@ function App() {
               }
             />
 
-            {/* Purchase Routes */}
             <Route
               path="/companies/:companyId/purchases/add"
               element={
@@ -1661,7 +1803,6 @@ function App() {
               }
             />
 
-            {/* Purchase Order Routes */}
             <Route
               path="/companies/:companyId/purchase-orders/add"
               element={
@@ -1680,7 +1821,6 @@ function App() {
               }
             />
 
-            {/* Sales Routes */}
             <Route
               path="/companies/:companyId/sales/add"
               element={
@@ -1702,7 +1842,6 @@ function App() {
               }
             />
 
-            {/* Quotation Routes */}
             <Route
               path="/companies/:companyId/quotations/add"
               element={
@@ -1724,7 +1863,6 @@ function App() {
               }
             />
 
-            {/* Sales Order Routes */}
             <Route
               path="/companies/:companyId/sales-orders/add"
               element={
@@ -1743,7 +1881,6 @@ function App() {
               }
             />
 
-            {/* ✅ CATCH-ALL ROUTE - MUST BE LAST */}
             <Route
               path="/companies/:companyId/*"
               element={

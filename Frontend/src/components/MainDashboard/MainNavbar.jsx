@@ -29,6 +29,10 @@ import {
   faWifi,
   faExclamationTriangle,
   faUserShield,
+  faReceipt,
+  faChartLine,
+  faFileInvoice,
+  faHandshake,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 
@@ -47,7 +51,7 @@ function MainNavbar({
   onCompanyCreated,
   addToast,
   isOnline = true,
-  notificationCount = 2,
+  notificationCount = 0, // ✅ HIDDEN: Set to 0 to hide notifications
   isLoadingCompanies = false,
   companyId,
 }) {
@@ -62,6 +66,9 @@ function MainNavbar({
   // State management
   const [activeLink, setActiveLink] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
@@ -71,16 +78,132 @@ function MainNavbar({
     width: 0,
   });
 
-  // Refs for dropdown management
+  // Refs for dropdown and search management
   const businessDropdownRef = useRef(null);
+  const searchRef = useRef(null);
 
-  // Simplified navigation links
+  // ✅ PRODUCTION: Main navigation links - only production-ready features
   const navLinks = [
-    {key: "dashboard", label: "Dashboard"},
-    {key: "accounting", label: "Accounting"},
-    {key: "credit-score", label: "Check Credit Score"},
-    {key: "partners", label: "Partner Portal"},
-    {key: "resources", label: "Resources"},
+    {
+      key: "dashboard",
+      label: "Dashboard",
+      icon: faChartLine,
+      description: "Business overview and analytics",
+    },
+    {
+      key: "transactions",
+      label: "Transactions",
+      icon: faReceipt,
+      description: "View all business transactions",
+    },
+    // {
+    //   key: "partners",
+    //   label: "Partners",
+    //   icon: faHandshake,
+    //   description: "Manage business partnerships",
+    // },
+    // ✅ HIDDEN: Invoicing feature (coming soon)
+    // {
+    //   key: "invoicing",
+    //   label: "Invoicing",
+    //   icon: faFileInvoice,
+    //   description: "Create and manage invoices",
+    // },
+  ];
+
+  // ✅ PRODUCTION: Search data - only working features
+  const searchableItems = [
+    // Dashboard items
+    {
+      type: "nav",
+      title: "Dashboard",
+      description: "Main dashboard overview",
+      route: "dashboard",
+    },
+    {
+      type: "nav",
+      title: "Analytics",
+      description: "Business analytics and insights",
+      route: "dashboard",
+    },
+
+    // Transaction items
+    {
+      type: "nav",
+      title: "Transactions",
+      description: "All business transactions",
+      route: "transactions",
+    },
+    {
+      type: "action",
+      title: "Add Sale",
+      description: "Record new sale",
+      route: "sales/add",
+    },
+    {
+      type: "action",
+      title: "Add Purchase",
+      description: "Record new purchase",
+      route: "purchases/add",
+    },
+
+    // Partner items
+    {
+      type: "nav",
+      title: "Partners",
+      description: "Partner management",
+      route: "partners",
+    },
+    {
+      type: "action",
+      title: "Add Customer",
+      description: "Add new customer",
+      route: "parties/add?type=customer",
+    },
+    {
+      type: "action",
+      title: "Add Supplier",
+      description: "Add new supplier",
+      route: "parties/add?type=supplier",
+    },
+    {
+      type: "action",
+      title: "Customer List",
+      description: "View all customers",
+      route: "parties?type=customer",
+    },
+    {
+      type: "action",
+      title: "Supplier List",
+      description: "View all suppliers",
+      route: "parties?type=supplier",
+    },
+
+    // Settings items
+    {
+      type: "action",
+      title: "Settings",
+      description: "Application settings",
+      route: "settings",
+    },
+    {
+      type: "action",
+      title: "Profile",
+      description: "User profile settings",
+      route: "profile",
+    },
+    {
+      type: "action",
+      title: "Company Settings",
+      description: "Company configuration",
+      route: "companies",
+    },
+
+    // ✅ HIDDEN: Coming soon features removed from search
+    // Invoicing items (coming soon)
+    // Inventory items (coming soon)
+    // Financial reports (coming soon)
+    // Advanced features (coming soon)
   ];
 
   // Create a comprehensive companies list that includes current company
@@ -131,7 +254,7 @@ function MainNavbar({
 
   // Utility functions
   const generateInitials = (name) => {
-    if (!name) return "NA";
+    if (!name) return "BB";
     return name
       .split(" ")
       .map((word) => word.charAt(0))
@@ -166,41 +289,29 @@ function MainNavbar({
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
-  // Get current view from URL path for context
+  // Get current view from URL path for context - only working features
   const getCurrentView = () => {
     const pathParts = location.pathname.split("/");
     const lastPart = pathParts[pathParts.length - 1];
 
     const viewDisplayNames = {
       dashboard: "Dashboard",
-      daybook: "Day Book",
       transactions: "Transactions",
-      "cash-bank": "Cash & Bank",
-      parties: "Parties",
+      parties: "Partners",
+      partners: "Partners",
       sales: "Sales",
-      invoices: "Invoices",
-      "create-invoice": "Create Invoice",
-      "credit-notes": "Credit Notes",
-      "sales-orders": "Sales Orders",
-      "create-sales-order": "Create Sales Order",
       purchases: "Purchases",
-      "purchase-bills": "Purchase Bills",
-      "create-purchase": "Create Purchase",
-      "purchase-orders": "Purchase Orders",
-      "create-purchase-order": "Create Purchase Order",
-      inventory: "Inventory",
-      products: "Products",
-      "low-stock": "Low Stock",
-      "stock-movement": "Stock Movement",
-      "bank-accounts": "Bank Accounts",
-      "cash-accounts": "Cash Accounts",
-      "bank-transactions": "Bank Transactions",
-      "bank-reconciliation": "Bank Reconciliation",
-      "cash-flow": "Cash Flow",
-      staff: "Staff",
-      insights: "Insights",
-      reports: "Reports",
       settings: "Settings",
+      profile: "Profile",
+      companies: "Companies",
+      // ✅ HIDDEN: Removed coming soon features
+      // daybook: "Day Book",
+      // invoicing: "Invoicing",
+      // "cash-bank": "Cash & Bank",
+      // invoices: "Invoices",
+      // inventory: "Inventory",
+      // reports: "Reports",
+      // insights: "Insights",
     };
 
     return viewDisplayNames[lastPart] || "Dashboard";
@@ -211,7 +322,35 @@ function MainNavbar({
     const displayName = getUserDisplayName();
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(
       displayName
-    )}&background=5e60ce&color=fff&size=36`;
+    )}&background=4f46e5&color=fff&size=36`;
+  };
+
+  // ✅ PRODUCTION: Enhanced search functionality
+  const performSearch = (query) => {
+    if (!query || query.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    // Simulate API delay for better UX
+    setTimeout(() => {
+      const lowerQuery = query.toLowerCase().trim();
+
+      const results = searchableItems
+        .filter(
+          (item) =>
+            item.title.toLowerCase().includes(lowerQuery) ||
+            item.description.toLowerCase().includes(lowerQuery)
+        )
+        .slice(0, 8); // Limit to 8 results
+
+      setSearchResults(results);
+      setShowSearchResults(results.length > 0);
+      setIsSearching(false);
+    }, 200);
   };
 
   // Enhanced dropdown position calculation
@@ -238,13 +377,48 @@ function MainNavbar({
     setActiveLink(linkKey);
     setShowMobileMenu(false);
     if (onNavigate) onNavigate(linkKey);
-    addToast?.(`Switched to ${linkKey}`, "info");
+    // ✅ REMOVED: No toast for smooth navigation
   };
 
-  const handleSearch = (e) => {
+  // ✅ PRODUCTION: Enhanced search handlers
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    performSearch(query);
+  };
+
+  const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      addToast?.(`Searching for: ${searchQuery}`, "info");
+    if (searchQuery.trim() && searchResults.length > 0) {
+      handleSearchResultClick(searchResults[0]);
+    }
+  };
+
+  const handleSearchResultClick = (result) => {
+    setSearchQuery("");
+    setShowSearchResults(false);
+    setSearchResults([]);
+
+    if (onNavigate) {
+      onNavigate(result.route);
+    }
+
+    // ✅ OPTIONAL: Only show toast for search navigation
+    if (addToast) {
+      addToast(`Navigating to ${result.title}`, "success");
+    }
+  };
+
+  const handleSearchBlur = () => {
+    // Delay hiding results to allow for clicks
+    setTimeout(() => {
+      setShowSearchResults(false);
+    }, 200);
+  };
+
+  const handleSearchFocus = () => {
+    if (searchQuery && searchResults.length > 0) {
+      setShowSearchResults(true);
     }
   };
 
@@ -291,7 +465,6 @@ function MainNavbar({
 
     setShowCreateCompany(true);
     setShowBusinessDropdown(false);
-    addToast?.("Opening company creation form...", "info");
 
     if (onNavigate) {
       onNavigate("create-company");
@@ -320,15 +493,18 @@ function MainNavbar({
     switch (action) {
       case "profile":
         onNavigate?.("profile");
-        addToast?.("Opening profile...", "info");
         break;
       case "settings":
         onNavigate?.("settings");
-        addToast?.("Opening settings...", "info");
         break;
       case "admin":
-        navigate("/admin");
-        addToast?.("Opening admin panel...", "info");
+        // ✅ HIDDEN: Admin panel for security (only show for super admin)
+        if (currentUser?.role === "SuperAdmin") {
+          navigate("/admin");
+          addToast?.("Opening admin panel...", "info");
+        } else {
+          addToast?.("Admin access not available", "warning");
+        }
         break;
       case "logout":
         if (onLogout) {
@@ -433,7 +609,7 @@ function MainNavbar({
           <div className="company-avatar bg-secondary">
             <FontAwesomeIcon icon={faBuilding} size="sm" />
           </div>
-          <span className="company-name">No Company</span>
+          <span className="company-name">Select Company</span>
           <small className="company-switch-text">+ Add Company</small>
         </div>
       );
@@ -480,20 +656,20 @@ function MainNavbar({
           <div className="d-flex align-items-center justify-content-between w-100 h-100">
             {/* Left Section - Logo and Navigation */}
             <div className="d-flex align-items-center flex-shrink-0">
-              {/* Logo */}
+              {/* ✅ UPDATED: B2B Billing Brand Logo */}
               <Navbar.Brand
                 className="d-flex align-items-center me-4"
                 onClick={handleNavigateHome}
                 style={{cursor: "pointer"}}
-                title="Go to Dashboard"
+                title="Go to Dashboard - B2B Billing Solution"
               >
                 <div className="brand-logo me-2">
-                  {currentCompany?.logo || "SM"}
+                  <FontAwesomeIcon icon={faFileInvoice} size="lg" />
                 </div>
-                <span className="brand-text">ShopManager</span>
+                <span className="brand-text">B2B Billing</span>
               </Navbar.Brand>
 
-              {/* Navigation Links - Desktop */}
+              {/* Navigation Links - Desktop - Only working features */}
               <Nav className="d-none d-lg-flex">
                 {navLinks.map((link) => (
                   <Button
@@ -503,7 +679,9 @@ function MainNavbar({
                       activeLink === link.key ? "active" : ""
                     }`}
                     onClick={() => handleNavClick(link.key)}
+                    title={link.description}
                   >
+                    <FontAwesomeIcon icon={link.icon} className="me-2" />
                     {link.label}
                   </Button>
                 ))}
@@ -542,52 +720,71 @@ function MainNavbar({
 
             {/* Right Section - Search and Profile */}
             <div className="d-flex align-items-center flex-shrink-0">
-              {/* Search Bar */}
-              <Form onSubmit={handleSearch} className="d-none d-lg-flex me-3">
-                <InputGroup className="search-group">
-                  <Form.Control
-                    type="text"
-                    placeholder="Search transactions, invoices..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="search-input"
-                  />
-                  <InputGroup.Text className="search-icon">
-                    <FontAwesomeIcon icon={faSearch} />
-                  </InputGroup.Text>
-                </InputGroup>
-              </Form>
-
-              {/* Notifications */}
-              <Button
-                variant="link"
-                className="icon-btn me-2 position-relative"
-                onClick={() =>
-                  addToast?.("Notifications feature coming soon!", "info")
-                }
+              {/* ✅ PRODUCTION: Enhanced Search Bar with Results */}
+              <div
+                className="position-relative d-none d-lg-flex me-3"
+                ref={searchRef}
               >
-                <FontAwesomeIcon icon={faBell} />
-                {notificationCount > 0 && (
-                  <Badge
-                    bg="danger"
-                    className="notification-badge"
-                    style={{
-                      position: "absolute",
-                      top: "-8px",
-                      right: "-8px",
-                      fontSize: "10px",
-                      minWidth: "18px",
-                      height: "18px",
-                      borderRadius: "9px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </Badge>
+                <Form onSubmit={handleSearchSubmit}>
+                  <InputGroup className="search-group">
+                    <Form.Control
+                      type="text"
+                      placeholder="Search customers, products, transactions..."
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      onFocus={handleSearchFocus}
+                      onBlur={handleSearchBlur}
+                      className="search-input"
+                    />
+                    <InputGroup.Text className="search-icon">
+                      {isSearching ? (
+                        <Spinner size="sm" animation="border" />
+                      ) : (
+                        <FontAwesomeIcon icon={faSearch} />
+                      )}
+                    </InputGroup.Text>
+                  </InputGroup>
+                </Form>
+
+                {/* Search Results Dropdown */}
+                {showSearchResults && searchResults.length > 0 && (
+                  <div className="search-results-dropdown">
+                    <div className="search-results-header">
+                      <small className="text-muted">
+                        Found {searchResults.length} result
+                        {searchResults.length !== 1 ? "s" : ""}
+                      </small>
+                    </div>
+                    {searchResults.map((result, index) => (
+                      <div
+                        key={index}
+                        className="search-result-item"
+                        onClick={() => handleSearchResultClick(result)}
+                      >
+                        <div className="search-result-content">
+                          <div className="search-result-title">
+                            {result.title}
+                          </div>
+                          <div className="search-result-description">
+                            {result.description}
+                          </div>
+                        </div>
+                        <div className="search-result-type">
+                          <Badge
+                            bg={result.type === "nav" ? "primary" : "secondary"}
+                            size="sm"
+                          >
+                            {result.type === "nav" ? "Page" : "Action"}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </Button>
+              </div>
+
+              {/* ✅ COMPLETELY HIDDEN: Notifications (coming soon) */}
+              {/* Notifications will only show when backend is ready and notificationCount > 0 */}
 
               {/* Profile Dropdown */}
               <Dropdown align="end">
@@ -632,18 +829,22 @@ function MainNavbar({
 
                   <Dropdown.Divider />
 
-                  <Dropdown.Item
-                    onClick={() => handleProfileAction("admin")}
-                    className="admin-option"
-                  >
-                    <FontAwesomeIcon
-                      icon={faUserShield}
-                      className="me-2 text-danger"
-                    />
-                    Admin Panel
-                  </Dropdown.Item>
-
-                  <Dropdown.Divider />
+                  {/* ✅ HIDDEN: Admin panel - only for super admin */}
+                  {currentUser?.role === "SuperAdmin" && (
+                    <>
+                      <Dropdown.Item
+                        onClick={() => handleProfileAction("admin")}
+                        className="admin-option"
+                      >
+                        <FontAwesomeIcon
+                          icon={faUserShield}
+                          className="me-2 text-danger"
+                        />
+                        System Admin
+                      </Dropdown.Item>
+                      <Dropdown.Divider />
+                    </>
+                  )}
 
                   <Dropdown.Item onClick={() => handleProfileAction("profile")}>
                     <FontAwesomeIcon icon={faUser} className="me-2" />
@@ -681,23 +882,29 @@ function MainNavbar({
           </div>
         </Container>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu - Only working features */}
         {showMobileMenu && (
           <div className="mobile-menu d-lg-none">
-            <Form onSubmit={handleSearch} className="mb-3">
+            {/* Mobile Search */}
+            <Form onSubmit={handleSearchSubmit} className="mb-3">
               <InputGroup>
                 <Form.Control
                   type="text"
                   placeholder="Search..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={handleSearchChange}
                 />
                 <InputGroup.Text>
-                  <FontAwesomeIcon icon={faSearch} />
+                  {isSearching ? (
+                    <Spinner size="sm" animation="border" />
+                  ) : (
+                    <FontAwesomeIcon icon={faSearch} />
+                  )}
                 </InputGroup.Text>
               </InputGroup>
             </Form>
 
+            {/* Mobile Navigation - Only working features */}
             <Nav className="flex-column">
               {navLinks.map((link) => (
                 <Button
@@ -708,6 +915,7 @@ function MainNavbar({
                   }`}
                   onClick={() => handleNavClick(link.key)}
                 >
+                  <FontAwesomeIcon icon={link.icon} className="me-2" />
                   {link.label}
                 </Button>
               ))}
@@ -1037,7 +1245,6 @@ function MainNavbar({
                   if (onNavigate) {
                     onNavigate("companies");
                   }
-                  addToast?.("Opening company management...", "info");
                 }}
                 style={{
                   width: "calc(100% - 16px)",
@@ -1072,7 +1279,7 @@ function MainNavbar({
           document.body
         )}
 
-      {/* Enhanced Styles */}
+      {/* ✅ PRODUCTION: Enhanced Styles with Search Results */}
       <style>{`
         .navbar .container-fluid {
           max-width: 100%;
@@ -1112,16 +1319,20 @@ function MainNavbar({
           transition: all 0.2s;
           white-space: nowrap;
           flex-shrink: 0;
+          display: flex;
+          align-items: center;
         }
 
         .nav-btn:hover {
           color: #4f46e5;
           background-color: #f3f4f6;
+          transform: translateY(-1px);
         }
 
         .nav-btn.active {
           color: white;
           background-color: #4f46e5;
+          box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
         }
 
         .company-selector {
@@ -1179,36 +1390,11 @@ function MainNavbar({
           flex-shrink: 0;
         }
 
-        .portal-company-dropdown div::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .portal-company-dropdown div::-webkit-scrollbar-track {
-          background: #f1f5f9;
-          border-radius: 3px;
-        }
-
-        .portal-company-dropdown div::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 3px;
-        }
-
-        .portal-company-dropdown div::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-
-        body.dropdown-open {
-          overflow: hidden !important;
-        }
-
-        .portal-company-dropdown {
-          scroll-behavior: smooth;
-        }
-
         .search-group {
-          width: 300px;
-          max-width: 300px;
+          width: 350px;
+          max-width: 350px;
           flex-shrink: 0;
+          position: relative;
         }
 
         .search-input {
@@ -1230,12 +1416,121 @@ function MainNavbar({
           background: #f9fafb;
           color: #6b7280;
           transition: all 0.2s ease;
+          min-width: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .search-input:focus + .search-icon {
           border-color: #4f46e5;
           background: #eff6ff;
           color: #4f46e5;
+        }
+
+        .search-results-dropdown {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+          z-index: 1000;
+          max-height: 400px;
+          overflow-y: auto;
+          margin-top: 4px;
+        }
+
+        .search-results-header {
+          padding: 8px 12px;
+          border-bottom: 1px solid #f3f4f6;
+          background: #f9fafb;
+          border-radius: 8px 8px 0 0;
+        }
+
+        .search-result-item {
+          padding: 12px;
+          border-bottom: 1px solid #f3f4f6;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .search-result-item:hover {
+          background: #f8fafc;
+          transform: translateX(4px);
+        }
+
+        .search-result-item:last-child {
+          border-bottom: none;
+          border-radius: 0 0 8px 8px;
+        }
+
+        .search-result-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .search-result-title {
+          font-weight: 600;
+          color: #111827;
+          font-size: 14px;
+          margin-bottom: 2px;
+        }
+
+        .search-result-description {
+          color: #6b7280;
+          font-size: 12px;
+          line-height: 1.3;
+        }
+
+        .search-result-type {
+          flex-shrink: 0;
+          margin-left: 12px;
+        }
+
+        .portal-company-dropdown div::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .portal-company-dropdown div::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 3px;
+        }
+
+        .portal-company-dropdown div::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+
+        .portal-company-dropdown div::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
+        .search-results-dropdown::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .search-results-dropdown::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 3px;
+        }
+
+        .search-results-dropdown::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+
+        body.dropdown-open {
+          overflow: hidden !important;
+        }
+
+        .portal-company-dropdown {
+          scroll-behavior: smooth;
         }
 
         .icon-btn {
@@ -1259,15 +1554,9 @@ function MainNavbar({
         }
 
         @keyframes pulse {
-          0% {
-            transform: scale(1);
-          }
-          50% {
-            transform: scale(1.1);
-          }
-          100% {
-            transform: scale(1);
-          }
+          0% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
         }
 
         .profile-btn {
@@ -1328,21 +1617,13 @@ function MainNavbar({
 
         .admin-option {
           color: #dc2626 !important;
-          background: linear-gradient(
-            135deg,
-            rgba(220, 53, 69, 0.05),
-            rgba(220, 53, 69, 0.1)
-          ) !important;
+          background: linear-gradient(135deg, rgba(220, 53, 69, 0.05), rgba(220, 53, 69, 0.1)) !important;
           margin: 2px 8px;
           border-radius: 8px;
         }
 
         .admin-option:hover {
-          background: linear-gradient(
-            135deg,
-            rgba(220, 53, 69, 0.1),
-            rgba(220, 53, 69, 0.15)
-          ) !important;
+          background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.15)) !important;
           transform: translateX(4px);
         }
 
@@ -1363,6 +1644,8 @@ function MainNavbar({
           font-size: 14px;
           transition: all 0.2s ease;
           border-radius: 6px;
+          display: flex;
+          align-items: center;
         }
 
         .mobile-nav-btn:hover {
@@ -1379,7 +1662,7 @@ function MainNavbar({
 
         @media (max-width: 1200px) {
           .search-group {
-            width: 250px;
+            width: 300px;
           }
         }
 
@@ -1394,6 +1677,10 @@ function MainNavbar({
             padding: 6px 8px;
             max-width: 48px;
           }
+
+          .search-group {
+            width: 250px;
+          }
         }
 
         @media (max-width: 768px) {
@@ -1402,7 +1689,23 @@ function MainNavbar({
           }
 
           .brand-text {
+            font-size: 1rem;
+          }
+
+          .nav-btn {
+            padding: 6px 12px;
+            font-size: 13px;
+          }
+        }
+
+        @media (max-width: 576px) {
+          .brand-text {
             display: none;
+          }
+
+          .company-selector {
+            max-width: 40px;
+            padding: 4px 6px;
           }
         }
 
@@ -1420,6 +1723,17 @@ function MainNavbar({
 
         .navbar {
           overflow: visible;
+        }
+
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </>

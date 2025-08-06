@@ -109,11 +109,6 @@ function ItemInfoSection({
       return;
     }
 
-    console.log(
-      "🔧 ItemInfoSection: Initiating stock adjustment for:",
-      selectedItem
-    );
-
     // Call the parent's stock adjustment handler
     if (onAdjustStock) {
       onAdjustStock(selectedItem);
@@ -126,8 +121,6 @@ function ItemInfoSection({
       alert("Please select a company first");
       return;
     }
-
-    console.log("✏️ ItemInfoSection: Initiating edit for:", selectedItem);
 
     // Call the parent's edit handler
     if (onEditItem) {

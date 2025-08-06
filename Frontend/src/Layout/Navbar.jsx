@@ -1,4 +1,4 @@
-import {useState, useEffect, useRef} from "react";
+import React, {useState, useEffect, useRef} from "react";
 import {
   Navbar as BootstrapNavbar,
   Container,
@@ -28,33 +28,116 @@ import {
   faTimes,
   faCheck,
   faHome,
-  faChevronDown,
-  faEllipsisV,
   faUserShield,
   faTrash,
   faCheckCircle,
   faEye,
   faBellSlash,
+  faFileInvoice,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
+import PropTypes from "prop-types";
+
+// Import components
 import CreateCompany from "../components/Company/CreateCompany";
+
+// Import services
 import notificationService from "../services/notificationService";
+import authService from "../services/authService";
+
+// Import styles
 import "./Navbar.css";
+
+// Optimized SVG logo
+const B2B_LOGO = `data:image/svg+xml;base64,${btoa(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#2563eb"/>
+        <stop offset="50%" stop-color="#3b82f6"/>
+        <stop offset="100%" stop-color="#1d4ed8"/>
+      </linearGradient>
+      <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#00000020"/>
+      </filter>
+    </defs>
+    
+    <circle cx="256" cy="256" r="240" fill="url(#brandGradient)" filter="url(#shadow)"/>
+    
+    <text x="256" y="200" font-family="Arial, sans-serif" font-weight="bold" font-size="72" 
+          text-anchor="middle" fill="white">B2B</text>
+    
+    <rect x="180" y="280" width="152" height="120" rx="8" fill="white" opacity="0.9"/>
+    <rect x="200" y="300" width="112" height="8" rx="4" fill="#2563eb"/>
+    <rect x="200" y="320" width="80" height="6" rx="3" fill="#64748b"/>
+    <rect x="200" y="335" width="100" height="6" rx="3" fill="#64748b"/>
+    <rect x="200" y="350" width="60" height="6" rx="3" fill="#64748b"/>
+    
+    <circle cx="420" cy="160" r="45" fill="white" opacity="0.95"/>
+    <text x="420" y="175" font-family="Arial, sans-serif" font-weight="bold" font-size="36" 
+          text-anchor="middle" fill="#2563eb">$</text>
+  </svg>
+`)}`;
+
+// Professional color palette
+const COMPANY_COLORS = [
+  "#2563eb",
+  "#059669",
+  "#dc2626",
+  "#7c3aed",
+  "#ea580c",
+  "#0891b2",
+  "#be123c",
+  "#4338ca",
+  "#16a34a",
+  "#c2410c",
+  "#9333ea",
+  "#0d9488",
+];
+
+// View display mapping
+const VIEW_DISPLAY_NAMES = {
+  dashboard: "Dashboard",
+  daybook: "Day Book",
+  transactions: "Transactions",
+  "cash-bank": "Cash & Bank",
+  parties: "Business Partners",
+  sales: "Sales Management",
+  invoices: "Sales Invoices",
+  "sales-orders": "Sales Orders",
+  purchases: "Purchase Management",
+  "purchase-bills": "Purchase Bills",
+  "purchase-orders": "Purchase Orders",
+  inventory: "Inventory Management",
+  products: "Product Catalog",
+  "low-stock": "Low Stock Alert",
+  "stock-movement": "Stock Movement",
+  "bank-accounts": "Bank Accounts",
+  "cash-accounts": "Cash Management",
+  "bank-transactions": "Bank Transactions",
+  "bank-reconciliation": "Bank Reconciliation",
+  "cash-flow": "Cash Flow Analysis",
+  staff: "Staff Management",
+  quotations: "Quotations",
+  "daily-task-assignment": "Task Assignment",
+};
 
 function Navbar({
   onLogout,
   toggleSidebar,
-  currentCompany,
-  companies,
+  currentCompany = null,
+  companies = [],
   onCompanyChange,
   onCompanyCreated,
   onCompanyUpdated,
-  currentUser,
-  isLoadingCompanies,
-  isOnline,
+  currentUser = null,
+  isLoadingCompanies = false,
+  isOnline = true,
   companyId,
 }) {
-  // React Router hooks
+  // ===============================
+  // HOOKS & STATE
+  // ===============================
   const {companyId: urlCompanyId} = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,13 +151,13 @@ function Navbar({
   const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
 
-  // ✅ NEW: Notification service state
+  // Notification states
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [notificationError, setNotificationError] = useState(null);
 
-  // ✅ NEW: Toast notification state
+  // Toast states
   const [toastNotifications, setToastNotifications] = useState([]);
 
   // Refs for click outside detection
@@ -82,122 +165,214 @@ function Navbar({
   const userDropdownRef = useRef(null);
   const businessDropdownRef = useRef(null);
 
-  // Temporary logo as base64 SVG - shop/cart icon with gradient
-  const tempLogo =
-    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM1ZTYwY2UiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4MDYwZmYiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI1MCIgZmlsbD0id2hpdGUiLz48cGF0aCBmaWxsPSJ1cmwoI2EpIiBkPSJNMTgwIDgwQzE4MCA1Ny45MDkgMTk3LjkwOSA0MCAyMjAgNDBIMjkyQzMxNC4wOTEgNDAgMzMyIDU3LjkwOSAzMzIgODBWOTZIMzgwLjY0TDQzMiAyMjRMNDMyIDM3Nkg4MFYyMjRMMTMxLjM2IDk2SDE4MFY4MFpNODAgMzc2VjQzMkgxMzZWNDAwSDE4OFY0MzJIMzI0VjQwMEgzNzZWNDMySDQzMlYzNzZIODBaIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iMzA0IiByPSIzMiIgZmlsbD0id2hpdGUiLz48Y2lyY2xlIGN4PSIzNTIiIGN5PSIzMDQiIHI9IjMyIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==";
-
   // ===============================
-  // 🔔 NOTIFICATION SERVICE INTEGRATION
+  // UTILITY FUNCTIONS
   // ===============================
 
-  // ✅ Setup notification service listeners
+  // Generate company initials
+  const generateInitials = (name) => {
+    if (!name) return "NA";
+    return name
+      .split(" ")
+      .map((word) => word.charAt(0))
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Get company color
+  const getCompanyColor = (index = 0) => {
+    return COMPANY_COLORS[index % COMPANY_COLORS.length];
+  };
+
+  // ✅ ENHANCED ADMIN CHECK - Multiple validation methods
+  const isUserAdmin = () => {
+    if (!currentUser) return false;
+
+    // Primary admin checks
+    const roleBasedAdmin =
+      currentUser.role === "admin" ||
+      currentUser.role === "administrator" ||
+      currentUser.userType === "admin";
+
+    const propertyBasedAdmin = currentUser.isAdmin === true;
+
+    // Array-based role checks
+    const arrayRoleAdmin =
+      Array.isArray(currentUser.roles) && currentUser.roles.includes("admin");
+
+    const arrayPermissionAdmin =
+      Array.isArray(currentUser.permissions) &&
+      currentUser.permissions.includes("admin");
+
+    // Special admin emails (for development/testing)
+    const emailBasedAdmin =
+      currentUser.email === "admin@b2bbillings.com" ||
+      currentUser.email === "admin@shopmanagement.com" ||
+      currentUser.email === "superadmin@b2bbillings.com";
+
+    // Check against auth service
+    const authServiceAdmin = authService.isAdmin();
+
+    // Admin level checks (if your system uses levels)
+    const levelBasedAdmin =
+      currentUser.adminLevel === "super" ||
+      currentUser.adminLevel === "admin" ||
+      currentUser.accessLevel === "admin";
+
+    // Department-based admin check
+    const departmentAdmin =
+      currentUser.department === "administration" &&
+      currentUser.isManager === true;
+
+    // Combine all checks
+    const isAdmin =
+      roleBasedAdmin ||
+      propertyBasedAdmin ||
+      arrayRoleAdmin ||
+      arrayPermissionAdmin ||
+      emailBasedAdmin ||
+      authServiceAdmin ||
+      levelBasedAdmin ||
+      departmentAdmin;
+
+    // Additional validation: Must have user ID and email
+    const hasValidCredentials =
+      (currentUser.id || currentUser._id) &&
+      currentUser.email &&
+      currentUser.email.includes("@");
+
+    // Final result
+    const finalAdminStatus = isAdmin && hasValidCredentials;
+
+    return finalAdminStatus;
+  };
+
+  // Get current view display name
+  const getCurrentView = () => {
+    const pathParts = location.pathname.split("/");
+    const lastPart = pathParts[pathParts.length - 1];
+    return VIEW_DISPLAY_NAMES[lastPart] || "B2B Billing Dashboard";
+  };
+
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (currentUser?.name) return currentUser.name;
+    if (currentUser?.email) return currentUser.email.split("@")[0];
+    return "User";
+  };
+
+  // Get user avatar URL
+  const getUserAvatarUrl = () => {
+    const displayName = getUserDisplayName();
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      displayName
+    )}&background=2563eb&color=fff&size=36&font-size=0.33`;
+  };
+
+  // ===============================
+  // NOTIFICATION HANDLERS
+  // ===============================
+
+  // Setup notification service listeners
   useEffect(() => {
-    const handleNewNotification = (notification) => {
-      console.log("📢 New notification in Navbar:", notification);
-      setNotifications((prev) => [notification, ...prev.slice(0, 49)]); // Keep max 50
-      setUnreadCount((prev) => prev + 1);
-    };
+    const handlers = {
+      handleNewNotification: (notification) => {
+        setNotifications((prev) => [notification, ...prev.slice(0, 49)]);
+        setUnreadCount((prev) => prev + 1);
+      },
 
-    const handleUnreadCountUpdated = ({count}) => {
-      console.log("🔔 Unread count updated:", count);
-      setUnreadCount(count);
-    };
+      handleUnreadCountUpdated: ({count}) => {
+        setUnreadCount(count);
+      },
 
-    const handleNotificationsFetched = ({
-      notifications: fetchedNotifications,
-    }) => {
-      console.log("📥 Notifications fetched:", fetchedNotifications);
-      setNotifications(fetchedNotifications || []);
-      setIsLoadingNotifications(false);
-      setNotificationError(null);
-    };
+      handleNotificationsFetched: ({notifications: fetchedNotifications}) => {
+        setNotifications(fetchedNotifications || []);
+        setIsLoadingNotifications(false);
+        setNotificationError(null);
+      },
 
-    const handleNotificationRead = (notificationId) => {
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId
-            ? {...n, isRead: true, readAt: new Date().toISOString()}
-            : n
-        )
-      );
-    };
+      handleNotificationRead: (notificationId) => {
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId
+              ? {...n, isRead: true, readAt: new Date().toISOString()}
+              : n
+          )
+        );
+      },
 
-    const handleAllNotificationsRead = () => {
-      setNotifications((prev) =>
-        prev.map((n) => ({
-          ...n,
-          isRead: true,
-          readAt: new Date().toISOString(),
-        }))
-      );
-      setUnreadCount(0);
-    };
+      handleAllNotificationsRead: () => {
+        setNotifications((prev) =>
+          prev.map((n) => ({
+            ...n,
+            isRead: true,
+            readAt: new Date().toISOString(),
+          }))
+        );
+        setUnreadCount(0);
+      },
 
-    const handleNotificationDeleted = (notificationId) => {
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-    };
+      handleNotificationDeleted: (notificationId) => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      },
 
-    const handleToastNotification = ({message, type}) => {
-      const toastId = Date.now();
-      const newToast = {
-        id: toastId,
-        message,
-        type,
-        show: true,
-      };
+      handleToastNotification: ({message, type, title, priority, onClick}) => {
+        const toastId = Date.now();
+        const newToast = {
+          id: toastId,
+          title: title || "B2BBillings",
+          message,
+          type: type || "info",
+          priority,
+          show: true,
+          onClick,
+        };
 
-      setToastNotifications((prev) => [...prev, newToast]);
+        setToastNotifications((prev) => [...prev, newToast]);
 
-      // Auto-remove toast after 5 seconds
-      setTimeout(() => {
-        setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
-      }, 5000);
-    };
-
-    const handleNotificationToast = (toastData) => {
-      const toastId = Date.now();
-      const newToast = {
-        id: toastId,
-        title: toastData.title,
-        message: toastData.message,
-        type: toastData.type || "info",
-        priority: toastData.priority,
-        show: true,
-        onClick: toastData.onClick,
-      };
-
-      setToastNotifications((prev) => [...prev, newToast]);
-
-      // Auto-remove toast after delay based on priority
-      const delay = toastData.priority === "critical" ? 10000 : 5000;
-      setTimeout(() => {
-        setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
-      }, delay);
+        // Auto-remove toast
+        const delay = priority === "critical" ? 10000 : 5000;
+        setTimeout(() => {
+          setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
+        }, delay);
+      },
     };
 
     // Add listeners
     const unsubscribers = [
-      notificationService.on("new_notification", handleNewNotification),
-      notificationService.on("unread_count_updated", handleUnreadCountUpdated),
+      notificationService.on(
+        "new_notification",
+        handlers.handleNewNotification
+      ),
+      notificationService.on(
+        "unread_count_updated",
+        handlers.handleUnreadCountUpdated
+      ),
       notificationService.on(
         "notifications_fetched",
-        handleNotificationsFetched
+        handlers.handleNotificationsFetched
       ),
-      notificationService.on("notification_read", handleNotificationRead),
+      notificationService.on(
+        "notification_read",
+        handlers.handleNotificationRead
+      ),
       notificationService.on(
         "all_notifications_read",
-        handleAllNotificationsRead
+        handlers.handleAllNotificationsRead
       ),
-      notificationService.on("notification_deleted", handleNotificationDeleted),
-      notificationService.on("show_toast", handleToastNotification),
+      notificationService.on(
+        "notification_deleted",
+        handlers.handleNotificationDeleted
+      ),
+      notificationService.on("show_toast", handlers.handleToastNotification),
       notificationService.on(
         "show_notification_toast",
-        handleNotificationToast
+        handlers.handleToastNotification
       ),
     ];
 
     return () => {
-      // Cleanup listeners
       unsubscribers.forEach((unsubscribe) => {
         if (typeof unsubscribe === "function") {
           unsubscribe();
@@ -206,7 +381,7 @@ function Navbar({
     };
   }, []);
 
-  // ✅ Initial notification fetch
+  // Initial notification fetch
   useEffect(() => {
     const loadInitialNotifications = async () => {
       if (!effectiveCompanyId) return;
@@ -237,7 +412,7 @@ function Navbar({
         // Fetch unread count
         await notificationService.fetchUnreadCount(effectiveCompanyId);
       } catch (error) {
-        console.error("❌ Error loading notifications:", error);
+        console.error("Error loading notifications:", error);
         setNotificationError("Failed to load notifications");
       } finally {
         setIsLoadingNotifications(false);
@@ -247,24 +422,20 @@ function Navbar({
     loadInitialNotifications();
   }, [effectiveCompanyId]);
 
-  // ✅ Handle notification actions
+  // Notification action handlers
   const handleNotificationClick = async (notification) => {
     try {
-      // Mark as read if not already read
       if (!notification.isRead) {
         await notificationService.markAsRead(notification.id);
       }
-
-      // Mark as clicked for analytics
       await notificationService.markAsClicked(notification.id);
 
-      // Navigate to action URL if provided
       if (notification.actionUrl) {
         navigate(notification.actionUrl);
         setShowNotifications(false);
       }
     } catch (error) {
-      console.error("❌ Error handling notification click:", error);
+      console.error("Error handling notification click:", error);
     }
   };
 
@@ -273,7 +444,7 @@ function Navbar({
     try {
       await notificationService.markAsRead(notificationId);
     } catch (error) {
-      console.error("❌ Error marking notification as read:", error);
+      console.error("Error marking notification as read:", error);
     }
   };
 
@@ -281,7 +452,7 @@ function Navbar({
     try {
       await notificationService.markAllAsRead(effectiveCompanyId);
     } catch (error) {
-      console.error("❌ Error marking all notifications as read:", error);
+      console.error("Error marking all notifications as read:", error);
     }
   };
 
@@ -290,7 +461,7 @@ function Navbar({
     try {
       await notificationService.deleteNotification(notificationId);
     } catch (error) {
-      console.error("❌ Error deleting notification:", error);
+      console.error("Error deleting notification:", error);
     }
   };
 
@@ -302,44 +473,168 @@ function Navbar({
         companyId: effectiveCompanyId,
       });
     } catch (error) {
-      console.error("❌ Error refreshing notifications:", error);
+      console.error("Error refreshing notifications:", error);
     }
   };
 
-  // ✅ Remove toast notification
+  // ===============================
+  // NAVIGATION HANDLERS
+  // ===============================
+
+  // Handle company selection
+  const handleCompanySelect = (company) => {
+    try {
+      if (!company) return;
+
+      const newCompanyId = company.id || company._id;
+      if (!newCompanyId) return;
+
+      // Maintain current view when switching companies
+      const pathParts = location.pathname.split("/");
+      const currentView = pathParts[pathParts.length - 1] || "daybook";
+
+      const newPath = `/companies/${newCompanyId}/${currentView}`;
+      navigate(newPath);
+
+      if (onCompanyChange) {
+        onCompanyChange(company);
+      }
+    } catch (error) {
+      console.error("Error selecting company:", error);
+    } finally {
+      setShowBusinessDropdown(false);
+    }
+  };
+
+  // Handle navigation to home
+  const handleNavigateHome = () => {
+    if (effectiveCompanyId) {
+      navigate(`/companies/${effectiveCompanyId}/daybook`);
+    } else if (companies.length > 0) {
+      const firstCompany = companies[0];
+      const companyId = firstCompany.id || firstCompany._id;
+      navigate(`/companies/${companyId}/daybook`);
+    } else {
+      navigate("/");
+    }
+  };
+
+  // Handle add new business
+  const handleAddNewBusiness = () => {
+    if (!isOnline) return;
+    setShowCreateCompany(true);
+    setShowBusinessDropdown(false);
+  };
+
+  // Handle company creation
+  const handleCompanyCreated = (newCompany) => {
+    try {
+      if (onCompanyCreated) {
+        onCompanyCreated(newCompany);
+      }
+
+      if (newCompany) {
+        const newCompanyId = newCompany.id || newCompany._id;
+        if (newCompanyId) {
+          setTimeout(() => {
+            navigate(`/companies/${newCompanyId}/daybook`);
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error("Error handling company creation:", error);
+    } finally {
+      setShowCreateCompany(false);
+    }
+  };
+
+  // ===============================
+  // USER MENU HANDLERS
+  // ===============================
+
+  // Handle admin panel access with enhanced security
+  const handleAdminPanel = () => {
+    const userIsAdmin = isUserAdmin();
+
+    if (userIsAdmin) {
+      setShowUserDropdown(false);
+      navigate("/admin");
+    } else {
+      console.warn(
+        "Admin access denied for user:",
+        currentUser?.email || "unknown"
+      );
+      setToastNotifications((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          title: "Access Denied",
+          message: "Administrator privileges required to access this feature.",
+          type: "error",
+          show: true,
+        },
+      ]);
+    }
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    try {
+      setShowUserDropdown(false);
+      setShowNotifications(false);
+      setShowBusinessDropdown(false);
+
+      if (onLogout && typeof onLogout === "function") {
+        onLogout();
+      } else {
+        localStorage.removeItem("token");
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
+        window.location.href = "/auth";
+      }
+    } catch (error) {
+      console.error("Error during logout:", error);
+      localStorage.clear();
+      window.location.href = "/auth";
+    }
+  };
+
+  // Handle profile actions
+  const handleProfileAction = (action) => {
+    setShowUserDropdown(false);
+
+    switch (action) {
+      case "profile":
+        // TODO: Navigate to profile page
+        break;
+      case "settings":
+        if (effectiveCompanyId) {
+          navigate(`/companies/${effectiveCompanyId}/settings`);
+        }
+        break;
+      case "activity":
+        // TODO: Navigate to activity log
+        break;
+      case "admin":
+        handleAdminPanel();
+        break;
+      case "logout":
+        handleLogout();
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Remove toast notification
   const removeToast = (toastId) => {
     setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
   };
 
-  // Generate initials from company name
-  const generateInitials = (name) => {
-    if (!name) return "NA";
-    return name
-      .split(" ")
-      .map((word) => word.charAt(0))
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
+  // ===============================
+  // CLICK OUTSIDE DETECTION
+  // ===============================
 
-  // Generate random color for company
-  const getRandomColor = () => {
-    const colors = [
-      "#ff9e43",
-      "#4e73df",
-      "#1cc88a",
-      "#e74a3b",
-      "#f39c12",
-      "#9b59b6",
-      "#34495e",
-      "#17a2b8",
-      "#6f42c1",
-      "#e83e8c",
-    ];
-    return colors[Math.floor(Math.random() * colors.length)];
-  };
-
-  // Handle clicks outside of dropdowns
   useEffect(() => {
     function handleClickOutside(event) {
       if (
@@ -373,219 +668,11 @@ function Navbar({
     };
   }, [showNotifications, showUserDropdown, showBusinessDropdown]);
 
-  // Get current view from URL path for context
-  const getCurrentView = () => {
-    const pathParts = location.pathname.split("/");
-    const lastPart = pathParts[pathParts.length - 1];
+  // ===============================
+  // RENDER HELPERS
+  // ===============================
 
-    const viewDisplayNames = {
-      dashboard: "Dashboard",
-      daybook: "Day Book",
-      transactions: "Transactions",
-      "cash-bank": "Cash & Bank",
-      parties: "Parties",
-      sales: "Sales",
-      invoices: "Invoices",
-      "create-invoice": "Create Invoice",
-      "credit-notes": "Credit Notes",
-      "sales-orders": "Sales Orders",
-      "create-sales-order": "Create Sales Order",
-      purchases: "Purchases",
-      "purchase-bills": "Purchase Bills",
-      "create-purchase": "Create Purchase",
-      "purchase-orders": "Purchase Orders",
-      "create-purchase-order": "Create Purchase Order",
-      inventory: "Inventory",
-      products: "Products",
-      "low-stock": "Low Stock",
-      "stock-movement": "Stock Movement",
-      "bank-accounts": "Bank Accounts",
-      "cash-accounts": "Cash Accounts",
-      "bank-transactions": "Bank Transactions",
-      "bank-reconciliation": "Bank Reconciliation",
-      "cash-flow": "Cash Flow",
-      staff: "Staff",
-      insights: "Insights",
-      reports: "Reports",
-      settings: "Settings",
-      chats: "Chats",
-    };
-
-    return viewDisplayNames[lastPart] || "Dashboard";
-  };
-
-  // Handle company selection with navigation
-  const handleCompanySelect = (company) => {
-    try {
-      if (!company) {
-        return;
-      }
-
-      const newCompanyId = company.id || company._id;
-      if (!newCompanyId) {
-        return;
-      }
-
-      // Determine current view to maintain context when switching companies
-      const pathParts = location.pathname.split("/");
-      const currentView = pathParts[pathParts.length - 1] || "dashboard";
-
-      // Navigate to the same view but with new company
-      const newPath = `/companies/${newCompanyId}/${currentView}`;
-      navigate(newPath);
-
-      // Notify parent component
-      if (onCompanyChange) {
-        onCompanyChange(company);
-      }
-    } catch (error) {
-      console.error("Error selecting company:", error);
-    } finally {
-      setShowBusinessDropdown(false);
-    }
-  };
-
-  // Handle opening create company modal
-  const handleAddNewBusiness = () => {
-    if (!isOnline) {
-      return;
-    }
-
-    setShowCreateCompany(true);
-    setShowBusinessDropdown(false);
-  };
-
-  // Handle closing create company modal
-  const handleCloseCreateCompany = () => {
-    setShowCreateCompany(false);
-  };
-
-  // Handle company creation success
-  const handleCompanyCreated = (newCompany) => {
-    try {
-      // Notify parent component first
-      if (onCompanyCreated) {
-        onCompanyCreated(newCompany);
-      }
-
-      // Auto-navigate to new company's dashboard
-      if (newCompany) {
-        const newCompanyId = newCompany.id || newCompany._id;
-        if (newCompanyId) {
-          const newPath = `/companies/${newCompanyId}/dashboard`;
-
-          // Small delay to ensure state updates are processed
-          setTimeout(() => {
-            navigate(newPath);
-          }, 100);
-        }
-      }
-    } catch (error) {
-      console.error("Error handling company creation:", error);
-    } finally {
-      setShowCreateCompany(false);
-    }
-  };
-
-  // Handle navigation to home
-  const handleNavigateHome = () => {
-    if (effectiveCompanyId) {
-      navigate(`/companies/${effectiveCompanyId}/dashboard`);
-    } else if (companies.length > 0) {
-      const firstCompany = companies[0];
-      const companyId = firstCompany.id || firstCompany._id;
-      navigate(`/companies/${companyId}/dashboard`);
-    } else {
-      navigate("/");
-    }
-  };
-
-  // Handle admin panel navigation
-  const handleAdminPanel = () => {
-    console.log("🚀 Navigating to admin panel");
-    setShowUserDropdown(false);
-    navigate("/admin");
-  };
-
-  // Get user display name
-  const getUserDisplayName = () => {
-    if (currentUser?.name) {
-      return currentUser.name;
-    }
-    if (currentUser?.email) {
-      return currentUser.email.split("@")[0];
-    }
-    return "User";
-  };
-
-  // Get user avatar URL
-  const getUserAvatarUrl = () => {
-    const displayName = getUserDisplayName();
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      displayName
-    )}&background=5e60ce&color=fff&size=36`;
-  };
-
-  // Handle logout function
-  const handleLogout = () => {
-    try {
-      console.log("🚪 Logout initiated");
-
-      // Close all dropdowns first
-      setShowUserDropdown(false);
-      setShowNotifications(false);
-      setShowBusinessDropdown(false);
-
-      // Call the logout function passed from parent
-      if (onLogout && typeof onLogout === "function") {
-        onLogout();
-      } else {
-        console.warn("⚠️ No logout function provided");
-        // Fallback: Clear local storage and redirect
-        localStorage.removeItem("token");
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
-        window.location.href = "/login";
-      }
-    } catch (error) {
-      console.error("❌ Error during logout:", error);
-      // Fallback logout
-      localStorage.clear();
-      window.location.href = "/login";
-    }
-  };
-
-  // Handle profile menu interactions with admin panel
-  const handleProfileAction = (action) => {
-    setShowUserDropdown(false);
-
-    switch (action) {
-      case "profile":
-        console.log("Navigate to profile");
-        // TODO: Navigate to profile page
-        break;
-      case "settings":
-        console.log("Navigate to settings");
-        if (effectiveCompanyId) {
-          navigate(`/companies/${effectiveCompanyId}/settings`);
-        }
-        break;
-      case "activity":
-        console.log("Navigate to activity log");
-        // TODO: Navigate to activity log
-        break;
-      case "admin":
-        handleAdminPanel();
-        break;
-      case "logout":
-        handleLogout();
-        break;
-      default:
-        break;
-    }
-  };
-
-  // Render company selector content
+  // Render company selector
   const renderCompanySelector = () => {
     if (isLoadingCompanies) {
       return (
@@ -595,15 +682,8 @@ function Navbar({
           </div>
           <div className="business-name-container ms-2 d-none d-md-flex flex-column">
             <div className="business-name text-muted">Loading...</div>
-            <div className="add-business">
-              <span>Loading companies...</span>
-            </div>
+            <div className="add-business">Loading businesses...</div>
           </div>
-          <FontAwesomeIcon
-            icon={faChevronDown}
-            className="ms-2 text-muted"
-            size="sm"
-          />
         </div>
       );
     }
@@ -615,26 +695,23 @@ function Navbar({
             <FontAwesomeIcon icon={faBuilding} className="text-white" />
           </div>
           <div className="business-name-container ms-2 d-none d-md-flex flex-column">
-            <div className="business-name">No Company</div>
+            <div className="business-name">Select Business</div>
             <div className="add-business">
               <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
-              <span>Add Company</span>
+              Choose or Add Business
             </div>
           </div>
-          <FontAwesomeIcon
-            icon={faChevronDown}
-            className="ms-2 text-muted"
-            size="sm"
-          />
         </div>
       );
     }
 
-    // Generate company display data
     const companyName =
-      currentCompany.businessName || currentCompany.name || "Company";
+      currentCompany.businessName || currentCompany.name || "Business";
     const companyInitials = generateInitials(companyName);
-    const companyColor = currentCompany.color || getRandomColor();
+    const companyIndex = companies.findIndex(
+      (c) => (c.id || c._id) === (currentCompany.id || currentCompany._id)
+    );
+    const companyColor = getCompanyColor(companyIndex);
 
     return (
       <div className="d-flex align-items-center">
@@ -651,38 +728,15 @@ function Navbar({
               : companyName}
           </div>
           <div className="add-business">
-            <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
-            <span>Switch Company</span>
+            <FontAwesomeIcon icon={faBuilding} className="me-1" size="xs" />
+            Switch Business
           </div>
         </div>
-        <FontAwesomeIcon
-          icon={faChevronDown}
-          className="ms-2 text-muted"
-          size="sm"
-        />
       </div>
     );
   };
 
-  // Render company validation warning if needed
-  const renderCompanyValidationWarning = () => {
-    if (!effectiveCompanyId || !currentCompany) return null;
-
-    const currentCompanyId = currentCompany.id || currentCompany._id;
-    if (effectiveCompanyId !== currentCompanyId) {
-      return (
-        <div className="company-validation-warning">
-          <small className="text-warning">
-            <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
-            Company mismatch detected
-          </small>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // ✅ Render notifications dropdown
+  // Render notifications dropdown
   const renderNotificationsDropdown = () => {
     if (isLoadingNotifications) {
       return (
@@ -723,7 +777,9 @@ function Navbar({
             size="2x"
           />
           <div className="small">No notifications</div>
-          <div className="small text-muted">You're all caught up!</div>
+          <div className="small text-muted">
+            All caught up with your business!
+          </div>
         </div>
       );
     }
@@ -801,6 +857,13 @@ function Navbar({
     );
   };
 
+  // ✅ CHECK IF ADMIN BUTTON SHOULD BE SHOWN
+  const shouldShowAdminButton = isUserAdmin();
+
+  // ===============================
+  // MAIN RENDER
+  // ===============================
+
   return (
     <>
       <BootstrapNavbar
@@ -814,7 +877,6 @@ function Navbar({
           <div className="d-flex align-items-center w-100">
             {/* Left section - Logo and sidebar toggle */}
             <div className="d-flex align-items-center">
-              {/* Sidebar toggle button */}
               <Button
                 variant="link"
                 className="p-0 me-2 sidebar-toggle"
@@ -824,7 +886,6 @@ function Navbar({
                 <FontAwesomeIcon icon={faBars} />
               </Button>
 
-              {/* Logo and brand name */}
               <BootstrapNavbar.Brand
                 className="d-flex align-items-center me-2"
                 onClick={handleNavigateHome}
@@ -832,18 +893,26 @@ function Navbar({
                 title="Go to Dashboard"
               >
                 <img
-                  src={tempLogo}
-                  alt="ShopManager Logo"
-                  width="30"
-                  height="30"
-                  className="d-inline-block align-top me-2"
+                  src={B2B_LOGO}
+                  alt="B2BBillings Logo"
+                  width="32"
+                  height="32"
+                  className="d-inline-block align-top me-2 brand-logo"
                 />
-                <span className="brand-text">ShopManager</span>
+                <div className="brand-text-container">
+                  <span className="brand-text">B2BBillings</span>
+                  <small className="brand-tagline d-none d-lg-block">
+                    Business Billing Solutions
+                  </small>
+                </div>
               </BootstrapNavbar.Brand>
 
-              {/* Current page breadcrumb (visible on larger screens) */}
               <div className="d-none d-lg-flex align-items-center text-muted">
-                <FontAwesomeIcon icon={faHome} className="me-2" size="sm" />
+                <FontAwesomeIcon
+                  icon={faFileInvoice}
+                  className="me-2"
+                  size="sm"
+                />
                 <span className="me-2">/</span>
                 <span className="current-page-name">{getCurrentView()}</span>
               </div>
@@ -851,180 +920,158 @@ function Navbar({
 
             {/* Center section - Company Selector */}
             <div className="mx-auto d-flex align-items-center">
-              <div
+              <Dropdown
+                show={showBusinessDropdown}
+                onToggle={setShowBusinessDropdown}
                 ref={businessDropdownRef}
-                className="business-selector d-flex align-items-center position-relative"
+                className="business-selector"
               >
-                <div
-                  className="d-flex align-items-center business-dropdown-toggle"
-                  onClick={() => setShowBusinessDropdown(!showBusinessDropdown)}
+                <Dropdown.Toggle
+                  as="div"
+                  className="business-dropdown-toggle d-flex align-items-center"
                   style={{cursor: "pointer"}}
-                  title="Switch Company"
+                  title="Switch Business"
                 >
                   {renderCompanySelector()}
-                </div>
+                </Dropdown.Toggle>
 
-                {showBusinessDropdown && (
-                  <div className="dropdown-menu business-dropdown-menu shadow animated--grow-in show">
-                    <div className="d-flex justify-content-between align-items-center px-3 py-2">
-                      <h6 className="mb-0">Switch Company</h6>
-                      {/* Network status indicator */}
-                      <div className="d-flex align-items-center">
-                        <FontAwesomeIcon
-                          icon={isOnline ? faWifi : faTimes}
-                          className={`me-2 ${
-                            isOnline ? "text-success" : "text-danger"
-                          }`}
-                          title={isOnline ? "Online" : "Offline"}
-                        />
-                        <small className="text-muted">{getCurrentView()}</small>
-                      </div>
+                <Dropdown.Menu
+                  className="business-dropdown-menu"
+                  align="center"
+                >
+                  <div className="dropdown-header d-flex justify-content-between align-items-center">
+                    <h6 className="mb-0">Switch Business</h6>
+                    <div className="d-flex align-items-center">
+                      <FontAwesomeIcon
+                        icon={isOnline ? faWifi : faTimes}
+                        className={`me-2 ${
+                          isOnline ? "text-success" : "text-danger"
+                        }`}
+                        title={isOnline ? "Online" : "Offline"}
+                      />
+                      <small className="text-muted">{getCurrentView()}</small>
                     </div>
-
-                    {!isOnline && (
-                      <div className="px-3 py-2">
-                        <Alert variant="warning" className="mb-0 py-1 small">
-                          <FontAwesomeIcon icon={faTimes} className="me-1" />
-                          You're offline. Company data may be outdated.
-                        </Alert>
-                      </div>
-                    )}
-
-                    {isLoadingCompanies ? (
-                      <div className="px-3 py-2 text-center">
-                        <Spinner
-                          animation="border"
-                          size="sm"
-                          className="me-2"
-                        />
-                        <span className="small text-muted">
-                          Loading companies...
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        {companies && companies.length > 0 ? (
-                          companies.map((company) => {
-                            const companyName =
-                              company.businessName ||
-                              company.name ||
-                              "Unnamed Company";
-                            const companyId = company.id || company._id;
-                            const isCurrentCompany =
-                              companyId === effectiveCompanyId ||
-                              (currentCompany &&
-                                companyId ===
-                                  (currentCompany.id || currentCompany._id));
-
-                            return (
-                              <a
-                                key={companyId}
-                                className={`dropdown-item d-flex align-items-center ${
-                                  isCurrentCompany ? "active" : ""
-                                }`}
-                                onClick={() => handleCompanySelect(company)}
-                                style={{cursor: "pointer"}}
-                              >
-                                <div
-                                  className="business-dropdown-avatar me-2"
-                                  style={{
-                                    backgroundColor:
-                                      company.color || getRandomColor(),
-                                  }}
-                                >
-                                  {generateInitials(companyName)}
-                                </div>
-                                <div className="flex-grow-1">
-                                  <div className="business-dropdown-name">
-                                    {companyName}
-                                  </div>
-                                  {(company.city || company.state) && (
-                                    <small className="text-muted">
-                                      {[company.city, company.state]
-                                        .filter(Boolean)
-                                        .join(", ")}
-                                    </small>
-                                  )}
-                                  {company.email && (
-                                    <small className="text-muted d-block">
-                                      {company.email}
-                                    </small>
-                                  )}
-                                </div>
-                                {isCurrentCompany && (
-                                  <FontAwesomeIcon
-                                    icon={faCheck}
-                                    className="text-success ms-2"
-                                  />
-                                )}
-                              </a>
-                            );
-                          })
-                        ) : (
-                          <div className="px-3 py-2 text-center text-muted small">
-                            {isOnline
-                              ? "No companies found"
-                              : "No companies available offline"}
-                          </div>
-                        )}
-
-                        <div className="dropdown-divider"></div>
-                        <a
-                          className="dropdown-item"
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleAddNewBusiness();
-                          }}
-                          style={{
-                            opacity: isOnline ? 1 : 0.5,
-                            cursor: isOnline ? "pointer" : "not-allowed",
-                          }}
-                          title={
-                            !isOnline
-                              ? "Available when online"
-                              : "Create a new company"
-                          }
-                        >
-                          <FontAwesomeIcon icon={faPlus} className="me-2" />
-                          Add New Company
-                        </a>
-                        <a
-                          className="dropdown-item"
-                          href="#"
-                          title="Manage companies (Coming soon)"
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          <FontAwesomeIcon icon={faBuilding} className="me-2" />
-                          Manage Companies
-                        </a>
-                      </>
-                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Company validation warning */}
-              {renderCompanyValidationWarning()}
+                  {!isOnline && (
+                    <div className="px-3 py-2">
+                      <Alert variant="warning" className="mb-0 py-1 small">
+                        <FontAwesomeIcon icon={faTimes} className="me-1" />
+                        You're offline. Business data may be outdated.
+                      </Alert>
+                    </div>
+                  )}
+
+                  {isLoadingCompanies ? (
+                    <div className="px-3 py-2 text-center">
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      <span className="small text-muted">
+                        Loading businesses...
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      {companies && companies.length > 0 ? (
+                        companies.map((company, index) => {
+                          const companyName =
+                            company.businessName ||
+                            company.name ||
+                            "Unnamed Business";
+                          const companyId = company.id || company._id;
+                          const isCurrentCompany =
+                            companyId === effectiveCompanyId ||
+                            (currentCompany &&
+                              companyId ===
+                                (currentCompany.id || currentCompany._id));
+
+                          return (
+                            <Dropdown.Item
+                              key={companyId}
+                              className={`d-flex align-items-center ${
+                                isCurrentCompany ? "current-company" : ""
+                              }`}
+                              onClick={() => handleCompanySelect(company)}
+                            >
+                              <div
+                                className="business-dropdown-avatar me-2"
+                                style={{
+                                  backgroundColor: getCompanyColor(index),
+                                }}
+                              >
+                                {generateInitials(companyName)}
+                              </div>
+                              <div className="flex-grow-1">
+                                <div className="business-dropdown-name">
+                                  {companyName}
+                                </div>
+                                {(company.city || company.state) && (
+                                  <small className="text-muted">
+                                    {[company.city, company.state]
+                                      .filter(Boolean)
+                                      .join(", ")}
+                                  </small>
+                                )}
+                                {company.email && (
+                                  <small className="text-muted d-block">
+                                    {company.email}
+                                  </small>
+                                )}
+                              </div>
+                              {isCurrentCompany && (
+                                <FontAwesomeIcon
+                                  icon={faCheck}
+                                  className="text-success ms-2"
+                                />
+                              )}
+                            </Dropdown.Item>
+                          );
+                        })
+                      ) : (
+                        <div className="px-3 py-2 text-center text-muted small">
+                          {isOnline
+                            ? "No businesses found"
+                            : "No businesses available offline"}
+                        </div>
+                      )}
+
+                      <Dropdown.Divider />
+                      <Dropdown.Item
+                        onClick={handleAddNewBusiness}
+                        disabled={!isOnline}
+                        title={
+                          !isOnline
+                            ? "Available when online"
+                            : "Create a new business"
+                        }
+                      >
+                        <FontAwesomeIcon icon={faPlus} className="me-2" />
+                        Add New Business
+                      </Dropdown.Item>
+                    </>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
             </div>
 
-            {/* Right section - Admin panel button, Notifications and profile */}
+            {/* Right section - Notifications and profile */}
             <div className="ms-auto d-flex align-items-center navbar-right">
-              {/* Admin Panel Button for Development */}
-              <Nav.Item className="me-2">
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  onClick={handleAdminPanel}
-                  className="admin-panel-btn d-flex align-items-center"
-                  title="Admin Panel (Development)"
-                >
-                  <FontAwesomeIcon icon={faUserShield} className="me-2" />
-                  <span className="d-none d-md-inline">Admin</span>
-                </Button>
-              </Nav.Item>
+              {/* ✅ ADMIN PANEL - ONLY SHOWN FOR ACTUAL ADMINS */}
+              {shouldShowAdminButton && (
+                <Nav.Item className="me-2">
+                  <Button
+                    variant="outline-danger"
+                    size="sm"
+                    onClick={handleAdminPanel}
+                    className="admin-panel-btn d-flex align-items-center"
+                    title="Admin Panel - Administrator Access"
+                  >
+                    <FontAwesomeIcon icon={faUserShield} className="me-2" />
+                    <span className="d-none d-md-inline">Admin Panel</span>
+                  </Button>
+                </Nav.Item>
+              )}
 
-              {/* Network status icon (visible on smaller screens) */}
+              {/* Network status (mobile) */}
               <Nav.Item className="d-lg-none me-2">
                 <FontAwesomeIcon
                   icon={isOnline ? faWifi : faTimes}
@@ -1045,21 +1092,18 @@ function Navbar({
                 </Nav.Link>
               </Nav.Item>
 
-              {/* ✅ Updated Notifications dropdown */}
-              <Nav.Item
-                className="position-relative me-3"
+              {/* Notifications dropdown */}
+              <Dropdown
+                show={showNotifications}
+                onToggle={setShowNotifications}
                 ref={notificationRef}
+                className="position-relative me-3"
               >
-                <div
+                <Dropdown.Toggle
+                  as="div"
                   className="icon-link"
-                  role="button"
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    setShowUserDropdown(false);
-                    setShowBusinessDropdown(false);
-                  }}
-                  title="Notifications"
                   style={{cursor: "pointer"}}
+                  title="Notifications"
                 >
                   <FontAwesomeIcon icon={faBell} />
                   {unreadCount > 0 && (
@@ -1067,71 +1111,65 @@ function Navbar({
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
-                </div>
+                </Dropdown.Toggle>
 
-                {showNotifications && (
-                  <div className="dropdown-menu dropdown-menu-end shadow animated--grow-in show notifications-dropdown">
-                    <div className="dropdown-header d-flex justify-content-between align-items-center">
-                      <div className="d-flex align-items-center">
-                        <span>Notifications</span>
-                        {unreadCount > 0 && (
-                          <span className="badge bg-primary ms-2">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </div>
-                      <div className="d-flex align-items-center">
+                <Dropdown.Menu className="notifications-dropdown" align="end">
+                  <div className="dropdown-header d-flex justify-content-between align-items-center">
+                    <div className="d-flex align-items-center">
+                      <span>Business Notifications</span>
+                      {unreadCount > 0 && (
+                        <span className="badge bg-primary ms-2">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="d-flex align-items-center">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="p-1 text-muted"
+                        onClick={handleRefreshNotifications}
+                        title="Refresh notifications"
+                        disabled={isLoadingNotifications}
+                      >
+                        <FontAwesomeIcon
+                          icon={faSync}
+                          className={isLoadingNotifications ? "fa-spin" : ""}
+                        />
+                      </Button>
+                      {unreadCount > 0 && (
                         <Button
                           variant="link"
                           size="sm"
-                          className="p-1 text-muted"
-                          onClick={handleRefreshNotifications}
-                          title="Refresh notifications"
-                          disabled={isLoadingNotifications}
+                          className="p-1 text-success"
+                          onClick={handleMarkAllAsRead}
+                          title="Mark all as read"
                         >
-                          <FontAwesomeIcon
-                            icon={faSync}
-                            className={isLoadingNotifications ? "fa-spin" : ""}
-                          />
+                          <FontAwesomeIcon icon={faCheckCircle} />
                         </Button>
-                        {unreadCount > 0 && (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="p-1 text-success"
-                            onClick={handleMarkAllAsRead}
-                            title="Mark all as read"
-                          >
-                            <FontAwesomeIcon icon={faCheckCircle} />
-                          </Button>
-                        )}
-                      </div>
+                      )}
                     </div>
-
-                    <div className="notification-list">
-                      {renderNotificationsDropdown()}
-                    </div>
-
-                    {notifications.length > 0 && (
-                      <>
-                        <div className="dropdown-divider"></div>
-                        <a
-                          className="dropdown-item text-center small text-gray-500"
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            // TODO: Navigate to full notifications page
-                          }}
-                        >
-                          View All Notifications
-                        </a>
-                      </>
-                    )}
                   </div>
-                )}
-              </Nav.Item>
 
-              {/* User profile dropdown with admin panel option */}
+                  <div className="notification-list">
+                    {renderNotificationsDropdown()}
+                  </div>
+
+                  {notifications.length > 0 && (
+                    <>
+                      <Dropdown.Divider />
+                      <Dropdown.Item
+                        className="text-center small text-gray-500"
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        View All Notifications
+                      </Dropdown.Item>
+                    </>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
+
+              {/* User profile dropdown */}
               <Nav.Item className="user-dropdown">
                 <Dropdown
                   show={showUserDropdown}
@@ -1189,6 +1227,15 @@ function Navbar({
                               {currentUser.email}
                             </small>
                           )}
+                          {shouldShowAdminButton && (
+                            <small className="text-danger d-block">
+                              <FontAwesomeIcon
+                                icon={faUserShield}
+                                className="me-1"
+                              />
+                              Administrator
+                            </small>
+                          )}
                           {effectiveCompanyId && currentCompany && (
                             <small className="text-muted d-block">
                               <FontAwesomeIcon
@@ -1197,7 +1244,7 @@ function Navbar({
                               />
                               {currentCompany?.businessName ||
                                 currentCompany?.name ||
-                                "Company"}
+                                "Business"}
                             </small>
                           )}
                         </div>
@@ -1206,24 +1253,29 @@ function Navbar({
 
                     <Dropdown.Divider />
 
-                    {/* Admin Panel Option - First in the list */}
-                    <Dropdown.Item
-                      onClick={() => handleProfileAction("admin")}
-                      className="d-flex align-items-center py-2 admin-menu-item"
-                    >
-                      <FontAwesomeIcon
-                        icon={faUserShield}
-                        className="fa-sm fa-fw me-3 text-danger"
-                      />
-                      <div>
-                        <div className="fw-medium text-danger">Admin Panel</div>
-                        <small className="text-muted">
-                          System administration (Dev)
-                        </small>
-                      </div>
-                    </Dropdown.Item>
-
-                    <Dropdown.Divider />
+                    {/* ✅ ADMIN PANEL IN DROPDOWN - ONLY FOR ACTUAL ADMINS */}
+                    {shouldShowAdminButton && (
+                      <>
+                        <Dropdown.Item
+                          onClick={() => handleProfileAction("admin")}
+                          className="d-flex align-items-center py-2 admin-menu-item"
+                        >
+                          <FontAwesomeIcon
+                            icon={faUserShield}
+                            className="fa-sm fa-fw me-3 text-danger"
+                          />
+                          <div>
+                            <div className="fw-medium text-danger">
+                              Admin Panel
+                            </div>
+                            <small className="text-muted">
+                              System administration dashboard
+                            </small>
+                          </div>
+                        </Dropdown.Item>
+                        <Dropdown.Divider />
+                      </>
+                    )}
 
                     {/* Profile actions */}
                     <Dropdown.Item
@@ -1253,7 +1305,7 @@ function Navbar({
                       <div>
                         <div className="fw-medium">Settings</div>
                         <small className="text-muted">
-                          Application preferences
+                          Business preferences
                         </small>
                       </div>
                     </Dropdown.Item>
@@ -1269,7 +1321,7 @@ function Navbar({
                       <div>
                         <div className="fw-medium">Activity Log</div>
                         <small className="text-muted">
-                          View recent activity
+                          View recent business activity
                         </small>
                       </div>
                     </Dropdown.Item>
@@ -1301,13 +1353,13 @@ function Navbar({
       {/* Create Company Modal */}
       <CreateCompany
         show={showCreateCompany}
-        onHide={handleCloseCreateCompany}
+        onHide={() => setShowCreateCompany(false)}
         onCompanyCreated={handleCompanyCreated}
         isOnline={isOnline}
         currentUser={currentUser}
       />
 
-      {/* ✅ Toast Notifications */}
+      {/* Toast Notifications */}
       <ToastContainer
         position="top-end"
         className="position-fixed"
@@ -1323,8 +1375,15 @@ function Navbar({
             className={`mb-2 toast-${toast.type}`}
           >
             <Toast.Header>
+              <img
+                src={B2B_LOGO}
+                alt="B2BBillings"
+                width="20"
+                height="20"
+                className="me-2"
+              />
               <span className="me-auto fw-bold">
-                {toast.title || "Notification"}
+                {toast.title || "B2BBillings"}
               </span>
               <small className="text-muted">now</small>
             </Toast.Header>
@@ -1337,324 +1396,23 @@ function Navbar({
           </Toast>
         ))}
       </ToastContainer>
-
-      {/* CSS Styles */}
-      <style>
-        {`
-          /* ✅ Updated notification styles */
-          .notification-item {
-            border: none !important;
-            border-radius: 8px !important;
-            margin: 2px 8px !important;
-            transition: all 0.2s ease !important;
-            border-left: 3px solid transparent !important;
-          }
-
-          .notification-item:hover {
-            background: linear-gradient(135deg, rgba(94, 96, 206, 0.05), rgba(128, 96, 255, 0.05)) !important;
-            transform: translateX(2px) !important;
-          }
-
-          .notification-item.unread {
-            background: linear-gradient(135deg, rgba(94, 96, 206, 0.08), rgba(128, 96, 255, 0.08)) !important;
-            border-left-color: #5e60ce !important;
-          }
-
-          .notification-icon .icon-circle {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-          }
-
-          .notification-list {
-            max-height: 400px;
-            overflow-y: auto;
-          }
-
-          .notification-actions .btn {
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-          }
-
-          .notification-item:hover .notification-actions .btn {
-            opacity: 1;
-          }
-
-          .toast-info {
-            border-left: 4px solid #17a2b8;
-          }
-
-          .toast-success {
-            border-left: 4px solid #28a745;
-          }
-
-          .toast-error {
-            border-left: 4px solid #dc3545;
-          }
-
-          .toast-warning {
-            border-left: 4px solid #ffc107;
-          }
-
-          .toast-chat {
-            border-left: 4px solid #6f42c1;
-          }
-
-          .admin-panel-btn {
-            border: 2px solid #dc3545 !important;
-            color: #dc3545 !important;
-            background: transparent !important;
-            transition: all 0.2s ease;
-            font-weight: 600;
-            border-radius: 8px;
-            padding: 6px 12px;
-          }
-
-          .admin-panel-btn:hover {
-            background: #dc3545 !important;
-            color: white !important;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-          }
-
-          .admin-panel-btn:focus {
-            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25) !important;
-          }
-
-          .admin-menu-item {
-            background: linear-gradient(
-              135deg,
-              rgba(220, 53, 69, 0.05),
-              rgba(220, 53, 69, 0.1)
-            );
-            border-radius: 6px;
-            margin: 2px 8px;
-            border: 1px solid rgba(220, 53, 69, 0.1);
-          }
-
-          .admin-menu-item:hover {
-            background: linear-gradient(
-              135deg,
-              rgba(220, 53, 69, 0.1),
-              rgba(220, 53, 69, 0.15)
-            );
-            border-color: rgba(220, 53, 69, 0.2);
-            transform: translateX(2px);
-          }
-
-          .user-dropdown-toggle {
-            border: none !important;
-            background: none !important;
-            box-shadow: none !important;
-            outline: none !important;
-          }
-
-          .user-dropdown-toggle:hover {
-            transform: scale(1.02);
-            transition: transform 0.2s ease;
-          }
-
-          .user-dropdown-toggle:focus {
-            box-shadow: 0 0 0 2px rgba(94, 96, 206, 0.25) !important;
-          }
-
-          .img-profile {
-            border: 2px solid #f8f9fa;
-            transition: all 0.2s ease;
-          }
-
-          .img-profile:hover {
-            border-color: #5e60ce;
-            box-shadow: 0 2px 8px rgba(94, 96, 206, 0.3);
-          }
-
-          .dropdown-item {
-            border-radius: 6px;
-            margin: 2px 8px;
-            transition: all 0.2s ease;
-          }
-
-          .dropdown-item:hover {
-            background: linear-gradient(
-              135deg,
-              rgba(94, 96, 206, 0.1),
-              rgba(128, 96, 255, 0.1)
-            );
-            transform: translateX(2px);
-          }
-
-          .dropdown-header {
-            border-radius: 8px 8px 0 0;
-            margin: -8px -8px 8px -8px;
-            padding: 16px !important;
-          }
-
-          .notification-badge {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #dc3545;
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 10px;
-            font-weight: bold;
-            min-width: 18px;
-            text-align: center;
-            line-height: 1;
-            border: 2px solid white;
-            animation: pulse 2s infinite;
-          }
-
-          @keyframes pulse {
-            0% {
-              transform: scale(1);
-            }
-            50% {
-              transform: scale(1.1);
-            }
-            100% {
-              transform: scale(1);
-            }
-          }
-
-          .icon-link {
-            padding: 8px;
-            border-radius: 6px;
-            color: #6c757d;
-            transition: all 0.2s ease;
-            text-decoration: none;
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-          }
-
-          .icon-link:hover {
-            color: #5e60ce;
-            background: rgba(94, 96, 206, 0.1);
-            transform: translateY(-1px);
-          }
-
-          .dropdown-menu {
-            border: none;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-            border-radius: 12px;
-            padding: 8px;
-            margin-top: 8px;
-            animation: fadeInDown 0.3s ease;
-          }
-
-          @keyframes fadeInDown {
-            from {
-              opacity: 0;
-              transform: translateY(-10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          .business-dropdown-menu {
-            min-width: 320px;
-            max-height: 400px;
-            overflow-y: auto;
-          }
-
-          .notifications-dropdown {
-            min-width: 360px;
-            max-height: 450px;
-            overflow-y: auto;
-          }
-
-          .business-avatar,
-          .business-dropdown-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 12px;
-            flex-shrink: 0;
-          }
-
-          .business-dropdown-avatar {
-            width: 28px;
-            height: 28px;
-            font-size: 11px;
-          }
-
-          .business-name {
-            font-weight: 600;
-            font-size: 14px;
-            color: #333;
-            line-height: 1.2;
-          }
-
-          .add-business {
-            font-size: 11px;
-            color: #6c757d;
-            line-height: 1.2;
-          }
-
-          .business-dropdown-toggle:hover {
-            background: rgba(94, 96, 206, 0.05);
-            border-radius: 8px;
-            padding: 4px 8px;
-            margin: -4px -8px;
-            transition: all 0.2s ease;
-          }
-
-          .user-name {
-            font-weight: 500;
-            color: #333;
-            max-width: 120px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          @media (max-width: 768px) {
-            .business-name-container {
-              display: none !important;
-            }
-
-            .user-name {
-              display: none !important;
-            }
-
-            .current-page-name {
-              display: none !important;
-            }
-
-            .dropdown-menu {
-              min-width: 280px !important;
-            }
-
-            .admin-panel-btn span {
-              display: none !important;
-            }
-
-            .admin-panel-btn {
-              padding: 6px 8px !important;
-            }
-
-            .notifications-dropdown {
-              min-width: 300px !important;
-            }
-          }
-        `}
-      </style>
     </>
   );
 }
+
+// PropTypes for type safety
+Navbar.propTypes = {
+  onLogout: PropTypes.func,
+  toggleSidebar: PropTypes.func,
+  currentCompany: PropTypes.object,
+  companies: PropTypes.array,
+  onCompanyChange: PropTypes.func,
+  onCompanyCreated: PropTypes.func,
+  onCompanyUpdated: PropTypes.func,
+  currentUser: PropTypes.object,
+  isLoadingCompanies: PropTypes.bool,
+  isOnline: PropTypes.bool,
+  companyId: PropTypes.string,
+};
 
 export default Navbar;

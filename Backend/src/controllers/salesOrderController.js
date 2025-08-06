@@ -1598,8 +1598,6 @@ const salesOrderController = {
       let correspondingPurchaseOrder = null;
       if (autoCreateCorrespondingPO && targetCompanyId) {
         try {
-          // Implementation for auto-creating corresponding PO would go here
-          console.log("📋 Auto-creating corresponding purchase order...");
         } catch (correspondingOrderError) {
           console.warn(
             "⚠️ Failed to create corresponding purchase order:",
@@ -1821,9 +1819,6 @@ const salesOrderController = {
           correspondingPurchaseOrder.status = "confirmed";
           correspondingPurchaseOrder.lastModifiedBy = confirmedBy;
           await correspondingPurchaseOrder.save();
-          console.log(
-            `✅ Updated purchase order ${correspondingPurchaseOrder.orderNumber} status to confirmed`
-          );
         }
       }
 
@@ -2387,30 +2382,8 @@ const salesOrderController = {
 
   updateStatus: async (req, res) => {
     try {
-      // ✅ CRITICAL DEBUG: Log all incoming request data
-      console.log("🔍 UPDATE STATUS DEBUG:", {
-        method: req.method,
-        url: req.url,
-        params: req.params,
-        body: req.body,
-        query: req.query,
-        headers: {
-          "content-type": req.headers["content-type"],
-          "user-agent": req.headers["user-agent"]?.substring(0, 50),
-        },
-      });
-
       const {id} = req.params;
       const {status, reason = ""} = req.body;
-
-      // ✅ CRITICAL DEBUG: Check ID parameter
-      console.log("🔍 ORDER ID VALIDATION:", {
-        id,
-        idType: typeof id,
-        idLength: id?.length,
-        isValidObjectId: id ? mongoose.Types.ObjectId.isValid(id) : false,
-        rawParams: req.params,
-      });
 
       if (!id || id === "undefined" || id === "null") {
         console.error("❌ INVALID ID RECEIVED:", {
@@ -2449,14 +2422,6 @@ const salesOrderController = {
           },
         });
       }
-
-      // ✅ CRITICAL DEBUG: Log status validation
-      console.log("🔍 STATUS VALIDATION:", {
-        status,
-        statusType: typeof status,
-        reason,
-        bodyKeys: Object.keys(req.body),
-      });
 
       const validStatuses = [
         "draft",
@@ -2499,22 +2464,7 @@ const salesOrderController = {
         });
       }
 
-      // ✅ CRITICAL DEBUG: Log database query
-      console.log("🔍 FINDING SALES ORDER:", {
-        searchId: id,
-        query: {_id: id},
-      });
-
       const salesOrder = await SalesOrder.findById(id);
-
-      console.log("🔍 SALES ORDER FOUND:", {
-        found: !!salesOrder,
-        orderId: salesOrder?._id,
-        orderNumber: salesOrder?.orderNumber,
-        currentStatus: salesOrder?.status,
-        targetStatus: status,
-      });
-
       if (!salesOrder) {
         console.error("❌ SALES ORDER NOT FOUND:", {
           searchId: id,
@@ -2548,16 +2498,6 @@ const salesOrderController = {
 
       const previousStatus = salesOrder.status;
 
-      // ✅ CRITICAL DEBUG: Log status update
-      console.log("🔄 UPDATING STATUS:", {
-        orderId: salesOrder._id,
-        orderNumber: salesOrder.orderNumber,
-        previousStatus,
-        newStatus: status,
-        reason,
-        userId: req.user?.id,
-      });
-
       salesOrder.status = status;
       salesOrder.lastModifiedBy = req.user?.id || "system";
 
@@ -2567,30 +2507,9 @@ const salesOrderController = {
         salesOrder.notes = salesOrder.notes
           ? `${salesOrder.notes}\n${statusNote}`
           : statusNote;
-
-        console.log("📝 ADDED STATUS NOTE:", {
-          orderNumber: salesOrder.orderNumber,
-          note: statusNote,
-        });
       }
 
-      // ✅ CRITICAL DEBUG: Log save operation
-      console.log("💾 SAVING SALES ORDER:", {
-        orderId: salesOrder._id,
-        orderNumber: salesOrder.orderNumber,
-        status: salesOrder.status,
-        lastModifiedBy: salesOrder.lastModifiedBy,
-      });
-
       await salesOrder.save();
-
-      console.log("✅ STATUS UPDATE SUCCESSFUL:", {
-        orderId: salesOrder._id,
-        orderNumber: salesOrder.orderNumber,
-        previousStatus,
-        newStatus: salesOrder.status,
-        updatedAt: salesOrder.updatedAt,
-      });
 
       res.status(200).json({
         success: true,

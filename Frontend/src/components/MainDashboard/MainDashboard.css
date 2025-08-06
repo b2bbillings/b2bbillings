@@ -1,187 +1,423 @@
-/* Main Dashboard Layout */
-.main-dashboard {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  padding-top: 60px; /* Account for fixed navbar */
+/* ==========================================================================
+   MAIN DASHBOARD - COMPACT RESPONSIVE LAYOUT
+   ========================================================================== */
+
+/* CSS Custom Properties */
+:root {
+  --dashboard-primary: #2563eb;
+  --dashboard-primary-dark: #1d4ed8;
+  --dashboard-success: #10b981;
+  --dashboard-warning: #f59e0b;
+  --dashboard-danger: #ef4444;
+  --dashboard-gray-50: #f8fafc;
+  --dashboard-gray-100: #f1f5f9;
+  --dashboard-gray-200: #e2e8f0;
+  --dashboard-gray-300: #cbd5e1;
+  --dashboard-gray-400: #94a3b8;
+  --dashboard-gray-500: #64748b;
+  --dashboard-gray-600: #475569;
+  --dashboard-gray-700: #334155;
+  --dashboard-gray-800: #1e293b;
+  --dashboard-gray-900: #0f172a;
+  
+  /* Compact spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  
+  /* Typography */
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 2px 4px rgba(0,0,0,0.08);
+  --shadow-lg: 0 4px 8px rgba(0,0,0,0.12);
+  
+  /* Transitions */
+  --transition: 0.15s ease-out;
+  
+  /* Z-index */
+  --z-sticky: 1020;
+  --z-fixed: 1030;
 }
 
-/* View Tabs Styles */
+/* ==========================================================================
+   MAIN LAYOUT
+   ========================================================================== */
+
+.main-dashboard {
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--dashboard-gray-50) 0%, var(--dashboard-gray-100) 100%);
+  padding-top: 60px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--dashboard-gray-800);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.main-dashboard.mobile-layout {
+  padding-bottom: 70px;
+  background: var(--dashboard-gray-50);
+}
+
+.main-dashboard.tablet-layout {
+  padding-bottom: var(--spacing-lg);
+}
+
+/* ==========================================================================
+   VIEW TABS - COMPACT
+   ========================================================================== */
+
 .view-tabs-container {
-  background-color: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.5rem 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--dashboard-gray-200);
+  padding: var(--spacing-xs) 0;
   position: sticky;
-  top: 60px; /* Adjusted to match navbar height */
-  z-index: 999;
-  margin-top: 0;
+
+  z-index: var(--z-sticky);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition);
 }
 
 .view-tabs {
   display: flex;
-  gap: 0.5rem;
-  padding: 0 1rem;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-lg);
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  align-items: center;
 }
 
-.view-tabs::-webkit-scrollbar {
-  display: none;
-}
+.view-tabs::-webkit-scrollbar { display: none; }
 
 .view-tab {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--dashboard-gray-500);
   font-weight: 500;
-  font-size: 0.9rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  transition: all 0.3s ease;
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  transition: all var(--transition);
   white-space: nowrap;
   cursor: pointer;
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 100px;
+  justify-content: center;
+  user-select: none;
 }
 
 .view-tab:hover {
-  color: #2563eb;
-  background-color: #dbeafe;
+  color: var(--dashboard-primary);
+  background-color: rgba(37, 99, 235, 0.08);
+  transform: translateY(-1px);
 }
 
 .view-tab.active {
-  color: #2563eb;
-  background-color: #dbeafe;
+  color: var(--dashboard-primary);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.15));
   font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .view-tab.active::after {
   content: '';
   position: absolute;
-  bottom: -8px;
+  bottom: -1px;
   left: 50%;
   transform: translateX(-50%);
-  width: 30px;
-  height: 3px;
-  background-color: #2563eb;
-  border-radius: 2px;
+  width: 24px;
+  height: 2px;
+  background: var(--dashboard-primary);
+  border-radius: 1px;
 }
 
-/* Dashboard Content */
+/* ==========================================================================
+   DASHBOARD CONTENT - COMPACT LAYOUT
+   ========================================================================== */
+
 .dashboard-content {
-  padding: 1rem;
-  min-height: calc(100vh - 120px);
-  margin-top: 0;
+  padding: var(--spacing-md);
+  min-height: calc(100vh - 110px);
+  position: relative;
 }
 
-/* Dashboard Layout - Fixed Grid Layout */
+.dashboard-content.mobile-content {
+  padding: var(--spacing-sm);
+  margin-bottom: 70px;
+}
+
+/* ✅ FIXED: Compact Dashboard Layout - Always 2 Column */
 .dashboard-layout {
-  height: calc(100vh - 120px);
+  height: calc(100vh - 110px);
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 1rem;
+  gap: var(--spacing-md);
   align-items: stretch;
 }
 
-/* Column Layout */
-.left-column,
-.center-column,
-.right-column {
+/* ✅ FIXED: Team Chats - Always Compact Width */
+.left-column {
+  flex: 0 0 280px !important; /* Fixed width for team chats */
+  min-width: 280px !important;
+  max-width: 300px !important;
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.left-column {
-  flex: 0 0 300px;
-  min-width: 300px;
-  max-width: 300px;
+/* ✅ FIXED: Daily Transactions - Takes Remaining Space */
+.center-column-expanded {
+  flex: 1 !important; /* Takes all remaining space */
+  min-width: 0 !important;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-.center-column {
-  flex: 1;
-  min-width: 0;
-}
+/* ==========================================================================
+   SECTION WRAPPERS
+   ========================================================================== */
 
-.right-column {
-  flex: 0 0 300px;
-  min-width: 300px;
-  max-width: 300px;
-}
-
-/* Section Wrappers */
 .section-wrapper {
   height: 100%;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-md);
   background: white;
   display: flex;
   flex-direction: column;
   margin: 0;
   position: relative;
+  transition: all var(--transition);
+  border: 1px solid var(--dashboard-gray-200);
 }
 
-/* Component Override Styles */
+.section-wrapper:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.section-wrapper.mobile-section {
+  margin-bottom: var(--spacing-md);
+  border-radius: var(--radius-md);
+}
+
 .section-wrapper > * {
   height: 100%;
   border-radius: 0;
   box-shadow: none;
   margin: 0;
   border: none;
+  background: transparent;
 }
 
-/* ✅ REMOVED: All chat-specific styling removed */
-/* Team Chats, Daily Transactions, and other components will handle their own styling */
+/* ==========================================================================
+   SINGLE VIEW LAYOUT
+   ========================================================================== */
 
-/* General component overrides for dashboard layout */
+.single-view {
+  min-height: calc(100vh - 110px);
+  padding: var(--spacing-md);
+}
+
+.single-view.mobile-single-view {
+  padding: var(--spacing-sm);
+  min-height: calc(100vh - 140px);
+}
+
+.single-view .section-wrapper {
+  margin-top: 0;
+}
+
+/* ==========================================================================
+   MOBILE RESPONSIVE DESIGN
+   ========================================================================== */
+
+.view-tabs-container.mobile-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-fixed);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--dashboard-gray-200);
+  border-bottom: none;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  padding: var(--spacing-xs) 0;
+  top: auto;
+}
+
+.view-tabs.mobile-view-tabs {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 0;
+  padding: 0 var(--spacing-sm);
+  margin: 0;
+}
+
+.view-tab.mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-xs);
+  min-height: 50px;
+  border-radius: var(--radius-sm);
+  margin: 0 2px;
+  background: none;
+  border: none;
+  color: var(--dashboard-gray-400);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  transition: all var(--transition);
+  position: relative;
+  min-width: auto;
+}
+
+.view-tab.mobile-tab.active {
+  color: var(--dashboard-primary);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.15));
+  transform: translateY(-1px);
+}
+
+.view-tab.mobile-tab .tab-label.mobile-label {
+  font-size: var(--font-size-xs);
+  margin-top: 2px;
+  text-align: center;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.view-tab.mobile-tab .active-indicator {
+  position: absolute;
+  top: var(--spacing-xs);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 2px;
+  background: var(--dashboard-primary);
+  border-radius: 1px;
+}
+
+.mobile-dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.mobile-quick-chat .btn {
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--dashboard-primary), var(--dashboard-primary-dark));
+  border: none;
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition);
+  min-height: 44px;
+}
+
+.mobile-fab-container {
+  position: fixed;
+  bottom: 80px;
+  right: var(--spacing-lg);
+  z-index: calc(var(--z-fixed) - 1);
+}
+
+.mobile-fab {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--dashboard-primary), var(--dashboard-primary-dark));
+  color: white;
+  box-shadow: 0 3px 12px rgba(37, 99, 235, 0.4);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.mobile-fab:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
+}
+
+.mobile-bottom-spacer {
+  height: var(--spacing-lg);
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   COMPONENT INTEGRATION
+   ========================================================================== */
+
 .section-wrapper .daily-transactions,
-.section-wrapper .daily-section {
+.section-wrapper .team-chats {
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.section-wrapper .daily-transactions .daily-section {
-  height: 100%;
-  margin-top: 0 !important;
   border-radius: 0;
   box-shadow: none;
+  margin: 0;
+  border: none;
 }
 
-/* Advertise Section Component */
-.section-wrapper .advertise-section,
-.section-wrapper .ads-container {
+.section-wrapper .card {
+  border: none;
+  box-shadow: none;
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  border-radius: 0;
 }
 
-/* Card Body Layouts */
 .section-wrapper .card-body {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem;
+  padding: var(--spacing-lg);
 }
 
-/* Headers */
-.section-wrapper .card-header,
-.section-wrapper .section-header {
+.section-wrapper .card-header {
   flex-shrink: 0;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 1rem;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--dashboard-gray-200);
+  padding: var(--spacing-lg);
+  background: var(--dashboard-gray-50);
   margin: 0;
+  border-radius: 0;
 }
 
-/* Scrollable Content Areas */
 .section-wrapper .transactions-list,
 .section-wrapper .actions-grid,
-.section-wrapper .ads-grid {
+.section-wrapper .chat-list {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
@@ -189,289 +425,381 @@
   margin: 0;
 }
 
-/* ✅ Single View Layout - When components are used outside dashboard */
-.single-view {
-  height: calc(100vh - 120px);
-  overflow: hidden;
-  padding: 1rem;
+.section-wrapper .actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  overflow-y: auto;
 }
 
-.single-view > * {
-  height: 100%;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  background: white;
-  margin-top: 1rem;
-}
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS - ALWAYS MAINTAIN 2 COLUMN LAYOUT
+   ========================================================================== */
 
-/* ✅ Override for components when NOT in dashboard layout */
-.dashboard-content:not(.dashboard-layout) .daily-transactions .daily-section {
-  margin-top: 1rem !important;
-}
-
-/* Bootstrap Grid Overrides */
-.dashboard-layout .row {
-  margin: 0;
-  height: 100%;
-}
-
-.dashboard-layout .col-xl-3,
-.dashboard-layout .col-xl-6,
-.dashboard-layout .col-lg-4,
-.dashboard-layout .col-lg-8,
-.dashboard-layout .col-lg-12,
-.dashboard-layout .col-md-12 {
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Ensure proper spacing */
-.dashboard-layout .g-3 > * {
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-}
-
-.dashboard-layout .g-3 {
-  margin-left: -0.5rem;
-  margin-right: -0.5rem;
-}
-
-/* Custom Scrollbars */
-.section-wrapper *::-webkit-scrollbar {
-  width: 6px;
-}
-
-.section-wrapper *::-webkit-scrollbar-track {
-  background-color: #f1f5f9;
-  border-radius: 3px;
-}
-
-.section-wrapper *::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 3px;
-}
-
-.section-wrapper *::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
-}
-
-/* Responsive Design */
-@media (max-width: 1400px) {
-  .left-column,
-  .right-column {
-    flex: 0 0 280px;
-    min-width: 280px;
-    max-width: 280px;
+/* ✅ FIXED: Large Desktop (1400px+) - Team Chats stays compact */
+@media (min-width: 1400px) {
+  .left-column {
+    flex: 0 0 300px !important;
+    min-width: 300px !important;
+    max-width: 320px !important;
   }
   
   .dashboard-content {
-    padding: 0.75rem;
-  }
-}
-
-@media (max-width: 1200px) {
-  .dashboard-layout {
-    height: auto;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .left-column,
-  .center-column,
-  .right-column {
-    flex: none;
-    width: 100%;
-    min-width: auto;
-    max-width: none;
-    height: 500px;
-  }
-  
-  .section-wrapper {
-    height: 500px;
-  }
-  
-  .dashboard-content {
-    padding: 0.75rem;
-    min-height: auto;
-  }
-  
-  /* Mobile responsive margin fixes */
-  .section-wrapper .daily-section {
-    margin-top: 0 !important;
-  }
-}
-
-@media (max-width: 992px) {
-  .main-dashboard {
-    padding-top: 60px;
-  }
-  
-  .view-tabs-container {
-    top: 60px;
-  }
-  
-  .view-tabs {
-    padding: 0 0.5rem;
+    padding: var(--spacing-xl);
+    max-width: 1600px;
+    margin: 0 auto;
   }
   
   .view-tab {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-  }
-  
-  .dashboard-content {
-    padding: 0.5rem;
-  }
-  
-  .dashboard-layout {
-    gap: 0.75rem;
-  }
-  
-  .left-column,
-  .center-column,
-  .right-column {
-    height: 450px;
-  }
-  
-  .section-wrapper {
-    height: 450px;
+    min-width: 120px;
+    padding: var(--spacing-md) var(--spacing-xl);
   }
 }
 
-@media (max-width: 768px) {
-  .dashboard-content {
-    padding: 0.5rem;
+/* ✅ FIXED: Desktop (1200px - 1399px) - Team Chats stays compact */
+@media (min-width: 1200px) and (max-width: 1399.98px) {
+  .left-column {
+    flex: 0 0 280px !important;
+    min-width: 280px !important;
+    max-width: 300px !important;
   }
   
-  .left-column,
-  .center-column,
-  .right-column {
-    height: 400px;
+  .dashboard-content {
+    padding: var(--spacing-lg);
+  }
+  
+  .view-tab {
+    min-width: 110px;
+  }
+}
+
+/* ✅ FIXED: Medium Desktop (992px - 1199px) - Team Chats stays compact */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .left-column {
+    flex: 0 0 260px !important;
+    min-width: 260px !important;
+    max-width: 280px !important;
+  }
+  
+  .dashboard-content {
+    padding: var(--spacing-md);
+  }
+  
+  .view-tab {
+    min-width: 90px;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  .dashboard-layout {
+    gap: var(--spacing-sm);
+  }
+}
+
+/* ✅ FIXED: Small Desktop (768px - 991px) - Team Chats stays compact */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .main-dashboard.tablet-layout .view-tabs-container {
+    position: relative;
+    background: white;
+    backdrop-filter: none;
+  }
+  
+  .main-dashboard.tablet-layout .view-tabs {
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) 0;
+  }
+  
+  .main-dashboard.tablet-layout .view-tab {
+    flex-direction: row;
+    min-height: 40px;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: 20px;
+    min-width: 100px;
+  }
+  
+  .left-column {
+    flex: 0 0 240px !important;
+    min-width: 240px !important;
+    max-width: 260px !important;
+  }
+  
+  .dashboard-layout {
+    gap: var(--spacing-sm);
+  }
+  
+  .dashboard-content {
+    padding: var(--spacing-sm);
+  }
+}
+
+/* Mobile (< 768px) - Switch to single column only on mobile */
+@media (max-width: 767.98px) {
+  .dashboard-content {
+    padding: var(--spacing-sm);
   }
   
   .section-wrapper {
-    height: 400px;
+    border-radius: var(--radius-md);
   }
   
   .view-tab .tab-label {
     display: none;
   }
   
-  .single-view > * {
-    margin-top: 0.5rem;
+  .mobile-fab {
+    width: 46px;
+    height: 46px;
+  }
+  
+  .mobile-fab-container {
+    bottom: 70px;
+    right: var(--spacing-md);
   }
 }
 
-@media (max-width: 576px) {
-  .view-tabs {
-    gap: 0.25rem;
-    padding: 0 0.5rem;
+/* Extra Small (< 576px) */
+@media (max-width: 575.98px) {
+  .main-dashboard {
+    padding-top: 56px;
   }
   
-  .view-tab {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
-  }
-  
-  .dashboard-layout {
-    gap: 0.5rem;
+  .view-tabs-container {
+    top: 56px;
   }
   
   .dashboard-content {
-    padding: 0.25rem;
+    min-height: calc(100vh - 100px);
   }
   
-  .left-column,
-  .center-column,
-  .right-column {
-    height: 350px;
+  .view-tabs {
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-sm);
   }
   
-  .section-wrapper {
-    height: 350px;
+  .view-tab {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    min-width: 70px;
   }
   
-  .single-view > * {
-    margin-top: 0.25rem;
+  .dashboard-content.mobile-content {
+    padding: var(--spacing-xs);
+  }
+  
+  .view-tab.mobile-tab {
+    min-height: 48px;
+  }
+  
+  .view-tab.mobile-tab .tab-label.mobile-label {
+    font-size: 10px;
   }
 }
 
-/* Additional fixes for component integration */
-.section-wrapper .card {
-  border: none;
-  box-shadow: none;
+/* ==========================================================================
+   CUSTOM SCROLLBARS
+   ========================================================================== */
+
+.section-wrapper *::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.section-wrapper *::-webkit-scrollbar-track {
+  background-color: var(--dashboard-gray-100);
+  border-radius: 2px;
+}
+
+.section-wrapper *::-webkit-scrollbar-thumb {
+  background-color: var(--dashboard-gray-300);
+  border-radius: 2px;
+  transition: background-color var(--transition);
+}
+
+.section-wrapper *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dashboard-gray-400);
+}
+
+/* ==========================================================================
+   BOOTSTRAP GRID OVERRIDES - FORCE COMPACT LAYOUT
+   ========================================================================== */
+
+/* ✅ FIXED: Force Bootstrap columns to maintain compact layout */
+.dashboard-layout .row {
+  margin: 0;
   height: 100%;
   display: flex;
-  flex-direction: column;
+  align-items: stretch;
 }
 
-.section-wrapper .card-body {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+/* ✅ Override all Bootstrap column classes to maintain 2-column layout */
+.dashboard-layout .left-column,
+.dashboard-layout .center-column-expanded {
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
-/* Ensure actions grid and other grids fit properly */
-.section-wrapper .actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-  padding: 1rem;
-  overflow-y: auto;
+/* ✅ Force specific column widths regardless of Bootstrap classes */
+.dashboard-layout .left-column {
+  flex: 0 0 280px !important;
+  min-width: 280px !important;
+  max-width: 300px !important;
+  width: auto !important;
 }
 
-/* Fix for advertisement section */
-.section-wrapper .ads-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  overflow-y: auto;
+.dashboard-layout .center-column-expanded {
+  flex: 1 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  width: auto !important;
 }
 
-/* Quick Actions Header */
-.quick-actions-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding: 0 1rem;
-  flex-shrink: 0;
+/* Bootstrap gutter overrides */
+.dashboard-layout .g-3 > * {
+  padding-left: var(--spacing-sm);
+  padding-right: var(--spacing-sm);
 }
 
-.quick-actions-badge {
-  background: #2563eb;
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
+.dashboard-layout .g-3 {
+  margin-left: calc(-1 * var(--spacing-sm));
+  margin-right: calc(-1 * var(--spacing-sm));
 }
 
-/* Force override any component margins in dashboard layout */
+/* ==========================================================================
+   COMPONENT FIXES
+   ========================================================================== */
+
 .dashboard-layout .section-wrapper * {
   margin-top: 0 !important;
 }
 
-/* But allow margins in single view mode */
 .single-view .daily-transactions .daily-section {
-  margin-top: 1rem !important;
+  margin-top: 0 !important;
 }
 
-/* Prevent any overflow issues */
-* {
-  box-sizing: border-box;
-}
-
-.dashboard-layout,
-.dashboard-layout * {
-  overflow: hidden;
-}
+/* ==========================================================================
+   PERFORMANCE & ACCESSIBILITY
+   ========================================================================== */
 
 .section-wrapper {
-  position: relative;
-  overflow: hidden;
+  contain: layout style paint;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.view-tab,
+.mobile-fab {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.view-tab:focus-visible {
+  outline: 2px solid var(--dashboard-primary);
+  outline-offset: 2px;
+}
+
+.mobile-fab:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .mobile-fab:hover,
+  .view-tab:hover,
+  .section-wrapper:hover {
+    transform: none !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .main-dashboard {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    color: #f8f9fa;
+  }
+  
+  .view-tabs-container {
+    background: rgba(26, 26, 26, 0.95);
+    border-bottom-color: #333;
+  }
+  
+  .view-tabs-container.mobile-tabs {
+    background: rgba(26, 26, 26, 0.98);
+    border-top-color: #333;
+  }
+  
+  .view-tab {
+    color: #ccc;
+  }
+  
+  .view-tab.active,
+  .view-tab.mobile-tab.active {
+    color: #4dabf7;
+    background: rgba(77, 171, 247, 0.15);
+  }
+  
+  .section-wrapper {
+    background: #2d2d2d;
+    border-color: #404040;
+    color: #f8f9fa;
+  }
+  
+  .section-wrapper .card-header {
+    background: #333;
+    border-bottom-color: #404040;
+  }
+}
+
+@media print {
+  .view-tabs-container,
+  .mobile-fab-container,
+  .mobile-quick-chat {
+    display: none !important;
+  }
+  
+  .main-dashboard {
+    padding: 0 !important;
+    background: white !important;
+  }
+  
+  .dashboard-content {
+    padding: 1rem !important;
+  }
+  
+  .section-wrapper {
+    box-shadow: none !important;
+    border: 1px solid #333 !important;
+  }
+  
+  .dashboard-layout {
+    height: auto !important;
+    flex-direction: column !important;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .view-tab.mobile-tab {
+    min-height: 52px;
+  }
+  
+  .mobile-fab {
+    width: 52px;
+    height: 52px;
+  }
+  
+  .mobile-quick-chat .btn {
+    min-height: 46px;
+  }
+  
+  .view-tab {
+    min-height: 42px;
+  }
 }

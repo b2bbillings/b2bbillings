@@ -10,6 +10,7 @@ import {
   ToastContainer,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+// import "./PartyChat.css";
 import {
   faComments,
   faEnvelope,
@@ -637,8 +638,6 @@ function PartyChat({
               )
             ),
           ]);
-
-          displayToast("Connected to chat room", "success");
         } catch (joinError) {
           displayToast(
             `Failed to join chat room: ${joinError.message}`,
@@ -1741,11 +1740,7 @@ function PartyChat({
         </Toast>
       </ToastContainer>
 
-      <div
-        className="position-fixed top-0 start-0 w-100 h-100"
-        style={{zIndex: 1055, backgroundColor: "rgba(0, 0, 0, 0.5)"}}
-        onClick={handleClose}
-      />
+      {/* REMOVED: Full-screen blur overlay that was blocking everything */}
 
       <div
         ref={chatContainerRef}
@@ -1758,6 +1753,7 @@ function PartyChat({
           transform: show ? "translateX(0)" : "translateX(100%)",
           transition: "transform 0.3s ease-in-out",
         }}
+        onClick={(e) => e.stopPropagation()} // Prevent click events from bubbling
       >
         <div
           className="d-flex align-items-center p-3 bg-primary text-white border-bottom"
@@ -1936,7 +1932,7 @@ function PartyChat({
                 className="flex-grow-1 overflow-auto p-3"
                 style={{
                   background: "#f8f9fa",
-                  maxHeight: "calc(100vh - 310px)",
+                  maxHeight: "calc(100vh - 250px)", // Adjusted for better fit
                 }}
               >
                 {messages.length === 0 && !isLoading && (
@@ -1950,125 +1946,56 @@ function PartyChat({
                   </div>
                 )}
 
-                {messages.map((message, index) => {
-                  const typeInfo = getMessageTypeIcon(message.messageType);
-
-                  return (
+                {messages.map((message, index) => (
+                  <div
+                    key={`${message.id}_${index}`}
+                    className={`d-flex mb-3 ${
+                      message.type === "sent" ? "justify-content-end" : ""
+                    }`}
+                  >
                     <div
-                      key={`${message.id}_${index}`}
-                      className={`d-flex mb-3 ${
-                        message.type === "sent" ? "justify-content-end" : ""
+                      className={`message-bubble p-2 rounded-3 position-relative ${
+                        message.type === "sent"
+                          ? "bg-primary text-white"
+                          : "bg-white border"
                       }`}
+                      style={{
+                        maxWidth: "85%",
+                        wordWrap: "break-word",
+                        fontSize: "13px",
+                      }}
                     >
                       <div
-                        className={`message-bubble p-2 rounded-3 position-relative ${
-                          message.type === "sent"
-                            ? "bg-primary text-white"
-                            : "bg-white border"
-                        }`}
-                        style={{
-                          maxWidth: "85%",
-                          wordWrap: "break-word",
-                          fontSize: "13px",
-                        }}
+                        style={{whiteSpace: "pre-wrap", fontSize: "13px"}}
+                        className="mb-1"
                       >
-                        <div className="d-flex align-items-center mb-1">
-                          <FontAwesomeIcon
-                            icon={typeInfo.icon}
-                            style={{color: typeInfo.color, fontSize: "10px"}}
-                            className="me-1"
-                          />
-                          <small
-                            className={`${
-                              message.type === "sent"
-                                ? "text-white-50"
-                                : "text-muted"
-                            }`}
-                            style={{fontSize: "9px"}}
-                          >
-                            {message.messageType.toUpperCase()}
-                          </small>
-                        </div>
+                        {message.content}
+                      </div>
 
-                        <div
-                          style={{whiteSpace: "pre-wrap", fontSize: "13px"}}
-                          className="mb-1"
-                        >
-                          {message.content}
-                        </div>
-
-                        <div
-                          className={`d-flex align-items-center justify-content-between mt-1 ${
-                            message.type === "sent"
-                              ? "text-white-50"
-                              : "text-muted"
-                          }`}
-                          style={{fontSize: "10px"}}
-                        >
-                          <span>{formatTime(message.timestamp)}</span>
-                          {message.type === "sent" && (
-                            <span className="ms-2">
-                              {getStatusIcon(message.status)}
-                            </span>
-                          )}
-                        </div>
+                      <div
+                        className={`d-flex align-items-center justify-content-between mt-1 ${
+                          message.type === "sent"
+                            ? "text-white-50"
+                            : "text-muted"
+                        }`}
+                        style={{fontSize: "10px"}}
+                      >
+                        <span>{formatTime(message.timestamp)}</span>
+                        {message.type === "sent" && (
+                          <span className="ms-2" style={{color: "white"}}>
+                            {getStatusIcon(message.status)}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
 
                 {renderTypingIndicator()}
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="border-top bg-white" style={{minHeight: "140px"}}>
-                <div className="p-2 border-bottom">
-                  <div className="d-flex gap-1 flex-wrap">
-                    <Button
-                      variant={
-                        displayMessageType === "whatsapp"
-                          ? "success"
-                          : "outline-success"
-                      }
-                      size="sm"
-                      onClick={() => handleDisplayMessageTypeChange("whatsapp")}
-                      style={{fontSize: "10px"}}
-                      disabled={!mappingValidated}
-                    >
-                      <FontAwesomeIcon icon={faCommentDots} className="me-1" />
-                      WhatsApp
-                    </Button>
-                    <Button
-                      variant={
-                        displayMessageType === "sms"
-                          ? "primary"
-                          : "outline-primary"
-                      }
-                      size="sm"
-                      onClick={() => handleDisplayMessageTypeChange("sms")}
-                      style={{fontSize: "10px"}}
-                      disabled={!mappingValidated}
-                    >
-                      <FontAwesomeIcon icon={faMobileAlt} className="me-1" />
-                      SMS
-                    </Button>
-                    <Button
-                      variant={
-                        displayMessageType === "email"
-                          ? "danger"
-                          : "outline-danger"
-                      }
-                      size="sm"
-                      onClick={() => handleDisplayMessageTypeChange("email")}
-                      style={{fontSize: "10px"}}
-                      disabled={!mappingValidated}
-                    >
-                      <FontAwesomeIcon icon={faEnvelope} className="me-1" />
-                      Email
-                    </Button>
-                  </div>
-                </div>
-
+              <div className="border-top bg-white" style={{minHeight: "120px"}}>
                 <div className="p-3">
                   <InputGroup>
                     <Form.Control
@@ -2077,7 +2004,7 @@ function PartyChat({
                       rows={2}
                       placeholder={
                         mappingValidated
-                          ? `Type your ${displayMessageType} message to ${party?.name}...`
+                          ? `Type your message to ${party?.name}...`
                           : "Company mapping required to send messages..."
                       }
                       value={newMessage}
@@ -2122,26 +2049,6 @@ function PartyChat({
                             Disconnected
                           </span>
                         )}
-                        {mappingValidated ? (
-                          <span className="ms-2 text-success">
-                            <FontAwesomeIcon icon={faLink} /> Mapped
-                          </span>
-                        ) : (
-                          <span className="ms-2 text-warning">
-                            <FontAwesomeIcon icon={faExclamationTriangle} /> No
-                            Mapping
-                          </span>
-                        )}
-                        {notificationSettings.enabled ? (
-                          <span className="ms-2 text-info">
-                            <FontAwesomeIcon icon={faBell} />{" "}
-                            {notificationSettings.sound ? "Sound" : "Silent"}
-                          </span>
-                        ) : (
-                          <span className="ms-2 text-muted">
-                            <FontAwesomeIcon icon={faBellSlash} /> Muted
-                          </span>
-                        )}
                       </small>
                     </div>
                   </div>
@@ -2153,8 +2060,12 @@ function PartyChat({
       </div>
 
       <style>{`
-      .chat-sidebar-show { transform: translateX(0) !important; }
-      .chat-sidebar-hide { transform: translateX(100%) !important; }
+      .chat-sidebar-show { 
+        transform: translateX(0); 
+      }
+      .chat-sidebar-hide { 
+        transform: translateX(100%); 
+      }
       .message-bubble { 
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         transition: all 0.2s ease;
@@ -2162,18 +2073,37 @@ function PartyChat({
       .message-bubble:hover {
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
       }
-      .typing-indicator { display: flex; align-items: center; gap: 3px; }
+      .typing-indicator { 
+        display: flex; 
+        align-items: center; 
+        gap: 3px; 
+      }
       .typing-indicator span {
-        width: 6px; height: 6px; border-radius: 50%; background-color: #999;
+        width: 6px; 
+        height: 6px; 
+        border-radius: 50%; 
+        background-color: #999;
         animation: typing 1.4s infinite ease-in-out;
       }
-      .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-      .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-      @keyframes typing {
-        0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-        40% { transform: scale(1); opacity: 1; }
+      .typing-indicator span:nth-child(1) { 
+        animation-delay: -0.32s; 
       }
-      .overflow-auto::-webkit-scrollbar { width: 4px; }
+      .typing-indicator span:nth-child(2) { 
+        animation-delay: -0.16s; 
+      }
+      @keyframes typing {
+        0%, 80%, 100% { 
+          transform: scale(0.8); 
+          opacity: 0.5; 
+        }
+        40% { 
+          transform: scale(1); 
+          opacity: 1; 
+        }
+      }
+      .overflow-auto::-webkit-scrollbar { 
+        width: 4px; 
+      }
       .overflow-auto::-webkit-scrollbar-track { 
         background-color: #f1f1f1; 
         border-radius: 10px; 
