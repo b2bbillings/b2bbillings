@@ -128,7 +128,7 @@ const getAllowedOrigins = () => {
   if (process.env.NODE_ENV === "production") {
     return process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",").map((url) => url.trim())
-      : ["https://yourdomain.com"]; // Replace with your production domain
+      : ["https://b2bbilling.com"]; // ✅ FIXED: Updated to your domain
   } else {
     return [
       "http://localhost:5173", // Vite default
@@ -440,7 +440,7 @@ try {
   app.set("socketManager", socketManager);
   logger.info("Socket.IO initialized successfully", {
     service: "shop-management-api",
-    version: "2.0.0",
+    version: "2.1.0",
   });
 } catch (error) {
   logger.error("Failed to initialize Socket.IO", {error: error.message});
@@ -491,7 +491,7 @@ app.get("/api/health", async (req, res) => {
         notifications: dbCheck ? "operational" : "degraded",
         payments: dbCheck ? "operational" : "degraded",
         cors: "enabled",
-        ipv6Support: "enabled", // ✅ NEW: IPv6 support indicator
+        ipv6Support: "enabled",
       },
       socket: socketStats,
       system: {
@@ -949,16 +949,9 @@ const connectDatabase = async () => {
         retryWrites: true,
         w: "majority",
         readPreference: "primary",
-        
+
         // ✅ UPDATED: Modern compression (zstd is faster than zlib for Atlas)
         compressors: ["zstd", "zlib", "snappy"],
-
-        // ✅ REMOVED: Deprecated options that cause errors
-        // ssl: true, // Not needed for Atlas (handled automatically)
-        // tlsAllowInvalidCertificates: false, // Default behavior
-        // tlsAllowInvalidHostnames: false, // Default behavior
-        // bufferCommands: false, // Deprecated
-        // bufferMaxEntries: 0, // ✅ REMOVED: This was causing the error
 
         // ✅ KEPT: Valid Atlas options
         authSource: "admin",
@@ -1062,14 +1055,20 @@ const connectDatabase = async () => {
         }
       }
 
-      if (error.message.includes("Network") || error.message.includes("timeout")) {
+      if (
+        error.message.includes("Network") ||
+        error.message.includes("timeout")
+      ) {
         logger.error("❌ Atlas Network Error - Check IP whitelist", {
           error: error.message,
         });
       }
 
       // ✅ NEW: Handle deprecated option errors
-      if (error.message.includes("not supported") || error.message.includes("deprecated")) {
+      if (
+        error.message.includes("not supported") ||
+        error.message.includes("deprecated")
+      ) {
         logger.error("❌ Atlas Configuration Error - Deprecated options used", {
           error: error.message,
           suggestion: "Update mongoose connection options",
@@ -1097,6 +1096,7 @@ const connectDatabase = async () => {
     }
   }
 };
+
 // ================================
 // 🚀 SERVER START
 // ================================
@@ -1106,10 +1106,12 @@ const startServer = async () => {
     // Connect to database first
     await connectDatabase();
 
-    const PORT = process.env.PORT || 5000;
+    // ✅ FIXED: Proper port and host configuration for Render
+    const PORT = process.env.PORT || 10000;
     const HOST = process.env.HOST || "0.0.0.0";
 
-    server.listen(PORT, HOST, () => {
+    // ✅ FIXED: Use server.listen instead of app.listen for Socket.IO compatibility
+    const serverInstance = server.listen(PORT, HOST, () => {
       let socketStats = {totalConnections: 0};
       if (socketManager) {
         try {
@@ -1119,32 +1121,36 @@ const startServer = async () => {
         }
       }
 
-      logger.info("Server started successfully", {
+      logger.info("🚀 Shop Management System API v2.1.0 - B2B Billing", {
         service: "shop-management-api",
         version: "2.1.0",
         port: PORT,
         host: HOST,
         environment: process.env.NODE_ENV,
+        frontend: process.env.FRONTEND_URL || "https://b2bbilling.com",
         socketConnections: socketStats.totalConnections,
         pid: process.pid,
+        timestamp: new Date().toISOString(),
+        status: "Server started successfully",
       });
 
-      // Console output for development
+      // ✅ FIXED: Development-only console output
       if (process.env.NODE_ENV === "development") {
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("🚀 Shop Management System v2.1.0 (CORS Fixed!)");
+        console.log("🚀 Shop Management System v2.1.0 - B2B Billing");
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log(`🌐 Server: http://localhost:${PORT}`);
-        console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
-        console.log(`🧪 CORS Test: http://localhost:${PORT}/api/cors-test`);
-        console.log(`📊 Metrics: http://localhost:${PORT}/api/metrics`);
+        console.log(`🌐 Server: http://${HOST}:${PORT}`);
+        console.log(`🏥 Health: http://${HOST}:${PORT}/api/health`);
+        console.log(`🧪 CORS Test: http://${HOST}:${PORT}/api/cors-test`);
+        console.log(`📊 Production Domain: https://b2bbilling.com`);
+        console.log(`🔌 API Domain: https://api.b2bbilling.com`);
         console.log(`📊 Environment: ${process.env.NODE_ENV}`);
         console.log(
           `🔌 Socket.IO: ${socketManager ? "Active" : "Disabled"} (${
             socketStats.totalConnections
           } connections)`
         );
-        console.log(`🌐 CORS: Enabled for localhost:5173, 3000, 5000`);
+        console.log(`🌐 CORS: Enabled for b2bbilling.com`);
         console.log(`🔔 Notifications: Ready`);
         console.log(
           `💬 Real-time Features: ${socketManager ? "Enabled" : "Disabled"}`
@@ -1154,81 +1160,61 @@ const startServer = async () => {
         console.log(`🔒 Rate Limiting: Enabled`);
         console.log(`⚡ Performance: Optimized`);
         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("✅ CORS Issue Fixed - Frontend should work now!");
-        console.log("💡 Test your notification service at:");
-        console.log(
-          `   http://localhost:${PORT}/api/notifications/unread-count`
-        );
-        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       }
     });
+
+    // ✅ ENHANCED: Graceful shutdown handlers
+    const gracefulShutdown = (signal) => {
+      logger.info(`📴 ${signal} received. Starting graceful shutdown...`);
+
+      serverInstance.close(async () => {
+        logger.info("🔒 HTTP server closed");
+
+        // Shutdown Socket.IO
+        if (socketManager && socketManager.shutdown) {
+          try {
+            await socketManager.shutdown();
+            logger.info("🔌 Socket.IO closed");
+          } catch (error) {
+            logger.error("Error closing Socket.IO", {error: error.message});
+          }
+        }
+
+        try {
+          await mongoose.connection.close();
+          logger.info("🗃️ MongoDB connection closed");
+          process.exit(0);
+        } catch (error) {
+          logger.error("❌ Error during graceful shutdown:", error);
+          process.exit(1);
+        }
+      });
+
+      // Force shutdown after 30 seconds
+      setTimeout(() => {
+        logger.error("⏰ Forced shutdown due to timeout");
+        process.exit(1);
+      }, 30000);
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
     // Handle server errors
-    server.on("error", (error) => {
+    serverInstance.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
-        logger.error(`Port ${PORT} is already in use`);
+        logger.error(`❌ Port ${PORT} is already in use`);
         process.exit(1);
       } else {
-        logger.error("Server error", {error: error.message});
+        logger.error("❌ Server error", {error: error.message});
         process.exit(1);
       }
     });
   } catch (error) {
-    logger.error("Server startup failed", {error: error.message});
+    logger.error("❌ Server startup failed", {error: error.message});
     process.exit(1);
   }
 };
-
-// ================================
-// 🔄 GRACEFUL SHUTDOWN
-// ================================
-
-const gracefulShutdown = async (signal) => {
-  logger.info(`${signal} received, initiating graceful shutdown`);
-
-  try {
-    // Stop accepting new connections
-    server.close(async () => {
-      logger.info("HTTP server closed");
-
-      // Shutdown Socket.IO
-      if (socketManager && socketManager.shutdown) {
-        try {
-          await socketManager.shutdown();
-          logger.info("Socket.IO closed");
-        } catch (error) {
-          logger.error("Error closing Socket.IO", {error: error.message});
-        }
-      }
-
-      // Close database connection
-      try {
-        await mongoose.connection.close();
-        logger.info("Database connection closed");
-      } catch (error) {
-        logger.error("Error closing database connection", {
-          error: error.message,
-        });
-      }
-
-      logger.info("Graceful shutdown completed");
-      process.exit(0);
-    });
-
-    // Force shutdown after 30 seconds
-    setTimeout(() => {
-      logger.error("Forced shutdown due to timeout");
-      process.exit(1);
-    }, 30000);
-  } catch (error) {
-    logger.error("Error during graceful shutdown", {error: error.message});
-    process.exit(1);
-  }
-};
-
-// Handle signals
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Enhanced error handlers
 process.on("uncaughtException", (error) => {
@@ -1248,7 +1234,7 @@ process.on("unhandledRejection", (reason, promise) => {
   process.exit(1);
 });
 
-// Start the server
+// ✅ FIXED: Start the server
 startServer();
 
 module.exports = app;
