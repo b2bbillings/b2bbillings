@@ -195,14 +195,31 @@ try {
 }
 
 // ================================
-// 🔧 CORS MIDDLEWARE - SIMPLIFIED FOR DEBUGGING
+// 🔧 CORS MIDDLEWARE - UPDATED FOR RENDER & VERCEL
 // ================================
 
 const getAllowedOrigins = () => {
   if (process.env.NODE_ENV === "production") {
-    return process.env.CORS_ORIGIN
+    // Get origins from environment variable, or use defaults
+    const envOrigins = process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",").map((url) => url.trim())
-      : ["https://b2bbilling.com", "https://www.b2bbilling.com"];
+      : [];
+
+    // Default production origins including Render and Vercel
+    const defaultOrigins = [
+      "https://b2bbilling.com",
+      "https://www.b2bbilling.com",
+      "https://api.b2bbilling.com",
+      "https://b2bbillings.onrender.com", // Your Render backend URL
+      "https://b2bbilling.vercel.app", // Common Vercel pattern
+      "https://your-vercel-app.vercel.app", // Replace with your actual Vercel URL
+    ];
+
+    // Combine and deduplicate
+    const allOrigins = [...new Set([...envOrigins, ...defaultOrigins])];
+
+    console.log("🌐 Allowed CORS origins:", allOrigins);
+    return allOrigins;
   } else {
     return [
       "http://localhost:5173",
@@ -216,7 +233,7 @@ const getAllowedOrigins = () => {
   }
 };
 
-// Simplified CORS configuration
+// Enhanced CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = getAllowedOrigins();
@@ -228,9 +245,11 @@ const corsOptions = {
 
     // Check if origin is allowed
     if (allowedOrigins.includes(origin)) {
+      console.log("✅ CORS allowed for:", origin);
       callback(null, true);
     } else {
-      console.log("CORS blocked:", origin);
+      console.log("❌ CORS blocked for:", origin);
+      console.log("📋 Allowed origins:", allowedOrigins);
       callback(null, false);
     }
   },
@@ -376,6 +395,9 @@ app.get("/api/health", async (req, res) => {
         websocket: socketManager ? "operational" : "disabled",
       },
       socket: socketStats,
+      cors: {
+        allowedOrigins: getAllowedOrigins(),
+      },
     };
 
     res.status(dbCheck ? 200 : 503).json({
@@ -394,10 +416,15 @@ app.get("/api/health", async (req, res) => {
 });
 
 app.get("/api/cors-test", (req, res) => {
+  const origin = req.get("Origin");
+  const allowedOrigins = getAllowedOrigins();
+
   res.json({
     success: true,
     message: "CORS is working correctly",
-    origin: req.get("Origin") || "No origin header",
+    origin: origin || "No origin header",
+    isAllowed: allowedOrigins.includes(origin),
+    allowedOrigins: allowedOrigins,
     timestamp: new Date().toISOString(),
   });
 });
@@ -610,6 +637,7 @@ const startServer = async () => {
         }`
       );
       console.log(`⚡ Process ID: ${process.pid}`);
+      console.log(`🌍 CORS Origins: ${getAllowedOrigins().length} configured`);
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("✅ Server is ready to accept requests!");
       console.log("");
