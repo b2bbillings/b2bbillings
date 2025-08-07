@@ -2,33 +2,16 @@ const express = require("express");
 const router = express.Router({mergeParams: true});
 const bankAccountController = require("../controllers/bankAccountController");
 
-// ✅ ENHANCED: Mock auth middleware with better company ID handling
-const mockAuth = (req, res, next) => {
-  const companyId =
-    req.params.companyId ||
-    req.query.companyId ||
-    req.headers["x-company-id"] ||
-    req.headers["companyId"];
+// ✅ FIXED: Import real authentication middleware
+const {
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess,
+} = require("../middleware/authMiddleware");
 
-  // Enhanced user mock
-  req.user = {
-    id: "507f1f77bcf86cd799439011",
-    email: "test@example.com",
-    name: "Test User",
-    role: "admin",
-  };
-
-  req.companyId = companyId;
-
-  // ✅ ADDED: Log for debugging
-  console.log("🔐 Mock Auth - Company ID:", companyId);
-
-  if (!companyId) {
-    console.warn("⚠️ No company ID found in request");
-  }
-
-  next();
-};
+// ✅ ALTERNATIVE: If auth.js file exists, use this instead
+// const { authenticateToken } = require("../middleware/auth");
+// const { companyAccess } = require("../middleware/companyAccess");
 
 // ✅ ENHANCED: Validation middleware for bank accounts
 const validateBankAccount = (req, res, next) => {
@@ -124,7 +107,7 @@ const validateTransfer = (req, res, next) => {
   next();
 };
 
-// ✅ NEW: Validation for account ID parameters
+// ✅ ENHANCED: Validation for account ID parameters
 const validateAccountId = (req, res, next) => {
   const {accountId} = req.params;
 
@@ -150,109 +133,171 @@ const validateAccountId = (req, res, next) => {
   next();
 };
 
-// ✅ ROUTES: Organized by functionality
+// ✅ ROUTES: Organized by functionality with PROPER AUTHENTICATION
 
-// Health check route
+// Health check route (no auth required)
 router.get("/test", (req, res) => {
   res.json({
     success: true,
     message: "Bank Account routes are working!",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
-    companyId: req.companyId || "Not provided",
+    companyId: req.params.companyId || "Not provided",
+    authenticated: !!req.user,
+    userRole: req.user?.role || "Not authenticated",
   });
 });
 
-// ✅ PRIMARY ROUTES: Main bank account operations
-router.get("/", mockAuth, bankAccountController.getBankAccounts);
+// ✅ FIXED: PRIMARY ROUTES with proper authentication
+router.get(
+  "/",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.getBankAccounts
+);
+
 router.post(
   "/",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("create"),
   validateBankAccount,
   bankAccountController.createBankAccount
 );
 
-// ✅ SUMMARY AND VALIDATION ROUTES
-router.get("/summary", mockAuth, bankAccountController.getAccountSummary);
-router.get("/validate", mockAuth, bankAccountController.validateAccountDetails);
+// ✅ FIXED: SUMMARY AND VALIDATION ROUTES
+router.get(
+  "/summary",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.getAccountSummary
+);
 
-// ✅ TRANSFER OPERATIONS
+router.get(
+  "/validate",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.validateAccountDetails
+);
+
+// ✅ FIXED: TRANSFER OPERATIONS
 router.post(
   "/transfer",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("balance"),
   validateTransfer,
   bankAccountController.processTransfer
 );
 
-// ✅ SPECIFIC ACCOUNT TYPE ROUTES
-router.get("/types/cash", mockAuth, bankAccountController.getCashAccounts);
-router.get("/types/upi", mockAuth, bankAccountController.getUPIAccounts);
+// ✅ FIXED: SPECIFIC ACCOUNT TYPE ROUTES
+router.get(
+  "/types/cash",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.getCashAccounts
+);
 
-// ✅ INDIVIDUAL ACCOUNT ROUTES (with account ID validation)
+router.get(
+  "/types/upi",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.getUPIAccounts
+);
+
+// ✅ FIXED: PAYMENT-SPECIFIC ROUTES
+router.get(
+  "/payment/active",
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
+  bankAccountController.getActiveAccountsForPayment
+);
+
+// ✅ FIXED: INDIVIDUAL ACCOUNT ROUTES (with account ID validation)
 router.get(
   "/:accountId",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
   validateAccountId,
   bankAccountController.getBankAccount
 );
+
 router.put(
   "/:accountId",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("update"),
   validateAccountId,
   validateBankAccount,
   bankAccountController.updateBankAccount
 );
+
 router.delete(
   "/:accountId",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("delete"),
   validateAccountId,
   bankAccountController.deleteBankAccount
 );
 
-// ✅ ACCOUNT BALANCE OPERATIONS
+// ✅ FIXED: ACCOUNT BALANCE OPERATIONS
 router.get(
   "/:accountId/balance",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
   validateAccountId,
   bankAccountController.getBankAccountBalance
 );
+
 router.patch(
   "/:accountId/balance",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("balance"),
   validateAccountId,
   validateTransaction,
   bankAccountController.updateAccountBalance
 );
+
 router.patch(
   "/:accountId/adjust",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("balance"),
   validateAccountId,
   bankAccountController.adjustBalance
 );
 
-// ✅ NEW: ACCOUNT TRANSACTIONS (Required by service)
+// ✅ FIXED: ACCOUNT TRANSACTIONS (Required by service)
 router.get(
   "/:accountId/transactions",
-  mockAuth,
+  authenticate,
+  requireCompanyAccess,
+  requireBankAccess("read"),
   validateAccountId,
   bankAccountController.getBankAccountTransactions
-);
-
-// ✅ NEW: PAYMENT-SPECIFIC ROUTES
-router.get(
-  "/payment/active",
-  mockAuth,
-  bankAccountController.getActiveAccountsForPayment
 );
 
 // ✅ ENHANCED: Error handling middleware with better error classification
 router.use((error, req, res, next) => {
   console.error("❌ Bank Account Route Error:", {
     error: error.message,
-    stack: error.stack,
+    stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     url: req.originalUrl,
     method: req.method,
-    companyId: req.companyId,
+    companyId: req.params.companyId,
+    userId: req.user?.id,
+    userRole: req.user?.role,
+    timestamp: new Date().toISOString(),
   });
 
   // Validation errors
@@ -271,6 +316,7 @@ router.use((error, req, res, next) => {
       success: false,
       message: "Invalid ID format",
       code: "INVALID_ID",
+      field: error.path,
     });
   }
 
@@ -281,6 +327,7 @@ router.use((error, req, res, next) => {
       success: false,
       message: `Duplicate ${field} - this value already exists`,
       code: "DUPLICATE_ERROR",
+      field,
     });
   }
 
@@ -388,9 +435,13 @@ router.use("*", (req, res) => {
     requestInfo: {
       method: req.method,
       url: req.originalUrl,
-      companyId: req.companyId || "Not provided",
+      companyId: req.params.companyId || "Not provided",
+      authenticated: !!req.user,
+      userRole: req.user?.role || "Not authenticated",
       timestamp: new Date().toISOString(),
     },
+    authenticationRequired: true,
+    hint: "All routes except /test require authentication with Bearer token",
   });
 });
 

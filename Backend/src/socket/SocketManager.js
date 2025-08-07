@@ -9,37 +9,53 @@ class SocketManager {
   constructor(server) {
     this.server = server;
 
-    // ✅ FIXED: Updated CORS configuration for port 5000 backend + port 5173 frontend
+    // ✅ FIXED: Complete CORS configuration for production
     this.io = require("socket.io")(server, {
       cors: {
         origin: [
-          "http://localhost:5173", // ✅ FIXED: Frontend URL
-          "http://localhost:5000", // ✅ Backend URL
-          "http://127.0.0.1:5173", // ✅ Alternative frontend
-          "http://127.0.0.1:5000", // ✅ Alternative backend
-          process.env.FRONTEND_URL || "http://localhost:5173", // ✅ Environment variable
-          process.env.CLIENT_URL || "http://localhost:5173", // ✅ Legacy environment variable
-          "https://b2bbilling.vercel.app", // ✅ Production frontend
-          "https://b2bbillings.onrender.com", // ✅ Production backend
-        ],
-        methods: ["GET", "POST"],
+          // Development URLs
+          "http://localhost:5173", // ✅ Vite dev server
+          "http://localhost:5000", // ✅ Backend dev
+          "http://127.0.0.1:5173", // ✅ Alternative localhost
+          "http://127.0.0.1:5000", // ✅ Alternative localhost
+
+          // Production URLs - FIXED
+          "https://b2bbilling.com", // ✅ Your actual frontend domain
+          "https://www.b2bbilling.com", // ✅ With www subdomain
+          "https://b2bbillings.onrender.com", // ✅ Your backend domain
+
+          // Environment variables
+          process.env.FRONTEND_URL, // ✅ Configurable frontend URL
+          process.env.CLIENT_URL, // ✅ Legacy support
+          process.env.CORS_ORIGIN, // ✅ Additional CORS origin
+        ].filter(Boolean), // ✅ Remove undefined values
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         credentials: true,
-        allowedHeaders: ["Authorization", "Content-Type"],
+        allowedHeaders: [
+          "Authorization",
+          "Content-Type",
+          "x-auth-token", // ✅ FIXED: Added missing header
+          "X-Requested-With",
+          "Accept",
+          "Origin",
+        ],
       },
       pingTimeout: 60000,
       pingInterval: 25000,
-      transports: ["websocket", "polling"], // ✅ Both transports
+      transports: ["websocket", "polling"],
       allowEIO3: true,
-      connectTimeout: 45000, // ✅ Increased timeout
+      connectTimeout: 45000,
+      // ✅ Added production optimizations
+      maxHttpBufferSize: 1e6, // 1MB max buffer
+      httpCompression: true, // Enable compression
+      perMessageDeflate: true, // Enable message compression
     });
 
     console.log(
       "🔌 Socket.IO server initialized on port",
       process.env.PORT || 5000
     );
-    console.log(
-      "🌐 Socket.IO CORS origins configured for frontend and backend"
-    );
+    console.log("🌐 Socket.IO CORS origins:", this.io.engine.opts.cors.origin);
 
     this.connectionHandler = new ConnectionHandler();
     this.messageHandler = new MessageHandler();

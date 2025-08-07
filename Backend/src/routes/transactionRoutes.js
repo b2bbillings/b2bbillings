@@ -2,8 +2,11 @@ const express = require("express");
 const {body, param, query, validationResult} = require("express-validator");
 const router = express.Router({mergeParams: true});
 const transactionController = require("../controllers/transactionController");
+
+// ✅ FIXED: Import ALL required middleware (was missing requireCompanyAccess)
 const {
   authenticate,
+  requireCompanyAccess, // ✅ ADD: This was missing and causing issues!
   requireBankAccess,
 } = require("../middleware/authMiddleware");
 
@@ -36,6 +39,7 @@ const resolveCompanyId = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: "Company ID is required",
+      code: "COMPANY_REQUIRED",
     });
   }
 
@@ -100,10 +104,12 @@ const createTransactionValidation = [
     .withMessage("Amount must be a positive number"),
 
   body("direction")
+    .optional()
     .isIn(VALID_DIRECTIONS)
     .withMessage("Direction must be 'in' or 'out'"),
 
   body("transactionType")
+    .optional()
     .isIn(VALID_TRANSACTION_TYPES)
     .withMessage("Invalid transaction type"),
 
@@ -198,7 +204,7 @@ const updateTransactionValidation = [
   handleValidationErrors,
 ];
 
-// Query filters validation
+// ✅ FIXED: Updated query validation to support higher limits for exports
 const queryFiltersValidation = [
   query("page")
     .optional()
@@ -207,8 +213,8 @@ const queryFiltersValidation = [
 
   query("limit")
     .optional()
-    .isInt({min: 1, max: 100})
-    .withMessage("Limit must be between 1 and 100"),
+    .isInt({min: 1, max: 10000}) // ✅ INCREASED: Allow up to 10000 for exports
+    .withMessage("Limit must be between 1 and 10000"),
 
   query("bankAccountId")
     .optional()
@@ -266,192 +272,19 @@ const bulkReconcileValidation = [
 ];
 
 // ================================
-// 📊 MAIN TRANSACTION ROUTES
+// 🔧 UTILITY ROUTES (NO AUTH REQUIRED)
 // ================================
 
-// Get all transactions with filters
-router.get(
-  "/",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getAllTransactions
-);
-
-// Create new transaction
-router.post(
-  "/",
-  authenticate,
-  requireBankAccess("create"),
-  resolveCompanyId,
-  createTransactionValidation,
-  transactionController.createTransaction
-);
-
-// Get transaction summary
-router.get(
-  "/summary",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getTransactionSummary
-);
-
-// Get recent transactions
-router.get(
-  "/recent",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getRecentTransactions
-);
-
-// Get transaction analytics
-router.get(
-  "/analytics",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getTransactionAnalytics
-);
-
-// Get cash flow summary
-router.get(
-  "/cash-flow",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getCashFlowSummary
-);
-
-// Get daily cash flow
-router.get(
-  "/daily-cash-flow",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.getDailyCashFlow
-);
-
-// Export transactions to CSV
-router.get(
-  "/export",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  queryFiltersValidation,
-  transactionController.exportTransactionsCSV
-);
-
-// Get transaction by ID
-router.get(
-  "/:id",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  mongoIdValidation,
-  transactionController.getTransactionById
-);
-
-// Update transaction
-router.put(
-  "/:id",
-  authenticate,
-  requireBankAccess("update"),
-  resolveCompanyId,
-  mongoIdValidation,
-  updateTransactionValidation,
-  transactionController.updateTransaction
-);
-
-// Delete transaction
-router.delete(
-  "/:id",
-  authenticate,
-  requireBankAccess("delete"),
-  resolveCompanyId,
-  mongoIdValidation,
-  transactionController.deleteTransaction
-);
-
-// Reconcile transaction
-router.patch(
-  "/:id/reconcile",
-  authenticate,
-  requireBankAccess("update"),
-  resolveCompanyId,
-  mongoIdValidation,
-  [
-    body("reconciled").isBoolean().withMessage("Reconciled must be a boolean"),
-    body("notes")
-      .optional()
-      .trim()
-      .isLength({max: 1000})
-      .withMessage("Notes cannot exceed 1000 characters"),
-    handleValidationErrors,
-  ],
-  transactionController.reconcileTransaction
-);
-
-// Bulk reconcile transactions
-router.patch(
-  "/bulk-reconcile",
-  authenticate,
-  requireBankAccess("update"),
-  resolveCompanyId,
-  bulkReconcileValidation,
-  transactionController.bulkReconcileTransactions
-);
-
-// ================================
-// 🏦 BANK ACCOUNT SPECIFIC ROUTES
-// ================================
-
-// Get bank account transactions
-router.get(
-  "/bank/:bankAccountId",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  [
-    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
-    queryFiltersValidation,
-  ],
-  transactionController.getBankAccountTransactions
-);
-
-// Verify bank account balance
-router.get(
-  "/bank/:bankAccountId/verify-balance",
-  authenticate,
-  requireBankAccess("read"),
-  resolveCompanyId,
-  [
-    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
-    handleValidationErrors,
-  ],
-  transactionController.verifyBankAccountBalance
-);
-
-// ================================
-// 🔧 UTILITY ROUTES
-// ================================
-
-// Health check
+// Health check route (no auth required)
 router.get("/health", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Transaction routes are healthy! 🏦",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
+    companyId: req.params.companyId || "Not provided",
     routes: {
-      total: 15,
+      total: 16,
       available: [
         "GET /",
         "POST /",
@@ -468,6 +301,7 @@ router.get("/health", (req, res) => {
         "PATCH /bulk-reconcile",
         "GET /bank/:bankAccountId",
         "GET /bank/:bankAccountId/verify-balance",
+        "GET /health",
       ],
     },
     validation: {
@@ -480,11 +314,221 @@ router.get("/health", (req, res) => {
 });
 
 // ================================
+// 📊 SPECIFIC ROUTES (MUST COME BEFORE /:id)
+// ================================
+
+// ✅ FIXED: Get transaction summary (CRITICAL - this was causing 404s!)
+router.get(
+  "/summary",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getTransactionSummary
+);
+
+// ✅ FIXED: Get recent transactions
+router.get(
+  "/recent",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getRecentTransactions
+);
+
+// ✅ FIXED: Get transaction analytics
+router.get(
+  "/analytics",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getTransactionAnalytics
+);
+
+// ✅ FIXED: Get cash flow summary
+router.get(
+  "/cash-flow",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getCashFlowSummary
+);
+
+// ✅ FIXED: Get daily cash flow
+router.get(
+  "/daily-cash-flow",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getDailyCashFlow
+);
+
+// ✅ FIXED: Export transactions to CSV
+router.get(
+  "/export",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.exportTransactionsCSV
+);
+
+// ================================
+// 🏦 BANK ACCOUNT SPECIFIC ROUTES (BEFORE /:id)
+// ================================
+
+// ✅ FIXED: Get bank account transactions
+router.get(
+  "/bank/:bankAccountId",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  [
+    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
+    ...queryFiltersValidation,
+  ],
+  transactionController.getBankAccountTransactions
+);
+
+// ✅ FIXED: Verify bank account balance
+router.get(
+  "/bank/:bankAccountId/verify-balance",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  [
+    param("bankAccountId").isMongoId().withMessage("Invalid bank account ID"),
+    handleValidationErrors,
+  ],
+  transactionController.verifyBankAccountBalance
+);
+
+// ================================
+// 📊 MAIN TRANSACTION ROUTES
+// ================================
+
+// ✅ FIXED: Get all transactions with filters
+router.get(
+  "/",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  queryFiltersValidation,
+  transactionController.getAllTransactions
+);
+
+// ✅ FIXED: Create new transaction
+router.post(
+  "/",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("create"),
+  resolveCompanyId,
+  createTransactionValidation,
+  transactionController.createTransaction
+);
+
+// ================================
+// 🔧 BULK OPERATIONS (BEFORE /:id)
+// ================================
+
+// ✅ FIXED: Bulk reconcile transactions
+router.patch(
+  "/bulk-reconcile",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("update"),
+  resolveCompanyId,
+  bulkReconcileValidation,
+  transactionController.bulkReconcileTransactions
+);
+
+// ================================
+// 🎯 PARAMETERIZED ROUTES (MUST COME LAST)
+// ================================
+
+// ✅ FIXED: Get transaction by ID
+router.get(
+  "/:id",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("read"),
+  resolveCompanyId,
+  mongoIdValidation,
+  transactionController.getTransactionById
+);
+
+// ✅ FIXED: Update transaction
+router.put(
+  "/:id",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("update"),
+  resolveCompanyId,
+  mongoIdValidation,
+  updateTransactionValidation,
+  transactionController.updateTransaction
+);
+
+// ✅ FIXED: Delete transaction
+router.delete(
+  "/:id",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("delete"),
+  resolveCompanyId,
+  mongoIdValidation,
+  transactionController.deleteTransaction
+);
+
+// ✅ FIXED: Reconcile transaction
+router.patch(
+  "/:id/reconcile",
+  authenticate,
+  requireCompanyAccess, // ✅ ADD: Required for company access!
+  requireBankAccess("update"),
+  resolveCompanyId,
+  mongoIdValidation,
+  [
+    body("reconciled").isBoolean().withMessage("Reconciled must be a boolean"),
+    body("notes")
+      .optional()
+      .trim()
+      .isLength({max: 1000})
+      .withMessage("Notes cannot exceed 1000 characters"),
+    handleValidationErrors,
+  ],
+  transactionController.reconcileTransaction
+);
+
+// ================================
 // 🚨 ERROR HANDLING
 // ================================
 
 // Global error handler
 router.use((error, req, res, next) => {
+  console.error("❌ Transaction Route Error:", {
+    error: error.message,
+    stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    url: req.originalUrl,
+    method: req.method,
+    companyId: req.params.companyId,
+    userId: req.user?.id,
+  });
+
   let statusCode = 500;
   let message = "Transaction route error";
 
@@ -507,6 +551,7 @@ router.use((error, req, res, next) => {
     success: false,
     message,
     error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    code: error.code || "TRANSACTION_ERROR",
   });
 });
 
@@ -519,6 +564,7 @@ router.use("*", (req, res) => {
       "GET /api/companies/:companyId/transactions",
       "POST /api/companies/:companyId/transactions",
       "GET /api/companies/:companyId/transactions/summary",
+      "GET /api/companies/:companyId/transactions/recent",
       "GET /api/companies/:companyId/transactions/analytics",
       "GET /api/companies/:companyId/transactions/cash-flow",
       "GET /api/companies/:companyId/transactions/daily-cash-flow",
@@ -530,7 +576,18 @@ router.use("*", (req, res) => {
       "PATCH /api/companies/:companyId/transactions/bulk-reconcile",
       "GET /api/companies/:companyId/transactions/bank/:bankAccountId",
       "GET /api/companies/:companyId/transactions/bank/:bankAccountId/verify-balance",
+      "GET /api/companies/:companyId/transactions/health",
     ],
+    requestInfo: {
+      method: req.method,
+      url: req.originalUrl,
+      companyId: req.params.companyId || "Not provided",
+      authenticated: !!req.user,
+      userRole: req.user?.role || "Not authenticated",
+      timestamp: new Date().toISOString(),
+    },
+    authenticationRequired: true,
+    hint: "All routes except /health require authentication with Bearer token and company access",
   });
 });
 

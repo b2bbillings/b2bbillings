@@ -51,7 +51,7 @@ try {
   createAuditLog = () => Promise.resolve();
 }
 
-// Import routes
+// ✅ ENHANCED: Import routes with better error handling and debugging
 let routes = {};
 const routeFiles = [
   "companies",
@@ -65,33 +65,85 @@ const routeFiles = [
   "purchaseRoutes",
   "purchaseOrderRoutes",
   "bankAccountRoutes",
-  "transactionRoutes",
+  "transactionRoutes", // ✅ CRITICAL: This should work now
   "chatRoutes",
   "staffRoutes",
   "taskRoutes",
   "notificationRoutes",
 ];
 
+console.log("📂 Loading route files...");
+
 routeFiles.forEach((routeFile) => {
   try {
-    routes[routeFile] = require(`./src/routes/${routeFile}`);
+    const routePath = `./src/routes/${routeFile}`;
+    console.log(`   🔍 Loading: ${routeFile}`);
+
+    // Check if file exists first
+    const fs = require("fs");
+    if (!fs.existsSync(path.join(__dirname, `src/routes/${routeFile}.js`))) {
+      throw new Error(`Route file does not exist: ${routePath}.js`);
+    }
+
+    routes[routeFile] = require(routePath);
+    console.log(`   ✅ Loaded: ${routeFile}`);
+
+    // Validate that it's actually a router
+    if (
+      typeof routes[routeFile] !== "function" &&
+      typeof routes[routeFile].stack === "undefined"
+    ) {
+      console.warn(
+        `   ⚠️  Warning: ${routeFile} may not be a valid Express router`
+      );
+    }
   } catch (error) {
+    console.error(`   ❌ Failed to load ${routeFile}:`, error.message);
+
+    // Create fallback router with detailed error info
     routes[routeFile] = express.Router();
-    routes[routeFile].get("*", (req, res) => {
+    routes[routeFile].all("*", (req, res) => {
       res.status(503).json({
         success: false,
         message: `${routeFile} service temporarily unavailable`,
         error: error.message,
+        hint: `Check if Backend/src/routes/${routeFile}.js exists and has valid syntax`,
+        timestamp: new Date().toISOString(),
+        requestUrl: req.originalUrl,
+        method: req.method,
       });
     });
   }
 });
+
+console.log(
+  `📋 Route loading completed. Loaded: ${Object.keys(routes).length}/${
+    routeFiles.length
+  } files`
+);
+console.log(
+  `✅ Successfully loaded routes:`,
+  Object.keys(routes).filter(
+    (key) =>
+      routes[key] && (typeof routes[key] === "function" || routes[key].stack)
+  )
+);
+
+const failedRoutes = routeFiles.filter(
+  (routeFile) =>
+    !routes[routeFile] ||
+    (typeof routes[routeFile] !== "function" && !routes[routeFile].stack)
+);
+if (failedRoutes.length > 0) {
+  console.warn(`⚠️  Failed to load routes:`, failedRoutes);
+}
 
 // Import Socket.IO Manager
 let SocketManager;
 try {
   SocketManager = require("./src/socket/SocketManager");
 } catch (error) {
+  console.warn("⚠️ Socket.IO Manager not available:", error.message);
   SocketManager = null;
 }
 
@@ -135,7 +187,7 @@ try {
     })
   );
 } catch (error) {
-  // Helmet not available
+  console.warn("⚠️ Helmet security middleware not available:", error.message);
 }
 
 // Compression
@@ -152,10 +204,10 @@ try {
     })
   );
 } catch (error) {
-  // Compression not available
+  console.warn("⚠️ Compression middleware not available:", error.message);
 }
 
-// CORS configuration
+// ✅ FIXED: CORS configuration with proper origins and headers
 const getAllowedOrigins = () => {
   if (process.env.NODE_ENV === "production") {
     const envOrigins = process.env.CORS_ORIGIN
@@ -167,7 +219,6 @@ const getAllowedOrigins = () => {
       "https://www.b2bbilling.com",
       "https://api.b2bbilling.com",
       "https://b2bbillings.onrender.com",
-      "https://b2bbilling.vercel.app",
     ];
 
     return [...new Set([...envOrigins, ...defaultOrigins])];
@@ -195,6 +246,7 @@ const corsOptions = {
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`🚫 CORS blocked origin: ${origin}`);
       callback(null, false);
     }
   },
@@ -206,6 +258,7 @@ const corsOptions = {
     "Content-Type",
     "Accept",
     "Authorization",
+    "x-auth-token",
     "x-company-id",
     "X-Company-ID",
     "x-request-id",
@@ -242,9 +295,12 @@ app.use((req, res, next) => {
 // Basic request logging
 app.use((req, res, next) => {
   const skipLogging =
-    req.url === "/api/health" || req.url === "/api/socket/status";
+    req.url === "/api/health" ||
+    req.url === "/api/socket/status" ||
+    req.url === "/debug/routes";
+
   if (!skipLogging) {
-    console.log(`📥 ${req.method} ${req.url} - ${req.ip}`);
+    console.log(`📥 ${req.method} ${req.url} - ${req.ip} [${req.requestId}]`);
   }
   next();
 });
@@ -272,7 +328,7 @@ try {
   );
   app.use("/api", createRateLimit(15 * 60 * 1000, 100, "API limit exceeded"));
 } catch (error) {
-  // Rate limiting not available
+  console.warn("⚠️ Rate limiting middleware not available:", error.message);
 }
 
 // Body parsing
@@ -293,10 +349,76 @@ if (SocketManager) {
   try {
     socketManager = new SocketManager(server);
     app.set("socketManager", socketManager);
+    console.log("✅ Socket.IO initialized successfully");
   } catch (error) {
+    console.error("❌ Socket.IO initialization failed:", error.message);
     socketManager = null;
   }
 }
+
+// ✅ NEW: Debug routes endpoint - MUST come before API routes
+app.get("/debug/routes", (req, res) => {
+  const loadedRoutes = Object.keys(routes);
+  const registeredRoutes = [];
+
+  // Get Express router stack
+  app._router.stack.forEach((layer) => {
+    if (layer.route) {
+      registeredRoutes.push({
+        path: layer.route.path,
+        methods: Object.keys(layer.route.methods),
+      });
+    } else if (layer.name === "router" && layer.regexp) {
+      const path = layer.regexp.source
+        .replace("\\/?", "")
+        .replace("(?=\\/|$)", "")
+        .replace(/\\\//g, "/");
+      registeredRoutes.push({
+        path: path,
+        type: "router",
+      });
+    }
+  });
+
+  res.json({
+    success: true,
+    message: "Route debugging information",
+    timestamp: new Date().toISOString(),
+    routeFiles: {
+      attempted: routeFiles,
+      loaded: loadedRoutes,
+      failed: routeFiles.filter((f) => !loadedRoutes.includes(f)),
+    },
+    expressRoutes: registeredRoutes,
+    criticalRoutes: {
+      transactionRoutes: {
+        fileLoaded: loadedRoutes.includes("transactionRoutes"),
+        isRouter:
+          routes.transactionRoutes &&
+          (typeof routes.transactionRoutes === "function" ||
+            routes.transactionRoutes.stack),
+        registered: registeredRoutes.some(
+          (r) => r.path && r.path.includes("transactions")
+        ),
+      },
+      bankAccountRoutes: {
+        fileLoaded: loadedRoutes.includes("bankAccountRoutes"),
+        isRouter:
+          routes.bankAccountRoutes &&
+          (typeof routes.bankAccountRoutes === "function" ||
+            routes.bankAccountRoutes.stack),
+        registered: registeredRoutes.some(
+          (r) => r.path && r.path.includes("bank-accounts")
+        ),
+      },
+    },
+    companySpecificRoutes: registeredRoutes.filter(
+      (r) => r.path && r.path.includes("companies")
+    ),
+    environment: process.env.NODE_ENV,
+    totalExpressRoutes: registeredRoutes.length,
+  });
+});
 
 // Health check endpoints
 app.get("/api/health", async (req, res) => {
@@ -329,7 +451,19 @@ app.get("/api/health", async (req, res) => {
         api: "operational",
         websocket: socketManager ? "operational" : "disabled",
       },
+      routes: {
+        loaded: Object.keys(routes).length,
+        total: routeFiles.length,
+        critical: {
+          transactions: !!routes.transactionRoutes,
+          bankAccounts: !!routes.bankAccountRoutes,
+        },
+      },
       socket: socketStats,
+      cors: {
+        allowedOrigins: getAllowedOrigins(),
+        totalOrigins: getAllowedOrigins().length,
+      },
     };
 
     res.status(dbCheck ? 200 : 503).json({
@@ -342,10 +476,12 @@ app.get("/api/health", async (req, res) => {
       status: "unhealthy",
       message: "Service temporarily unavailable",
       timestamp: new Date().toISOString(),
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
 
+// ✅ Enhanced CORS test endpoint
 app.get("/api/cors-test", (req, res) => {
   const origin = req.get("Origin");
   const allowedOrigins = getAllowedOrigins();
@@ -356,57 +492,316 @@ app.get("/api/cors-test", (req, res) => {
     origin: origin || "No origin header",
     isAllowed: allowedOrigins.includes(origin),
     allowedOrigins: allowedOrigins,
+    allowedHeaders: corsOptions.allowedHeaders,
+    methods: corsOptions.methods,
+    timestamp: new Date().toISOString(),
+    requestHeaders: req.headers,
+  });
+});
+
+// ✅ Socket.IO status endpoint
+app.get("/api/socket/status", (req, res) => {
+  let socketStats = {
+    enabled: false,
+    connected: false,
+    totalConnections: 0,
+  };
+
+  if (socketManager) {
+    try {
+      socketStats = {
+        enabled: true,
+        connected: true,
+        ...socketManager.getStats(),
+      };
+    } catch (error) {
+      socketStats = {
+        enabled: true,
+        connected: false,
+        error: error.message,
+      };
+    }
+  }
+
+  res.json({
+    success: true,
+    socket: socketStats,
     timestamp: new Date().toISOString(),
   });
 });
 
-// API Routes
-app.use("/api/auth", routes.authRoutes);
-app.use("/api/users", routes.userRoutes);
-app.use("/api/staff", routes.staffRoutes);
-app.use("/api/tasks", routes.taskRoutes);
-app.use("/api/notifications", routes.notificationRoutes);
-app.use("/api/chat", routes.chatRoutes);
-app.use("/api/payments", routes.paymentRoutes);
-app.use("/api/companies", routes.companies);
-app.use("/api/admin/sales-orders", routes.salesOrderRoutes);
-app.use("/api/admin/purchase-orders", routes.purchaseOrderRoutes);
+// ✅ ENHANCED: API Routes with validation and error handling
+console.log("🌐 Registering API routes...");
 
-// Company-specific routes
-app.use("/api/companies/:companyId/items", routes.items);
-app.use("/api/companies/:companyId/parties", routes.partyRoutes);
-app.use("/api/companies/:companyId/sales", routes.salesRoutes);
-app.use("/api/companies/:companyId/sales-orders", routes.salesOrderRoutes);
-app.use("/api/companies/:companyId/purchases", routes.purchaseRoutes);
-app.use(
-  "/api/companies/:companyId/purchase-orders",
-  routes.purchaseOrderRoutes
-);
-app.use("/api/companies/:companyId/bank-accounts", routes.bankAccountRoutes);
-app.use("/api/companies/:companyId/transactions", routes.transactionRoutes);
-app.use("/api/companies/:companyId/chat", routes.chatRoutes);
-app.use("/api/companies/:companyId/staff", routes.staffRoutes);
-app.use("/api/companies/:companyId/tasks", routes.taskRoutes);
-app.use("/api/companies/:companyId/notifications", routes.notificationRoutes);
+// Basic API routes
+try {
+  app.use("/api/auth", routes.authRoutes);
+  console.log("   ✅ /api/auth");
+} catch (error) {
+  console.error("   ❌ /api/auth failed:", error.message);
+}
+
+try {
+  app.use("/api/users", routes.userRoutes);
+  console.log("   ✅ /api/users");
+} catch (error) {
+  console.error("   ❌ /api/users failed:", error.message);
+}
+
+try {
+  app.use("/api/staff", routes.staffRoutes);
+  console.log("   ✅ /api/staff");
+} catch (error) {
+  console.error("   ❌ /api/staff failed:", error.message);
+}
+
+try {
+  app.use("/api/tasks", routes.taskRoutes);
+  console.log("   ✅ /api/tasks");
+} catch (error) {
+  console.error("   ❌ /api/tasks failed:", error.message);
+}
+
+try {
+  app.use("/api/notifications", routes.notificationRoutes);
+  console.log("   ✅ /api/notifications");
+} catch (error) {
+  console.error("   ❌ /api/notifications failed:", error.message);
+}
+
+try {
+  app.use("/api/chat", routes.chatRoutes);
+  console.log("   ✅ /api/chat");
+} catch (error) {
+  console.error("   ❌ /api/chat failed:", error.message);
+}
+
+try {
+  app.use("/api/payments", routes.paymentRoutes);
+  console.log("   ✅ /api/payments");
+} catch (error) {
+  console.error("   ❌ /api/payments failed:", error.message);
+}
+
+try {
+  app.use("/api/companies", routes.companies);
+  console.log("   ✅ /api/companies");
+} catch (error) {
+  console.error("   ❌ /api/companies failed:", error.message);
+}
+
+try {
+  app.use("/api/admin/sales-orders", routes.salesOrderRoutes);
+  console.log("   ✅ /api/admin/sales-orders");
+} catch (error) {
+  console.error("   ❌ /api/admin/sales-orders failed:", error.message);
+}
+
+try {
+  app.use("/api/admin/purchase-orders", routes.purchaseOrderRoutes);
+  console.log("   ✅ /api/admin/purchase-orders");
+} catch (error) {
+  console.error("   ❌ /api/admin/purchase-orders failed:", error.message);
+}
+
+console.log("🏢 Registering company-specific routes...");
+
+// ✅ CRITICAL: Company-specific routes (these are the ones causing 404s)
+try {
+  app.use("/api/companies/:companyId/items", routes.items);
+  console.log("   ✅ /api/companies/:companyId/items");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/items failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/parties", routes.partyRoutes);
+  console.log("   ✅ /api/companies/:companyId/parties");
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/parties failed:",
+    error.message
+  );
+}
+
+try {
+  app.use("/api/companies/:companyId/sales", routes.salesRoutes);
+  console.log("   ✅ /api/companies/:companyId/sales");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/sales failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/sales-orders", routes.salesOrderRoutes);
+  console.log("   ✅ /api/companies/:companyId/sales-orders");
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/sales-orders failed:",
+    error.message
+  );
+}
+
+try {
+  app.use("/api/companies/:companyId/purchases", routes.purchaseRoutes);
+  console.log("   ✅ /api/companies/:companyId/purchases");
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/purchases failed:",
+    error.message
+  );
+}
+
+try {
+  app.use(
+    "/api/companies/:companyId/purchase-orders",
+    routes.purchaseOrderRoutes
+  );
+  console.log("   ✅ /api/companies/:companyId/purchase-orders");
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/purchase-orders failed:",
+    error.message
+  );
+}
+
+// ✅ CRITICAL: These are the routes causing your 404 errors!
+try {
+  if (routes.bankAccountRoutes) {
+    app.use(
+      "/api/companies/:companyId/bank-accounts",
+      routes.bankAccountRoutes
+    );
+    console.log(
+      "   ✅ /api/companies/:companyId/bank-accounts - CRITICAL ROUTE REGISTERED!"
+    );
+  } else {
+    console.error("   ❌ bankAccountRoutes is not loaded!");
+  }
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/bank-accounts failed:",
+    error.message
+  );
+}
+
+try {
+  if (routes.transactionRoutes) {
+    app.use("/api/companies/:companyId/transactions", routes.transactionRoutes);
+    console.log(
+      "   ✅ /api/companies/:companyId/transactions - CRITICAL ROUTE REGISTERED!"
+    );
+  } else {
+    console.error("   ❌ transactionRoutes is not loaded!");
+  }
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/transactions failed:",
+    error.message
+  );
+}
+
+try {
+  app.use("/api/companies/:companyId/chat", routes.chatRoutes);
+  console.log("   ✅ /api/companies/:companyId/chat");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/chat failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/staff", routes.staffRoutes);
+  console.log("   ✅ /api/companies/:companyId/staff");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/staff failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/tasks", routes.taskRoutes);
+  console.log("   ✅ /api/companies/:companyId/tasks");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/tasks failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/notifications", routes.notificationRoutes);
+  console.log("   ✅ /api/companies/:companyId/notifications");
+} catch (error) {
+  console.error(
+    "   ❌ /api/companies/:companyId/notifications failed:",
+    error.message
+  );
+}
+
+console.log("🔄 Registering legacy routes...");
 
 // Legacy routes
-app.use("/api/parties", routes.partyRoutes);
-app.use("/api/sales", routes.salesRoutes);
-app.use("/api/sales-orders", routes.salesOrderRoutes);
-app.use("/api/purchases", routes.purchaseRoutes);
-app.use("/api/purchase-orders", routes.purchaseOrderRoutes);
-app.use("/api/bank-accounts", routes.bankAccountRoutes);
-app.use("/api/transactions", routes.transactionRoutes);
+try {
+  app.use("/api/parties", routes.partyRoutes);
+  console.log("   ✅ /api/parties (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/parties (legacy) failed:", error.message);
+}
 
-// Error handling
+try {
+  app.use("/api/sales", routes.salesRoutes);
+  console.log("   ✅ /api/sales (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/sales (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/sales-orders", routes.salesOrderRoutes);
+  console.log("   ✅ /api/sales-orders (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/sales-orders (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/purchases", routes.purchaseRoutes);
+  console.log("   ✅ /api/purchases (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/purchases (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/purchase-orders", routes.purchaseOrderRoutes);
+  console.log("   ✅ /api/purchase-orders (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/purchase-orders (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/bank-accounts", routes.bankAccountRoutes);
+  console.log("   ✅ /api/bank-accounts (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/bank-accounts (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/transactions", routes.transactionRoutes);
+  console.log("   ✅ /api/transactions (legacy)");
+} catch (error) {
+  console.error("   ❌ /api/transactions (legacy) failed:", error.message);
+}
+
+console.log("🌐 Route registration completed!");
+
+// ✅ ENHANCED: Error handling middleware
 app.use(async (err, req, res, next) => {
   const isDevelopment = process.env.NODE_ENV === "development";
+
+  // Log error details for debugging
+  console.error(`❌ Error in ${req.method} ${req.url}:`, err.message);
+  if (isDevelopment) {
+    console.error("Stack trace:", err.stack);
+  }
 
   if (err.name === "ValidationError") {
     return res.status(400).json({
       success: false,
       message: "Validation Error",
       code: "VALIDATION_ERROR",
+      details: isDevelopment ? err.errors : undefined,
+      requestId: req.requestId,
     });
   }
 
@@ -415,6 +810,8 @@ app.use(async (err, req, res, next) => {
       success: false,
       message: "Invalid ID format",
       code: "INVALID_ID_FORMAT",
+      path: isDevelopment ? err.path : undefined,
+      requestId: req.requestId,
     });
   }
 
@@ -423,6 +820,37 @@ app.use(async (err, req, res, next) => {
       success: false,
       message: "Duplicate entry",
       code: "DUPLICATE_ENTRY",
+      field: isDevelopment ? Object.keys(err.keyPattern)[0] : undefined,
+      requestId: req.requestId,
+    });
+  }
+
+  if (err.name === "JsonWebTokenError") {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token",
+      code: "INVALID_TOKEN",
+      requestId: req.requestId,
+    });
+  }
+
+  if (err.name === "TokenExpiredError") {
+    return res.status(401).json({
+      success: false,
+      message: "Token expired",
+      code: "TOKEN_EXPIRED",
+      requestId: req.requestId,
+    });
+  }
+
+  // CORS errors
+  if (err.message && err.message.includes("CORS")) {
+    return res.status(403).json({
+      success: false,
+      message: "CORS policy violation",
+      code: "CORS_ERROR",
+      origin: req.get("Origin"),
+      requestId: req.requestId,
     });
   }
 
@@ -431,16 +859,40 @@ app.use(async (err, req, res, next) => {
     message: isDevelopment ? err.message : "Internal Server Error",
     code: err.code || "INTERNAL_ERROR",
     timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+    stack: isDevelopment ? err.stack : undefined,
   });
 });
 
-// 404 handler
+// ✅ ENHANCED: 404 handler with more helpful information
 app.use("*", (req, res) => {
+  const availableRoutes = [
+    "/api/health",
+    "/api/cors-test",
+    "/api/socket/status",
+    "/debug/routes",
+    "/api/auth",
+    "/api/companies",
+    "/api/companies/:companyId/transactions",
+    "/api/companies/:companyId/bank-accounts",
+  ];
+
   res.status(404).json({
     success: false,
     message: `Route not found: ${req.method} ${req.originalUrl}`,
     code: "ROUTE_NOT_FOUND",
     timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl,
+    availableRoutes: availableRoutes,
+    hint: "Use GET /debug/routes to see all registered routes",
+    suggestions: [
+      "Check if the URL path is correct",
+      "Verify the HTTP method (GET, POST, PUT, DELETE)",
+      "Ensure proper authentication headers are included",
+      "Check if the route requires a companyId parameter",
+    ],
   });
 });
 
@@ -458,13 +910,23 @@ const connectDatabase = async () => {
         serverSelectionTimeoutMS: 15000,
         socketTimeoutMS: 45000,
         connectTimeoutMS: 15000,
+        retryWrites: true,
+        w: "majority",
       };
 
       await mongoose.connect(MONGODB_URI, options);
       console.log("✅ Database connected successfully");
+      console.log(`📊 Database: ${mongoose.connection.name}`);
+      console.log(
+        `🔗 Host: ${mongoose.connection.host}:${mongoose.connection.port}`
+      );
       break;
     } catch (error) {
       retryCount++;
+      console.error(
+        `❌ Database connection attempt ${retryCount} failed:`,
+        error.message
+      );
 
       if (retryCount >= maxRetries) {
         console.error("❌ Database connection failed after maximum retries");
@@ -477,6 +939,7 @@ const connectDatabase = async () => {
       }
 
       const delay = 2000 * retryCount;
+      console.log(`⏳ Retrying database connection in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -487,35 +950,70 @@ const startServer = async () => {
   try {
     await connectDatabase();
 
-    const PORT = process.env.PORT || 5000; // ✅ CHANGED: Default to 5000
+    const PORT = process.env.PORT || 5000;
     const HOST = process.env.HOST || "0.0.0.0";
 
     const serverInstance = server.listen(PORT, HOST, () => {
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log("🚀 Shop Management System API v2.1.0");
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("🌐 Server: http://" + HOST + ":" + PORT);
       console.log("🏥 Health: http://" + HOST + ":" + PORT + "/api/health");
       console.log(
+        "🔍 Debug Routes: http://" + HOST + ":" + PORT + "/debug/routes"
+      );
+      console.log(
         "🧪 CORS Test: http://" + HOST + ":" + PORT + "/api/cors-test"
       );
+      console.log(
+        "🔌 Socket Status: http://" + HOST + ":" + PORT + "/api/socket/status"
+      );
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("📊 Environment: " + process.env.NODE_ENV);
-      console.log("🔌 Socket.IO: " + (socketManager ? "Enabled" : "Disabled"));
+      console.log(
+        "🔌 Socket.IO: " + (socketManager ? "✅ Enabled" : "❌ Disabled")
+      );
       console.log(
         "🗄️ Database: " +
-          (mongoose.connection.readyState === 1 ? "Connected" : "Disconnected")
+          (mongoose.connection.readyState === 1
+            ? "✅ Connected"
+            : "❌ Disconnected")
       );
       console.log("⚡ Process ID: " + process.pid);
-      console.log("🌐 Allowed CORS origins:", getAllowedOrigins());
+      console.log(
+        "📂 Routes Loaded: " +
+          Object.keys(routes).length +
+          "/" +
+          routeFiles.length
+      );
       console.log(
         "🌍 CORS Origins: " + getAllowedOrigins().length + " configured"
       );
+      console.log("🌐 Allowed Origins:");
+      getAllowedOrigins().forEach((origin) => console.log("   • " + origin));
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+      // ✅ Critical route status
+      console.log("🔗 Critical Routes Status:");
+      console.log(
+        "   • Transaction Routes: " +
+          (routes.transactionRoutes ? "✅ Loaded" : "❌ Failed")
+      );
+      console.log(
+        "   • Bank Account Routes: " +
+          (routes.bankAccountRoutes ? "✅ Loaded" : "❌ Failed")
+      );
+
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("✅ Server is ready to accept requests!");
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     });
 
     serverInstance.on("error", (error) => {
       console.error("❌ Server error:", error.message);
       if (error.code === "EADDRINUSE") {
         console.error(`❌ Port ${PORT} is already in use`);
+        console.log("💡 Try: killall node  or  lsof -ti:5000 | xargs kill");
       }
       process.exit(1);
     });
@@ -531,7 +1029,7 @@ const startServer = async () => {
             await socketManager.shutdown();
             console.log("🔌 Socket.IO closed");
           } catch (error) {
-            console.error("Error closing Socket.IO:", error.message);
+            console.error("❌ Error closing Socket.IO:", error.message);
           }
         }
 
@@ -562,11 +1060,12 @@ const startServer = async () => {
 
 process.on("uncaughtException", (error) => {
   console.error("❌ Uncaught Exception:", error.message);
+  console.error("Stack:", error.stack);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("❌ Unhandled Rejection:", reason);
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
   process.exit(1);
 });
 
