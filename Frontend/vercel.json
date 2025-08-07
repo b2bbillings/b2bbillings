@@ -20,21 +20,17 @@
       "destination": "/index.html"
     }
   ],
-  "env": {
-    "VITE_API_URL": "@vite_api_url",
-    "VITE_APP_NAME": "@vite_app_name",
-    "VITE_ENVIRONMENT": "@vite_environment"
-  },
   "build": {
     "env": {
-      "VITE_API_URL": "https://b2bbillings.onrender.com/api",
-      "VITE_APP_NAME": "B2B Billing System",
-      "VITE_ENVIRONMENT": "production"
-    }
-  },
-  "functions": {
-    "app/api/**/*.js": {
-      "runtime": "nodejs18.x"
+      "VITE_API_URL": "https://b2bbillings.onrender.com",
+      "VITE_WS_URL": "https://b2bbillings.onrender.com",
+      "VITE_SOCKET_URL": "https://b2bbillings.onrender.com",
+      "VITE_APP_NAME": "Shop Management System",
+      "VITE_APP_VERSION": "2.1.0",
+      "VITE_NODE_ENV": "production",
+      "VITE_ENABLE_DEBUG": "false",
+      "VITE_ENABLE_ANALYTICS": "false",
+      "VITE_API_TIMEOUT": "30000"
     }
   },
   "headers": [
