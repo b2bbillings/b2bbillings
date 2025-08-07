@@ -207,7 +207,7 @@ try {
   console.warn("⚠️ Compression middleware not available:", error.message);
 }
 
-// ✅ FIXED: CORS configuration with proper origins and headers
+// ✅ ENHANCED: CORS configuration with Vercel support
 const getAllowedOrigins = () => {
   if (process.env.NODE_ENV === "production") {
     const envOrigins = process.env.CORS_ORIGIN
@@ -215,10 +215,17 @@ const getAllowedOrigins = () => {
       : [];
 
     const defaultOrigins = [
+      // Production domains
       "https://b2bbilling.com",
       "https://www.b2bbilling.com",
       "https://api.b2bbilling.com",
       "https://b2bbillings.onrender.com",
+
+      // ✅ FIXED: Vercel domains for production
+      "https://b2b-billings.vercel.app",
+      "https://b2b-billings-git-main-atharva038s-projects.vercel.app",
+      "https://b2b-billings-pog2rawfp-atharva038s-projects.vercel.app", // Current deployment
+      "https://b2b-billings-git-main.vercel.app",
     ];
 
     return [...new Set([...envOrigins, ...defaultOrigins])];
@@ -235,20 +242,46 @@ const getAllowedOrigins = () => {
   }
 };
 
+// ✅ ENHANCED: CORS with dynamic Vercel domain validation
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = getAllowedOrigins();
 
+    // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) {
       return callback(null, true);
     }
 
+    // Check exact matches first
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`🚫 CORS blocked origin: ${origin}`);
-      callback(null, false);
+      console.log(`✅ CORS allowed (exact match): ${origin}`);
+      return callback(null, true);
     }
+
+    // ✅ NEW: Dynamic Vercel preview domain validation
+    const vercelPatterns = [
+      /^https:\/\/b2b-billings-[a-z0-9-]+-atharva038s-projects\.vercel\.app$/,
+      /^https:\/\/b2b-billings-[a-z0-9-]+\.vercel\.app$/,
+      /^https:\/\/b2b-billings-git-[a-z0-9-]+-atharva038s-projects\.vercel\.app$/,
+    ];
+
+    for (const pattern of vercelPatterns) {
+      if (pattern.test(origin)) {
+        console.log(`✅ CORS allowed (Vercel pattern): ${origin}`);
+        return callback(null, true);
+      }
+    }
+
+    console.warn(`🚫 CORS blocked origin: ${origin}`);
+    console.log(`📋 Allowed origins:`, allowedOrigins.slice(0, 3), "...");
+
+    // In development, be more permissive
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`⚠️  Development mode: allowing ${origin}`);
+      return callback(null, true);
+    }
+
+    callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
@@ -277,7 +310,7 @@ const corsOptions = {
   ],
   optionsSuccessStatus: 200,
   preflightContinue: false,
-  maxAge: 86400,
+  maxAge: 86400, // 24 hours
 };
 
 app.use(cors(corsOptions));
@@ -300,7 +333,11 @@ app.use((req, res, next) => {
     req.url === "/debug/routes";
 
   if (!skipLogging) {
-    console.log(`📥 ${req.method} ${req.url} - ${req.ip} [${req.requestId}]`);
+    console.log(
+      `📥 ${req.method} ${req.url} - ${req.ip} [${req.requestId}] Origin: ${
+        req.get("Origin") || "none"
+      }`
+    );
   }
   next();
 });
@@ -320,13 +357,21 @@ try {
       },
       standardHeaders: true,
       legacyHeaders: false,
+      skip: (req) => {
+        // Skip rate limiting for health checks and debug routes
+        return (
+          req.url.includes("/health") ||
+          req.url.includes("/debug") ||
+          req.url.includes("/cors-test")
+        );
+      },
     });
 
   app.use(
     "/api/auth",
-    createRateLimit(15 * 60 * 1000, 5, "Too many authentication attempts")
+    createRateLimit(15 * 60 * 1000, 10, "Too many authentication attempts") // Increased from 5 to 10
   );
-  app.use("/api", createRateLimit(15 * 60 * 1000, 100, "API limit exceeded"));
+  app.use("/api", createRateLimit(15 * 60 * 1000, 200, "API limit exceeded")); // Increased from 100 to 200
 } catch (error) {
   console.warn("⚠️ Rate limiting middleware not available:", error.message);
 }
@@ -417,6 +462,10 @@ app.get("/debug/routes", (req, res) => {
     ),
     environment: process.env.NODE_ENV,
     totalExpressRoutes: registeredRoutes.length,
+    cors: {
+      allowedOrigins: getAllowedOrigins(),
+      requestOrigin: req.get("Origin"),
+    },
   });
 });
 
@@ -463,6 +512,7 @@ app.get("/api/health", async (req, res) => {
       cors: {
         allowedOrigins: getAllowedOrigins(),
         totalOrigins: getAllowedOrigins().length,
+        requestOrigin: req.get("Origin"),
       },
     };
 
@@ -486,12 +536,25 @@ app.get("/api/cors-test", (req, res) => {
   const origin = req.get("Origin");
   const allowedOrigins = getAllowedOrigins();
 
+  // Test Vercel patterns
+  const vercelPatterns = [
+    /^https:\/\/b2b-billings-[a-z0-9-]+-atharva038s-projects\.vercel\.app$/,
+    /^https:\/\/b2b-billings-[a-z0-9-]+\.vercel\.app$/,
+    /^https:\/\/b2b-billings-git-[a-z0-9-]+-atharva038s-projects\.vercel\.app$/,
+  ];
+
+  const vercelMatches = vercelPatterns.map((pattern) => ({
+    pattern: pattern.source,
+    matches: origin ? pattern.test(origin) : false,
+  }));
+
   res.json({
     success: true,
     message: "CORS is working correctly",
     origin: origin || "No origin header",
     isAllowed: allowedOrigins.includes(origin),
     allowedOrigins: allowedOrigins,
+    vercelPatternTests: vercelMatches,
     allowedHeaders: corsOptions.allowedHeaders,
     methods: corsOptions.methods,
     timestamp: new Date().toISOString(),
@@ -885,6 +948,7 @@ app.use("*", (req, res) => {
     requestId: req.requestId,
     method: req.method,
     path: req.originalUrl,
+    origin: req.get("Origin"),
     availableRoutes: availableRoutes,
     hint: "Use GET /debug/routes to see all registered routes",
     suggestions: [
@@ -892,6 +956,7 @@ app.use("*", (req, res) => {
       "Verify the HTTP method (GET, POST, PUT, DELETE)",
       "Ensure proper authentication headers are included",
       "Check if the route requires a companyId parameter",
+      "Test CORS with GET /api/cors-test",
     ],
   });
 });
@@ -1006,6 +1071,7 @@ const startServer = async () => {
 
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       console.log("✅ Server is ready to accept requests!");
+      console.log("🌐 CORS configured for Vercel deployments!");
       console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     });
 
