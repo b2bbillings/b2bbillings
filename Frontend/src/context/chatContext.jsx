@@ -12,7 +12,7 @@ export const useChatContext = () => {
   return context;
 };
 
-export const ChatProvider = ({children}) => {
+const ChatProvider = ({children}) => {
   const [chatState, setChatState] = useState({
     isOpen: false,
     party: null,
@@ -331,18 +331,6 @@ export const ChatProvider = ({children}) => {
           }
         }
         
-        /* Dark Mode Support */
-        @media (prefers-color-scheme: dark) {
-          .chat-custom-backdrop {
-            background: linear-gradient(
-              135deg,
-              rgba(0, 0, 0, 0.05) 0%,
-              rgba(0, 0, 0, 0.1) 50%,
-              rgba(0, 0, 0, 0.05) 100%
-            );
-          }
-        }
-        
         /* Performance optimizations */
         .chat-modal,
         .chat-custom-backdrop {
@@ -408,5 +396,6 @@ export const ChatProvider = ({children}) => {
   );
 };
 
-export {ChatContext};
+// ✅ FIXED: Export both as named and default exports properly
+export {ChatProvider, ChatContext};
 export default ChatProvider;

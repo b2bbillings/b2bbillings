@@ -1,3 +1,7 @@
+/* ===============================
+   🎨 PRODUCT SEARCH MODAL STYLES
+   =============================== */
+
 /* Optimized Custom Backdrop - Lightweight */
 .custom-backdrop-optimized {
   position: fixed;
@@ -43,6 +47,7 @@
   border-radius: 12px;
   overflow: hidden;
   background: white;
+  color: #1f2937;
   transform: translateZ(0);
 }
 
@@ -97,6 +102,7 @@
 .search-result-item-optimized {
   transition: all 0.15s ease;
   background: white;
+  color: #1f2937;
   cursor: pointer;
 }
 
@@ -145,6 +151,7 @@
   padding: 0.75rem 1rem;
   border: none;
   background: rgba(255, 255, 255, 0.9);
+  color: #1f2937;
   transition: all 0.3s ease;
 }
 
@@ -152,6 +159,7 @@
   background: rgba(255, 255, 255, 1);
   box-shadow: none;
   border-color: #007bff;
+  color: #1f2937;
 }
 
 .search-icon-container {
@@ -246,6 +254,7 @@
 .product-name {
   transition: all 0.3s ease;
   font-weight: 600;
+  color: #1f2937;
 }
 
 .search-result-item-optimized:hover .product-name {
@@ -267,6 +276,7 @@
 
 .product-details {
   transition: all 0.3s ease;
+  color: #6b7280;
 }
 
 .search-result-item-optimized:hover .product-details {
@@ -420,44 +430,6 @@
 
   .search-result-item-optimized:hover {
     transform: none !important;
-  }
-}
-
-/* Dark mode support (optional) */
-@media (prefers-color-scheme: dark) {
-  .modal-shadow-wrapper-optimized {
-    background: #2d3748;
-    color: #e2e8f0;
-  }
-
-  .backdrop-blur-optimized {
-    background: rgba(0, 0, 0, 0.4);
-  }
-
-  .search-result-item-optimized {
-    background: #4a5568;
-    border-color: #718096;
-    color: #e2e8f0;
-  }
-
-  .search-result-item-optimized:hover {
-    background: rgba(66, 153, 225, 0.1) !important;
-    border-color: #4299e1 !important;
-  }
-
-  .search-input-enhanced {
-    background: #4a5568;
-    color: #e2e8f0;
-  }
-
-  .search-icon-container {
-    background: #4a5568;
-    border-color: #718096;
-  }
-
-  .keyboard-help {
-    background: rgba(74, 85, 104, 0.8);
-    border-color: rgba(255, 255, 255, 0.1);
   }
 }
 

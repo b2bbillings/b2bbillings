@@ -806,6 +806,7 @@ export const StatusBadgeStyles = `
     font-style: italic;
     max-width: 150px;
     line-height: 1.2;
+    color: #6c757d !important;
   }
 
   /* ✅ Confirmation-specific Styles */
@@ -813,6 +814,7 @@ export const StatusBadgeStyles = `
   .confirmation-by {
     font-size: 0.65rem !important;
     line-height: 1.1;
+    color: #6c757d !important;
   }
 
   /* ✅ Source Details */
@@ -824,6 +826,7 @@ export const StatusBadgeStyles = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: #6c757d !important;
   }
 
   /* ✅ Responsive Design */
@@ -861,21 +864,6 @@ export const StatusBadgeStyles = `
     .status-badge-pulsing,
     .status-badge-animated {
       animation: none !important;
-    }
-  }
-
-  /* ✅ Dark Mode Support */
-  @media (prefers-color-scheme: dark) {
-    .status-badge-enhanced {
-      filter: brightness(1.1);
-    }
-
-    .status-description,
-    .source-details,
-    .source-company,
-    .confirmation-date,
-    .confirmation-by {
-      color: #adb5bd !important;
     }
   }
 

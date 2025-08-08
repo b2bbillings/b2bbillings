@@ -1,4 +1,3 @@
-/* ✅ PERFORMANCE: CSS Custom Properties - Optimized */
 :root {
   --sidebar-width: 280px;
   --sidebar-closed-width: 72px;
@@ -34,6 +33,7 @@
   overflow-y: auto;
   border-right: 1px solid var(--sidebar-border-color);
   box-shadow: var(--sidebar-shadow);
+  color: var(--sidebar-text-color);
   /* ✅ PERFORMANCE: GPU acceleration */
   will-change: transform, width;
   transform: translateZ(0);
@@ -128,6 +128,7 @@
   padding: 0;
   border: none !important;
   will-change: background-color; /* ✅ GPU acceleration */
+  color: var(--sidebar-text-color);
 }
 
 .sidebar-accordion .accordion-button:not(.collapsed) {
@@ -220,6 +221,7 @@
   font-size: 0.95rem;
   font-weight: 500;
   flex: 1;
+  color: var(--sidebar-text-color);
   /* ✅ PERFORMANCE: Prevent layout shifts */
   overflow: hidden;
   text-overflow: ellipsis;
@@ -479,6 +481,7 @@
   border: 1px solid #f3f4f6;
   border-radius: 0.5rem;
   background: #ffffff;
+  color: #1f2937;
 }
 
 /* ✅ PRODUCTION: Custom navbar */
@@ -492,6 +495,7 @@
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  color: #1f2937;
 }
 
 /* ✅ PRODUCTION: Enhanced focus states */
@@ -506,6 +510,7 @@
 .submenu-item .me-2 {
   transition: var(--transition-fast);
   will-change: transform, color; /* ✅ GPU acceleration */
+  color: #6b7280;
 }
 
 .submenu-item:hover .me-2 {
@@ -615,28 +620,5 @@
     --sidebar-border-color: #000000;
     --sidebar-text-color: #000000;
     --sidebar-active-color: #0000ff;
-  }
-}
-
-/* ✅ PRODUCTION: Dark mode support (if needed) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sidebar-bg: #1f2937;
-    --sidebar-text-color: #f9fafb;
-    --sidebar-active-color: #60a5fa;
-    --sidebar-hover-bg: rgba(96, 165, 250, 0.1);
-    --sidebar-active-bg: rgba(96, 165, 250, 0.15);
-    --submenu-bg: #374151;
-    --sidebar-border-color: #374151;
-    --company-bg: #374151;
-    --company-text: #f9fafb;
-  }
-
-  .status-icon.online {
-    color: #34d399;
-  }
-
-  .status-icon.offline {
-    color: #f87171;
   }
 }

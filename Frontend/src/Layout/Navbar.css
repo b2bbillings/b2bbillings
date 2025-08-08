@@ -32,6 +32,7 @@
   backdrop-filter: blur(10px);
   background-color: rgba(255, 255, 255, 0.95);
   z-index: 1030;
+  color: #1f2937;
 }
 
 .custom-navbar .container-fluid {
@@ -189,6 +190,7 @@
   left: 0;
   min-width: 10rem;
   display: none;
+  color: #1f2937;
 }
 
 .dropdown-menu.show {
@@ -795,74 +797,6 @@
   .business-dropdown-menu {
     min-width: 260px;
     transform: translateX(-30%);
-  }
-}
-
-/* ========================================
-   Dark Mode Support (Future Enhancement)
-   ======================================== */
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --b2b-secondary: #9ca3af;
-  }
-
-  .custom-navbar {
-    background-color: rgba(17, 24, 39, 0.95);
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .brand-text {
-    color: #60a5fa;
-  }
-
-  .brand-tagline {
-    color: #9ca3af;
-  }
-
-  .business-name {
-    color: #f9fafb;
-  }
-
-  .dropdown-menu {
-    background-color: rgba(31, 41, 55, 0.98);
-    color: #f9fafb;
-  }
-
-  .dropdown-item {
-    color: #f9fafb;
-  }
-
-  .dropdown-item:hover,
-  .dropdown-item:focus {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15));
-    color: #f9fafb;
-  }
-
-  .dropdown-item.current-company {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
-    border-top-color: #60a5fa;
-  }
-
-  .dropdown-header {
-    background: linear-gradient(135deg, #374151, #4b5563);
-    color: #d1d5db;
-  }
-
-  .user-name {
-    color: #f3f4f6;
-  }
-
-  .notification-title {
-    color: #f9fafb;
-  }
-
-  .notification-message {
-    color: #d1d5db;
-  }
-
-  .notification-time {
-    color: #9ca3af;
   }
 }
 

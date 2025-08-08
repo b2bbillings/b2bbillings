@@ -32,40 +32,93 @@ import EditSalesInvoice from "./components/Home/Sales/EditSalesInvoice";
 import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 
-// Welcome Animation Component
+// ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
+  const [animationPhase, setAnimationPhase] = useState(0);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onComplete();
+    const timer1 = setTimeout(() => setAnimationPhase(1), 500);
+    const timer2 = setTimeout(() => setAnimationPhase(2), 1500);
+    const timer3 = setTimeout(() => setAnimationPhase(3), 2500);
+
+    const completionTimer = setTimeout(() => {
+      console.log("✅ Welcome animation completing...");
+      setAnimationPhase(4);
+
+      // Small delay to ensure smooth transition
+      setTimeout(() => {
+        console.log("✅ Welcome animation completed, calling onComplete");
+        if (onComplete) {
+          onComplete();
+        }
+      }, 500);
     }, 3500);
-    return () => clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      clearTimeout(completionTimer);
+    };
   }, [onComplete]);
 
   return (
     <div className="welcome-animation-overlay">
       <div className="welcome-content">
-        <div className="logo-animation mb-4">
+        <div
+          className={`logo-animation mb-4 ${
+            animationPhase >= 1 ? "animate-in" : ""
+          }`}
+        >
           <div className="logo-icon">
             <i className="fas fa-store"></i>
           </div>
           <div className="logo-text">Shop Management</div>
         </div>
-        <div className="welcome-message">
+
+        <div
+          className={`welcome-message ${
+            animationPhase >= 2 ? "animate-in" : ""
+          }`}
+        >
           <h2 className="mb-3">Welcome, {userFirstName}! 👋</h2>
           <p className="mb-4">
             Let's get you started with your business management
           </p>
         </div>
-        <div className="loading-animation mb-3">
+
+        <div
+          className={`loading-animation mb-3 ${
+            animationPhase >= 3 ? "animate-in" : ""
+          }`}
+        >
           <div className="loading-bar">
             <div className="loading-progress"></div>
           </div>
         </div>
-        <div className="loading-dots">
+
+        <div
+          className={`loading-dots ${animationPhase >= 3 ? "animate-in" : ""}`}
+        >
           <span></span>
           <span></span>
           <span></span>
         </div>
+
+        {/* ✅ ADD: Skip button for debugging */}
+        {process.env.NODE_ENV === "development" && (
+          <button
+            className="btn btn-outline-light btn-sm mt-3 skip-button"
+            onClick={() => {
+              console.log("🔄 Skipping welcome animation");
+              if (onComplete) {
+                onComplete();
+              }
+            }}
+          >
+            Skip Animation
+          </button>
+        )}
       </div>
     </div>
   );
@@ -81,6 +134,11 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAppInitialized, setIsAppInitialized] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // ✅ FIXED: Add state to track welcome animation completion
+  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false);
+  const [welcomeAnimationComplete, setWelcomeAnimationComplete] =
+    useState(false);
 
   // Refs for State Control
   const mountedRef = useRef(true);
@@ -375,15 +433,22 @@ function App() {
     }
   }, [stableIsLoggedIn, stableCompaniesLength, currentCompany, companies]);
 
-  // Utility Functions
-  const checkFirstVisit = () => {
+  // ✅ FIXED: Check first visit function
+  const checkFirstVisit = useCallback(() => {
     const hasVisitedBefore = localStorage.getItem("hasVisitedDashboard");
-    if (!hasVisitedBefore) {
+    if (!hasVisitedBefore && !welcomeAnimationComplete) {
       localStorage.setItem("hasVisitedDashboard", "true");
       return true;
     }
     return false;
-  };
+  }, [welcomeAnimationComplete]);
+
+  // ✅ FIXED: Handle welcome animation completion
+  const handleWelcomeAnimationComplete = useCallback(() => {
+    console.log("🎉 Welcome animation completed successfully!");
+    setWelcomeAnimationComplete(true);
+    setShowWelcomeAnimation(false);
+  }, []);
 
   const setCompanyAsActive = useCallback(async (company) => {
     try {
@@ -504,6 +569,10 @@ function App() {
       companiesLoadedRef.current = false;
       loadingRef.current = false;
       authCheckCompletedRef.current = true;
+
+      // ✅ FIXED: Reset welcome animation state on login
+      setWelcomeAnimationComplete(false);
+      setShowWelcomeAnimation(false);
     } catch (error) {
       // Silent error handling
     }
@@ -524,6 +593,10 @@ function App() {
       setIsCheckingAuth(false);
       companiesLoadedRef.current = false;
       loadingRef.current = false;
+
+      // ✅ FIXED: Reset welcome animation state on logout
+      setWelcomeAnimationComplete(false);
+      setShowWelcomeAnimation(false);
 
       // Clear storage immediately
       const keysToRemove = [
@@ -1050,10 +1123,7 @@ function App() {
   const MainDashboardWrapper = () => {
     if (isLoggingOut) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1066,10 +1136,7 @@ function App() {
 
     if (stableIsCheckingAuth || !isAppInitialized) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1086,10 +1153,7 @@ function App() {
 
     if (isLoadingCompanies || !companiesLoadedRef.current) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1112,14 +1176,17 @@ function App() {
       );
     }
 
-    // First visit welcome animation
+    // ✅ FIXED: First visit welcome animation with proper state management
     const isFirstVisit = checkFirstVisit();
-    if (isFirstVisit && stableCompaniesLength > 0 && currentCompany) {
+    if (
+      isFirstVisit &&
+      stableCompaniesLength > 0 &&
+      currentCompany &&
+      !welcomeAnimationComplete
+    ) {
       return (
         <WelcomeAnimation
-          onComplete={() => {
-            // Re-render will happen automatically
-          }}
+          onComplete={handleWelcomeAnimationComplete}
           userFirstName={
             currentUser?.name?.split(" ")[0] || currentUser?.firstName || "User"
           }
@@ -1169,10 +1236,7 @@ function App() {
 
     if (isLoggingOut) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1185,10 +1249,7 @@ function App() {
 
     if (isCheckingAuth || !isAppInitialized) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1201,10 +1262,7 @@ function App() {
 
     if (isLoadingCompanies || !companiesLoadedRef.current) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1221,10 +1279,7 @@ function App() {
 
     if (companyId && !currentCompany) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1250,10 +1305,7 @@ function App() {
 
     if (isLoggingOut) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1266,10 +1318,7 @@ function App() {
 
     if (stableIsCheckingAuth || !isAppInitialized) {
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
+        <div className="d-flex justify-content-center align-items-center loading-screen">
           <div className="text-center">
             <div className="spinner-border text-primary mb-3" role="status">
               <span className="visually-hidden">Loading...</span>
@@ -1288,16 +1337,10 @@ function App() {
       );
 
       return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh", backgroundColor: "#f8f9fa"}}
-        >
+        <div className="d-flex justify-content-center align-items-center access-denied-screen">
           <div className="text-center">
             <div className="mb-4">
-              <i
-                className="fas fa-shield-alt text-danger"
-                style={{fontSize: "4rem"}}
-              ></i>
+              <i className="fas fa-shield-alt text-danger access-denied-icon"></i>
             </div>
             <h2 className="text-danger mb-3">Access Denied</h2>
             <p className="text-muted mb-4">
@@ -1341,25 +1384,7 @@ function App() {
     // ✅ ADMIN ACCESS GRANTED - LOG AND RENDER
     console.log("✅ Admin access granted for user:", currentUser?.email);
 
-    return (
-      <div
-        className="admin-app"
-        style={{
-          minHeight: "100vh",
-          backgroundColor: "#f8f9fa",
-          margin: "0",
-          padding: "0",
-          position: "fixed",
-          top: "0",
-          left: "0",
-          width: "100vw",
-          height: "100vh",
-          overflow: "hidden",
-        }}
-      >
-        {children}
-      </div>
-    );
+    return <div className="admin-app">{children}</div>;
   };
 
   // Component Wrappers
@@ -1641,51 +1666,10 @@ function App() {
     );
   };
 
-  const AutoRedirect = () => {
-    useEffect(() => {
-      if (stableIsLoggedIn && !stableIsCheckingAuth) {
-        window.location.replace("/dashboard");
-      }
-    }, [stableIsLoggedIn, stableIsCheckingAuth]);
-
-    if (stableIsCheckingAuth) {
-      return (
-        <div
-          className="d-flex justify-content-center align-items-center"
-          style={{minHeight: "100vh"}}
-        >
-          <div className="text-center">
-            <div className="spinner-border text-primary mb-3" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p>Checking authentication...</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="d-flex justify-content-center align-items-center"
-        style={{minHeight: "100vh"}}
-      >
-        <div className="text-center">
-          <div className="spinner-border text-primary mb-3" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Redirecting...</p>
-        </div>
-      </div>
-    );
-  };
-
   // Main Loading Screen
   if (isLoggingOut) {
     return (
-      <div
-        className="d-flex justify-content-center align-items-center"
-        style={{minHeight: "100vh"}}
-      >
+      <div className="d-flex justify-content-center align-items-center loading-screen">
         <div className="text-center">
           <div className="spinner-border text-success mb-3" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -1702,10 +1686,7 @@ function App() {
     !isAppInitialized
   ) {
     return (
-      <div
-        className="d-flex justify-content-center align-items-center"
-        style={{minHeight: "100vh"}}
-      >
+      <div className="d-flex justify-content-center align-items-center loading-screen">
         <div className="text-center">
           <div className="spinner-border text-primary mb-3" role="status">
             <span className="visually-hidden">Loading...</span>

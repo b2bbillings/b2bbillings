@@ -104,6 +104,7 @@
   flex: 1;
   min-height: 100vh;
   border-radius: 0;
+  color: #1f2937;
 }
 
 .login-form-header {
@@ -142,6 +143,7 @@
   -webkit-appearance: none;
   -webkit-box-shadow: 0 0 0 30px #f9fafb inset !important;
   -webkit-text-fill-color: #1f2937 !important;
+  color: #1f2937;
 }
 
 .modern-input:focus {
@@ -568,34 +570,6 @@
   
   .login-button::before {
     display: none;
-  }
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .login-form-section {
-    background: #1f2937;
-    color: #f9fafb;
-  }
-  
-  .login-form-title {
-    color: #f9fafb;
-  }
-  
-  .login-form-subtitle {
-    color: #d1d5db;
-  }
-  
-  .modern-input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #f9fafb;
-    -webkit-text-fill-color: #f9fafb !important;
-  }
-  
-  .modern-input:focus {
-    background: #4b5563;
-    border-color: #667eea;
   }
 }
 
