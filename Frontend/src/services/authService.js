@@ -1,15 +1,13 @@
 import axios from "axios";
 import apiConfig from "../config/api.js";
 
-// Request deduplication system
 const pendingRequests = new Map();
 const requestCache = new Map();
 const requestFrequency = new Map();
-const REQUEST_CACHE_TIME = 2000; // 2 second cache
-const MAX_REQUESTS_PER_SECOND = 3; // Max 3 requests per second per endpoint
-const DEBOUNCE_TIME = 100; // 100ms debounce
+const REQUEST_CACHE_TIME = 2000;
+const MAX_REQUESTS_PER_SECOND = 3;
+const DEBOUNCE_TIME = 100;
 
-// Enhanced request deduplication with frequency control
 const deduplicateAuthRequest = async (key, requestFn) => {
   // Skip deduplication for logout - always execute immediately
   if (key === "logout" || key.startsWith("logout_")) {
@@ -67,14 +65,12 @@ const deduplicateAuthRequest = async (key, requestFn) => {
   }
 };
 
-// Clear caches utility
 const clearRequestCaches = () => {
   pendingRequests.clear();
   requestCache.clear();
   requestFrequency.clear();
 };
 
-// Enhanced axios instance
 const api = axios.create({
   baseURL: `${apiConfig.baseURL}/api`,
   timeout: apiConfig.timeout || 30000,
@@ -419,21 +415,30 @@ const authService = {
 
     return deduplicateAuthRequest(requestKey, async () => {
       try {
-        // Validation: Required fields
+        // ✅ ADD: Early timeout detection
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Request timeout - please try again"));
+          }, 12000); // 12 second timeout
+        });
+
+        // ✅ BETTER: Validation with more detailed error messages
         const requiredFields = ["name", "email", "password", "phone"];
         const missingFields = requiredFields.filter(
-          (field) => !userData[field]
+          (field) => !userData[field]?.trim()
         );
 
         if (missingFields.length > 0) {
           return {
             success: false,
-            message: `Missing required fields: ${missingFields.join(", ")}`,
+            message: `Please fill in all required fields: ${missingFields.join(
+              ", "
+            )}`,
             code: "MISSING_REQUIRED_FIELDS",
           };
         }
 
-        // Validation: Email format
+        // ✅ BETTER: Email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(userData.email)) {
           return {
@@ -443,31 +448,35 @@ const authService = {
           };
         }
 
-        // Validation: Phone format
-        const phoneRegex = /^[6-9]\d{9}$/;
-        if (!phoneRegex.test(userData.phone)) {
+        // ✅ BETTER: Phone validation (more flexible)
+        const phoneRegex = /^(\+91)?[6-9]\d{9}$/;
+        const cleanPhone = userData.phone
+          .replace(/\s+/g, "")
+          .replace(/^\+91/, "");
+        if (!phoneRegex.test(cleanPhone)) {
           return {
             success: false,
-            message: "Please enter a valid 10-digit mobile number",
+            message:
+              "Please enter a valid 10-digit mobile number starting with 6-9",
             code: "INVALID_PHONE_FORMAT",
           };
         }
 
-        // Validation: Password strength
-        if (userData.password.length < 6) {
+        // ✅ STRONGER: Password validation
+        if (userData.password.length < 8) {
           return {
             success: false,
-            message: "Password must be at least 6 characters long",
+            message: "Password must be at least 8 characters long",
             code: "WEAK_PASSWORD",
           };
         }
 
-        // Clean data
+        // ✅ CLEANER: Data preparation
         const cleanUserData = {
           name: userData.name.trim(),
           email: userData.email.toLowerCase().trim(),
           password: userData.password,
-          phone: userData.phone.trim(),
+          phone: cleanPhone,
           ...(userData.companyName?.trim() && {
             companyName: userData.companyName.trim(),
           }),
@@ -476,10 +485,18 @@ const authService = {
           }),
         };
 
-        const response = await api.post("/auth/signup", cleanUserData);
+        console.log("🚀 Attempting signup for:", cleanUserData.email);
 
-        if (response.data.success) {
-          const {tokens, user} = response.data.data;
+        // ✅ RACE: API call vs timeout
+        const signupResponse = await Promise.race([
+          api.post("/auth/signup", cleanUserData),
+          timeoutPromise,
+        ]);
+
+        console.log("✅ Signup response received:", signupResponse.status);
+
+        if (signupResponse.data.success) {
+          const {tokens, user} = signupResponse.data.data;
 
           // Store tokens
           if (tokens?.accessToken) {
@@ -512,34 +529,56 @@ const authService = {
 
           return {
             success: true,
-            data: response.data.data,
+            data: signupResponse.data.data,
             user: user,
             tokens: tokens,
             message: "Account created successfully",
           };
         } else {
-          throw new Error(response.data.message || "Signup failed");
+          throw new Error(signupResponse.data.message || "Signup failed");
         }
       } catch (error) {
+        console.error("❌ Signup error:", error.message);
+
         const errorResponse = error.response?.data;
 
-        // Timeout handling
-        if (error.code === "ECONNABORTED") {
+        // ✅ BETTER: Timeout handling
+        if (
+          error.message.includes("timeout") ||
+          error.code === "ECONNABORTED"
+        ) {
           return {
             success: false,
             message:
-              "Request timeout. Please check your connection and try again.",
+              "Request timed out. Please check your internet connection and try again.",
             code: "TIMEOUT",
+            hint: "This usually indicates a slow network or server overload.",
           };
         }
 
-        // Network error handling
-        if (error.code === "ERR_NETWORK" || error.code === "NETWORK_ERROR") {
+        // ✅ BETTER: Network error handling
+        if (
+          error.code === "ERR_NETWORK" ||
+          error.code === "NETWORK_ERROR" ||
+          !error.response
+        ) {
           return {
             success: false,
             message:
-              "Network connection error. Please check your internet connection and try again.",
+              "Unable to connect to server. Please check your internet connection.",
             code: "NETWORK_ERROR",
+            hint: "Try refreshing the page or switching networks.",
+          };
+        }
+
+        // Server errors
+        if (error.response?.status >= 500) {
+          return {
+            success: false,
+            message:
+              "Server temporarily unavailable. Please try again in a few minutes.",
+            code: "SERVER_ERROR",
+            hint: "This is usually temporary. Please try again later.",
           };
         }
 
@@ -547,7 +586,8 @@ const authService = {
         if (error.response?.status === 429) {
           return {
             success: false,
-            message: "Too many signup attempts. Please wait and try again.",
+            message:
+              "Too many signup attempts. Please wait a moment and try again.",
             code: "RATE_LIMITED",
           };
         }
@@ -563,6 +603,16 @@ const authService = {
           };
         }
 
+        // Email already exists
+        if (error.response?.status === 409) {
+          return {
+            success: false,
+            message:
+              "An account with this email already exists. Please try logging in instead.",
+            code: "EMAIL_EXISTS",
+          };
+        }
+
         // Generic error
         return {
           success: false,
@@ -571,12 +621,13 @@ const authService = {
             error.message ||
             "Signup failed. Please try again.",
           code: errorResponse?.code || "SIGNUP_ERROR",
+          details:
+            process.env.NODE_ENV === "development" ? error.stack : undefined,
         };
       }
     });
   },
 
-  // ✅ SUPER OPTIMIZED LOGOUT - Handles 401 properly
   logout: async () => {
     try {
       // 1. IMMEDIATE CLIENT-SIDE CLEANUP (synchronous)
@@ -636,7 +687,6 @@ const authService = {
     }
   },
 
-  // ✅ ULTRA FAST LOGOUT - Alternative even faster version
   fastLogout: () => {
     try {
       // Immediate synchronous cleanup
@@ -679,7 +729,6 @@ const authService = {
     }
   },
 
-  // ✅ INSTANT LOGOUT - No backend call at all
   instantLogout: () => {
     authService.clearAuthData();
     return {
@@ -804,7 +853,6 @@ const authService = {
     }
   },
 
-  // Utility methods
   clearAuthData: () => {
     const authKeys = [
       "token",
@@ -941,7 +989,6 @@ const authService = {
     );
   },
 
-  // Diagnostic methods
   getAuthStatus: () => {
     const token = authService.getToken();
     const user = authService.getCurrentUser();

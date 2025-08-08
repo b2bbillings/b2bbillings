@@ -932,7 +932,6 @@ function DayBook({
           {error}
         </Alert>
       )}
-
       {/* Page Banner */}
       <div className="page-banner mb-4">
         <div className="banner-content">
@@ -954,7 +953,6 @@ function DayBook({
           </Button>
         </div>
       </div>
-
       {/* Page Header */}
       <div className="page-header d-flex align-items-center justify-content-between mb-4">
         <div className="d-flex align-items-center">
@@ -994,32 +992,34 @@ function DayBook({
             </InputGroup.Text>
           </InputGroup>
 
-          {/* Action Buttons */}
-          <div className="d-flex">
-            <Button variant="outline-secondary" size="sm" className="me-2">
-              <FontAwesomeIcon icon={faPrint} className="me-2" />
-              Print
-            </Button>
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              className="me-2"
-              onClick={
-                activeTab === "receivables"
-                  ? handleExportReceivables
-                  : activeTab === "payables"
-                  ? handleExportPayables
-                  : handleExportReceivables
-              }
-            >
-              <FontAwesomeIcon icon={faFileExport} className="me-2" />
-              Export
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleNewTransaction}>
-              <FontAwesomeIcon icon={faPlus} className="me-2" />
-              New Transaction
-            </Button>
-          </div>
+          {/* ✅ HIDDEN: Action Buttons - commented out for now */}
+          {/* 
+    <div className="d-flex">
+      <Button variant="outline-secondary" size="sm" className="me-2">
+        <FontAwesomeIcon icon={faPrint} className="me-2" />
+        Print
+      </Button>
+      <Button
+        variant="outline-secondary"
+        size="sm"
+        className="me-2"
+        onClick={
+          activeTab === "receivables"
+            ? handleExportReceivables
+            : activeTab === "payables"
+            ? handleExportPayables
+            : handleExportReceivables
+        }
+      >
+        <FontAwesomeIcon icon={faFileExport} className="me-2" />
+        Export
+      </Button>
+      <Button variant="primary" size="sm" onClick={handleNewTransaction}>
+        <FontAwesomeIcon icon={faPlus} className="me-2" />
+        New Transaction
+      </Button>
+    </div>
+    */}
         </div>
       </div>
 
@@ -1029,7 +1029,6 @@ function DayBook({
         formatCurrency={formatCurrency}
         loading={loading || Object.values(loadingStates).some(Boolean)}
       />
-
       {/* Main Content */}
       <Card className="mb-4 border-0 shadow-sm">
         <Card.Body>
@@ -1168,7 +1167,6 @@ function DayBook({
           </Tabs>
         </Card.Body>
       </Card>
-
       {/* Footer Information */}
       {summaryData.lastUpdated && (
         <Row>

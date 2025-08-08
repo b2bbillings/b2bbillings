@@ -142,14 +142,6 @@ function PurchaseInvoiceHeader({
       const scrollY = window.pageYOffset || document.documentElement.scrollTop;
       const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
 
-      console.log("Position calculation:", {
-        rect,
-        scrollY,
-        scrollX,
-        finalTop: rect.bottom + scrollY + 4,
-        finalLeft: rect.left + scrollX,
-      });
-
       setDropdownPosition({
         top: rect.bottom + scrollY + 4,
         left: rect.left + scrollX,

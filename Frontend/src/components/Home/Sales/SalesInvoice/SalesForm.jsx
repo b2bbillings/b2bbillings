@@ -104,8 +104,6 @@ function SalesForm({
   const defaultAddToast = useCallback((message, type = "info") => {
     if (type === "error") {
       alert(`Error: ${message}`);
-    } else {
-      console.log(`${type.toUpperCase()}: ${message}`);
     }
   }, []);
 
@@ -275,19 +273,10 @@ function SalesForm({
         if (field === "customer" && value) {
           // When customer is selected, check if it's from a different company
           if (value.companyId && value.companyId !== effectiveCompanyId) {
-            console.log("🔧 Cross-company customer selected:", {
-              customerCompanyId: value.companyId,
-              currentCompanyId: effectiveCompanyId,
-              customerName: value.name,
-            });
             updated.sourceCompanyId = value.companyId;
             updated.isCrossCompanyTransaction = true;
           } else {
             // Same company transaction - don't set sourceCompanyId
-            console.log("🔧 Same-company customer selected:", {
-              customerName: value.name,
-              companyId: effectiveCompanyId,
-            });
             delete updated.sourceCompanyId;
             updated.isCrossCompanyTransaction = false;
           }
@@ -321,17 +310,10 @@ function SalesForm({
         ) {
           updated.sourceCompanyId = prev.customer.companyId;
           updated.isCrossCompanyTransaction = true;
-          console.log(
-            "🔧 Maintained cross-company sourceCompanyId:",
-            prev.customer.companyId
-          );
         } else {
           // Same company - don't set sourceCompanyId
           delete updated.sourceCompanyId;
           updated.isCrossCompanyTransaction = false;
-          console.log(
-            "🔧 Removed sourceCompanyId for same-company transaction"
-          );
         }
 
         return updated;
@@ -352,16 +334,10 @@ function SalesForm({
         existingTransaction || initialData || editingData || defaultValues;
 
       if (transactionData) {
-        console.log(
-          "📝 Initializing edit mode with transaction data:",
-          transactionData
-        );
         initializeFormFromTransaction(transactionData);
       } else if (transactionId) {
-        console.log("📝 Loading transaction by ID:", transactionId);
         loadTransactionById(transactionId);
       } else {
-        console.warn("⚠️ Edit mode enabled but no transaction data provided");
         setInitializing(false);
         setInitializationComplete(true);
         effectiveAddToast("No transaction data provided for editing", "error");
@@ -410,12 +386,10 @@ function SalesForm({
   const initializeFormFromTransaction = useCallback(
     async (transaction) => {
       if (initializationComplete) {
-        console.log("⚠️ Initialization already complete, skipping...");
         return;
       }
 
       setInitializing(true);
-      console.log("🔄 Initializing form from transaction:", transaction);
 
       try {
         if (!transaction) {
@@ -527,15 +501,6 @@ function SalesForm({
         );
         const calculatedPaidAmount = totalAmount - balanceAmount;
 
-        console.log("💰 Payment data calculation:", {
-          totalAmount,
-          balanceAmount,
-          calculatedPaidAmount,
-          originalPayment: transaction.payment,
-          paymentReceived: transaction.paymentReceived,
-          paidAmount: transaction.paidAmount,
-        });
-
         let paymentData = null;
         if (
           transaction.payment ||
@@ -598,7 +563,7 @@ function SalesForm({
                 return parsedDate.toISOString().split("T")[0];
               }
             } catch (e) {
-              console.warn("Date parsing failed for:", dateValue);
+              // Date parsing failed
             }
           }
           return new Date().toISOString().split("T")[0];
@@ -616,11 +581,6 @@ function SalesForm({
         ) {
           sourceCompanyId = transformedCustomer.companyId;
           isCrossCompanyTransaction = true;
-          console.log("🔧 Cross-company transaction detected in edit mode:", {
-            customerCompanyId: transformedCustomer.companyId,
-            currentCompanyId: effectiveCompanyId,
-            customerName: transformedCustomer.name,
-          });
         } else if (
           transaction.sourceCompanyId &&
           transaction.sourceCompanyId !== effectiveCompanyId &&
@@ -629,18 +589,8 @@ function SalesForm({
         ) {
           sourceCompanyId = transaction.sourceCompanyId;
           isCrossCompanyTransaction = true;
-          console.log(
-            "🔧 Cross-company transaction from existing sourceCompanyId:",
-            {
-              sourceCompanyId: transaction.sourceCompanyId,
-              currentCompanyId: effectiveCompanyId,
-            }
-          );
         } else {
-          console.log("🔧 Same-company transaction in edit mode:", {
-            companyId: effectiveCompanyId,
-            customerName: transformedCustomer?.name || "Unknown",
-          });
+          // Same company transaction
         }
 
         // ✅ UPDATED: Create comprehensive form data - PRESERVE model-generated invoice number
@@ -759,24 +709,7 @@ function SalesForm({
           amount: totalAmount,
         };
 
-        console.log("✅ Setting form data with preserved invoice number:", {
-          invoiceNumber: newFormData.invoiceNumber, // ✅ Preserved from model
-          paymentMethod: newFormData.paymentMethod,
-          paymentReceived: newFormData.paymentReceived,
-          paidAmount: newFormData.paidAmount,
-          pendingAmount: newFormData.pendingAmount,
-          totalAmount: newFormData.totalAmount,
-          paymentData: newFormData.paymentData,
-          sourceCompanyId: newFormData.sourceCompanyId,
-          isCrossCompanyTransaction: newFormData.isCrossCompanyTransaction,
-          modelGeneratedNumber: !!newFormData.invoiceNumber,
-        });
-
         setFormData((prev) => ({...prev, ...newFormData}));
-
-        console.log(
-          "✅ Form initialized successfully with preserved model-generated invoice number"
-        );
       } catch (error) {
         console.error("❌ Error initializing form:", error);
         effectiveAddToast(
@@ -814,14 +747,6 @@ function SalesForm({
       try {
         setSaving(true);
 
-        console.log("💾 Save operation - Model will generate invoice number:", {
-          editMode,
-          transactionId,
-          isQuotationsMode,
-          data: invoiceDataFromTable,
-          modelHandlesNumbering: true,
-        });
-
         // ✅ CRITICAL FIX: Enhanced data preparation with proper sourceCompanyId validation
         const enhancedData = {
           ...invoiceDataFromTable,
@@ -847,47 +772,21 @@ function SalesForm({
           enhancedData.sourceCompanyId =
             invoiceDataFromTable.customer.companyId;
           enhancedData.isCrossCompanyTransaction = true;
-
-          console.log("🔗 Cross-company transaction detected:", {
-            companyId: enhancedData.companyId,
-            sourceCompanyId: enhancedData.sourceCompanyId,
-            customerCompanyId: invoiceDataFromTable.customer.companyId,
-            customerName: invoiceDataFromTable.customer.name,
-            modelWillGenerateNumber: true,
-          });
         } else {
           // Same company transaction - don't include sourceCompanyId
           delete enhancedData.sourceCompanyId;
           enhancedData.isCrossCompanyTransaction = false;
-
-          console.log(
-            "🔗 Same-company transaction - Model will generate invoice number:",
-            {
-              companyId: enhancedData.companyId,
-              customerName: invoiceDataFromTable.customer?.name || "Unknown",
-              sourceCompanyId: "null (same company)",
-              modelWillGenerateNumber: true,
-            }
-          );
         }
 
         // ✅ CRITICAL: Remove any manual invoice number for new invoices
         if (!editMode) {
           delete enhancedData.invoiceNumber;
-          console.log(
-            "🔢 Removed manual invoice number - Model will generate sequential number"
-          );
         }
 
         let result;
 
         if (editMode && transactionId) {
           // ✅ UPDATE operation - preserves existing model-generated invoice number
-          console.log(
-            "🔄 Updating existing transaction with model-preserved invoice number:",
-            transactionId
-          );
-
           if (isQuotationsMode && quotationService) {
             result = await quotationService.updateQuotation(
               transactionId,
@@ -901,10 +800,6 @@ function SalesForm({
           }
         } else {
           // ✅ CREATE operation - model generates new invoice number
-          console.log(
-            "🆕 Creating new transaction - Model will generate invoice number"
-          );
-
           if (isQuotationsMode && quotationService) {
             result = await quotationService.createQuotation(enhancedData);
           } else {
@@ -916,16 +811,6 @@ function SalesForm({
           const responseData = result.data || result;
           const operation = editMode ? "updated" : "created";
           const successMessage = `${labels.documentName} ${operation} successfully!`;
-
-          // ✅ Log model-generated invoice number
-          if (responseData.invoiceNumber) {
-            console.log("✅ Model generated invoice number:", {
-              invoiceNumber: responseData.invoiceNumber,
-              operation: operation,
-              documentType: labels.documentName,
-              modelGenerated: true,
-            });
-          }
 
           effectiveAddToast(
             `${successMessage} ${

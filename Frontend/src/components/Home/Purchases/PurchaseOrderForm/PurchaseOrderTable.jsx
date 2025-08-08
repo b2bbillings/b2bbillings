@@ -193,7 +193,6 @@ function PurchaseOrderTable({
   const fetchPurchaseOrders = useCallback(
     async (force = false) => {
       if (!companyId) {
-        console.warn("⚠️ No companyId provided, cannot fetch purchase orders");
         return;
       }
 
@@ -316,7 +315,6 @@ function PurchaseOrderTable({
           }
 
           if (orders.length === 0) {
-            console.warn("⚠️ No orders found in response");
             setPurchaseOrders([]);
             setLastFetchTime(Date.now());
             setFetchError(null);
@@ -696,7 +694,6 @@ function PurchaseOrderTable({
             return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
           }
         } catch (error) {
-          console.warn("Sorting error:", error);
           return 0;
         }
       });
@@ -746,20 +743,6 @@ function PurchaseOrderTable({
       try {
         setSOGenerationLoading(true);
         setSOGenerationError(null);
-
-        // ✅ Enhanced debug logging
-        console.log("🔄 Starting SO generation with debug info:", {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          sourceCompany: order.companyId,
-          targetCompany: order.targetCompanyId,
-          supplier: {
-            id: order.supplier?._id || order.supplierId,
-            name: order.supplierName || order.supplier?.name,
-            linkedCompanyId: order.supplier?.linkedCompanyId,
-          },
-        });
-
         const response = await resolvedPurchaseOrderService.generateSalesOrder(
           order._id,
           {

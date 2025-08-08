@@ -80,16 +80,6 @@ function SalesOrderForm({
 
     return false;
   }, [orderType, location.state, location.pathname, existingOrder, editMode]);
-
-  console.log("🔍 Order type detection:", {
-    orderType,
-    isQuotationMode,
-    locationState: location.state,
-    pathname: location.pathname,
-    existingOrderType: existingOrder?.orderType,
-    editMode,
-  });
-
   // ✅ Form state for order/quotation data
   const [formData, setFormData] = useState({
     // Header fields
@@ -135,19 +125,6 @@ function SalesOrderForm({
 
   const calculateTotals = useCallback(() => {
     const items = formData.items || [];
-
-    console.log("🧮 Calculating totals for items:", {
-      itemsCount: items.length,
-      gstType: formData.gstType,
-      items: items.map((item) => ({
-        name: item.itemName,
-        quantity: item.quantity,
-        pricePerUnit: item.pricePerUnit,
-        subtotal: item.subtotal,
-        gstAmount: item.gstAmount,
-      })),
-    });
-
     let subtotal = 0;
     let totalTax = 0;
 
@@ -158,14 +135,6 @@ function SalesOrderForm({
       const itemTax = parseFloat(
         item.gstAmount || item.totalTaxAmount || item.taxAmount || 0
       );
-
-      console.log(`Item ${index + 1} calculations:`, {
-        itemName: item.itemName,
-        subtotal: itemSubtotal,
-        tax: itemTax,
-        quantity: item.quantity,
-        pricePerUnit: item.pricePerUnit,
-      });
 
       subtotal += itemSubtotal;
       if (formData.gstType === "gst") {
@@ -185,8 +154,6 @@ function SalesOrderForm({
       finalTotalWithRoundOff,
     };
 
-    console.log("✅ Calculated totals:", calculatedTotals);
-
     setFormData((prev) => ({
       ...prev,
       ...calculatedTotals,
@@ -201,32 +168,15 @@ function SalesOrderForm({
       // ✅ FIRST: Check navigation state for existing data
       if (!orderData && typeof window !== "undefined") {
         const navigationState = location.state;
-        console.log(
-          "🔍 Checking navigation state for order data:",
-          navigationState
-        );
 
         orderData =
           navigationState?.salesOrder ||
           navigationState?.order ||
           navigationState?.quotation ||
           navigationState?.transaction;
-
-        if (orderData) {
-          console.log("✅ Found order data in navigation state:", {
-            orderNumber: orderData.orderNumber,
-            quotationNumber: orderData.quotationNumber,
-            hasItems: Array.isArray(orderData.items),
-            itemsCount: orderData.items?.length || 0,
-          });
-        }
       }
 
-      // ✅ SECOND: If we have an ID but no data, fetch it
       if (!orderData && orderId) {
-        console.log("🔄 Fetching order data for ID:", orderId);
-
-        // ✅ CRITICAL: Use the correct method name
         if (
           !saleOrderService ||
           typeof saleOrderService.getSalesOrder !== "function"
@@ -247,12 +197,6 @@ function SalesOrderForm({
 
         const response = await saleOrderService.getSalesOrder(orderId);
 
-        console.log("📥 Received order data response:", {
-          success: response?.success,
-          hasData: !!response?.data,
-          dataKeys: response?.data ? Object.keys(response.data) : [],
-        });
-
         if (response?.success && response?.data) {
           // ✅ ENHANCED: Handle different response structures
           orderData =
@@ -260,35 +204,12 @@ function SalesOrderForm({
             response.data.order ||
             response.data.quotation ||
             response.data;
-
-          console.log("✅ Extracted order data from API:", {
-            orderNumber: orderData.orderNumber,
-            quotationNumber: orderData.quotationNumber,
-            orderType: orderData.orderType,
-            documentType: orderData.documentType,
-          });
         } else {
           throw new Error(response?.message || "Failed to load order data");
         }
       }
 
       if (orderData) {
-        console.log("🔄 Processing order data for form:", {
-          orderNumber: orderData.orderNumber,
-          quotationNumber: orderData.quotationNumber,
-          orderType: orderData.orderType,
-          documentType: orderData.documentType,
-          isQuotation:
-            orderData.orderType === "quotation" ||
-            orderData.documentType === "quotation",
-          hasItems: Array.isArray(orderData.items),
-          itemsCount: orderData.items?.length || 0,
-          customerInfo: {
-            name: orderData.customerName || orderData.customer?.name,
-            mobile: orderData.customerMobile || orderData.customer?.mobile,
-          },
-        });
-
         // ✅ ENHANCED: Determine if this is a quotation
         const isQuotationOrder =
           isQuotationMode ||
@@ -381,8 +302,6 @@ function SalesOrderForm({
           // ✅ ENHANCED: Items with better transformation
           items: Array.isArray(orderData.items)
             ? orderData.items.map((item, index) => {
-                console.log(`🔄 Processing item ${index + 1}:`, item);
-
                 const quantity = parseFloat(item.quantity || item.qty || 1);
                 const pricePerUnit = parseFloat(
                   item.pricePerUnit ||
@@ -480,18 +399,6 @@ function SalesOrderForm({
           finalTotalWithRoundOff: 0, // Will be calculated
         };
 
-        console.log("✅ Processed form data for edit mode:", {
-          orderType: isQuotationOrder ? "quotation" : "sales_order",
-          orderNumber: processedFormData.orderNumber,
-          quotationNumber: processedFormData.quotationNumber,
-          customerName: processedFormData.partyName,
-          itemsCount: processedFormData.items.length,
-          gstType: processedFormData.gstType,
-          hasCustomerData: !!(
-            processedFormData.partyName && processedFormData.partyPhone
-          ),
-        });
-
         setFormData(processedFormData);
 
         // ✅ ADDED: Calculate totals after setting form data
@@ -544,13 +451,6 @@ function SalesOrderForm({
 
   useEffect(() => {
     if (editMode && (existingOrder || orderId || location.state)) {
-      console.log("🔄 Edit mode detected, loading existing order:", {
-        editMode,
-        hasExistingOrder: !!existingOrder,
-        hasOrderId: !!orderId,
-        hasLocationState: !!location.state,
-        locationStateKeys: location.state ? Object.keys(location.state) : [],
-      });
       loadExistingOrder();
     }
   }, [editMode, loadExistingOrder]);
@@ -558,7 +458,6 @@ function SalesOrderForm({
   // ✅ Calculate totals when items or GST type changes
   useEffect(() => {
     if (formData.items && formData.items.length > 0) {
-      console.log("🔄 Triggering totals calculation due to items change");
       calculateTotals();
     }
   }, [formData.items, formData.gstType, calculateTotals]);
@@ -632,15 +531,6 @@ function SalesOrderForm({
     setSaving(true);
 
     try {
-      console.log("💾 Starting save process:", {
-        isQuotationMode,
-        editMode,
-        orderId,
-        existingOrderId: existingOrder?._id || existingOrder?.id,
-        hasQuotationNumber: !!formData.quotationNumber,
-        backendWillGenerateNumber: !editMode || !formData.quotationNumber,
-      });
-
       // ✅ UPDATED: Always treat as quotation - backend handles numbering
       const orderData = {
         companyId,
@@ -734,17 +624,6 @@ function SalesOrderForm({
         priority: formData.priority || "normal",
       };
 
-      console.log("💾 Saving quotation with backend numbering:", {
-        documentType: orderData.documentType,
-        orderType: orderData.orderType,
-        customerName: orderData.customerName,
-        itemsCount: orderData.items?.length || 0,
-        totalAmount: orderData.totals?.finalTotal || 0,
-        isEdit: editMode,
-        hasManualNumber: !!(editMode && orderData.quotationNumber),
-        backendWillGenerate: !(editMode && orderData.quotationNumber),
-      });
-
       let result;
       if (onSaveOrder) {
         // Use external save handler if provided
@@ -753,10 +632,8 @@ function SalesOrderForm({
         // Use internal service
         if (editMode && (existingOrder?.id || existingOrder?._id || orderId)) {
           const id = existingOrder?.id || existingOrder?._id || orderId;
-          console.log("🔄 Updating existing quotation:", id);
           result = await saleOrderService.updateSalesOrder(id, orderData);
         } else {
-          console.log("➕ Creating new quotation with backend numbering");
           result = await saleOrderService.createSalesOrder(orderData);
         }
       }
@@ -775,12 +652,6 @@ function SalesOrderForm({
             result.data;
 
           if (serverData && serverData.orderNumber) {
-            console.log("✅ Received generated order number from backend:", {
-              generatedNumber: serverData.orderNumber,
-              wasAutoGenerated: serverData.numberingInfo?.wasAutoGenerated,
-              generatedBy: serverData.numberingInfo?.generatedBy,
-            });
-
             setFormData((prev) => ({
               ...prev,
               orderNumber: serverData.orderNumber,

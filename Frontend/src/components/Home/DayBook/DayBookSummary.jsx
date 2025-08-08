@@ -357,7 +357,7 @@ function DayBookSummary({
     };
   };
 
-  // ✅ Helper function to get priority badge
+  // ✅ FIXED: Helper function to get priority badge with larger text and icons
   const getPriorityBadge = (type, count) => {
     if (count === 0) return null;
 
@@ -369,10 +369,13 @@ function DayBookSummary({
 
     const badge = badges[type] || badges.efficiency;
     return (
-      <small className={`text-${badge.color} ms-2`}>
-        <FontAwesomeIcon icon={badge.icon} className="me-1" />
+      <span
+        className={`text-${badge.color} ms-2`}
+        style={{fontSize: "0.875rem", fontWeight: "600"}}
+      >
+        <FontAwesomeIcon icon={badge.icon} className="me-1" size="sm" />
         {count}
-      </small>
+      </span>
     );
   };
 
@@ -410,7 +413,12 @@ function DayBookSummary({
                 {formatCurrency(displayData.totalReceivables)}
               </h4>
 
-              <p className="text-muted mb-2">Total to Receive</p>
+              <p
+                className="text-muted mb-2 card-title"
+                style={{fontSize: "0.875rem", fontWeight: "500"}}
+              >
+                Total to Receive
+              </p>
 
               {/* ✅ Additional Info */}
               <div className="d-flex justify-content-between align-items-center small text-muted">
@@ -424,16 +432,20 @@ function DayBookSummary({
                 )}
               </div>
 
-              {/* ✅ Overdue Amount */}
+              {/* ✅ FIXED: Overdue Amount with larger text and icon */}
               {displayData.overdueReceivables > 0 && (
                 <div className="mt-2">
-                  <small className="text-danger">
+                  <span
+                    className="text-danger"
+                    style={{fontSize: "0.875rem", fontWeight: "600"}}
+                  >
                     <FontAwesomeIcon
                       icon={faExclamationTriangle}
                       className="me-1"
+                      size="sm"
                     />
                     {formatCurrency(displayData.overdueReceivables)} overdue
-                  </small>
+                  </span>
                 </div>
               )}
             </Card.Body>
@@ -457,7 +469,12 @@ function DayBookSummary({
                 {formatCurrency(displayData.totalPayables)}
               </h4>
 
-              <p className="text-muted mb-2">Total to Pay</p>
+              <p
+                className="text-muted mb-2 card-title"
+                style={{fontSize: "0.875rem", fontWeight: "500"}}
+              >
+                Total to Pay
+              </p>
 
               {/* ✅ Additional Info */}
               <div className="d-flex justify-content-between align-items-center small text-muted">
@@ -468,16 +485,20 @@ function DayBookSummary({
                 {getPriorityBadge("overdue", displayData.overduePayablesCount)}
               </div>
 
-              {/* ✅ Overdue Amount */}
+              {/* ✅ FIXED: Overdue Amount with larger text and icon */}
               {displayData.overduePayables > 0 && (
                 <div className="mt-2">
-                  <small className="text-danger">
+                  <span
+                    className="text-danger"
+                    style={{fontSize: "0.875rem", fontWeight: "600"}}
+                  >
                     <FontAwesomeIcon
                       icon={faExclamationTriangle}
                       className="me-1"
+                      size="sm"
                     />
                     {formatCurrency(displayData.overduePayables)} overdue
-                  </small>
+                  </span>
                 </div>
               )}
             </Card.Body>
@@ -503,31 +524,43 @@ function DayBookSummary({
                 {formatCurrency(displayData.totalOverdue || 0)}
               </h4>
 
-              <p className="text-muted mb-2">Total Overdue</p>
+              {/* ✅ FIXED: Now matches other card titles exactly */}
+              <p
+                className="text-muted mb-2 card-title"
+                style={{fontSize: "0.875rem", fontWeight: "500"}}
+              >
+                Total Overdue
+              </p>
 
-              {/* ✅ Breakdown */}
+              {/* ✅ FIXED: Breakdown with larger text and icons */}
               <div className="small text-muted">
                 {displayData.overdueReceivables > 0 && (
-                  <div>
+                  <div style={{fontSize: "0.875rem"}}>
                     <FontAwesomeIcon
                       icon={faMoneyBillWave}
                       className="text-success me-1"
+                      size="sm"
                     />
                     {formatCurrency(displayData.overdueReceivables)} receivable
                   </div>
                 )}
                 {displayData.overduePayables > 0 && (
-                  <div>
+                  <div style={{fontSize: "0.875rem"}}>
                     <FontAwesomeIcon
                       icon={faHandHoldingUsd}
                       className="text-primary me-1"
+                      size="sm"
                     />
                     {formatCurrency(displayData.overduePayables)} payable
                   </div>
                 )}
                 {displayData.totalOverdue === 0 && (
-                  <div className="text-success">
-                    <FontAwesomeIcon icon={faArrowTrendUp} className="me-1" />
+                  <div className="text-success" style={{fontSize: "0.875rem"}}>
+                    <FontAwesomeIcon
+                      icon={faArrowTrendUp}
+                      className="me-1"
+                      size="sm"
+                    />
                     All up to date!
                   </div>
                 )}
@@ -575,7 +608,12 @@ function DayBookSummary({
                 {formatCurrency(Math.abs(displayData.netPosition))}
               </h4>
 
-              <p className="text-muted mb-2">Net Position</p>
+              <p
+                className="text-muted mb-2 card-title"
+                style={{fontSize: "0.875rem", fontWeight: "500"}}
+              >
+                Net Position
+              </p>
 
               <small className="text-muted">
                 {displayData.netPosition >= 0

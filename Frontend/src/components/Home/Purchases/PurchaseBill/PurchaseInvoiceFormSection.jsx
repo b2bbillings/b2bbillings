@@ -922,8 +922,6 @@ function PurchaseInvoiceFormSection({
         transactionType: isPurchaseOrdersMode ? "purchase-order" : "purchase",
       };
 
-      console.log("✅ All validations passed, sending to purchase service...");
-
       if (!purchaseDataForService.companyId) {
         throw new Error("Company ID is missing");
       }
@@ -1002,9 +1000,6 @@ function PurchaseInvoiceFormSection({
 
           if (hasPaymentWithBankAccount) {
             try {
-              console.log(
-                "🔄 Attempting combined purchase with transaction..."
-              );
               result = await purchaseService.createPurchaseWithTransaction(
                 purchaseDataForService
               );
@@ -1020,8 +1015,6 @@ function PurchaseInvoiceFormSection({
                 paymentAmount: 0,
                 bankAccountId: null,
               };
-
-              console.log("🔄 Attempting purchase creation without payment...");
               result = await purchaseService.createPurchase(
                 purchaseDataWithoutPayment
               );
@@ -1068,7 +1061,6 @@ function PurchaseInvoiceFormSection({
               }
             }
           } else {
-            console.log("🔄 Creating purchase without payment transaction...");
             result = await purchaseService.createPurchase(
               purchaseDataForService
             );

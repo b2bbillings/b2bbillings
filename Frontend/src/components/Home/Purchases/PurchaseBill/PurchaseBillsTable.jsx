@@ -2956,7 +2956,6 @@ function PurchaseBillsTable({
             ref={printRef}
             invoiceData={printData}
             onPrint={() => {
-              console.log("🖨️ Print button clicked from component");
               handlePrint();
             }}
           />

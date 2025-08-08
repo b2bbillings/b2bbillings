@@ -185,22 +185,12 @@ function SalesFormHeader({
         setIsLoadingPreview(true);
         setPreviewError(null);
 
-        // ✅ Use override value if provided, otherwise use formData
         const gstEnabled =
           gstEnabledOverride !== null
             ? gstEnabledOverride
             : formData.gstEnabled;
         const invoiceType = gstEnabled ? "gst" : "non-gst";
 
-        console.log("🔢 Loading invoice number preview:", {
-          companyId,
-          invoiceType,
-          gstEnabled,
-          gstEnabledOverride,
-          editMode,
-        });
-
-        // ✅ TRY: API endpoint first (but expect it to fail for now)
         try {
           const response = await salesService.getNextInvoiceNumber({
             companyId,
@@ -209,10 +199,7 @@ function SalesFormHeader({
 
           if (response.success && response.data?.previewInvoiceNumber) {
             setInvoiceNumberPreview(response.data.previewInvoiceNumber);
-            console.log(
-              "✅ Preview loaded from API:",
-              response.data.previewInvoiceNumber
-            );
+
             return;
           }
         } catch (apiError) {
@@ -229,7 +216,6 @@ function SalesFormHeader({
             if (patternInfo?.data?.example || patternInfo?.example) {
               const example = patternInfo.data?.example || patternInfo.example;
               setInvoiceNumberPreview(example);
-              console.log("✅ Preview loaded from pattern:", example);
               setPreviewError("Using pattern preview");
               return;
             }
@@ -248,7 +234,6 @@ function SalesFormHeader({
 
         setInvoiceNumberPreview(fallbackPreview);
         setPreviewError("Using fallback pattern");
-        console.log("✅ Using manual fallback pattern:", fallbackPreview);
       } catch (error) {
         console.error("❌ Error loading invoice number preview:", error);
         setPreviewError(error.message || "Preview failed");

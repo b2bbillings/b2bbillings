@@ -1295,10 +1295,18 @@ function AddNewParty({
 
                 <div className="d-grid gap-2">
                   {/* Search Database Option */}
+
                   <Button
                     variant="outline-info"
                     size="lg"
-                    onClick={() => setShowDatabaseSearch(true)}
+                    onClick={() => {
+                      // Close the Quick Add modal first
+                      onHide();
+                      // Then open DatabaseSearch with a callback to reopen Quick Add if needed
+                      setTimeout(() => {
+                        setShowDatabaseSearch(true);
+                      }, 100);
+                    }}
                     disabled={isLoading}
                     className="d-flex align-items-center justify-content-center p-3 border-2"
                   >
@@ -1314,7 +1322,6 @@ function AddNewParty({
                       </small>
                     </div>
                   </Button>
-
                   {/* Manual Entry Option */}
                   <Button
                     variant="outline-primary"

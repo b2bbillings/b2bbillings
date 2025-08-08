@@ -114,15 +114,11 @@ function PurchaseForm({
 
   // Enhanced toast function with validation
   const defaultAddToast = useCallback((message, type = "info") => {
-    console.log(`🔔 Toast [${type.toUpperCase()}]: ${message}`);
-
     if (type === "error") {
       console.error("❌ Error:", message);
       if (typeof alert !== "undefined") {
         alert(`Error: ${message}`);
       }
-    } else if (type === "success") {
-      console.log("✅ Success:", message);
     } else if (type === "warning") {
       console.warn("⚠️ Warning:", message);
     }
@@ -384,8 +380,6 @@ function PurchaseForm({
   const loadTransactionById = async (id) => {
     setInitializing(true);
     try {
-      console.log(`🔄 Loading ${labels.documentName.toLowerCase()} by ID:`, id);
-
       let result;
       if (isPurchaseOrdersMode && purchaseOrderService) {
         result = await purchaseOrderService.getPurchaseOrder(id);
@@ -394,10 +388,6 @@ function PurchaseForm({
       }
 
       if (result?.success && result.data) {
-        console.log(
-          `✅ Loaded ${labels.documentName.toLowerCase()}:`,
-          result.data
-        );
         await initializeFormFromTransaction(result.data);
       } else {
         throw new Error(
@@ -430,11 +420,6 @@ function PurchaseForm({
         if (!transaction) {
           throw new Error("No transaction data provided");
         }
-
-        console.log(
-          `🔄 Initializing form from ${labels.documentName.toLowerCase()}:`,
-          transaction
-        );
 
         // Transform supplier data
         let transformedSupplier = null;
@@ -630,11 +615,6 @@ function PurchaseForm({
 
         setFormData((prev) => ({...prev, ...newFormData}));
         setHasUnsavedChanges(false);
-
-        console.log(
-          `✅ Form initialized from ${labels.documentName.toLowerCase()}`,
-          newFormData
-        );
       } catch (error) {
         console.error(`❌ Error initializing form:`, error);
         effectiveAddToast(
