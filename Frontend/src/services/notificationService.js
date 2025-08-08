@@ -1,18 +1,37 @@
 import axios from "axios";
 import apiConfig from "../config/api.js";
 
+// ===============================
+// 🎯 CONFIGURATION
+// ===============================
+
 const CONFIG = {
+  // ✅ Use centralized API configuration
   API_BASE_URL: apiConfig.baseURL,
   WEBSOCKET_URL: apiConfig.baseURL
     .replace(/^http/, "ws")
     .replace(/^https/, "wss"),
-  CACHE_EXPIRY: 5 * 60 * 1000,
-  POLLING_INTERVAL: 30000,
+  CACHE_EXPIRY: 5 * 60 * 1000, // 5 minutes
+  POLLING_INTERVAL: 30000, // 30 seconds
   MAX_CACHED_NOTIFICATIONS: 100,
   MAX_RETRY_ATTEMPTS: 3,
-  RETRY_DELAY_BASE: 1000,
+  RETRY_DELAY_BASE: 1000, // 1 second
   REQUEST_TIMEOUT: apiConfig.timeout || 10000,
 };
+
+// ✅ Debug logging for environment detection
+console.log("🔔 NotificationService Config:", {
+  API_BASE_URL: CONFIG.API_BASE_URL,
+  WEBSOCKET_URL: CONFIG.WEBSOCKET_URL,
+  environment: CONFIG.API_BASE_URL.includes("localhost")
+    ? "development"
+    : "production",
+  timeout: CONFIG.REQUEST_TIMEOUT,
+});
+
+// ===============================
+// 🔧 EVENT EMITTER
+// ===============================
 
 class EventEmitter {
   constructor() {
@@ -42,7 +61,7 @@ class EventEmitter {
         try {
           listener(...args);
         } catch (error) {
-          console.warn("Event listener error:", error);
+          console.warn("🔔 Event listener error:", error);
         }
       });
     }
@@ -61,8 +80,13 @@ class EventEmitter {
   }
 }
 
+// ===============================
+// 🌐 API CLIENT
+// ===============================
+
 class APIClient {
   constructor() {
+    // ✅ FIXED: Properly handle API URL construction
     const baseURL = CONFIG.API_BASE_URL.endsWith("/api")
       ? CONFIG.API_BASE_URL
       : `${CONFIG.API_BASE_URL}/api`;
@@ -75,6 +99,13 @@ class APIClient {
       },
     });
     this.setupInterceptors();
+
+    // ✅ Enhanced debug logging
+    console.log("🔔 NotificationService APIClient initialized:", {
+      originalBaseURL: CONFIG.API_BASE_URL,
+      finalBaseURL: baseURL,
+      timeout: CONFIG.REQUEST_TIMEOUT,
+    });
   }
 
   setupInterceptors() {
@@ -83,13 +114,23 @@ class APIClient {
         const token = this.getAuthToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
-          config.headers["x-auth-token"] = token;
+          config.headers["x-auth-token"] = token; // ✅ Backend expects this too
         }
 
         const companyId = this.getCurrentCompanyId();
         if (companyId) {
           config.headers["X-Company-ID"] = companyId;
         }
+
+        // ✅ Enhanced debug logging for notification requests
+        console.log("🔔 Notification API Request:", {
+          url: config.url,
+          fullURL: `${config.baseURL}${config.url}`,
+          method: config.method,
+          hasToken: !!token,
+          companyId,
+          baseURL: config.baseURL,
+        });
 
         config.metadata = {startTime: Date.now()};
         return config;
@@ -98,9 +139,32 @@ class APIClient {
     );
 
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // ✅ Success logging
+        console.log("✅ Notification API Success:", {
+          url: response.config.url,
+          status: response.status,
+          duration: Date.now() - response.config.metadata?.startTime || 0,
+        });
+        return response;
+      },
       (error) => {
+        // ✅ Enhanced error handling
+        console.error("❌ Notification API Error:", {
+          url: error.config?.url,
+          fullURL: error.config
+            ? `${error.config.baseURL}${error.config.url}`
+            : "unknown",
+          status: error.response?.status,
+          message: error.response?.data?.message || error.message,
+          baseURL: error.config?.baseURL,
+          duration: error.config?.metadata
+            ? Date.now() - error.config.metadata.startTime
+            : 0,
+        });
+
         if (error.response?.status === 401) {
+          console.warn("🚫 Authentication failed in notification service");
           this.handleAuthenticationError();
         }
         return Promise.reject(error);
@@ -111,74 +175,31 @@ class APIClient {
   getAuthToken() {
     return (
       localStorage.getItem("token") ||
-      localStorage.getItem("accessToken") ||
       sessionStorage.getItem("token") ||
-      sessionStorage.getItem("accessToken")
+      sessionStorage.getItem("authToken")
     );
   }
 
   getCurrentCompanyId() {
     try {
-      const companyId =
-        localStorage.getItem("currentCompanyId") ||
-        sessionStorage.getItem("currentCompanyId");
-
-      if (companyId) {
-        return companyId;
-      }
-
       const currentCompany = localStorage.getItem("currentCompany");
       if (currentCompany) {
         const company = JSON.parse(currentCompany);
         return company.id || company._id || company.companyId;
       }
     } catch (error) {
-      console.warn("Error getting company ID:", error);
+      console.warn("🔔 Error getting company ID:", error);
     }
     return null;
   }
 
-  getTokenSource() {
-    if (localStorage.getItem("token")) return "localStorage.token";
-    if (localStorage.getItem("accessToken")) return "localStorage.accessToken";
-    if (sessionStorage.getItem("token")) return "sessionStorage.token";
-    if (sessionStorage.getItem("accessToken"))
-      return "sessionStorage.accessToken";
-    return "none";
-  }
-
   handleAuthenticationError() {
-    const authKeys = [
-      "token",
-      "accessToken",
-      "refreshToken",
-      "user",
-      "currentCompany",
-      "currentCompanyId",
-      "isAdmin",
-    ];
-
-    authKeys.forEach((key) => {
-      localStorage.removeItem(key);
-      sessionStorage.removeItem(key);
-    });
-
-    if (typeof window !== "undefined") {
-      try {
-        window.dispatchEvent(
-          new CustomEvent("auth:logged-out", {
-            detail: {
-              source: "notification-service",
-              timestamp: new Date().toISOString(),
-            },
-          })
-        );
-      } catch (error) {
-        console.warn("Error dispatching logout event:", error);
-      }
-    }
+    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("authToken");
 
     if (!window.location.pathname.includes("/login")) {
+      console.warn("🚫 Redirecting to login due to auth error");
       window.location.href = "/login";
     }
   }
@@ -202,20 +223,27 @@ class APIClient {
   }
 }
 
+// ===============================
+// 🔔 NOTIFICATION SERVICE
+// ===============================
+
 class NotificationService extends EventEmitter {
   constructor() {
     super();
 
+    // Core state
     this.api = new APIClient();
     this.notifications = [];
     this.unreadCount = 0;
     this.lastFetchTime = null;
 
+    // Connection state
     this.isConnected = false;
     this.socket = null;
     this.retryCount = 0;
     this.pollingInterval = null;
 
+    // Chat notifications
     this.isChatWindowFocused = false;
     this.activeChatCompanyId = null;
     this.chatNotificationSettings = {
@@ -225,14 +253,21 @@ class NotificationService extends EventEmitter {
       showToast: true,
     };
 
+    // Browser notification permission
     this.notificationPermission = "default";
 
+    // Bind methods
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
     this.handleOnline = this.handleOnline.bind(this);
     this.handleOffline = this.handleOffline.bind(this);
 
+    // Initialize
     this.init();
   }
+
+  // ===============================
+  // 🚀 INITIALIZATION
+  // ===============================
 
   async init() {
     try {
@@ -240,14 +275,10 @@ class NotificationService extends EventEmitter {
       this.loadCachedNotifications();
       this.setupBrowserEventListeners();
       await this.requestNotificationPermission();
-
-      const hasAuth = await this.checkAuthentication();
-      if (hasAuth) {
-        await this.connectWebSocket();
-        this.startPolling();
-      }
+      await this.connectWebSocket();
+      this.startPolling();
     } catch (error) {
-      console.error("NotificationService init error:", error);
+      console.error("🔔 NotificationService init error:", error);
     }
   }
 
@@ -261,7 +292,7 @@ class NotificationService extends EventEmitter {
         };
       }
     } catch (error) {
-      console.warn("Error loading settings:", error);
+      console.warn("🔔 Error loading settings:", error);
     }
   }
 
@@ -272,7 +303,7 @@ class NotificationService extends EventEmitter {
         JSON.stringify(this.chatNotificationSettings)
       );
     } catch (error) {
-      console.warn("Error saving settings:", error);
+      console.warn("🔔 Error saving settings:", error);
     }
   }
 
@@ -300,27 +331,47 @@ class NotificationService extends EventEmitter {
       this.notificationPermission = Notification.permission;
       return Notification.permission === "granted";
     } catch (error) {
-      console.warn("Notification permission error:", error);
+      console.warn("🔔 Notification permission error:", error);
       return false;
     }
   }
+
+  // ===============================
+  // 🔐 AUTHENTICATION CHECK
+  // ===============================
 
   async checkAuthentication() {
     const token = this.api.getAuthToken();
     const user = this.getCurrentUser();
 
+    console.log("🔐 NotificationService Auth Check:", {
+      hasToken: !!token,
+      hasUser: !!user,
+      userEmail: user?.email,
+      tokenLength: token?.length || 0,
+    });
+
     if (!token || !user) {
+      console.warn(
+        "🚫 NotificationService: Not authenticated, skipping API calls"
+      );
       return false;
     }
 
     return true;
   }
 
+  // ===============================
+  // 🌐 WEBSOCKET CONNECTION
+  // ===============================
+
   async connectWebSocket() {
     try {
       const token = this.api.getAuthToken();
-
       if (!token) {
+        console.warn(
+          "🔔 NotificationService: No auth token available for WebSocket"
+        );
         return false;
       }
 
@@ -329,16 +380,24 @@ class NotificationService extends EventEmitter {
         const socketIO = await import("socket.io-client");
         io = socketIO.io || socketIO.default?.io || socketIO.default;
       } catch (importError) {
+        console.warn(
+          "🔔 NotificationService: Socket.IO not available:",
+          importError.message
+        );
         return false;
       }
 
       if (!io) {
+        console.warn("🔔 NotificationService: Socket.IO client not found");
         return false;
       }
 
+      // ✅ FIXED: Proper WebSocket URL construction
       const wsUrl = CONFIG.API_BASE_URL.replace(/\/api$/, "")
         .replace(/^http/, "ws")
         .replace(/^https/, "wss");
+
+      console.log("🔔 NotificationService: Connecting to WebSocket:", wsUrl);
 
       this.socket = io(wsUrl, {
         auth: {token},
@@ -351,7 +410,10 @@ class NotificationService extends EventEmitter {
       this.setupSocketListeners();
       return true;
     } catch (error) {
-      console.error("WebSocket connection failed:", error);
+      console.error(
+        "🔔 NotificationService: WebSocket connection failed:",
+        error
+      );
       return false;
     }
   }
@@ -363,6 +425,7 @@ class NotificationService extends EventEmitter {
       this.isConnected = true;
       this.retryCount = 0;
       this.emit("connected");
+      console.log("🔔 NotificationService: WebSocket connected");
 
       const user = this.getCurrentUser();
       if (user?.id) {
@@ -378,6 +441,7 @@ class NotificationService extends EventEmitter {
     this.socket.on("disconnect", (reason) => {
       this.isConnected = false;
       this.emit("disconnected", reason);
+      console.warn("🔔 NotificationService: WebSocket disconnected:", reason);
 
       if (
         reason !== "io client disconnect" &&
@@ -412,56 +476,34 @@ class NotificationService extends EventEmitter {
     });
 
     this.socket.on("error", (error) => {
-      console.error("WebSocket error:", error);
+      console.error("🔔 NotificationService: WebSocket error:", error);
       this.emit("error", error);
     });
   }
 
   getCurrentUser() {
     try {
-      let userStr =
-        localStorage.getItem("user") || sessionStorage.getItem("user");
-
-      if (userStr) {
-        const user = JSON.parse(userStr);
-
-        if (user && (user.id || user._id) && user.email) {
-          return user;
-        } else {
-          this.clearInconsistentAuthData();
-        }
-      }
-
-      return null;
+      const user = localStorage.getItem("user");
+      return user ? JSON.parse(user) : null;
     } catch (error) {
-      console.warn("Error getting current user:", error);
-      this.clearInconsistentAuthData();
+      console.warn("🔔 Error getting current user:", error);
       return null;
     }
   }
 
-  clearInconsistentAuthData() {
-    try {
-      const authKeys = [
-        "token",
-        "accessToken",
-        "refreshToken",
-        "user",
-        "currentCompany",
-        "currentCompanyId",
-        "isAdmin",
-      ];
-
-      authKeys.forEach((key) => {
-        localStorage.removeItem(key);
-        sessionStorage.removeItem(key);
-      });
-    } catch (error) {
-      console.warn("Error clearing inconsistent auth data:", error);
-    }
-  }
+  // ===============================
+  // 📥 FETCH OPERATIONS
+  // ===============================
 
   async fetchNotifications(params = {}) {
+    // ✅ Check authentication before making API calls
+    if (!(await this.checkAuthentication())) {
+      return {
+        success: false,
+        error: "Not authenticated",
+      };
+    }
+
     try {
       const {
         page = 1,
@@ -490,6 +532,7 @@ class NotificationService extends EventEmitter {
       if (endDate) queryParams.append("endDate", endDate);
       if (companyId) queryParams.append("companyId", companyId);
 
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "GET",
         url: `/notifications?${queryParams}`,
@@ -520,17 +563,7 @@ class NotificationService extends EventEmitter {
 
       throw new Error(result.error || "Failed to fetch notifications");
     } catch (error) {
-      console.error("Error fetching notifications:", error);
-
-      if (error.response?.status === 401) {
-        this.api.handleAuthenticationError();
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error fetching notifications:", error);
       this.showToast("Failed to load notifications", "error");
       return {
         success: false,
@@ -540,9 +573,18 @@ class NotificationService extends EventEmitter {
   }
 
   async fetchUnreadCount(companyId = null) {
+    // ✅ Check authentication before making API calls
+    if (!(await this.checkAuthentication())) {
+      return {
+        success: false,
+        error: "Not authenticated",
+      };
+    }
+
     try {
       const queryParams = companyId ? `?companyId=${companyId}` : "";
 
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "GET",
         url: `/notifications/unread-count${queryParams}`,
@@ -562,16 +604,7 @@ class NotificationService extends EventEmitter {
 
       throw new Error(result.error || "Failed to fetch unread count");
     } catch (error) {
-      console.error("Error fetching unread count:", error);
-
-      if (error.response?.status === 401) {
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error fetching unread count:", error);
       return {
         success: false,
         error: error.message,
@@ -579,8 +612,13 @@ class NotificationService extends EventEmitter {
     }
   }
 
+  // ===============================
+  // 📤 UPDATE OPERATIONS
+  // ===============================
+
   async markAsRead(notificationId) {
     try {
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "PUT",
         url: `/notifications/${notificationId}/read`,
@@ -605,16 +643,7 @@ class NotificationService extends EventEmitter {
 
       throw new Error(result.error || "Failed to mark as read");
     } catch (error) {
-      console.error("Error marking notification as read:", error);
-
-      if (error.response?.status === 401) {
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error marking notification as read:", error);
       this.showToast("Failed to mark notification as read", "error");
       return {success: false, error: error.message};
     }
@@ -624,6 +653,7 @@ class NotificationService extends EventEmitter {
     try {
       const queryParams = companyId ? `?companyId=${companyId}` : "";
 
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "PUT",
         url: `/notifications/mark-all-read${queryParams}`,
@@ -650,16 +680,7 @@ class NotificationService extends EventEmitter {
 
       throw new Error(result.error || "Failed to mark all as read");
     } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-
-      if (error.response?.status === 401) {
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error marking all notifications as read:", error);
       this.showToast("Failed to mark all notifications as read", "error");
       return {success: false, error: error.message};
     }
@@ -667,6 +688,7 @@ class NotificationService extends EventEmitter {
 
   async markAsClicked(notificationId) {
     try {
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "PUT",
         url: `/notifications/${notificationId}/click`,
@@ -679,22 +701,18 @@ class NotificationService extends EventEmitter {
 
       return {success: false, error: result.error};
     } catch (error) {
-      console.error("Error marking notification as clicked:", error);
-
-      if (error.response?.status === 401) {
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error marking notification as clicked:", error);
       return {success: false, error: error.message};
     }
   }
 
+  // ===============================
+  // 🗑️ DELETE OPERATIONS
+  // ===============================
+
   async deleteNotification(notificationId) {
     try {
+      // ✅ FIXED: Remove /api prefix since it's already in baseURL
       const result = await this.api.request({
         method: "DELETE",
         url: `/notifications/${notificationId}`,
@@ -714,20 +732,15 @@ class NotificationService extends EventEmitter {
 
       throw new Error(result.error || "Failed to delete notification");
     } catch (error) {
-      console.error("Error deleting notification:", error);
-
-      if (error.response?.status === 401) {
-        return {
-          success: false,
-          error: "Authentication required",
-          requiresLogin: true,
-        };
-      }
-
+      console.error("🔔 Error deleting notification:", error);
       this.showToast("Failed to delete notification", "error");
       return {success: false, error: error.message};
     }
   }
+
+  // ===============================
+  // 💬 CHAT NOTIFICATIONS
+  // ===============================
 
   handleNewChatMessage(messageData, senderInfo, chatInfo) {
     try {
@@ -753,7 +766,7 @@ class NotificationService extends EventEmitter {
         this.playNotificationSound();
       }
     } catch (error) {
-      console.error("Error handling chat message:", error);
+      console.error("🔔 Error handling chat message:", error);
     }
   }
 
@@ -811,7 +824,7 @@ class NotificationService extends EventEmitter {
         this.showBrowserNotification(notification);
       }
     } catch (error) {
-      console.error("Error handling chat notification:", error);
+      console.error("🔔 Error handling chat notification:", error);
     }
   }
 
@@ -835,6 +848,10 @@ class NotificationService extends EventEmitter {
   getChatNotificationSettings() {
     return {...this.chatNotificationSettings};
   }
+
+  // ===============================
+  // 🔊 AUDIO & VISUAL NOTIFICATIONS
+  // ===============================
 
   playNotificationSound() {
     if (!this.chatNotificationSettings.sound) return;
@@ -862,7 +879,7 @@ class NotificationService extends EventEmitter {
         oscillator.stop(audioContext.currentTime + 0.5);
       }
     } catch (error) {
-      console.warn("Error playing notification sound:", error);
+      console.warn("🔔 Error playing notification sound:", error);
     }
   }
 
@@ -899,7 +916,7 @@ class NotificationService extends EventEmitter {
         }, 5000);
       }
     } catch (error) {
-      console.warn("Error showing browser notification:", error);
+      console.warn("🔔 Error showing browser notification:", error);
     }
   }
 
@@ -924,6 +941,10 @@ class NotificationService extends EventEmitter {
     });
   }
 
+  // ===============================
+  // 🔄 REAL-TIME EVENT HANDLERS
+  // ===============================
+
   handleNewNotification(notification) {
     try {
       this.notifications.unshift(notification);
@@ -942,7 +963,7 @@ class NotificationService extends EventEmitter {
       this.emit("new_notification", notification);
       this.emit("unread_count_updated", {count: this.unreadCount});
     } catch (error) {
-      console.error("Error handling new notification:", error);
+      console.error("🔔 Error handling new notification:", error);
     }
   }
 
@@ -961,7 +982,7 @@ class NotificationService extends EventEmitter {
         this.emit("unread_count_updated", {count: this.unreadCount});
       }
     } catch (error) {
-      console.error("Error handling notification read:", error);
+      console.error("🔔 Error handling notification read:", error);
     }
   }
 
@@ -980,7 +1001,7 @@ class NotificationService extends EventEmitter {
       this.emit("all_notifications_read");
       this.emit("unread_count_updated", {count: 0});
     } catch (error) {
-      console.error("Error handling all notifications read:", error);
+      console.error("🔔 Error handling all notifications read:", error);
     }
   }
 
@@ -992,9 +1013,13 @@ class NotificationService extends EventEmitter {
       this.cacheNotifications();
       this.emit("notification_deleted", notificationId);
     } catch (error) {
-      console.error("Error handling notification deleted:", error);
+      console.error("🔔 Error handling notification deleted:", error);
     }
   }
+
+  // ===============================
+  // 💾 CACHING
+  // ===============================
 
   cacheNotifications() {
     try {
@@ -1007,7 +1032,7 @@ class NotificationService extends EventEmitter {
 
       localStorage.setItem("cached_notifications", JSON.stringify(cacheData));
     } catch (error) {
-      console.warn("Error caching notifications:", error);
+      console.warn("🔔 Error caching notifications:", error);
     }
   }
 
@@ -1031,7 +1056,7 @@ class NotificationService extends EventEmitter {
         this.clearCache();
       }
     } catch (error) {
-      console.warn("Error loading cached notifications:", error);
+      console.warn("🔔 Error loading cached notifications:", error);
       this.clearCache();
     }
   }
@@ -1043,9 +1068,13 @@ class NotificationService extends EventEmitter {
       this.unreadCount = 0;
       this.lastFetchTime = null;
     } catch (error) {
-      console.warn("Error clearing cache:", error);
+      console.warn("🔔 Error clearing cache:", error);
     }
   }
+
+  // ===============================
+  // 🔄 POLLING (FALLBACK)
+  // ===============================
 
   startPolling(interval = CONFIG.POLLING_INTERVAL) {
     if (this.pollingInterval) {
@@ -1070,6 +1099,10 @@ class NotificationService extends EventEmitter {
     }
   }
 
+  // ===============================
+  // 🎧 EVENT HANDLERS
+  // ===============================
+
   handleVisibilityChange() {
     if (!document.hidden) {
       this.fetchUnreadCount();
@@ -1090,6 +1123,10 @@ class NotificationService extends EventEmitter {
   handleOffline() {
     this.isConnected = false;
   }
+
+  // ===============================
+  // 📊 GETTERS
+  // ===============================
 
   getNotifications() {
     return [...this.notifications];
@@ -1124,6 +1161,10 @@ class NotificationService extends EventEmitter {
       retryCount: this.retryCount,
     };
   }
+
+  // ===============================
+  // 🎨 UI HELPERS
+  // ===============================
 
   getNotificationIcon(type) {
     const icons = {
@@ -1181,6 +1222,10 @@ class NotificationService extends EventEmitter {
     }
   }
 
+  // ===============================
+  // 🧹 CLEANUP
+  // ===============================
+
   cleanup() {
     try {
       document.removeEventListener(
@@ -1199,7 +1244,7 @@ class NotificationService extends EventEmitter {
 
       this.removeAllListeners();
     } catch (error) {
-      console.warn("Error during cleanup:", error);
+      console.warn("🔔 Error during cleanup:", error);
     }
   }
 
@@ -1208,8 +1253,13 @@ class NotificationService extends EventEmitter {
   }
 }
 
+// ===============================
+// 🏭 SINGLETON INSTANCE
+// ===============================
+
 const notificationService = new NotificationService();
 
+// Hot reload handling for development
 if (import.meta.env?.DEV) {
   if (import.meta?.hot) {
     import.meta.hot.dispose(() => {
