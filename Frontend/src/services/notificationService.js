@@ -172,16 +172,28 @@ class APIClient {
     );
   }
 
+  // ✅ FIXED: Match authService token storage exactly
   getAuthToken() {
     return (
       localStorage.getItem("token") ||
+      localStorage.getItem("accessToken") || // ✅ ADD THIS
       sessionStorage.getItem("token") ||
-      sessionStorage.getItem("authToken")
+      sessionStorage.getItem("accessToken") // ✅ CHANGE FROM "authToken"
     );
   }
 
+  // ✅ FIXED: Match authService storage keys exactly
   getCurrentCompanyId() {
     try {
+      const companyId =
+        localStorage.getItem("currentCompanyId") ||
+        sessionStorage.getItem("currentCompanyId");
+
+      if (companyId) {
+        return companyId;
+      }
+
+      // ✅ FALLBACK: Check currentCompany object
       const currentCompany = localStorage.getItem("currentCompany");
       if (currentCompany) {
         const company = JSON.parse(currentCompany);
@@ -193,10 +205,49 @@ class APIClient {
     return null;
   }
 
+  // ✅ NEW: Helper to identify token source for debugging
+  getTokenSource() {
+    if (localStorage.getItem("token")) return "localStorage.token";
+    if (localStorage.getItem("accessToken")) return "localStorage.accessToken";
+    if (sessionStorage.getItem("token")) return "sessionStorage.token";
+    if (sessionStorage.getItem("accessToken"))
+      return "sessionStorage.accessToken";
+    return "none";
+  }
+
+  // ✅ ENHANCED: Better auth error handling
   handleAuthenticationError() {
-    localStorage.removeItem("token");
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("authToken");
+    // ✅ MATCH authService clearing pattern
+    const authKeys = [
+      "token",
+      "accessToken",
+      "refreshToken",
+      "user",
+      "currentCompany",
+      "currentCompanyId",
+      "isAdmin",
+    ];
+
+    authKeys.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+
+    // ✅ Emit logout event like authService
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("auth:logged-out", {
+            detail: {
+              source: "notification-service",
+              timestamp: new Date().toISOString(),
+            },
+          })
+        );
+      } catch (error) {
+        console.warn("🔔 Error dispatching logout event:", error);
+      }
+    }
 
     if (!window.location.pathname.includes("/login")) {
       console.warn("🚫 Redirecting to login due to auth error");
@@ -340,15 +391,26 @@ class NotificationService extends EventEmitter {
   // 🔐 AUTHENTICATION CHECK
   // ===============================
 
+  // ✅ ENHANCED: Better auth check with more debugging
   async checkAuthentication() {
     const token = this.api.getAuthToken();
     const user = this.getCurrentUser();
 
+    // ✅ ENHANCED: More detailed auth debugging
     console.log("🔐 NotificationService Auth Check:", {
       hasToken: !!token,
       hasUser: !!user,
       userEmail: user?.email,
+      userId: user?.id || user?._id,
       tokenLength: token?.length || 0,
+      tokenPrefix: token ? `${token.substring(0, 10)}...` : "null",
+      tokenSource: token ? this.api.getTokenSource() : "none",
+      storageCheck: {
+        localStorage_token: !!localStorage.getItem("token"),
+        localStorage_accessToken: !!localStorage.getItem("accessToken"),
+        sessionStorage_token: !!sessionStorage.getItem("token"),
+        sessionStorage_accessToken: !!sessionStorage.getItem("accessToken"),
+      },
     });
 
     if (!token || !user) {
@@ -365,9 +427,19 @@ class NotificationService extends EventEmitter {
   // 🌐 WEBSOCKET CONNECTION
   // ===============================
 
+  // ✅ ENHANCED: WebSocket connection with better auth
   async connectWebSocket() {
     try {
       const token = this.api.getAuthToken();
+
+      // ✅ ENHANCED: More detailed token debugging
+      console.log("🔍 DEBUG WebSocket Token:", {
+        hasToken: !!token,
+        tokenLength: token?.length || 0,
+        tokenPrefix: token ? `${token.substring(0, 10)}...` : "null",
+        tokenSource: token ? this.api.getTokenSource() : "none",
+      });
+
       if (!token) {
         console.warn(
           "🔔 NotificationService: No auth token available for WebSocket"
@@ -481,13 +553,53 @@ class NotificationService extends EventEmitter {
     });
   }
 
+  // ✅ ENHANCED: Better user retrieval
   getCurrentUser() {
     try {
-      const user = localStorage.getItem("user");
-      return user ? JSON.parse(user) : null;
+      // ✅ MATCH authService logic exactly
+      let userStr =
+        localStorage.getItem("user") || sessionStorage.getItem("user");
+
+      if (userStr) {
+        const user = JSON.parse(userStr);
+
+        // ✅ SAME validation as authService
+        if (user && (user.id || user._id) && user.email) {
+          return user;
+        } else {
+          // ✅ Clear inconsistent data like authService does
+          console.warn("🔔 Invalid user data found, clearing...");
+          this.clearInconsistentAuthData();
+        }
+      }
+
+      return null;
     } catch (error) {
       console.warn("🔔 Error getting current user:", error);
+      this.clearInconsistentAuthData();
       return null;
+    }
+  }
+
+  // ✅ NEW: Clear inconsistent auth data (matches authService pattern)
+  clearInconsistentAuthData() {
+    try {
+      const authKeys = [
+        "token",
+        "accessToken",
+        "refreshToken",
+        "user",
+        "currentCompany",
+        "currentCompanyId",
+        "isAdmin",
+      ];
+
+      authKeys.forEach((key) => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      });
+    } catch (error) {
+      console.warn("🔔 Error clearing inconsistent auth data:", error);
     }
   }
 
