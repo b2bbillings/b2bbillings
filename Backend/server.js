@@ -296,6 +296,8 @@ const corsOptions = {
     "X-Company-ID",
     "x-request-id",
     "X-Request-ID",
+    "X-Environment", // ✅ The blocked header!
+    "X-Company-Context",
     "x-client-version",
     "X-Client-Version",
     "x-client-platform",
