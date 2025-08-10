@@ -1,19 +1,17 @@
 import axios from "axios";
 import {io} from "socket.io-client";
+import apiConfig from "../config/api.js";
 
-// ✅ PRODUCTION: Environment-based configuration
-const API_BASE_URL =
-  process.env.REACT_APP_API_URL ||
-  process.env.REACT_APP_BACKEND_URL ||
-  "http://localhost:5000";
+const API_BASE_URL = `${apiConfig.baseURL}/api`;
+const SOCKET_URL = apiConfig.baseURL;
 
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || API_BASE_URL;
+const isDevelopment =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+const isProduction = !isDevelopment;
 
-// ✅ PRODUCTION: Environment detection
-const isDevelopment = process.env.NODE_ENV === "development";
-const isProduction = process.env.NODE_ENV === "production";
+const APP_VERSION = process.env.REACT_APP_VERSION || "2.1.0";
 
-// ✅ PRODUCTION: Logging utilities
 const logDebug = (message, data) => {
   if (isDevelopment) {
     console.log(`🔧 CHATSERVICE: ${message}`, data || "");
@@ -21,24 +19,34 @@ const logDebug = (message, data) => {
 };
 
 const logInfo = (message, data) => {
-  console.log(`ℹ️ CHATSERVICE: ${message}`, data || "");
+  if (isDevelopment) {
+    console.log(`ℹ️ CHATSERVICE: ${message}`, data || "");
+  }
 };
 
 const logError = (message, error) => {
   if (isDevelopment) {
     console.error(`❌ CHATSERVICE: ${message}`, error);
   } else {
-    // ✅ PRODUCTION: Send to error reporting service
-    console.error(`❌ CHATSERVICE: ${message}`, error?.message || error);
-    // TODO: Add error reporting service integration
-    // errorReportingService.log(message, error);
+    console.error(`❌ CHATSERVICE: ${message}`, {
+      message: error?.message || error,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+      version: APP_VERSION,
+      environment: isProduction ? "production" : "development",
+    });
   }
 };
 
 const chatAPI = axios.create({
   baseURL: API_BASE_URL,
-  timeout: isProduction ? 15000 : 10000, // ✅ Longer timeout for production
-  headers: {"Content-Type": "application/json"},
+  timeout: apiConfig.timeout || (isProduction ? 45000 : 30000),
+  headers: {
+    "Content-Type": "application/json",
+    "X-Client-Version": APP_VERSION,
+    "X-Environment": isProduction ? "production" : "development",
+  },
 });
 
 chatAPI.interceptors.request.use((config) => {
@@ -56,17 +64,16 @@ chatAPI.interceptors.request.use((config) => {
       logError("Failed to parse company context", e);
     }
   }
+
   return config;
 });
 
-// ✅ PRODUCTION FIX: More selective logout logic
 chatAPI.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       const errorMessage = error.response?.data?.message || "";
 
-      // ✅ Only logout for token expiration, not chat-specific auth issues
       const isTokenExpired =
         errorMessage.includes("expired") ||
         errorMessage.includes("invalid") ||
@@ -79,14 +86,12 @@ chatAPI.interceptors.response.use(
         localStorage.removeItem("token");
         sessionStorage.removeItem("token");
 
-        // ✅ PRODUCTION: Graceful redirect with state preservation
         const currentPath = window.location.pathname;
         const redirectUrl = `/login?redirect=${encodeURIComponent(
           currentPath
         )}`;
         window.location.href = redirectUrl;
       } else {
-        // ✅ For chat-specific 401s, don't logout
         logDebug("Chat API 401 error (not logging out)", errorMessage);
       }
     }
@@ -99,17 +104,15 @@ class ChatService {
     this.socket = null;
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = isProduction ? 10 : 5; // ✅ More retries in production
+    this.maxReconnectAttempts = isProduction ? 10 : 5;
     this.eventListeners = new Map();
 
-    // Chat state
     this.currentChatRoom = null;
     this.currentCompanyId = null;
     this.currentCompanyName = null;
     this.currentUserId = null;
     this.currentUsername = null;
 
-    // ✅ PRODUCTION: Enhanced state tracking
     this.lastAuthTime = 0;
     this.recentErrors = [];
     this.connectionHealth = "unknown";
@@ -120,7 +123,6 @@ class ChatService {
       messagesReceived: 0,
     };
 
-    // Caching and deduplication
     this.messageCache = new Map();
     this.conversationCache = new Map();
     this.processedMessages = new Set();
@@ -128,27 +130,31 @@ class ChatService {
     this.notificationCache = new Map();
     this.lastNotificationCheck = 0;
 
-    // Typing state
     this.isTyping = false;
     this.typingTimeout = null;
     this.lastMessageTime = 0;
 
-    // ✅ PRODUCTION: Auto-cleanup for memory management
     this.startMemoryCleanup();
+
+    logInfo("ChatService initialized", {
+      apiBaseUrl: API_BASE_URL,
+      socketUrl: SOCKET_URL,
+      environment: isProduction ? "production" : "development",
+      version: APP_VERSION,
+    });
   }
 
-  // ✅ PRODUCTION: Memory management
   startMemoryCleanup() {
     setInterval(() => {
       this.cleanupOldCacheEntries();
       this.cleanupOldProcessedMessages();
       this.cleanupOldErrors();
-    }, 300000); // Every 5 minutes
+    }, 300000);
   }
 
   cleanupOldCacheEntries() {
     const now = Date.now();
-    const maxAge = 600000; // 10 minutes
+    const maxAge = 600000;
 
     [this.messageCache, this.conversationCache, this.notificationCache].forEach(
       (cache) => {
@@ -164,7 +170,7 @@ class ChatService {
   cleanupOldProcessedMessages() {
     if (this.processedMessages.size > 1000) {
       const messagesArray = Array.from(this.processedMessages);
-      const keepMessages = messagesArray.slice(-500); // Keep last 500
+      const keepMessages = messagesArray.slice(-500);
       this.processedMessages.clear();
       keepMessages.forEach((msg) => this.processedMessages.add(msg));
     }
@@ -172,11 +178,10 @@ class ChatService {
 
   cleanupOldErrors() {
     if (this.recentErrors.length > 50) {
-      this.recentErrors = this.recentErrors.slice(-25); // Keep last 25
+      this.recentErrors = this.recentErrors.slice(-25);
     }
   }
 
-  // ✅ PRODUCTION: Token validation
   validateToken(token) {
     if (!token) return false;
 
@@ -184,11 +189,9 @@ class ChatService {
       const parts = token.split(".");
       if (parts.length !== 3) return false;
 
-      // Basic JWT structure check
       const payload = JSON.parse(atob(parts[1]));
       const now = Date.now() / 1000;
 
-      // Check if token is expired
       if (payload.exp && payload.exp < now) {
         return false;
       }
@@ -268,7 +271,6 @@ class ChatService {
         : null;
     };
 
-    // ✅ PRODUCTION FIX: Proper extraction order
     const extractionAttempts = [
       partyData.linkedCompany?._id,
       partyData.targetCompanyId,
@@ -289,7 +291,6 @@ class ChatService {
     return null;
   }
 
-  // ✅ PRODUCTION FIX: Removed hard-coded company mappings
   validateAndExtractPartyCompanyData(partyData) {
     if (!partyData) throw new Error("Party data is required");
 
@@ -317,7 +318,6 @@ class ChatService {
       );
     }
 
-    // ✅ PRODUCTION FIX: Use proper company linking instead of hard-coded mappings
     let targetCompanyId = null;
 
     const extractionAttempts = [
@@ -377,7 +377,6 @@ class ChatService {
       return null;
     }
 
-    // ✅ PRODUCTION: Enhanced token validation
     if (!this.validateToken(token)) {
       logError("Invalid or expired token");
       localStorage.removeItem("token");
@@ -394,30 +393,43 @@ class ChatService {
         this.socket = null;
       }
 
-      logInfo("Initializing new socket connection");
+      logInfo("Initializing new socket connection", {
+        url: SOCKET_URL,
+        environment: isProduction ? "production" : "development",
+      });
 
-      // ✅ PRODUCTION: Enhanced socket configuration
       this.socket = io(SOCKET_URL, {
         auth: {
           token,
           companyContext: currentCompany,
-          version: process.env.REACT_APP_VERSION || "1.0.0",
-          environment: process.env.NODE_ENV || "development",
+          version: APP_VERSION,
+          environment: isProduction ? "production" : "development",
+          clientType: "react-app",
         },
         extraHeaders: {
           Authorization: `Bearer ${token}`,
           "X-Company-Context": currentCompany || "",
-          "X-Client-Version": process.env.REACT_APP_VERSION || "1.0.0",
+          "X-Client-Version": APP_VERSION,
+          "X-Environment": isProduction ? "production" : "development",
+          Origin: window.location.origin,
         },
         transports: ["websocket", "polling"],
-        timeout: isProduction ? 30000 : 20000,
+
+        timeout: apiConfig.timeout || (isProduction ? 45000 : 30000),
         forceNew: true,
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: isProduction ? 10000 : 5000,
-        maxReconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: isProduction ? 30000 : 15000,
+
+        upgrade: true,
+        rememberUpgrade: true,
+        secure: isProduction,
+        rejectUnauthorized: isProduction,
+
+        autoUpgrade: isProduction,
+        closeOnBeforeunload: false,
       });
 
       this.setupSocketListeners();
@@ -429,7 +441,6 @@ class ChatService {
     }
   }
 
-  // ✅ PRODUCTION: Error tracking
   addError(message, error) {
     this.recentErrors.push({
       timestamp: Date.now(),
@@ -472,7 +483,6 @@ class ChatService {
       this.notifyListeners("socket_disconnected", {reason});
     });
 
-    // ✅ PRODUCTION: Enhanced error handling
     this.socket.on("connect_error", (error) => {
       logError("Socket connection error", error);
       this.addError("Connection error", error);
@@ -647,7 +657,6 @@ class ChatService {
       }
     });
 
-    // Standard event listeners
     this.socket.on("company_chat_joined", (data) => {
       logInfo("Joined chat room", data);
       this.currentChatRoom = data.roomId;
@@ -700,7 +709,6 @@ class ChatService {
       }
     });
 
-    // Additional event listeners
     this.socket.on("message_sent_confirmation", (data) =>
       this.notifyListeners("message_sent", data)
     );
@@ -724,7 +732,7 @@ class ChatService {
   handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      const delay = Math.min(Math.pow(2, this.reconnectAttempts) * 1000, 30000); // Max 30 seconds
+      const delay = Math.min(Math.pow(2, this.reconnectAttempts) * 1000, 30000);
       logInfo(
         `Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
       );
@@ -739,7 +747,6 @@ class ChatService {
     }
   }
 
-  // ✅ PRODUCTION: Enhanced connection health monitoring
   getConnectionHealth() {
     return {
       isHealthy: this.isConnected && this.currentCompanyId,
@@ -748,8 +755,14 @@ class ChatService {
       socketState: this.socket?.connected ? "connected" : "disconnected",
       authState: this.currentCompanyId ? "authenticated" : "pending",
       connectionHealth: this.connectionHealth,
-      errors: this.recentErrors.slice(-5), // Last 5 errors
+      errors: this.recentErrors.slice(-5),
       performanceMetrics: this.performanceMetrics,
+      config: {
+        apiBaseUrl: API_BASE_URL,
+        socketUrl: SOCKET_URL,
+        environment: isProduction ? "production" : "development",
+        version: APP_VERSION,
+      },
     };
   }
 
@@ -770,17 +783,20 @@ class ChatService {
         throw new Error("No company context found");
       }
 
+      if (isProduction) {
+        if (!SOCKET_URL.startsWith("https://")) {
+          logError("Production should use secure protocols (HTTPS/WSS)");
+        }
+      }
+
       if (!this.socket) {
         this.initializeSocket();
       }
 
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => {
-            reject(new Error("Socket connection timeout - please try again"));
-          },
-          isProduction ? 15000 : 10000
-        );
+        const timeout = setTimeout(() => {
+          reject(new Error("Socket connection timeout - please try again"));
+        }, apiConfig.timeout || 30000);
 
         if (this.isConnected && this.currentCompanyId) {
           clearTimeout(timeout);
@@ -789,6 +805,7 @@ class ChatService {
             socketId: this.socket.id,
             authenticated: true,
             companyId: this.currentCompanyId,
+            environment: isProduction ? "production" : "development",
           });
           return;
         }
@@ -814,6 +831,7 @@ class ChatService {
             authenticated: true,
             companyId: data.companyId,
             authData: data,
+            environment: isProduction ? "production" : "development",
           });
         };
 
@@ -852,6 +870,7 @@ class ChatService {
         success: false,
         error: error.message,
         authenticated: false,
+        environment: isProduction ? "production" : "development",
       };
     }
   }
@@ -1066,7 +1085,6 @@ class ChatService {
             `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         };
       } else {
-        // Handle legacy format
         const partyData = arguments[0];
         const content = arguments[1];
         const tempId = arguments[2];
@@ -1187,22 +1205,19 @@ class ChatService {
       const cachedHistory = this.getFromCache(cacheKey, "message");
       if (cachedHistory) return cachedHistory;
 
-      const response = await chatAPI.get(
-        `/api/chat/history/${targetCompanyId}`,
-        {
-          params: {
-            page,
-            limit,
-            messageType: "website",
-            startDate,
-            endDate,
-            type: "company",
-            partyId,
-            partyName,
-            myCompanyId,
-          },
-        }
-      );
+      const response = await chatAPI.get(`/chat/history/${targetCompanyId}`, {
+        params: {
+          page,
+          limit,
+          messageType: "website",
+          startDate,
+          endDate,
+          type: "company",
+          partyId,
+          partyName,
+          myCompanyId,
+        },
+      });
 
       this.setCache(cacheKey, response.data, "message");
       this.clearNotificationCache();
@@ -1213,7 +1228,6 @@ class ChatService {
     }
   }
 
-  // [Continue with remaining methods - keeping them the same but with enhanced logging]
   async getConversations(options = {}) {
     try {
       const {page = 1, limit = 20, search} = options;
@@ -1221,7 +1235,7 @@ class ChatService {
       const cachedConversations = this.getFromCache(cacheKey, "conversation");
       if (cachedConversations) return cachedConversations;
 
-      const response = await chatAPI.get("/api/chat/conversations", {
+      const response = await chatAPI.get("/chat/conversations", {
         params: {page, limit, search, messageType: "website", type: "company"},
       });
 
@@ -1241,7 +1255,7 @@ class ChatService {
         partyId = targetCompanyId;
       }
 
-      const response = await chatAPI.get("/api/chat/unread-count", {
+      const response = await chatAPI.get("/chat/unread-count", {
         params: {partyId, type: "company"},
       });
       return response.data;
@@ -1255,7 +1269,7 @@ class ChatService {
       if (!Array.isArray(messageIds) || messageIds.length === 0) {
         throw new Error("Message IDs array is required");
       }
-      const response = await chatAPI.post("/api/chat/read", {messageIds});
+      const response = await chatAPI.post("/chat/read", {messageIds});
       this.clearNotificationCache();
       return response.data;
     } catch (error) {
@@ -1269,7 +1283,7 @@ class ChatService {
       const cachedSummary = this.getFromCache(cacheKey, "notification");
       if (cachedSummary) return cachedSummary;
 
-      const response = await chatAPI.get("/api/chat/notifications/summary");
+      const response = await chatAPI.get("/chat/notifications/summary");
 
       this.setCache(cacheKey, response.data, "notification");
       this.lastNotificationCheck = Date.now();
@@ -1287,7 +1301,7 @@ class ChatService {
       const cachedDetails = this.getFromCache(cacheKey, "notification");
       if (cachedDetails) return cachedDetails;
 
-      const response = await chatAPI.get("/api/chat/notifications/details", {
+      const response = await chatAPI.get("/chat/notifications/details", {
         params: {page, limit, unreadOnly, type: "company"},
       });
 
@@ -1302,7 +1316,7 @@ class ChatService {
     try {
       const {notificationIds = [], markAll = false} = options;
 
-      const response = await chatAPI.put("/api/chat/notifications/mark-read", {
+      const response = await chatAPI.put("/chat/notifications/mark-read", {
         notificationIds,
         markAll,
       });
@@ -1320,7 +1334,7 @@ class ChatService {
         this.validateAndExtractPartyCompanyData(partyData);
 
       const response = await chatAPI.put(
-        `/api/chat/conversations/${targetCompanyId}/read`
+        `/chat/conversations/${targetCompanyId}/read`
       );
 
       this.clearNotificationCache();
@@ -1337,7 +1351,7 @@ class ChatService {
         this.validateAndExtractPartyCompanyData(partyData);
 
       const response = await chatAPI.get(
-        `/api/chat/participants/${targetCompanyId}`,
+        `/chat/participants/${targetCompanyId}`,
         {
           params: {type: type || "company"},
         }
@@ -1356,7 +1370,7 @@ class ChatService {
       const cachedChats = this.getFromCache(cacheKey, "conversation");
       if (cachedChats) return cachedChats;
 
-      const response = await chatAPI.get("/api/chat/active-chats", {
+      const response = await chatAPI.get("/chat/active-chats", {
         params: {page, limit, type: type || "company"},
       });
 
@@ -1373,12 +1387,9 @@ class ChatService {
       const {targetCompanyId} =
         this.validateAndExtractPartyCompanyData(partyData);
 
-      const response = await chatAPI.get(
-        `/api/chat/analytics/${targetCompanyId}`,
-        {
-          params: {period, type: type || "company"},
-        }
-      );
+      const response = await chatAPI.get(`/chat/analytics/${targetCompanyId}`, {
+        params: {period, type: type || "company"},
+      });
 
       return response.data;
     } catch (error) {
@@ -1392,9 +1403,7 @@ class ChatService {
         throw new Error("Valid company ID is required");
       }
 
-      const response = await chatAPI.get(
-        `/api/chat/company-status/${companyId}`
-      );
+      const response = await chatAPI.get(`/chat/company-status/${companyId}`);
       return response.data;
     } catch (error) {
       return this.handleError(error);
@@ -1409,7 +1418,7 @@ class ChatService {
         throw new Error("Search query is required");
       }
 
-      const response = await chatAPI.get("/api/chat/company-search", {
+      const response = await chatAPI.get("/chat/company-search", {
         params: {
           query: query.trim(),
           page,
@@ -1430,7 +1439,7 @@ class ChatService {
 
   async getSocketStatus() {
     try {
-      const response = await chatAPI.get("/api/chat/debug/socket-status");
+      const response = await chatAPI.get("/chat/debug/socket-status");
       return response.data;
     } catch (error) {
       return this.handleError(error);
@@ -1439,7 +1448,7 @@ class ChatService {
 
   async getCompanyRooms() {
     try {
-      const response = await chatAPI.get("/api/chat/debug/company-rooms");
+      const response = await chatAPI.get("/chat/debug/company-rooms");
       return response.data;
     } catch (error) {
       return this.handleError(error);
@@ -1448,14 +1457,13 @@ class ChatService {
 
   async healthCheck() {
     try {
-      const response = await chatAPI.get("/api/chat/health");
+      const response = await chatAPI.get("/chat/health");
       return response.data;
     } catch (error) {
       return this.handleError(error);
     }
   }
 
-  // Event handling methods
   on(event, callback) {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
@@ -1485,7 +1493,6 @@ class ChatService {
     }
   }
 
-  // Cache management methods
   getFromCache(key, cacheType = "message") {
     const cache = this.getCacheByType(cacheType);
     const cachedData = cache.get(key);
@@ -1599,6 +1606,13 @@ class ChatService {
       reconnectAttempts: this.reconnectAttempts,
       isTyping: this.isTyping,
       connectionHealth: this.connectionHealth,
+      environment: isProduction ? "production" : "development",
+      version: APP_VERSION,
+      config: {
+        apiBaseUrl: API_BASE_URL,
+        socketUrl: SOCKET_URL,
+        timeout: apiConfig.timeout,
+      },
       cacheSize: {
         messages: this.messageCache.size,
         conversations: this.conversationCache.size,
@@ -1628,7 +1642,6 @@ class ChatService {
       errorInfo.message = error.message || "An unexpected error occurred";
     }
 
-    // Log error for debugging
     logError("API Error", errorInfo);
     this.addError("API Error", error);
 
