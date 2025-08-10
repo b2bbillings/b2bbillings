@@ -29,3 +29,4 @@
 {"cluster":"MongoDB Atlas","error":"option buffermaxentries is not supported","level":"error","maxRetries":3,"message":"Atlas connection attempt 1 failed","retryCount":1,"service":"shop-management-api","timestamp":"2025-08-06 21:09:31","version":"2.0.0"}
 {"cluster":"MongoDB Atlas","error":"option buffermaxentries is not supported","level":"error","maxRetries":3,"message":"Atlas connection attempt 2 failed","retryCount":2,"service":"shop-management-api","timestamp":"2025-08-06 21:09:35","version":"2.0.0"}
 {"cluster":"MongoDB Atlas","error":"option buffermaxentries is not supported","level":"error","maxRetries":3,"message":"Atlas connection attempt 3 failed","retryCount":3,"service":"shop-management-api","timestamp":"2025-08-06 21:09:43","version":"2.0.0"}
+{"error":"invalid signature","level":"error","message":"Error verifying refresh token","service":"shop-management-api","timestamp":"2025-08-10 17:07:52","version":"2.0.0"}

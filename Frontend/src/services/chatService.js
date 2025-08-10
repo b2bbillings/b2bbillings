@@ -1,11 +1,43 @@
 import axios from "axios";
 import {io} from "socket.io-client";
 
-const API_BASE_URL = "http://localhost:5000";
+// ✅ PRODUCTION: Environment-based configuration
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL ||
+  process.env.REACT_APP_BACKEND_URL ||
+  "http://localhost:5000";
+
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || API_BASE_URL;
+
+// ✅ PRODUCTION: Environment detection
+const isDevelopment = process.env.NODE_ENV === "development";
+const isProduction = process.env.NODE_ENV === "production";
+
+// ✅ PRODUCTION: Logging utilities
+const logDebug = (message, data) => {
+  if (isDevelopment) {
+    console.log(`🔧 CHATSERVICE: ${message}`, data || "");
+  }
+};
+
+const logInfo = (message, data) => {
+  console.log(`ℹ️ CHATSERVICE: ${message}`, data || "");
+};
+
+const logError = (message, error) => {
+  if (isDevelopment) {
+    console.error(`❌ CHATSERVICE: ${message}`, error);
+  } else {
+    // ✅ PRODUCTION: Send to error reporting service
+    console.error(`❌ CHATSERVICE: ${message}`, error?.message || error);
+    // TODO: Add error reporting service integration
+    // errorReportingService.log(message, error);
+  }
+};
 
 const chatAPI = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: isProduction ? 15000 : 10000, // ✅ Longer timeout for production
   headers: {"Content-Type": "application/json"},
 });
 
@@ -21,19 +53,42 @@ chatAPI.interceptors.request.use((config) => {
       const companyId = company.id || company._id || company.companyId;
       if (companyId) config.headers["X-Company-ID"] = companyId;
     } catch (e) {
-      // Silent fail
+      logError("Failed to parse company context", e);
     }
   }
   return config;
 });
 
+// ✅ PRODUCTION FIX: More selective logout logic
 chatAPI.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
-      window.location.href = "/login";
+      const errorMessage = error.response?.data?.message || "";
+
+      // ✅ Only logout for token expiration, not chat-specific auth issues
+      const isTokenExpired =
+        errorMessage.includes("expired") ||
+        errorMessage.includes("invalid") ||
+        errorMessage.includes("malformed") ||
+        errorMessage.includes("jwt") ||
+        error.response?.data?.code === "TOKEN_EXPIRED";
+
+      if (isTokenExpired) {
+        logInfo("Token expired, logging out user");
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
+
+        // ✅ PRODUCTION: Graceful redirect with state preservation
+        const currentPath = window.location.pathname;
+        const redirectUrl = `/login?redirect=${encodeURIComponent(
+          currentPath
+        )}`;
+        window.location.href = redirectUrl;
+      } else {
+        // ✅ For chat-specific 401s, don't logout
+        logDebug("Chat API 401 error (not logging out)", errorMessage);
+      }
     }
     return Promise.reject(error);
   }
@@ -44,7 +99,7 @@ class ChatService {
     this.socket = null;
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = isProduction ? 10 : 5; // ✅ More retries in production
     this.eventListeners = new Map();
 
     // Chat state
@@ -53,6 +108,17 @@ class ChatService {
     this.currentCompanyName = null;
     this.currentUserId = null;
     this.currentUsername = null;
+
+    // ✅ PRODUCTION: Enhanced state tracking
+    this.lastAuthTime = 0;
+    this.recentErrors = [];
+    this.connectionHealth = "unknown";
+    this.performanceMetrics = {
+      connectionAttempts: 0,
+      successfulConnections: 0,
+      messagesSent: 0,
+      messagesReceived: 0,
+    };
 
     // Caching and deduplication
     this.messageCache = new Map();
@@ -66,6 +132,72 @@ class ChatService {
     this.isTyping = false;
     this.typingTimeout = null;
     this.lastMessageTime = 0;
+
+    // ✅ PRODUCTION: Auto-cleanup for memory management
+    this.startMemoryCleanup();
+  }
+
+  // ✅ PRODUCTION: Memory management
+  startMemoryCleanup() {
+    setInterval(() => {
+      this.cleanupOldCacheEntries();
+      this.cleanupOldProcessedMessages();
+      this.cleanupOldErrors();
+    }, 300000); // Every 5 minutes
+  }
+
+  cleanupOldCacheEntries() {
+    const now = Date.now();
+    const maxAge = 600000; // 10 minutes
+
+    [this.messageCache, this.conversationCache, this.notificationCache].forEach(
+      (cache) => {
+        for (const [key, value] of cache.entries()) {
+          if (value.timestamp && now - value.timestamp > maxAge) {
+            cache.delete(key);
+          }
+        }
+      }
+    );
+  }
+
+  cleanupOldProcessedMessages() {
+    if (this.processedMessages.size > 1000) {
+      const messagesArray = Array.from(this.processedMessages);
+      const keepMessages = messagesArray.slice(-500); // Keep last 500
+      this.processedMessages.clear();
+      keepMessages.forEach((msg) => this.processedMessages.add(msg));
+    }
+  }
+
+  cleanupOldErrors() {
+    if (this.recentErrors.length > 50) {
+      this.recentErrors = this.recentErrors.slice(-25); // Keep last 25
+    }
+  }
+
+  // ✅ PRODUCTION: Token validation
+  validateToken(token) {
+    if (!token) return false;
+
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return false;
+
+      // Basic JWT structure check
+      const payload = JSON.parse(atob(parts[1]));
+      const now = Date.now() / 1000;
+
+      // Check if token is expired
+      if (payload.exp && payload.exp < now) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      logError("Token validation failed", error);
+      return false;
+    }
   }
 
   getAuthenticatedCompany() {
@@ -88,7 +220,7 @@ class ChatService {
             };
           }
         } catch (parseError) {
-          // Silent fail
+          logError("Failed to parse company data", parseError);
         }
       }
 
@@ -106,6 +238,7 @@ class ChatService {
 
       return null;
     } catch (error) {
+      logError("getAuthenticatedCompany failed", error);
       return null;
     }
   }
@@ -121,6 +254,7 @@ class ChatService {
         );
         myCompanyId = currentCompanyData._id || currentCompanyData.id;
       } catch (error) {
+        logError("Failed to get current company ID", error);
         myCompanyId = null;
       }
     }
@@ -134,12 +268,14 @@ class ChatService {
         : null;
     };
 
+    // ✅ PRODUCTION FIX: Proper extraction order
     const extractionAttempts = [
-      partyData.linkedCompanyId,
-      partyData.externalCompanyId,
-      partyData.chatCompanyId,
+      partyData.linkedCompany?._id,
       partyData.targetCompanyId,
-      partyData.company,
+      partyData.linkedCompanyId,
+      partyData.chatCompanyId,
+      partyData.externalCompanyId,
+      partyData.company?._id,
       partyData.companyId,
     ];
 
@@ -153,6 +289,7 @@ class ChatService {
     return null;
   }
 
+  // ✅ PRODUCTION FIX: Removed hard-coded company mappings
   validateAndExtractPartyCompanyData(partyData) {
     if (!partyData) throw new Error("Party data is required");
 
@@ -180,40 +317,39 @@ class ChatService {
       );
     }
 
+    // ✅ PRODUCTION FIX: Use proper company linking instead of hard-coded mappings
     let targetCompanyId = null;
 
-    if (partyData.name === "Laptop") {
-      targetCompanyId = "6843bfafe8aeb8af0d3a411e";
-    } else if (partyData.name === "Sai Computers") {
-      targetCompanyId = "6845147f3f012c95e10e4323";
-    } else {
-      const extractionAttempts = [
-        partyData.targetCompanyId,
-        partyData.linkedCompanyId,
-        partyData.chatCompanyId,
-        partyData.externalCompanyId,
-        partyData.companyId,
-      ];
+    const extractionAttempts = [
+      partyData.linkedCompany?._id,
+      partyData.targetCompanyId,
+      partyData.linkedCompanyId,
+      partyData.chatCompanyId,
+      partyData.externalCompanyId,
+      partyData.company?._id,
+      partyData.companyId,
+    ];
 
-      for (const attempt of extractionAttempts) {
-        if (attempt) {
-          if (typeof attempt === "object" && attempt._id) {
-            targetCompanyId = attempt._id;
-          } else if (typeof attempt === "string" && attempt.length === 24) {
-            targetCompanyId = attempt;
-          }
+    for (const attempt of extractionAttempts) {
+      if (attempt) {
+        if (typeof attempt === "object" && attempt._id) {
+          targetCompanyId = attempt._id;
+        } else if (typeof attempt === "string" && attempt.length === 24) {
+          targetCompanyId = attempt;
+        }
 
-          if (targetCompanyId && targetCompanyId !== myCompanyId) {
-            break;
-          } else if (targetCompanyId === myCompanyId) {
-            targetCompanyId = null;
-          }
+        if (targetCompanyId && targetCompanyId !== myCompanyId) {
+          break;
+        } else if (targetCompanyId === myCompanyId) {
+          targetCompanyId = null;
         }
       }
     }
 
     if (!targetCompanyId) {
-      throw new Error("Party is not linked to any company for chat");
+      throw new Error(
+        "This party is not linked to any company for chat. Please link them to a company first to enable chat functionality."
+      );
     }
 
     if (myCompanyId === targetCompanyId) {
@@ -231,21 +367,19 @@ class ChatService {
   }
 
   initializeSocket() {
+    this.performanceMetrics.connectionAttempts++;
+
     const token =
       localStorage.getItem("token") || sessionStorage.getItem("token");
 
     if (!token) {
+      logError("No authentication token found");
       return null;
     }
 
-    try {
-      const tokenParts = token.split(".");
-      if (tokenParts.length !== 3) {
-        localStorage.removeItem("token");
-        sessionStorage.removeItem("token");
-        return null;
-      }
-    } catch (error) {
+    // ✅ PRODUCTION: Enhanced token validation
+    if (!this.validateToken(token)) {
+      logError("Invalid or expired token");
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
       return null;
@@ -255,132 +389,200 @@ class ChatService {
 
     try {
       if (this.socket) {
+        logDebug("Disconnecting existing socket");
         this.socket.disconnect();
         this.socket = null;
       }
 
-      this.socket = io(API_BASE_URL, {
+      logInfo("Initializing new socket connection");
+
+      // ✅ PRODUCTION: Enhanced socket configuration
+      this.socket = io(SOCKET_URL, {
         auth: {
           token,
           companyContext: currentCompany,
+          version: process.env.REACT_APP_VERSION || "1.0.0",
+          environment: process.env.NODE_ENV || "development",
         },
         extraHeaders: {
           Authorization: `Bearer ${token}`,
           "X-Company-Context": currentCompany || "",
+          "X-Client-Version": process.env.REACT_APP_VERSION || "1.0.0",
         },
         transports: ["websocket", "polling"],
-        timeout: 20000,
+        timeout: isProduction ? 30000 : 20000,
         forceNew: true,
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: isProduction ? 10000 : 5000,
+        maxReconnectionAttempts: this.maxReconnectAttempts,
       });
 
       this.setupSocketListeners();
       return this.socket;
     } catch (error) {
+      logError("Socket initialization failed", error);
+      this.addError("Socket initialization failed", error);
       return null;
     }
+  }
+
+  // ✅ PRODUCTION: Error tracking
+  addError(message, error) {
+    this.recentErrors.push({
+      timestamp: Date.now(),
+      message,
+      error: error?.message || error,
+      stack: error?.stack,
+    });
   }
 
   setupSocketListeners() {
     if (!this.socket) return;
 
+    logDebug("Setting up socket listeners");
+
     this.socket.on("connect", () => {
+      logInfo("Socket connected, waiting for authentication...");
       this.isConnected = true;
       this.reconnectAttempts = 0;
+      this.connectionHealth = "connected";
+      this.performanceMetrics.successfulConnections++;
       this.notifyListeners("socket_connected", {socketId: this.socket.id});
     });
 
     this.socket.on("connection_confirmed", (data) => {
+      logInfo("Authentication successful", data);
       this.isConnected = true;
       this.currentCompanyId = data.companyId;
       this.currentCompanyName = data.companyName;
       this.currentUserId = data.userId;
       this.currentUsername = data.username;
+      this.lastAuthTime = Date.now();
+      this.connectionHealth = "authenticated";
       this.notifyListeners("socket_authenticated", data);
     });
 
     this.socket.on("disconnect", (reason) => {
+      logInfo("Socket disconnected", reason);
       this.isConnected = false;
+      this.connectionHealth = "disconnected";
       this.notifyListeners("socket_disconnected", {reason});
     });
 
+    // ✅ PRODUCTION: Enhanced error handling
     this.socket.on("connect_error", (error) => {
-      if (
-        error.message === "Authentication error" ||
-        error.message === "jwt malformed" ||
+      logError("Socket connection error", error);
+      this.addError("Connection error", error);
+
+      const isTokenError =
         error.message === "jwt expired" ||
+        error.message === "jwt malformed" ||
         error.message === "invalid token" ||
-        error.code === "AUTHENTICATION_FAILED" ||
-        error.type === "UnauthorizedError"
-      ) {
+        error.code === "TOKEN_EXPIRED" ||
+        error.message === "Authentication error";
+
+      if (isTokenError) {
+        logInfo("Token expired, clearing session");
         localStorage.removeItem("token");
         sessionStorage.removeItem("token");
-
         this.notifyListeners("auth_failed", {
           error: "Session expired. Please login again.",
           shouldRedirectToLogin: true,
           originalError: error.message,
         });
-        return;
+      } else {
+        logDebug("Connection error, attempting reconnect");
+        this.handleReconnect();
       }
-
-      this.handleReconnect();
     });
 
     this.socket.on("authentication_error", (error) => {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
+      logError("Chat authentication failed", error);
+      this.addError("Authentication error", error);
 
-      this.notifyListeners("auth_failed", {
-        error: "Authentication failed. Please login again.",
-        shouldRedirectToLogin: true,
-        code: error.code || "AUTH_ERROR",
-      });
-    });
-
-    this.socket.on("auth_error", (error) => {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
-
-      this.notifyListeners("auth_failed", {
-        error: "Authentication failed. Please login again.",
-        shouldRedirectToLogin: true,
-        code: error.code || "AUTH_ERROR",
-      });
-    });
-
-    this.socket.on("error", (error) => {
-      if (
+      const isTokenExpired =
         error.code === "TOKEN_EXPIRED" ||
-        error.code === "AUTHENTICATION_ERROR" ||
-        error.code === "INVALID_TOKEN" ||
         error.message === "jwt expired" ||
-        error.message === "jwt malformed"
-      ) {
+        error.message === "jwt malformed";
+
+      if (isTokenExpired) {
         localStorage.removeItem("token");
         sessionStorage.removeItem("token");
-
         this.notifyListeners("auth_failed", {
           error: "Session expired. Please login again.",
           shouldRedirectToLogin: true,
           code: error.code || "AUTH_ERROR",
         });
       } else {
-        this.notifyListeners("socket_error", error);
+        this.isConnected = false;
+        this.notifyListeners("auth_failed", {
+          error: "Chat authentication failed. Please try again.",
+          shouldRedirectToLogin: false,
+          code: error.code || "AUTH_ERROR",
+          retryable: true,
+        });
+      }
+    });
+
+    this.socket.on("auth_error", (error) => {
+      logError("Chat auth error", error);
+      this.addError("Auth error", error);
+
+      if (error.code === "TOKEN_EXPIRED" || error.message === "jwt expired") {
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
+        this.notifyListeners("auth_failed", {
+          error: "Session expired. Please login again.",
+          shouldRedirectToLogin: true,
+          code: error.code || "AUTH_ERROR",
+        });
+      } else {
+        this.notifyListeners("auth_failed", {
+          error: "Chat authentication failed. Please try again.",
+          shouldRedirectToLogin: false,
+          code: error.code || "AUTH_ERROR",
+          retryable: true,
+        });
+      }
+    });
+
+    this.socket.on("error", (error) => {
+      logError("Socket error", error);
+      this.addError("Socket error", error);
+
+      if (
+        error.code === "TOKEN_EXPIRED" ||
+        error.message === "jwt expired" ||
+        error.message === "jwt malformed"
+      ) {
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
+        this.notifyListeners("auth_failed", {
+          error: "Session expired. Please login again.",
+          shouldRedirectToLogin: true,
+          code: error.code || "AUTH_ERROR",
+        });
+      } else {
+        this.notifyListeners("socket_error", {
+          error: error.message || "Socket error occurred",
+          code: error.code || "SOCKET_ERROR",
+          retryable: true,
+        });
       }
     });
 
     this.socket.on("company_chat_error", (error) => {
-      if (
-        error.code === "TOKEN_EXPIRED" ||
-        error.code === "AUTHENTICATION_ERROR" ||
-        error.message === "jwt expired"
-      ) {
+      logError("Company chat error", error);
+      this.addError("Company chat error", error);
+
+      if (error.code === "TOKEN_EXPIRED" || error.message === "jwt expired") {
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
         this.notifyListeners("auth_failed", {
-          error: "Chat authentication failed. Please login again.",
+          error: "Chat authentication expired. Please login again.",
           shouldRedirectToLogin: true,
           code: error.code,
         });
@@ -390,14 +592,16 @@ class ChatService {
           code: error.code || "CHAT_ERROR",
           details: error,
           shouldRedirectToLogin: false,
+          retryable: true,
         });
       }
     });
 
     this.socket.on("new_message", (message) => {
       try {
+        this.performanceMetrics.messagesReceived++;
+
         const messageId = message._id || message.id;
-        const content = message.content || "";
         const timestamp = new Date(message.createdAt || Date.now()).getTime();
 
         const messageHash = `${messageId}_${message.senderCompanyId}_${message.receiverCompanyId}_${timestamp}`;
@@ -439,16 +643,19 @@ class ChatService {
           currentCompanyId,
         });
       } catch (error) {
-        console.error("Error processing new_message:", error);
+        logError("Error processing new_message", error);
       }
     });
 
+    // Standard event listeners
     this.socket.on("company_chat_joined", (data) => {
+      logInfo("Joined chat room", data);
       this.currentChatRoom = data.roomId;
       this.notifyListeners("company_chat_joined", data);
     });
 
     this.socket.on("message_sent", (data) => {
+      logDebug("Message sent confirmation", data);
       this.notifyListeners("message_sent", data);
     });
 
@@ -457,7 +664,7 @@ class ChatService {
         this.clearNotificationCache();
         this.notifyListeners("new_chat_notification", notification);
       } catch (error) {
-        // Silent fail
+        logError("Error processing notification", error);
       }
     });
 
@@ -466,7 +673,7 @@ class ChatService {
         this.clearNotificationCache();
         this.notifyListeners("notification_marked_read", data);
       } catch (error) {
-        // Silent fail
+        logError("Error processing notification read", error);
       }
     });
 
@@ -478,7 +685,7 @@ class ChatService {
           readBy: data.readBy,
         });
       } catch (error) {
-        // Silent fail
+        logError("Error processing message read", error);
       }
     });
 
@@ -489,10 +696,11 @@ class ChatService {
           deliveredAt: data.deliveredAt,
         });
       } catch (error) {
-        // Silent fail
+        logError("Error processing message delivered", error);
       }
     });
 
+    // Additional event listeners
     this.socket.on("message_sent_confirmation", (data) =>
       this.notifyListeners("message_sent", data)
     );
@@ -516,13 +724,33 @@ class ChatService {
   handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      const delay = Math.pow(2, this.reconnectAttempts) * 1000;
+      const delay = Math.min(Math.pow(2, this.reconnectAttempts) * 1000, 30000); // Max 30 seconds
+      logInfo(
+        `Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+      );
+
       setTimeout(() => {
         if (this.socket) this.socket.connect();
       }, delay);
     } else {
+      logError("Max reconnection attempts reached");
+      this.connectionHealth = "failed";
       this.notifyListeners("max_reconnect_attempts_reached");
     }
+  }
+
+  // ✅ PRODUCTION: Enhanced connection health monitoring
+  getConnectionHealth() {
+    return {
+      isHealthy: this.isConnected && this.currentCompanyId,
+      lastSuccessfulAuth: this.lastAuthTime,
+      reconnectAttempts: this.reconnectAttempts,
+      socketState: this.socket?.connected ? "connected" : "disconnected",
+      authState: this.currentCompanyId ? "authenticated" : "pending",
+      connectionHealth: this.connectionHealth,
+      errors: this.recentErrors.slice(-5), // Last 5 errors
+      performanceMetrics: this.performanceMetrics,
+    };
   }
 
   async testSocketConnection() {
@@ -531,6 +759,10 @@ class ChatService {
         localStorage.getItem("token") || sessionStorage.getItem("token");
       if (!token) {
         throw new Error("No authentication token found");
+      }
+
+      if (!this.validateToken(token)) {
+        throw new Error("Invalid or expired token");
       }
 
       const currentCompany = localStorage.getItem("currentCompany");
@@ -543,15 +775,14 @@ class ChatService {
       }
 
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(
-            new Error(
-              "Socket connection timeout - authentication may have failed"
-            )
-          );
-        }, 15000);
+        const timeout = setTimeout(
+          () => {
+            reject(new Error("Socket connection timeout - please try again"));
+          },
+          isProduction ? 15000 : 10000
+        );
 
-        if (this.isConnected) {
+        if (this.isConnected && this.currentCompanyId) {
           clearTimeout(timeout);
           resolve({
             success: true,
@@ -559,52 +790,64 @@ class ChatService {
             authenticated: true,
             companyId: this.currentCompanyId,
           });
-        } else {
-          const onConnect = () => {
-            // Wait for authentication
-          };
+          return;
+        }
 
-          const onAuthenticated = (data) => {
-            clearTimeout(timeout);
-            this.socket.off("connect", onConnect);
-            this.socket.off("authentication_error", onAuthError);
-            resolve({
-              success: true,
-              socketId: this.socket.id,
-              authenticated: true,
-              companyId: data.companyId,
-              authData: data,
-            });
-          };
+        const cleanup = () => {
+          clearTimeout(timeout);
+          this.socket.off("connect", onConnect);
+          this.socket.off("connection_confirmed", onAuthenticated);
+          this.socket.off("authentication_error", onAuthError);
+          this.socket.off("connect_error", onConnectError);
+        };
 
-          const onAuthError = (error) => {
-            clearTimeout(timeout);
-            this.socket.off("connect", onConnect);
-            this.socket.off("connection_confirmed", onAuthenticated);
-            reject(
-              new Error(
-                `Authentication failed: ${
-                  error.error || error.message || "Unknown error"
-                }`
-              )
-            );
-          };
+        const onConnect = () => {
+          logDebug("Socket connected, waiting for authentication...");
+        };
 
-          const onConnectError = (error) => {
-            clearTimeout(timeout);
-            this.socket.off("connect", onConnect);
-            this.socket.off("connection_confirmed", onAuthenticated);
-            this.socket.off("authentication_error", onAuthError);
-            reject(error);
-          };
+        const onAuthenticated = (data) => {
+          logInfo("Socket authenticated successfully");
+          cleanup();
+          resolve({
+            success: true,
+            socketId: this.socket.id,
+            authenticated: true,
+            companyId: data.companyId,
+            authData: data,
+          });
+        };
 
-          this.socket.once("connect", onConnect);
-          this.socket.once("connection_confirmed", onAuthenticated);
-          this.socket.once("authentication_error", onAuthError);
-          this.socket.once("connect_error", onConnectError);
+        const onAuthError = (error) => {
+          logError("Socket authentication failed", error);
+          cleanup();
+          reject(
+            new Error(
+              `Authentication failed: ${
+                error.error || error.message || "Unknown error"
+              }`
+            )
+          );
+        };
+
+        const onConnectError = (error) => {
+          logError("Socket connection failed", error);
+          cleanup();
+          reject(
+            new Error(`Connection failed: ${error.message || "Unknown error"}`)
+          );
+        };
+
+        this.socket.once("connect", onConnect);
+        this.socket.once("connection_confirmed", onAuthenticated);
+        this.socket.once("authentication_error", onAuthError);
+        this.socket.once("connect_error", onConnectError);
+
+        if (!this.socket.connected && !this.socket.connecting) {
+          this.socket.connect();
         }
       });
     } catch (error) {
+      logError("Test socket connection error", error);
       return {
         success: false,
         error: error.message,
@@ -627,7 +870,6 @@ class ChatService {
       }
 
       let myCompanyId, targetCompanyId, partyId, partyName;
-
       myCompanyId = authenticatedCompany.companyId;
 
       if (joinData && typeof joinData === "object") {
@@ -662,20 +904,24 @@ class ChatService {
         throw new Error("Cannot chat with your own company");
       }
 
+      logInfo("Joining chat", {myCompanyId, targetCompanyId, partyName});
+
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error("Join chat timeout")),
-          10000
+          isProduction ? 15000 : 10000
         );
 
         this.socket.once("company_chat_joined", (response) => {
           clearTimeout(timeout);
           this.currentChatRoom = response.roomId;
+          logInfo("Successfully joined chat room");
           resolve(response);
         });
 
         this.socket.once("company_chat_error", (error) => {
           clearTimeout(timeout);
+          logError("Failed to join chat", error);
           reject(new Error(error.message || "Failed to join chat"));
         });
 
@@ -688,6 +934,7 @@ class ChatService {
         });
       });
     } catch (error) {
+      logError("Join chat error", error);
       throw error;
     }
   }
@@ -744,7 +991,7 @@ class ChatService {
 
       this.typingTimeout = setTimeout(() => this.stopTyping(partyData), 5000);
     } catch (error) {
-      // Silent fail
+      logError("Start typing error", error);
     }
   }
 
@@ -762,12 +1009,14 @@ class ChatService {
         this.typingTimeout = null;
       }
     } catch (error) {
-      // Silent fail
+      logError("Stop typing error", error);
     }
   }
 
   async sendMessage(messageData) {
     try {
+      this.performanceMetrics.messagesSent++;
+
       if (!this.socket || !this.isConnected) {
         throw new Error("Socket not connected");
       }
@@ -783,7 +1032,6 @@ class ChatService {
 
       if (messageData && typeof messageData === "object" && messageData.party) {
         const {party, content, tempId} = messageData;
-
         const myCompanyId = authenticatedCompany.companyId;
 
         let targetCompanyId =
@@ -822,7 +1070,6 @@ class ChatService {
         const partyData = arguments[0];
         const content = arguments[1];
         const tempId = arguments[2];
-
         const myCompanyId = authenticatedCompany.companyId;
 
         let targetCompanyId =
@@ -861,23 +1108,25 @@ class ChatService {
         throw new Error(contentValidation.message);
       }
 
+      logDebug("Sending message", finalMessageData);
+
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error("Message send timeout after 10 seconds")),
-          10000
+          isProduction ? 15000 : 10000
         );
 
-        // ✅ FIX: Enhanced response handling - matches the actual response format
         const handleSuccess = (response) => {
           clearTimeout(timeout);
           this.socket.off("message_sent", handleSuccess);
           this.socket.off("message_error", handleError);
 
+          logDebug("Message sent successfully", response);
+
           this.clearHistoryCache(finalMessageData.receiverCompanyId);
           this.clearConversationCache();
           this.clearNotificationCache();
 
-          // ✅ FIX: Return the format that PartyChat expects
           resolve({
             success: true,
             data: {
@@ -897,7 +1146,7 @@ class ChatService {
           this.socket.off("message_sent", handleSuccess);
           this.socket.off("message_error", handleError);
 
-          console.error("❌ CHATSERVICE: Message send failed:", {
+          logError("Message send failed", {
             error: error.error || error.message,
             tempId: finalMessageData.tempId,
           });
@@ -913,8 +1162,7 @@ class ChatService {
         this.socket.emit("send_message", finalMessageData);
       });
     } catch (error) {
-      console.error("❌ CHATSERVICE: Send message error:", error);
-      // ✅ FIX: Return consistent error format
+      logError("Send message error", error);
       return {
         success: false,
         message: error.message,
@@ -922,10 +1170,10 @@ class ChatService {
       };
     }
   }
+
   async getChatHistory(partyData, options = {}) {
     try {
       const {page = 1, limit = 50, startDate, endDate} = options;
-
       const {myCompanyId, targetCompanyId, partyId, partyName} =
         this.validateAndExtractPartyCompanyData(partyData);
 
@@ -965,6 +1213,7 @@ class ChatService {
     }
   }
 
+  // [Continue with remaining methods - keeping them the same but with enhanced logging]
   async getConversations(options = {}) {
     try {
       const {page = 1, limit = 20, search} = options;
@@ -1206,6 +1455,7 @@ class ChatService {
     }
   }
 
+  // Event handling methods
   on(event, callback) {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
@@ -1229,12 +1479,13 @@ class ChatService {
         try {
           callback(data);
         } catch (error) {
-          console.error("Error in event listener:", error);
+          logError("Error in event listener", error);
         }
       });
     }
   }
 
+  // Cache management methods
   getFromCache(key, cacheType = "message") {
     const cache = this.getCacheByType(cacheType);
     const cachedData = cache.get(key);
@@ -1296,6 +1547,7 @@ class ChatService {
   }
 
   setCompanyContext(companyId, companyName = null) {
+    logInfo("Setting company context", {companyId, companyName});
     this.currentCompanyId = companyId;
     this.currentCompanyName = companyName;
     this.clearCache();
@@ -1316,7 +1568,7 @@ class ChatService {
         }
       }
     } catch (error) {
-      // Silent fail
+      logError("Auto set company context failed", error);
     }
     return false;
   }
@@ -1346,50 +1598,53 @@ class ChatService {
       currentCompanyName: this.currentCompanyName,
       reconnectAttempts: this.reconnectAttempts,
       isTyping: this.isTyping,
+      connectionHealth: this.connectionHealth,
       cacheSize: {
         messages: this.messageCache.size,
         conversations: this.conversationCache.size,
         notifications: this.notificationCache.size,
       },
       lastNotificationCheck: this.lastNotificationCheck,
+      performanceMetrics: this.performanceMetrics,
     };
   }
 
   handleError(error) {
+    const errorInfo = {
+      timestamp: new Date().toISOString(),
+      success: false,
+    };
+
     if (error.response) {
       const {status, data} = error.response;
-      return {
-        status,
-        message: data.message || "An error occurred",
-        errors: data.errors || [],
-        success: false,
-        timestamp: new Date().toISOString(),
-      };
+      errorInfo.status = status;
+      errorInfo.message = data.message || "An error occurred";
+      errorInfo.errors = data.errors || [];
     } else if (error.request) {
-      return {
-        status: 0,
-        message: "Network error - please check your connection",
-        success: false,
-        timestamp: new Date().toISOString(),
-      };
+      errorInfo.status = 0;
+      errorInfo.message = "Network error - please check your connection";
     } else {
-      return {
-        status: 0,
-        message: error.message || "An unexpected error occurred",
-        success: false,
-        timestamp: new Date().toISOString(),
-      };
+      errorInfo.status = 0;
+      errorInfo.message = error.message || "An unexpected error occurred";
     }
+
+    // Log error for debugging
+    logError("API Error", errorInfo);
+    this.addError("API Error", error);
+
+    return errorInfo;
   }
 
   disconnectSocket() {
     if (this.socket) {
+      logInfo("Disconnecting socket");
       this.socket.disconnect();
       this.socket = null;
     }
     this.isConnected = false;
     this.currentChatRoom = null;
     this.isTyping = false;
+    this.connectionHealth = "disconnected";
     if (this.typingTimeout) {
       clearTimeout(this.typingTimeout);
       this.typingTimeout = null;
@@ -1397,6 +1652,7 @@ class ChatService {
   }
 
   cleanup() {
+    logInfo("Cleaning up chat service");
     this.disconnectSocket();
     this.clearCache();
     this.currentCompanyId = null;
@@ -1406,10 +1662,18 @@ class ChatService {
     this.tempMessageMap.clear();
     this.lastMessageTime = 0;
     this.lastNotificationCheck = 0;
+    this.recentErrors = [];
+    this.performanceMetrics = {
+      connectionAttempts: 0,
+      successfulConnections: 0,
+      messagesSent: 0,
+      messagesReceived: 0,
+    };
   }
 
   async quickSetup() {
     try {
+      logInfo("Quick setup starting");
       const contextSet = this.autoSetCompanyContext();
       if (!contextSet) {
         throw new Error("Company context not found in localStorage");
@@ -1422,9 +1686,10 @@ class ChatService {
       try {
         notificationSummary = await this.getChatNotificationSummary();
       } catch (notificationError) {
-        // Silent fail
+        logError("Failed to load notification summary", notificationError);
       }
 
+      logInfo("Quick setup completed successfully");
       return {
         success: true,
         companyId: this.currentCompanyId,
@@ -1434,6 +1699,7 @@ class ChatService {
         notificationSummary,
       };
     } catch (error) {
+      logError("Quick setup failed", error);
       return {
         success: false,
         error: error.message,
