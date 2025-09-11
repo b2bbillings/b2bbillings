@@ -5,8 +5,8 @@ const getApiConfig = () => {
 
   return {
     baseURL: isDevelopment
-      ? "http://localhost:5000" // ✅ REMOVED /api from base URL
-      : "https://b2bbillings.onrender.com",
+      ? "http://localhost:5000"
+      : "https://b2bbillings-v7wq.onrender.com", // ✅ FIXED: Use correct Render URL
     timeout: 30000,
   };
 };

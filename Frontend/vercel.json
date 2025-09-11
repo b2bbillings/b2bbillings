@@ -13,7 +13,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://b2bbillings.onrender.com/api/$1"
+      "destination": "https://b2bbillings-v7wq.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
@@ -22,9 +22,9 @@
   ],
   "build": {
     "env": {
-      "VITE_API_URL": "https://b2bbillings.onrender.com/api",
-      "VITE_WS_URL": "https://b2bbillings.onrender.com",
-      "VITE_SOCKET_URL": "https://b2bbillings.onrender.com",
+      "VITE_API_URL": "https://b2bbillings-v7wq.onrender.com/api",
+      "VITE_WS_URL": "https://b2bbillings-v7wq.onrender.com",
+      "VITE_SOCKET_URL": "https://b2bbillings-v7wq.onrender.com",
       "VITE_APP_NAME": "Shop Management System",
       "VITE_APP_VERSION": "2.1.0",
       "VITE_NODE_ENV": "production",

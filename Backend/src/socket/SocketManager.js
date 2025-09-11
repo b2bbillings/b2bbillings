@@ -19,10 +19,13 @@ class SocketManager {
           "http://127.0.0.1:5173", // ✅ Alternative localhost
           "http://127.0.0.1:5000", // ✅ Alternative localhost
 
-          // Production URLs - FIXED
-          "https://b2bbilling.com", // ✅ Your actual frontend domain
-          "https://www.b2bbilling.com", // ✅ With www subdomain
-          "https://b2bbillings.onrender.com", // ✅ Your backend domain
+          "https://b2bbilling.com",
+          "https://www.b2bbilling.com",
+          "https://api.b2bbilling.com",
+
+          // ✅ FIXED: Correct Render and Vercel URLs
+          "https://b2bbillings-v7wq.onrender.com",
+          "https://b2bbillings.vercel.app",
 
           // Environment variables
           process.env.FRONTEND_URL, // ✅ Configurable frontend URL
