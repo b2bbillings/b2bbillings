@@ -222,7 +222,7 @@ const getAllowedOrigins = () => {
       "https://b2bbillings.onrender.com",
 
       // ✅ FIXED: Vercel domains for production
-      "https://b2b-billings.vercel.app",
+      "https://b2bbillings.vercel.app",
       "https://b2b-billings-git-main-atharva038s-projects.vercel.app",
       "https://b2b-billings-pog2rawfp-atharva038s-projects.vercel.app", // Current deployment
       "https://b2b-billings-git-main.vercel.app",
