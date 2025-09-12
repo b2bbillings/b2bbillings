@@ -1,6 +1,8 @@
 import axios from "axios";
+import apiConfig from "../config/api.js"; // ✅ Import your API config
 
-const API_BASE_URL = window.REACT_APP_API_URL || "http://localhost:5000";
+// ✅ FIXED: Use centralized API configuration
+const API_BASE_URL = apiConfig.baseURL;
 
 // Create axios instance with default config
 const api = axios.create({
@@ -8,7 +10,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // 10 second timeout
+  timeout: apiConfig.timeout || 10000, // ✅ Use timeout from config
 });
 
 // Request interceptor to add auth token and company ID

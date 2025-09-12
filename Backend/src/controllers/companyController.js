@@ -660,8 +660,6 @@ const createCompany = async (req, res) => {
   }
 };
 
-// Update the getAllCompanies method (around line 622):
-
 const getAllCompanies = async (req, res) => {
   try {
     // ✅ CRITICAL FIX: Check if this is an admin request
