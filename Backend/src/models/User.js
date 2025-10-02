@@ -6,12 +6,12 @@ const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, "Name is required"],
       trim: true,
       minlength: [2, "Name must be at least 2 characters long"],
       maxlength: [100, "Name cannot exceed 100 characters"],
       validate: {
         validator: function (value) {
+          if (!value) return true; // Optional field
           return /^[a-zA-Z\s]+$/.test(value);
         },
         message: "Name can only contain letters and spaces",
@@ -50,10 +50,10 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: [true, "Phone number is required"],
       trim: true,
       validate: {
         validator: function (value) {
+          if (!value) return true; // Optional field
           // Indian mobile number validation: starts with 6,7,8,9 and 10 digits
           return /^[6-9]\d{9}$/.test(value);
         },
@@ -146,6 +146,542 @@ const userSchema = new mongoose.Schema(
           return validator.isURL(value) || /^\/uploads\//.test(value);
         },
         message: "Avatar must be a valid URL or file path",
+      },
+    },
+    
+    // ✅ ENHANCED PROFILE FIELDS
+    profile: {
+      // Personal Information
+      firstName: {
+        type: String,
+        trim: true,
+        maxlength: [50, "First name cannot exceed 50 characters"],
+      },
+      lastName: {
+        type: String,
+        trim: true,
+        maxlength: [50, "Last name cannot exceed 50 characters"],
+      },
+      middleName: {
+        type: String,
+        trim: true,
+        maxlength: [50, "Middle name cannot exceed 50 characters"],
+      },
+      dateOfBirth: {
+        type: Date,
+        validate: {
+          validator: function (value) {
+            if (!value) return true;
+            try {
+              const age = Math.floor((Date.now() - value.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+              return age >= 16 && age <= 100;
+            } catch (error) {
+              return false;
+            }
+          },
+          message: "Age must be between 16 and 100 years",
+        },
+      },
+      gender: {
+        type: String,
+        enum: {
+          values: ["male", "female", "other", "prefer-not-to-say"],
+          message: "Gender must be one of: male, female, other, prefer-not-to-say",
+        },
+      },
+      
+      // Contact Information
+      alternateEmail: {
+        type: String,
+        lowercase: true,
+        trim: true,
+        validate: {
+          validator: function (value) {
+            if (!value) return true;
+            return validator.isEmail(value);
+          },
+          message: "Please enter a valid alternate email address",
+        },
+      },
+      alternatePhone: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (value) {
+            if (!value) return true;
+            return /^[6-9]\d{9}$/.test(value);
+          },
+          message: "Alternate phone must be a valid 10-digit Indian mobile number",
+        },
+      },
+      whatsappNumber: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (value) {
+            if (!value) return true;
+            return /^[6-9]\d{9}$/.test(value);
+          },
+          message: "WhatsApp number must be a valid 10-digit Indian mobile number",
+        },
+      },
+      
+      // Address Information
+      address: {
+        street: {
+          type: String,
+          trim: true,
+          maxlength: [200, "Street address cannot exceed 200 characters"],
+        },
+        city: {
+          type: String,
+          trim: true,
+          maxlength: [100, "City cannot exceed 100 characters"],
+        },
+        state: {
+          type: String,
+          trim: true,
+          maxlength: [100, "State cannot exceed 100 characters"],
+        },
+        pincode: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^[1-9][0-9]{5}$/.test(value);
+            },
+            message: "Pincode must be a valid 6-digit Indian postal code",
+          },
+        },
+        country: {
+          type: String,
+          trim: true,
+          default: "India",
+          maxlength: [100, "Country cannot exceed 100 characters"],
+        },
+      },
+      
+      // Professional Information
+      designation: {
+        type: String,
+        trim: true,
+        maxlength: [100, "Designation cannot exceed 100 characters"],
+      },
+      department: {
+        type: String,
+        trim: true,
+        maxlength: [100, "Department cannot exceed 100 characters"],
+      },
+      employeeId: {
+        type: String,
+        trim: true,
+        maxlength: [50, "Employee ID cannot exceed 50 characters"],
+      },
+      joiningDate: {
+        type: Date,
+      },
+      experience: {
+        type: Number,
+        min: [0, "Experience cannot be negative"],
+        max: [50, "Experience cannot exceed 50 years"],
+      },
+      
+      // Preferences
+      language: {
+        type: String,
+        enum: {
+          values: ["english", "hindi", "gujarati", "marathi", "tamil", "telugu", "kannada", "bengali", "punjabi", "malayalam"],
+          message: "Language must be a supported language",
+        },
+        default: "english",
+      },
+      timezone: {
+        type: String,
+        default: "Asia/Kolkata",
+      },
+      currency: {
+        type: String,
+        default: "INR",
+        enum: {
+          values: ["INR", "USD", "EUR", "GBP"],
+          message: "Currency must be one of: INR, USD, EUR, GBP",
+        },
+      },
+      theme: {
+        type: String,
+        enum: {
+          values: ["light", "dark", "auto"],
+          message: "Theme must be one of: light, dark, auto",
+        },
+        default: "light",
+      },
+      
+      // Emergency Contact
+      emergencyContact: {
+        name: {
+          type: String,
+          trim: true,
+          maxlength: [100, "Emergency contact name cannot exceed 100 characters"],
+        },
+        relationship: {
+          type: String,
+          trim: true,
+          maxlength: [50, "Relationship cannot exceed 50 characters"],
+        },
+        phone: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^[6-9]\d{9}$/.test(value);
+            },
+            message: "Emergency contact phone must be a valid 10-digit Indian mobile number",
+          },
+        },
+        email: {
+          type: String,
+          lowercase: true,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return validator.isEmail(value);
+            },
+            message: "Emergency contact email must be valid",
+          },
+        },
+      },
+      
+      // Social Links
+      socialLinks: {
+        linkedin: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^https:\/\/(www\.)?linkedin\.com\/in\//.test(value);
+            },
+            message: "LinkedIn URL must be a valid LinkedIn profile URL",
+          },
+        },
+        twitter: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^https:\/\/(www\.)?twitter\.com\//.test(value);
+            },
+            message: "Twitter URL must be a valid Twitter profile URL",
+          },
+        },
+        github: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^https:\/\/(www\.)?github\.com\//.test(value);
+            },
+            message: "GitHub URL must be a valid GitHub profile URL",
+          },
+        },
+      },
+      
+      // Bio and Skills
+      bio: {
+        type: String,
+        trim: true,
+        maxlength: [500, "Bio cannot exceed 500 characters"],
+      },
+      skills: [{
+        type: String,
+        trim: true,
+        maxlength: [50, "Skill name cannot exceed 50 characters"],
+      }],
+      
+      // ✅ FIXED: Business Information Fields - only required when business profile is being completed
+      businessInfo: {
+        businessCategory: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Business category is required when setting up business profile"],
+          trim: true,
+          maxlength: [100, "Business category cannot exceed 100 characters"],
+          enum: {
+            values: [
+              "Retail", "Wholesale", "Manufacturing", "Services", "Food & Beverage",
+              "Textiles", "Electronics", "Healthcare", "Education", "Real Estate",
+              "Construction", "Transport", "Agriculture", "Automotive", "Software",
+              "Finance", "Hospitality", "Beauty & Wellness", "Sports & Fitness",
+              "Other"
+            ],
+            message: "Please select a valid business category"
+          }
+        },
+        ownerName: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Owner name is required when setting up business profile"],
+          trim: true,
+          maxlength: [100, "Owner name cannot exceed 100 characters"],
+          validate: {
+            validator: function (value) {
+              return /^[a-zA-Z\s]+$/.test(value);
+            },
+            message: "Owner name can only contain letters and spaces",
+          },
+        },
+        shopName: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Shop name is required when setting up business profile"],
+          trim: true,
+          maxlength: [150, "Shop name cannot exceed 150 characters"],
+        },
+        businessPhone: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Business phone number is required when setting up business profile"],
+          trim: true,
+          validate: {
+            validator: function (value) {
+              return /^[6-9]\d{9}$/.test(value);
+            },
+            message: "Business phone must be a valid 10-digit Indian mobile number",
+          },
+        },
+        businessEmail: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Business email address is required when setting up business profile"],
+          lowercase: true,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              return validator.isEmail(value);
+            },
+            message: "Please enter a valid business email address",
+          },
+        },
+        website: {
+          type: String,
+          trim: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return validator.isURL(value, {
+                protocols: ['http', 'https'],
+                require_protocol: true
+              });
+            },
+            message: "Please enter a valid website URL",
+          },
+        },
+        // Location Information
+        shopAddress: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.pincode ||
+              this.profile.businessInfo.state
+            );
+          }, "Shop address is required when setting up business profile"],
+          trim: true,
+          maxlength: [300, "Shop address cannot exceed 300 characters"],
+        },
+        pincode: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.state
+            );
+          }, "PIN code is required when setting up business profile"],
+          trim: true,
+          validate: {
+            validator: function (value) {
+              return /^[1-9][0-9]{5}$/.test(value);
+            },
+            message: "PIN code must be a valid 6-digit Indian postal code",
+          },
+        },
+        villageColony: {
+          type: String,
+          trim: true,
+          maxlength: [100, "Village/Colony cannot exceed 100 characters"],
+        },
+        tahsilTaluka: {
+          type: String,
+          trim: true,
+          maxlength: [100, "Tahsil/Taluka cannot exceed 100 characters"],
+        },
+        district: {
+          type: String,
+          trim: true,
+          maxlength: [100, "District cannot exceed 100 characters"],
+        },
+        state: {
+          type: String,
+          required: [function() {
+            // Only required if any other business field is provided
+            return this.profile && this.profile.businessInfo && (
+              this.profile.businessInfo.businessCategory ||
+              this.profile.businessInfo.ownerName ||
+              this.profile.businessInfo.shopName ||
+              this.profile.businessInfo.businessPhone ||
+              this.profile.businessInfo.businessEmail ||
+              this.profile.businessInfo.shopAddress ||
+              this.profile.businessInfo.pincode
+            );
+          }, "State is required when setting up business profile"],
+          trim: true,
+          maxlength: [100, "State cannot exceed 100 characters"],
+        },
+        // Additional business fields
+        gstNumber: {
+          type: String,
+          trim: true,
+          uppercase: true,
+          validate: {
+            validator: function (value) {
+              if (!value) return true;
+              return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(value);
+            },
+            message: "GST number must be in valid format (15 characters)",
+          },
+        },
+        businessType: {
+          type: String,
+          enum: {
+            values: ["Proprietorship", "Partnership", "Private Limited", "Public Limited", "LLP", "Other"],
+            message: "Please select a valid business type"
+          },
+        },
+        yearEstablished: {
+          type: Number,
+          min: [1900, "Year established cannot be before 1900"],
+          max: [new Date().getFullYear(), "Year established cannot be in the future"],
+        },
+        employeeCount: {
+          type: String,
+          enum: {
+            values: ["1", "2-10", "11-50", "51-200", "201-500", "500+"],
+            message: "Please select a valid employee count range"
+          },
+        }
+      },
+      
+      // Profile Image
+      profileImage: {
+        type: String,
+        default: null,
+        validate: {
+          validator: function (value) {
+            if (!value) return true;
+            return validator.isURL(value) || /^\/uploads\//.test(value);
+          },
+          message: "Profile image must be a valid URL or file path",
+        },
+      },
+      
+      // Privacy Settings
+      isProfilePublic: {
+        type: Boolean,
+        default: false,
+      },
+      showEmail: {
+        type: Boolean,
+        default: false,
+      },
+      showPhone: {
+        type: Boolean,
+        default: false,
+      },
+      
+      // Notification Preferences
+      notifications: {
+        email: {
+          type: Boolean,
+          default: true,
+        },
+        sms: {
+          type: Boolean,
+          default: false,
+        },
+        push: {
+          type: Boolean,
+          default: true,
+        },
+        marketing: {
+          type: Boolean,
+          default: false,
+        },
       },
     },
     twoFactorEnabled: {
@@ -275,6 +811,94 @@ const userSchema = new mongoose.Schema(
           },
         },
       },
+    },
+    // Chat-related fields
+    chatProfile: {
+      isOnline: {
+        type: Boolean,
+        default: false,
+      },
+      lastSeen: {
+        type: Date,
+        default: Date.now,
+      },
+      status: {
+        type: String,
+        enum: ["available", "busy", "away", "invisible"],
+        default: "available",
+      },
+      statusMessage: {
+        type: String,
+        maxlength: [100, "Status message cannot exceed 100 characters"],
+        trim: true,
+      },
+      avatar: {
+        type: String,
+        default: null,
+      },
+      chatSettings: {
+        readReceipts: {
+          type: Boolean,
+          default: true,
+        },
+        lastSeenVisible: {
+          type: Boolean,
+          default: true,
+        },
+        messagePreview: {
+          type: Boolean,
+          default: true,
+        },
+        soundNotifications: {
+          type: Boolean,
+          default: true,
+        },
+        desktopNotifications: {
+          type: Boolean,
+          default: true,
+        },
+        mobileNotifications: {
+          type: Boolean,
+          default: true,
+        },
+        autoDownloadMedia: {
+          type: String,
+          enum: ["always", "wifi", "never"],
+          default: "wifi",
+        },
+        messageFontSize: {
+          type: String,
+          enum: ["small", "medium", "large"],
+          default: "medium",
+        },
+      },
+      blockedUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      }],
+      activeChats: [{
+        chat: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "TeamChat",
+        },
+        unreadCount: {
+          type: Number,
+          default: 0,
+        },
+        lastReadMessage: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "ChatMessage",
+        },
+        isPinned: {
+          type: Boolean,
+          default: false,
+        },
+        isMuted: {
+          type: Boolean,
+          default: false,
+        },
+        muteUntil: Date,
+      }],
     },
     apiKeys: [
       {
@@ -522,6 +1146,7 @@ userSchema.virtual("isTrialActive").get(function () {
 
 // Virtual for days since registration
 userSchema.virtual("daysSinceRegistration").get(function () {
+  if (!this.createdAt) return 0;
   return Math.floor(
     (Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24)
   );
@@ -627,7 +1252,8 @@ userSchema.methods.addLoginHistory = function (
   }
 
   this.lastLogin = new Date();
-  return this.save();
+  // Skip validation when saving login history to avoid requiring complete business profile
+  return this.save({ validateBeforeSave: false });
 };
 
 // Instance method to update preferences

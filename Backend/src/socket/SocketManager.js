@@ -325,6 +325,123 @@ class SocketManager {
         });
       });
 
+      // ✅ NEW: Team Chat Event Handlers
+      
+      // Join a team chat room
+      socket.on("join_team_chat", (data) => {
+        const { chatId } = data;
+        if (chatId) {
+          socket.join(`team_chat_${chatId}`);
+          console.log(`👥 Socket joined team chat: team_chat_${chatId}`);
+          
+          // Update user's online status in this chat
+          socket.to(`team_chat_${chatId}`).emit("user_joined_chat", {
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      // Leave a team chat room
+      socket.on("leave_team_chat", (data) => {
+        const { chatId } = data;
+        if (chatId) {
+          socket.leave(`team_chat_${chatId}`);
+          console.log(`👥 Socket left team chat: team_chat_${chatId}`);
+          
+          // Update user's offline status in this chat
+          socket.to(`team_chat_${chatId}`).emit("user_left_chat", {
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      // Handle team chat typing indicators
+      socket.on("team_chat_typing_start", (data) => {
+        const { chatId } = data;
+        if (chatId) {
+          socket.to(`team_chat_${chatId}`).emit("user_typing_in_chat", {
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      socket.on("team_chat_typing_stop", (data) => {
+        const { chatId } = data;
+        if (chatId) {
+          socket.to(`team_chat_${chatId}`).emit("user_stopped_typing_in_chat", {
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      // Handle message reactions
+      socket.on("add_message_reaction", (data) => {
+        const { chatId, messageId, emoji } = data;
+        if (chatId && messageId && emoji) {
+          socket.to(`team_chat_${chatId}`).emit("message_reaction_added", {
+            messageId: messageId,
+            emoji: emoji,
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      socket.on("remove_message_reaction", (data) => {
+        const { chatId, messageId } = data;
+        if (chatId && messageId) {
+          socket.to(`team_chat_${chatId}`).emit("message_reaction_removed", {
+            messageId: messageId,
+            userId: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      // Handle read receipts
+      socket.on("mark_messages_read", (data) => {
+        const { chatId, messageIds } = data;
+        if (chatId && messageIds && Array.isArray(messageIds)) {
+          socket.to(`team_chat_${chatId}`).emit("messages_read", {
+            messageIds: messageIds,
+            readBy: socket.userId,
+            username: socket.user.username,
+            chatId: chatId,
+            timestamp: new Date(),
+          });
+        }
+      });
+
+      // Handle user status updates
+      socket.on("update_chat_status", (data) => {
+        const { status, statusMessage } = data;
+        
+        // Broadcast to all user's company members
+        socket.to(`company_${socket.companyId}`).emit("user_status_updated", {
+          userId: socket.userId,
+          username: socket.user.username,
+          status: status,
+          statusMessage: statusMessage,
+          timestamp: new Date(),
+        });
+      });
+
       console.log("✅ Socket setup complete for user:", socket.user.username);
     });
 
@@ -767,6 +884,376 @@ class SocketManager {
       "new_chat_notification",
       notificationData
     );
+  }
+
+  // ✅ NEW: Team Chat Methods
+  
+  /**
+   * Send message to team chat room
+   */
+  sendToChat(chatId, event, data) {
+    try {
+      if (!this.io) {
+        console.warn("Socket.IO not initialized");
+        return false;
+      }
+
+      const roomName = `team_chat_${chatId}`;
+      console.log(`📤 Sending ${event} to team chat: ${roomName}`);
+      
+      this.io.to(roomName).emit(event, {
+        ...data,
+        timestamp: new Date(),
+        chatId: chatId,
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`❌ Error sending to team chat ${chatId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Send message to specific user
+   */
+  sendToUser(userId, event, data) {
+    try {
+      if (!this.io) {
+        console.warn("Socket.IO not initialized");
+        return false;
+      }
+
+      const roomName = `user_${userId}`;
+      console.log(`📤 Sending ${event} to user: ${roomName}`);
+      
+      this.io.to(roomName).emit(event, {
+        ...data,
+        timestamp: new Date(),
+        targetUserId: userId,
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`❌ Error sending to user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get online users in a chat
+   */
+  getChatUsers(chatId) {
+    try {
+      if (!this.io) {
+        return [];
+      }
+
+      const roomName = `team_chat_${chatId}`;
+      const room = this.io.sockets.adapter.rooms.get(roomName);
+      
+      if (!room) {
+        return [];
+      }
+
+      const users = [];
+      for (const socketId of room) {
+        const userId = this.socketToUser.get(socketId);
+        if (userId && !users.some(u => u.userId === userId)) {
+          const socket = this.io.sockets.sockets.get(socketId);
+          if (socket && socket.user) {
+            users.push({
+              userId: userId,
+              username: socket.user.username,
+              name: socket.user.name,
+              isOnline: true,
+            });
+          }
+        }
+      }
+
+      return users;
+    } catch (error) {
+      console.error(`❌ Error getting chat users for ${chatId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get online users in a company
+   */
+  getCompanyUsers(companyId) {
+    try {
+      if (!this.io) {
+        return [];
+      }
+
+      const roomName = `company_${companyId}`;
+      const room = this.io.sockets.adapter.rooms.get(roomName);
+      
+      if (!room) {
+        return [];
+      }
+
+      const users = [];
+      for (const socketId of room) {
+        const userId = this.socketToUser.get(socketId);
+        if (userId && !users.some(u => u.userId === userId)) {
+          const socket = this.io.sockets.sockets.get(socketId);
+          if (socket && socket.user) {
+            users.push({
+              userId: userId,
+              username: socket.user.username,
+              name: socket.user.name,
+              isOnline: true,
+            });
+          }
+        }
+      }
+
+      return users;
+    } catch (error) {
+      console.error(`❌ Error getting company users for ${companyId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Broadcast typing indicator to chat
+   */
+  broadcastTyping(chatId, userId, username, isTyping) {
+    try {
+      const event = isTyping ? "user_typing_in_chat" : "user_stopped_typing_in_chat";
+      return this.sendToChat(chatId, event, {
+        userId: userId,
+        username: username,
+        isTyping: isTyping,
+      });
+    } catch (error) {
+      console.error(`❌ Error broadcasting typing status:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Broadcast user status update
+   */
+  broadcastUserStatus(userId, companyId, status, statusMessage) {
+    try {
+      if (!this.io) {
+        return false;
+      }
+
+      const roomName = `company_${companyId}`;
+      
+      this.io.to(roomName).emit("user_status_updated", {
+        userId: userId,
+        status: status,
+        statusMessage: statusMessage,
+        timestamp: new Date(),
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`❌ Error broadcasting user status:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Join user to multiple chat rooms
+   */
+  joinUserToChats(userId, chatIds) {
+    try {
+      if (!this.io || !Array.isArray(chatIds)) {
+        return false;
+      }
+
+      const userConnections = this.activeConnections.get(userId.toString());
+      if (!userConnections) {
+        return false;
+      }
+
+      let joinedCount = 0;
+      for (const socketId of userConnections) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        if (socket) {
+          chatIds.forEach(chatId => {
+            socket.join(`team_chat_${chatId}`);
+            joinedCount++;
+          });
+        }
+      }
+
+      console.log(`👥 User ${userId} joined ${joinedCount} chat rooms`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error joining user to chats:`, error);
+      return false;
+    }
+  }
+
+  // =============================================================================
+  // ✅ NEW: TEAM CHAT METHODS
+  // =============================================================================
+
+  /**
+   * Send message to specific team chat
+   */
+  sendToTeamChat(chatId, event, data) {
+    try {
+      if (this.socketHandler) {
+        this.socketHandler.sendToTeamChat(chatId, event, data);
+      }
+    } catch (error) {
+      console.error("❌ Send to team chat error:", error);
+    }
+  }
+
+  /**
+   * Send message to specific user across all their devices
+   */
+  sendToUser(userId, event, data) {
+    try {
+      const userIdStr = userId.toString();
+      const userSockets = this.activeConnections.get(userIdStr);
+      
+      if (userSockets && userSockets.size > 0) {
+        userSockets.forEach(socketId => {
+          const socket = this.io.sockets.sockets.get(socketId);
+          if (socket) {
+            socket.emit(event, data);
+          }
+        });
+        console.log(`✅ Sent ${event} to user ${userId} on ${userSockets.size} device(s)`);
+      } else {
+        console.log(`⚠️ User ${userId} not connected`);
+      }
+    } catch (error) {
+      console.error("❌ Send to user error:", error);
+    }
+  }
+
+  /**
+   * Send message to all users in a company
+   */
+  sendToCompany(companyId, event, data) {
+    try {
+      if (this.socketHandler && this.socketHandler.emitToCompany) {
+        this.socketHandler.emitToCompany(companyId, event, data);
+      }
+    } catch (error) {
+      console.error("❌ Send to company error:", error);
+    }
+  }
+
+  /**
+   * Get online users in a team chat
+   */
+  getOnlineUsersInTeamChat(chatId) {
+    try {
+      const roomName = `team_chat_${chatId}`;
+      const room = this.io.sockets.adapter.rooms.get(roomName);
+      
+      if (!room) return [];
+
+      const onlineUsers = [];
+      room.forEach(socketId => {
+        const socket = this.io.sockets.sockets.get(socketId);
+        if (socket && socket.userId) {
+          onlineUsers.push({
+            userId: socket.userId,
+            userName: socket.user?.name,
+            socketId: socketId,
+          });
+        }
+      });
+
+      return onlineUsers;
+    } catch (error) {
+      console.error("❌ Get online users in team chat error:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get user's online status
+   */
+  isUserOnline(userId) {
+    try {
+      const userIdStr = userId.toString();
+      const userSockets = this.activeConnections.get(userIdStr);
+      return userSockets && userSockets.size > 0;
+    } catch (error) {
+      console.error("❌ Check user online status error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all online users in company
+   */
+  getOnlineUsersInCompany(companyId) {
+    try {
+      const onlineUsers = new Set();
+      
+      for (const [socketId, socket] of this.io.sockets.sockets) {
+        if (socket.companyId && socket.companyId.toString() === companyId.toString()) {
+          if (socket.userId && socket.user) {
+            onlineUsers.add({
+              userId: socket.userId,
+              userName: socket.user.name,
+              email: socket.user.email,
+            });
+          }
+        }
+      }
+
+      return Array.from(onlineUsers);
+    } catch (error) {
+      console.error("❌ Get online users in company error:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Broadcast to all connected users
+   */
+  broadcastToAll(event, data) {
+    try {
+      this.io.emit(event, data);
+      console.log(`✅ Broadcasted ${event} to all connected users`);
+    } catch (error) {
+      console.error("❌ Broadcast to all error:", error);
+    }
+  }
+
+  /**
+   * Get connection statistics
+   */
+  getConnectionStats() {
+    try {
+      const totalConnections = this.activeConnections.size;
+      const totalSockets = this.io.sockets.sockets.size;
+      const rooms = Array.from(this.io.sockets.adapter.rooms.keys());
+      
+      return {
+        totalUsers: totalConnections,
+        totalSockets: totalSockets,
+        totalRooms: rooms.length,
+        rooms: rooms.filter(room => room.startsWith('team_chat_')),
+        averageSocketsPerUser: totalConnections > 0 ? totalSockets / totalConnections : 0,
+      };
+    } catch (error) {
+      console.error("❌ Get connection stats error:", error);
+      return {
+        totalUsers: 0,
+        totalSockets: 0,
+        totalRooms: 0,
+        rooms: [],
+        averageSocketsPerUser: 0,
+      };
+    }
   }
 
   shutdown() {

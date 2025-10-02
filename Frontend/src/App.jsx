@@ -13,10 +13,12 @@ import Layout from "./Layout/Layout";
 import HomePage from "./Pages/HomePage";
 import AuthPage from "./Pages/AuthPage";
 import CommunityPage from "./Pages/CommunityPage";
+
 import AdminDashboard from "./components/Admin/AdminDashboard";
 import MainDashboard from "./components/MainDashboard/MainDashboard";
 import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
 import StaffManagement from "./components/Home/StaffManagement";
+import Category from "./components/Home/Category/Category";
 import NewUserWelcome from "./components/NewUserWelcome";
 import {ChatProvider} from "./context/chatContext";
 import companyService from "./services/companyService";
@@ -31,6 +33,8 @@ import SalesOrderForm from "./components/Home/Sales/SalesOrder/SalesOrderForm";
 import EditSalesInvoice from "./components/Home/Sales/EditSalesInvoice";
 import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
+import ShopForm from "./components/ShopForm";
+import ProfilePage from "./Pages/ProfilePage";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
@@ -517,6 +521,20 @@ function App() {
           }
           return;
         }
+
+        // ✅ FIX: Trust stored user data on refresh instead of API verification
+        // This prevents logout when backend is temporarily unavailable
+        console.log("🔄 Restoring auth from localStorage...");
+        setCurrentUser(userData);
+        setIsLoggedIn(true);
+        setIsAppInitialized(true);
+        
+        // Optional: Verify token in background without affecting UI state
+        authService.verifyToken().catch(error => {
+          console.log("⚠️ Background token verification failed:", error.message);
+          // Don't clear auth data here - let it happen naturally when user makes requests
+        });
+
       } catch (parseError) {
         authService.clearAuthData();
         if (mountedRef.current) {
@@ -526,24 +544,24 @@ function App() {
         }
         return;
       }
-
-      const verificationResponse = await authService.verifyToken();
-
-      if (!mountedRef.current) return;
-
-      if (verificationResponse && verificationResponse.success === true) {
-        const userData = JSON.parse(savedUser);
-        setCurrentUser(userData);
-        setIsLoggedIn(true);
-      } else {
-        await authService.clearAuthData();
-        localStorage.removeItem("currentCompany");
-        setIsAppInitialized(true);
-      }
     } catch (error) {
+      // ✅ FIX: Don't clear auth data on network errors during page load
+      console.log("⚠️ Auth check error (keeping existing session):", error.message);
+      
+      // Try to restore from localStorage as fallback
+      try {
+        const token = localStorage.getItem("token");
+        const savedUser = localStorage.getItem("user");
+        if (token && savedUser) {
+          const userData = JSON.parse(savedUser);
+          setCurrentUser(userData);
+          setIsLoggedIn(true);
+        }
+      } catch (fallbackError) {
+        console.log("❌ Fallback auth restore failed:", fallbackError.message);
+      }
+      
       if (mountedRef.current) {
-        await authService.clearAuthData();
-        localStorage.removeItem("currentCompany");
         setIsAppInitialized(true);
       }
     } finally {
@@ -1212,6 +1230,84 @@ function App() {
     );
   };
 
+  // Standalone Profile Page Component - Completely independent
+  const StandaloneProfilePage = () => {
+    const navigate = useNavigate();
+    
+    // Use effect to hide body overflow when component mounts
+    useEffect(() => {
+      document.body.style.overflow = 'hidden';
+      document.body.style.margin = '0';
+      document.body.style.padding = '0';
+      
+      return () => {
+        document.body.style.overflow = '';
+        document.body.style.margin = '';
+        document.body.style.padding = '';
+      };
+    }, []);
+    
+    // Simple auth check for standalone page
+    if (!stableIsLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    if (isLoggingOut) {
+      return (
+        <div className="standalone-profile-container">
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '100vh',
+            width: '100vw'
+          }}>
+            <div className="text-center text-white">
+              <div className="spinner-border text-light mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p>Logging out...</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (stableIsCheckingAuth || !isAppInitialized) {
+      return (
+        <div className="standalone-profile-container">
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '100vh',
+            width: '100vw'
+          }}>
+            <div className="text-center text-white">
+              <div className="spinner-border text-light mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p>Checking authentication...</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render profile in a completely isolated container
+    return (
+      <div className="standalone-profile-container">
+        <ProfilePage 
+          addToast={showToast}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          isFullscreen={true}
+          onClose={() => navigate('/')}
+        />
+      </div>
+    );
+  };
+
   // Company Route Wrapper
   const CompanyRouteWrapper = ({children}) => {
     const {companyId} = useParams();
@@ -1439,6 +1535,22 @@ function App() {
               window.location.href = targetRoute;
             }
           }}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const CategoryWrapper = () => {
+    const {companyId} = useParams();
+
+    return (
+      <CompanyRouteWrapper>
+        <Category
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
           isOnline={true}
         />
       </CompanyRouteWrapper>
@@ -1718,6 +1830,12 @@ function App() {
             {/* Redirect /login to /auth */}
             <Route path="/login" element={<Navigate to="/auth" replace />} />
 
+            {/* Profile Page Route - Completely standalone fullscreen page */}
+            <Route 
+              path="/profile" 
+              element={<StandaloneProfilePage />} 
+            />
+
             {/* Root redirect */}
             <Route
               path="/"
@@ -1736,6 +1854,8 @@ function App() {
             <Route path="/home" element={<MainDashboardWrapper />} />
             <Route path="/dashboard" element={<MainDashboardWrapper />} />
             <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
+
+            <Route path="/shops" element={<ProtectedRoute><ShopForm /></ProtectedRoute>} />
 
             <Route
               path="/companies/:companyId/community"
@@ -1756,6 +1876,24 @@ function App() {
               element={
                 <ProtectedRoute>
                   <DailyTaskAssignmentWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/categories"
+              element={
+                <ProtectedRoute>
+                  <CategoryWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/categories"
+              element={
+                <ProtectedRoute>
+                  <CategoryWrapper />
                 </ProtectedRoute>
               }
             />

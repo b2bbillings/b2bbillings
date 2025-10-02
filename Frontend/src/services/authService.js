@@ -251,19 +251,31 @@ api.interceptors.response.use(
       }
     }
 
-    // Network errors
+    // Network errors - don't clear auth data for temporary connection issues
     if (
       error.code === "ECONNABORTED" ||
       error.code === "NETWORK_ERROR" ||
       error.code === "ERR_NETWORK" ||
       !error.response
     ) {
-      if (window.showToast) {
-        window.showToast(
-          "Network connection error. Please check your internet connection.",
-          "error"
-        );
+      console.log("🌐 Network error detected - maintaining user session");
+      
+      // Don't show toast for every network error to avoid spam
+      const lastNetworkError = sessionStorage.getItem('lastNetworkError');
+      const now = Date.now();
+      
+      if (!lastNetworkError || now - parseInt(lastNetworkError) > 30000) { // 30 seconds
+        sessionStorage.setItem('lastNetworkError', now.toString());
+        if (window.showToast) {
+          window.showToast(
+            "Connection issue detected. Retrying automatically...",
+            "warning"
+          );
+        }
       }
+      
+      // Add a flag to indicate this is a network error
+      error.isNetworkError = true;
     }
 
     return Promise.reject(error);
@@ -788,9 +800,19 @@ const authService = {
           throw new Error(response.data.message || "Token verification failed");
         }
       } catch (error) {
-        // Handle 401: Clear auth data on authentication failure
-        if (error.response?.status === 401) {
+        // ✅ FIX: Only clear auth data for actual authentication failures, not network errors
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.log("🔐 Authentication failed, clearing auth data");
           authService.clearAuthData();
+        } else if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED' || !error.response) {
+          console.log("🌐 Network error during token verification - keeping session");
+          // Don't clear auth data for network errors - user is likely still authenticated
+          return {
+            success: false,
+            message: "Network error - using cached session",
+            code: "NETWORK_ERROR",
+            keepSession: true,
+          };
         }
 
         return {
@@ -1011,6 +1033,30 @@ const authService = {
   clearCaches: () => {
     clearRequestCaches();
     return {success: true, message: "Request caches cleared"};
+  },
+
+  updateCurrentUser: (updatedUser) => {
+    try {
+      const isRememberMe = localStorage.getItem("user");
+      const currentUser = authService.getCurrentUser();
+      
+      if (!currentUser) {
+        return false;
+      }
+      
+      const mergedUser = { ...currentUser, ...updatedUser };
+      
+      if (isRememberMe) {
+        localStorage.setItem("user", JSON.stringify(mergedUser));
+      } else {
+        sessionStorage.setItem("user", JSON.stringify(mergedUser));
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("Failed to update current user:", error);
+      return false;
+    }
   },
 };
 export default authService;

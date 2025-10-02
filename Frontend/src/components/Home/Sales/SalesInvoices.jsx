@@ -1,6 +1,8 @@
 import React, {useState, useEffect, useMemo, useCallback} from "react";
 import {Container, Row, Col} from "react-bootstrap";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
+import {faFilter} from "@fortawesome/free-solid-svg-icons";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 
 import SalesInvoicesHeader from "./SalesInvoice/SalesInvoicesHeader";
 import SalesInvoicesPageTitle from "./SalesInvoice/SalesInvoicesPageTitle";
@@ -70,6 +72,7 @@ function SalesInvoices({
 
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
@@ -972,15 +975,40 @@ function SalesInvoices({
     );
   }
 
+  // Enhanced styling theme object
+  const modernTheme = {
+    colors: {
+      primary: '#6366f1',
+      primaryLight: '#8b5cf6',
+      primaryDark: '#4f46e5',
+      background: '#f8fafc',
+      gradientPrimary: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      gradientSecondary: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      cardBackground: '#ffffff',
+      textPrimary: '#1e293b',
+      textSecondary: '#64748b',
+      border: '#e2e8f0',
+      shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+    },
+    borderRadius: {
+      sm: '0.375rem',
+      md: '0.5rem',
+      lg: '0.75rem',
+      xl: '1rem'
+    }
+  };
+
   return (
     <div
       style={{
         width: "100%",
-        height: "100vh",
-        backgroundColor: "#f8f9fa",
+        minHeight: "100vh",
+        background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, #f1f5f9 100%)`,
         margin: 0,
         padding: 0,
         overflow: "auto",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
       }}
     >
       <style>
@@ -990,106 +1018,272 @@ function SalesInvoices({
             margin: 0 !important;
             min-height: auto !important;
           }
+          
+          /* Enhanced global styles for modern appearance */
+          .sales-invoices-modern-wrapper {
+            --primary-color: ${modernTheme.colors.primary};
+            --primary-light: ${modernTheme.colors.primaryLight};
+            --shadow: ${modernTheme.colors.shadow};
+            --shadow-lg: ${modernTheme.colors.shadowLg};
+            --border-radius: ${modernTheme.borderRadius.md};
+          }
+          
+          .modern-section {
+            background: ${modernTheme.colors.cardBackground};
+            border-radius: ${modernTheme.borderRadius.lg};
+            box-shadow: ${modernTheme.colors.shadow};
+            border: 1px solid ${modernTheme.colors.border};
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+          }
+          
+          .modern-section:hover {
+            box-shadow: ${modernTheme.colors.shadowLg};
+            transform: translateY(-2px);
+          }
+          
+          .section-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, ${modernTheme.colors.border} 50%, transparent 100%);
+            margin: 1rem 0;
+          }
+          
+          @keyframes slideDown {
+            from {
+              opacity: 0;
+              transform: translateY(-10px);
+              max-height: 0;
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+              max-height: 500px;
+            }
+          }
         `}
       </style>
 
-      {/* Search and Actions Header - Now at TOP */}
-      <SalesInvoicesHeader
-        searchTerm={searchTerm}
-        onSearchChange={handleSearchChange}
-        onAddSale={handleCreateNew}
-        companyId={companyId}
-        mode={isQuotationsMode ? "quotations" : "invoices"}
-        documentType={isQuotationsMode ? "quotation" : "invoice"}
-        pageTitle={labels.pageTitle}
-      />
+      <div className="sales-invoices-modern-wrapper">
+        {/* Search and Actions Header - Enhanced modern styling */}
+        <div 
+          className="modern-section"
+          style={{
+            margin: '1rem 1.5rem 0',
+            padding: '1.25rem',
+            background: `linear-gradient(135deg, ${modernTheme.colors.cardBackground} 0%, #fefefe 100%)`,
+            borderRadius: modernTheme.borderRadius.xl,
+            position: 'sticky',
+            top: '1rem',
+            zIndex: 10,
+            backdropFilter: 'blur(10px)',
+            boxShadow: modernTheme.colors.shadowLg
+          }}
+        >
+          <SalesInvoicesHeader
+            searchTerm={searchTerm}
+            onSearchChange={handleSearchChange}
+            onAddSale={handleCreateNew}
+            companyId={companyId}
+            mode={isQuotationsMode ? "quotations" : "invoices"}
+            documentType={isQuotationsMode ? "quotation" : "invoice"}
+            pageTitle={labels.pageTitle}
+            showFilters={showFilters}
+            onToggleFilters={() => setShowFilters(!showFilters)}
+          />
+          
+          {/* Collapsible Filter Section */}
+          {showFilters && (
+            <div
+              style={{
+                marginTop: '1rem',
+                padding: '1.25rem',
+                background: modernTheme.colors.cardBackground,
+                borderRadius: modernTheme.borderRadius.lg,
+                border: `1px solid ${modernTheme.colors.border}`,
+                borderLeft: `4px solid ${modernTheme.colors.primary}`,
+                animation: 'slideDown 0.3s ease-out'
+              }}
+            >
+              <SalesInvoicesFilter
+                dateRange={dateRange}
+                startDate={startDate}
+                endDate={endDate}
+                dateRangeOptions={dateRangeOptions}
+                onDateRangeChange={handleDateRangeChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onExcelExport={handleExcelExport}
+                onPrint={handlePrint}
+                resultCount={filteredTransactions.length}
+                mode={isQuotationsMode ? "quotations" : "invoices"}
+                documentType={isQuotationsMode ? "quotation" : "invoice"}
+                pageTitle={pageTitle || labels.documentNamePlural}
+              />
+            </div>
+          )}
+        </div>
 
-      {/* Page Title - Now BELOW Header with margins */}
-      <div style={{padding: "0 1rem", margin: "0.75rem 0"}}>
-        <SalesInvoicesPageTitle
-          onAddSale={handleCreateNew}
-          invoiceCount={transactions.length}
-          companyId={companyId}
-          mode={isQuotationsMode ? "quotations" : "invoices"}
-          documentType={isQuotationsMode ? "quotation" : "invoice"}
-          title={pageTitle || labels.documentNamePlural}
-          subtitle={
-            isQuotationsMode
-              ? "Create and manage quotations"
-              : "Manage your sales transactions"
-          }
-        />
-      </div>
-
-      {/* Filter Section */}
-      <div className="px-3">
-        <SalesInvoicesFilter
-          dateRange={dateRange}
-          startDate={startDate}
-          endDate={endDate}
-          dateRangeOptions={dateRangeOptions}
-          onDateRangeChange={handleDateRangeChange}
-          onStartDateChange={handleStartDateChange}
-          onEndDateChange={handleEndDateChange}
-          onExcelExport={handleExcelExport}
-          onPrint={handlePrint}
-          resultCount={filteredTransactions.length}
-          mode={isQuotationsMode ? "quotations" : "invoices"}
-          documentType={isQuotationsMode ? "quotation" : "invoice"}
-          pageTitle={pageTitle || labels.documentNamePlural}
-        />
-      </div>
-
-      {/* Content Section */}
-      <div className="px-3">
-        <Row className="g-3">
-          <Col xl={2} lg={3} md={3} sm={12}>
-            <SalesInvoicesSummary
-              summary={summary}
-              loading={loading}
-              dateRange={dateRange}
-              mode={isQuotationsMode ? "quotations" : "invoices"}
-              documentType={isQuotationsMode ? "quotation" : "invoice"}
-              isQuotationsMode={isQuotationsMode}
-            />
-          </Col>
-
-          <Col xl={10} lg={9} md={9} sm={12}>
-            <SalesInvoicesTable
-              transactions={filteredTransactions}
-              onCreateNew={handleCreateNew}
-              onViewTransaction={handleViewTransaction}
-              onEditTransaction={handleEditTransaction}
-              onDeleteTransaction={handleDeleteTransaction}
-              onPrintTransaction={handlePrintTransaction}
-              onShareTransaction={handleShareTransaction}
-              onConvertTransaction={handleConvertTransaction}
-              loading={loading}
+        {/* Page Title - Enhanced with gradient background */}
+        {/* <div 
+          className="modern-section"
+          style={{
+            margin: '1rem 1.5rem',
+            padding: '1.5rem',
+            background: modernTheme.colors.gradientPrimary,
+            color: 'white',
+            textAlign: 'center',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          <div 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: modernTheme.borderRadius.lg
+            }}
+          />
+          <div style={{ position: 'relative', zIndex: 2 }}>
+            <SalesInvoicesPageTitle
+              onAddSale={handleCreateNew}
+              invoiceCount={transactions.length}
               companyId={companyId}
-              currentUser={currentUser}
-              searchTerm={debouncedSearchTerm}
               mode={isQuotationsMode ? "quotations" : "invoices"}
               documentType={isQuotationsMode ? "quotation" : "invoice"}
-              isQuotationsMode={isQuotationsMode}
-              labels={labels}
-              addToast={addToast}
-              inventoryItems={inventoryItems}
-              onAddItem={handleAddItem}
+              title={pageTitle || labels.documentNamePlural}
+              subtitle={
+                isQuotationsMode
+                  ? "Create and manage quotations with modern efficiency"
+                  : "Streamline your sales transactions with smart management"
+              }
             />
-          </Col>
-        </Row>
-      </div>
+          </div>
+        </div> */}
 
-      <UniversalViewModal
-        show={showViewModal}
-        onHide={() => setShowViewModal(false)}
-        transaction={selectedTransaction}
-        documentType={isQuotationsMode ? "quotation" : "invoice"}
-        onEdit={handleModalEdit}
-        onPrint={handlePrintTransaction}
-        onShare={handleShareTransaction}
-        onConvert={handleModalConvert}
-      />
+        {/* Filter Section - Modern card design */}
+        {/* <div 
+          className="modern-section"
+          style={{
+            margin: '0 1.5rem 1.5rem',
+            padding: '1.25rem',
+            background: modernTheme.colors.cardBackground,
+            borderLeft: `4px solid ${modernTheme.colors.primary}`
+          }}
+        >
+          <SalesInvoicesFilter
+            dateRange={dateRange}
+            startDate={startDate}
+            endDate={endDate}
+            dateRangeOptions={dateRangeOptions}
+            onDateRangeChange={handleDateRangeChange}
+            onStartDateChange={handleStartDateChange}
+            onEndDateChange={handleEndDateChange}
+            onExcelExport={handleExcelExport}
+            onPrint={handlePrint}
+            resultCount={filteredTransactions.length}
+            mode={isQuotationsMode ? "quotations" : "invoices"}
+            documentType={isQuotationsMode ? "quotation" : "invoice"}
+            pageTitle={pageTitle || labels.documentNamePlural}
+          />
+        </div> */}
+
+        {/* Content Section - Enhanced layout */}
+        <div style={{ padding: '0 1.5rem 2rem' }}>
+          {/* Sales Analysis Row */}
+          <Row className="mb-4">
+            <Col xs={12}>
+              <div 
+                className="modern-section"
+                style={{
+                  padding: '1.5rem',
+                  background: `linear-gradient(135deg, ${modernTheme.colors.cardBackground} 0%, #fafafa 100%)`,
+                  borderRadius: modernTheme.borderRadius.lg,
+                }}
+              >
+                <SalesInvoicesSummary
+                  summary={summary}
+                  loading={loading}
+                  dateRange={dateRange}
+                  mode={isQuotationsMode ? "quotations" : "invoices"}
+                  documentType={isQuotationsMode ? "quotation" : "invoice"}
+                  isQuotationsMode={isQuotationsMode}
+                />
+              </div>
+            </Col>
+          </Row>
+
+          {/* Sales Table Row */}
+          <Row>
+            <Col xs={12}>
+              <div 
+                className="modern-section"
+                style={{
+                  padding: '1.5rem',
+                  background: modernTheme.colors.cardBackground,
+                  borderRadius: modernTheme.borderRadius.lg,
+                  minHeight: '500px',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+              >
+                {/* Decorative background gradient */}
+                <div 
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    width: '200px',
+                    height: '200px',
+                    background: `linear-gradient(135deg, ${modernTheme.colors.primary}15, ${modernTheme.colors.primaryLight}10)`,
+                    borderRadius: '50%',
+                    transform: 'translate(50%, -50%)',
+                    pointerEvents: 'none'
+                  }}
+                />
+                
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <SalesInvoicesTable
+                    transactions={filteredTransactions}
+                    onCreateNew={handleCreateNew}
+                    onViewTransaction={handleViewTransaction}
+                    onEditTransaction={handleEditTransaction}
+                    onDeleteTransaction={handleDeleteTransaction}
+                    onPrintTransaction={handlePrintTransaction}
+                    onShareTransaction={handleShareTransaction}
+                    onConvertTransaction={handleConvertTransaction}
+                    loading={loading}
+                    companyId={companyId}
+                    currentUser={currentUser}
+                    searchTerm={debouncedSearchTerm}
+                    mode={isQuotationsMode ? "quotations" : "invoices"}
+                    documentType={isQuotationsMode ? "quotation" : "invoice"}
+                    isQuotationsMode={isQuotationsMode}
+                    labels={labels}
+                    addToast={addToast}
+                    inventoryItems={inventoryItems}
+                    onAddItem={handleAddItem}
+                  />
+                </div>
+              </div>
+            </Col>
+          </Row>
+        </div>
+
+        <UniversalViewModal
+          show={showViewModal}
+          onHide={() => setShowViewModal(false)}
+          transaction={selectedTransaction}
+          documentType={isQuotationsMode ? "quotation" : "invoice"}
+          onEdit={handleModalEdit}
+          onPrint={handlePrintTransaction}
+          onShare={handleShareTransaction}
+          onConvert={handleModalConvert}
+        />
+      </div>
     </div>
   );
 }

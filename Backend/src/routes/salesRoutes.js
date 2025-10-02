@@ -1177,4 +1177,30 @@ router.get(
   saleController.getSalesInvoiceSummary
 );
 
+// ==================== NON-BILL ITEMS ROUTES ====================
+
+/**
+ * @route   GET /api/sales/companies/:companyId/non-bill-items
+ * @desc    Get all non-bill items for a company
+ * @access  Private
+ */
+router.get(
+  "/companies/:companyId/non-bill-items",
+  authenticate,
+  validateRequest,
+  saleController.getNonBillItems
+);
+
+/**
+ * @route   GET /api/sales/companies/:companyId/non-bill-summary
+ * @desc    Get non-bill items summary/statistics for a company
+ * @access  Private
+ */
+router.get(
+  "/companies/:companyId/non-bill-summary",
+  authenticate,
+  validateRequest,
+  saleController.getNonBillSummary
+);
+
 module.exports = router;

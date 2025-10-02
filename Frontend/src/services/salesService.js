@@ -5602,6 +5602,87 @@ class SalesService {
       return this.handleError(error);
     }
   }
+
+  // ==================== NON-BILL ITEMS METHODS ====================
+
+  /**
+   * Get all non-bill items for a company
+   * @param {string} companyId - Company ID
+   * @param {Object} params - Query parameters (page, limit, search)
+   * @returns {Promise<Object>} API response
+   */
+  async getNonBillItems(companyId, params = {}) {
+    try {
+      console.log("🔍 Getting non-bill items:", { companyId, params });
+
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const queryParams = new URLSearchParams();
+      
+      if (params.page) queryParams.append('page', params.page);
+      if (params.limit) queryParams.append('limit', params.limit);
+      if (params.search) queryParams.append('search', params.search);
+
+      const url = `/sales/companies/${companyId}/non-bill-items${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      
+      const response = await api.get(url);
+
+      if (response.status === 200) {
+        console.log("✅ Non-bill items retrieved successfully:", response.data);
+        return {
+          success: true,
+          data: response.data.data,
+          message: response.data.message || "Non-bill items retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting non-bill items:", error);
+      return this.handleError(error);
+    }
+  }
+
+  /**
+   * Get non-bill items summary/statistics for a company
+   * @param {string} companyId - Company ID
+   * @param {Object} params - Query parameters (startDate, endDate)
+   * @returns {Promise<Object>} API response
+   */
+  async getNonBillSummary(companyId, params = {}) {
+    try {
+      console.log("📊 Getting non-bill summary:", { companyId, params });
+
+      if (!companyId) {
+        throw new Error("Company ID is required");
+      }
+
+      const queryParams = new URLSearchParams();
+      
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
+
+      const url = `/sales/companies/${companyId}/non-bill-summary${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      
+      const response = await api.get(url);
+
+      if (response.status === 200) {
+        console.log("✅ Non-bill summary retrieved successfully:", response.data);
+        return {
+          success: true,
+          data: response.data.data,
+          message: response.data.message || "Non-bill summary retrieved successfully",
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error("❌ Error getting non-bill summary:", error);
+      return this.handleError(error);
+    }
+  }
 }
 
 const salesService = new SalesService();

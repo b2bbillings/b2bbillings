@@ -23,6 +23,7 @@ import {
   faCheckCircle,
   faInfoCircle,
   faFileImport,
+  faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 
 import PurchaseOrderTable from "./PurchaseOrderForm/PurchaseOrderTable";
@@ -55,6 +56,7 @@ function PurchaseOrder({
   const [filterStatus, setFilterStatus] = useState("");
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Filter states
   const [dateRange, setDateRange] = useState("This Month");
@@ -601,21 +603,44 @@ function PurchaseOrder({
         totalOrders={summaryStats.totalOrders}
         pendingOrders={summaryStats.pendingOrders}
         completedOrders={summaryStats.completedOrders}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
       />
+      
+      {/* Collapsible Filter Section */}
+      {showFilters && (
+        <div
+          style={{
+            margin: '1rem',
+            padding: '1.25rem',
+            background: '#ffffff',
+            borderRadius: '0.75rem',
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #6366f1',
+            animation: 'slideDown 0.3s ease-out'
+          }}
+        >
+          <PurchaseOrderFilter
+            dateRange={dateRange}
+            startDate={startDate}
+            endDate={endDate}
+            statusFilter={filterStatus}
+            supplierFilter={supplierFilter}
+            onDateRangeChange={setDateRange}
+            onStartDateChange={(e) => setStartDate(e.target.value)}
+            onEndDateChange={(e) => setEndDate(e.target.value)}
+            onStatusFilterChange={setFilterStatus}
+            onSupplierFilterChange={setSupplierFilter}
+            mode="orders"
+            documentType="order"
+          />
+        </div>
+      )}
 
-      {/* Page Title Component */}
-      <PurchaseOrderPageTitle
-        onAddPurchase={handleAddPurchaseOrder}
-        billCount={orders.length}
-        companyId={companyId}
-        mode="orders"
-        documentType="order"
-        title="Purchase Orders"
-        subtitle="Create and manage purchase orders"
-      />
+      {/* Removed Page Title with subtitle */}
 
-      {/* Filter Component */}
-      <div className="px-3">
+      {/* Original Filter Component - Hidden (now in collapsible section) */}
+      <div className="px-3" style={{display: 'none'}}>
         <PurchaseOrderFilter
           dateRange={dateRange}
           startDate={startDate}
@@ -633,28 +658,74 @@ function PurchaseOrder({
       </div>
 
       {/* Main Content */}
-      <div className="px-3 pb-3">
+      <div 
+        className="px-3 pb-3"
+        style={{
+          background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+          borderRadius: '1rem',
+          margin: '0 1rem',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+        }}
+      >
         <Row className="g-3">
-          {/* Left Sidebar with Summary */}
-          <Col xl={2} lg={3} md={3} sm={12}>
-            <PurchaseOrderSummary
-              summary={{
-                totalOrderAmount: summaryStats.totalOrderAmount,
-                totalOrders: summaryStats.totalOrders,
-                confirmedAmount: 0,
-                pendingAmount: summaryStats.totalOrderAmount,
-                todaysOrders: 0,
+          {/* Full Width Layout */}
+          <Col xs={12}>
+            {/* Purchase Orders Analysis Section */}
+            <div 
+              className="purchase-orders-overview-wrapper"
+              style={{ 
+                marginBottom: '1.5rem',
+                padding: '2rem',
+                background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                borderRadius: '20px',
+                border: '2px solid #e2e8f0',
+                boxShadow: '0 8px 30px rgba(99, 102, 241, 0.12)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                cursor: 'default',
+                position: 'relative',
+                overflow: 'hidden'
               }}
-              orders={orders}
-              loading={isLoading}
-              dateRange="This Month"
-              mode="orders"
-              documentType="order"
-            />
-          </Col>
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-6px)';
+                e.currentTarget.style.boxShadow = '0 15px 45px rgba(99, 102, 241, 0.20)';
+                e.currentTarget.style.borderColor = '#6366f1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 8px 30px rgba(99, 102, 241, 0.12)';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '5px',
+                  background: 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 33%, #06b6d4 66%, #10b981 100%)',
+                  borderRadius: '20px 20px 0 0'
+                }}
+              />
+              <PurchaseOrderSummary
+                summary={{
+                  totalOrderAmount: summaryStats.totalOrderAmount,
+                  totalOrders: summaryStats.totalOrders,
+                  confirmedAmount: 0,
+                  pendingAmount: summaryStats.totalOrderAmount,
+                  todaysOrders: 0,
+                }}
+                orders={orders}
+                loading={isLoading}
+                dateRange="This Month"
+                mode="orders"
+                documentType="order"
+              />
+            </div>
 
-          {/* Main Content Area */}
-          <Col xl={10} lg={9} md={9} sm={12}>
+            {/* Main Content Area */}
+            <div>
             <Tab.Container
               activeKey={activeTab}
               onSelect={(k) => setActiveTab(k)}
@@ -859,6 +930,7 @@ function PurchaseOrder({
                 </Tab.Pane>
               </Tab.Content>
             </Tab.Container>
+            </div>
           </Col>
         </Row>
       </div>
@@ -1051,6 +1123,125 @@ function PurchaseOrder({
           transform: translateY(-1px);
         }
 
+        /* Modern Purchase Orders Overview Wrapper */
+        .purchase-orders-overview-wrapper {
+          background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%) !important;
+          border-radius: 20px !important;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          will-change: transform, box-shadow, border-color;
+        }
+
+        .purchase-orders-overview-wrapper:hover {
+          background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%) !important;
+        }
+
+        .purchase-orders-overview-wrapper:hover::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+          pointer-events: none;
+          z-index: 1;
+        }
+
+        /* Enhanced card hover effects inside wrapper */
+        .purchase-orders-overview-wrapper:hover .summary-card {
+          transform: translateY(-2px) !important;
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .purchase-orders-overview-wrapper:hover [style*="flex: '1 1 calc(33.333% - 0.75rem')"] {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Smooth transitions for all elements */
+        .purchase-orders-overview-wrapper * {
+          transition: all 0.2s ease-in-out;
+        }
+
+        /* Pulse animation on load */
+        @keyframes pulseGlowOrders {
+          0% { box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12); }
+          50% { box-shadow: 0 10px 35px rgba(99, 102, 241, 0.16); }
+          100% { box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12); }
+        }
+
+        .purchase-orders-overview-wrapper {
+          animation: pulseGlowOrders 3s ease-in-out infinite;
+        }
+
+        .purchase-orders-overview-wrapper:hover {
+          animation: none;
+        }
+
+        /* Ensure z-index for proper stacking */
+        .purchase-orders-overview-wrapper > div:first-child {
+          position: relative;
+          z-index: 2;
+        }
+
+        /* Enhanced Typography for Summary Cards */
+        .purchase-orders-overview-wrapper h5,
+        .purchase-orders-overview-wrapper h6 {
+          font-weight: 700 !important;
+          letter-spacing: 0.5px !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .purchase-orders-overview-wrapper h5 {
+          font-size: 1.35rem !important;
+          line-height: 1.3 !important;
+        }
+
+        .purchase-orders-overview-wrapper h6 {
+          font-size: 1.1rem !important;
+          line-height: 1.4 !important;
+        }
+
+        .purchase-orders-overview-wrapper p {
+          font-size: 0.95rem !important;
+          font-weight: 500 !important;
+          letter-spacing: 0.3px !important;
+          line-height: 1.5 !important;
+        }
+
+        .purchase-orders-overview-wrapper small {
+          font-size: 0.85rem !important;
+          font-weight: 500 !important;
+          letter-spacing: 0.2px !important;
+          line-height: 1.4 !important;
+        }
+
+        /* Improved text contrast and readability */
+        .purchase-orders-overview-wrapper .text-muted {
+          color: #64748b !important;
+          font-weight: 500 !important;
+        }
+
+        .purchase-orders-overview-wrapper .text-dark {
+          color: #1e293b !important;
+          font-weight: 700 !important;
+        }
+
+        .purchase-orders-overview-wrapper .text-success {
+          color: #059669 !important;
+          font-weight: 700 !important;
+        }
+
+        .purchase-orders-overview-wrapper .text-warning {
+          color: #d97706 !important;
+          font-weight: 700 !important;
+        }
+
+        .purchase-orders-overview-wrapper .text-info {
+          color: #0891b2 !important;
+          font-weight: 700 !important;
+        }
+
         .alert {
           border: none !important;
           font-weight: 500;
@@ -1120,6 +1311,26 @@ function PurchaseOrder({
           .modal-dialog {
             margin: 0.5rem !important;
           }
+
+          .purchase-orders-overview-wrapper {
+            padding: 1.5rem !important;
+          }
+
+          .purchase-orders-overview-wrapper h5 {
+            font-size: 1.2rem !important;
+          }
+
+          .purchase-orders-overview-wrapper h6 {
+            font-size: 1rem !important;
+          }
+
+          .purchase-orders-overview-wrapper p {
+            font-size: 0.9rem !important;
+          }
+
+          .purchase-orders-overview-wrapper small {
+            font-size: 0.8rem !important;
+          }
         }
 
         @media (max-width: 576px) {
@@ -1139,6 +1350,31 @@ function PurchaseOrder({
           .btn-sm {
             padding: 0.25rem 0.5rem;
             font-size: 0.775rem;
+          }
+
+          .purchase-orders-overview-wrapper {
+            padding: 1.25rem !important;
+          }
+
+          .purchase-orders-overview-wrapper h5 {
+            font-size: 1.1rem !important;
+          }
+
+          .purchase-orders-overview-wrapper h6 {
+            font-size: 0.95rem !important;
+          }
+        }
+        
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+            max-height: 0;
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+            max-height: 500px;
           }
         }
       `}</style>

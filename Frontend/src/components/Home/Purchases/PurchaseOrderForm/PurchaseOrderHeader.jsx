@@ -18,6 +18,7 @@ import {
   faShoppingCart,
   faFileInvoice,
   faClipboardList,
+  faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import {useNavigate, useParams} from "react-router-dom";
 
@@ -36,6 +37,8 @@ function PurchaseOrderHeader({
   totalOrders = 0,
   pendingOrders = 0,
   completedOrders = 0,
+  showFilters,
+  onToggleFilters,
 }) {
   const navigate = useNavigate();
   const {companyId: urlCompanyId} = useParams();
@@ -159,6 +162,18 @@ function PurchaseOrderHeader({
 
             <Col lg={6} md={5}>
               <div className="d-flex justify-content-end gap-2 flex-wrap">
+                {/* Filter Button */}
+                <Button
+                  variant={showFilters ? "primary" : "outline-primary"}
+                  size="sm"
+                  className="d-flex align-items-center px-3 fw-semibold custom-filter-btn"
+                  onClick={onToggleFilters}
+                  style={{borderRadius: 0}}
+                >
+                  <FontAwesomeIcon icon={faFilter} className="me-2" />
+                  <span className="d-none d-sm-inline">Filter</span>
+                </Button>
+                
                 <Button
                   variant="primary"
                   size="sm"
@@ -296,6 +311,15 @@ function PurchaseOrderHeader({
 
         .custom-outline-primary:focus {
           box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
+        }
+
+        .custom-filter-btn {
+          transition: all 0.15s ease-in-out;
+        }
+
+        .custom-filter-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
 
         @media (max-width: 767.98px) {

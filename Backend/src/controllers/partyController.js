@@ -19,6 +19,8 @@ const partyController = {
         email = "",
         phoneNumber,
         companyName = "",
+        shopName = "",
+        shopOwner = "",
         gstNumber = "",
         gstType = "unregistered",
         creditLimit = 0,
@@ -248,6 +250,8 @@ const partyController = {
         email: email?.trim() || "",
         phoneNumber: phoneNumber.trim(),
         companyName: companyName?.trim() || "",
+        shopName: shopName?.trim() || "",
+        shopOwner: shopOwner?.trim() || "",
         gstNumber:
           gstType !== "unregistered" && gstNumber?.trim()
             ? gstNumber.trim().toUpperCase()
@@ -637,6 +641,11 @@ const partyController = {
         updatedAt: new Date(),
         updatedBy: new mongoose.Types.ObjectId(userId),
       };
+
+      // ✅ Handle profile image URL if provided
+      if (sanitizedUpdateData.profileImage) {
+        updatedPartyData.profileImage = sanitizedUpdateData.profileImage;
+      }
 
       if (sanitizedUpdateData.homeAddressLine !== undefined) {
         updatedPartyData.homeAddress = {
@@ -1040,7 +1049,7 @@ const partyController = {
     const clientIp = req.ip || req.connection.remoteAddress;
 
     try {
-      const {name, phone, type = "customer"} = req.body;
+      const {name, phone, phoneNumbers = [], shopName = "", shopOwner = "", type = "customer"} = req.body;
       const userId = req.user?.id || req.user?._id;
       const companyId =
         req.user?.currentCompany ||
@@ -1105,6 +1114,8 @@ const partyController = {
         phoneNumber: phone.trim(),
         email: "",
         companyName: "",
+        shopName: shopName?.trim() || "",
+        shopOwner: shopOwner?.trim() || "",
         gstNumber: "",
         gstType: "unregistered",
         creditLimit: 0,
@@ -1125,7 +1136,12 @@ const partyController = {
           taluka: "",
         },
         sameAsHomeAddress: false,
-        phoneNumbers: [{number: phone.trim(), label: "Primary"}],
+        phoneNumbers: phoneNumbers.length > 0 
+          ? phoneNumbers.filter(p => p.number?.trim()).map(p => ({
+              number: p.number.trim(),
+              label: p.label?.trim() || "Mobile"
+            }))
+          : [{number: phone.trim(), label: "Primary"}],
         userId: userObjectId,
         companyId: companyObjectId,
         createdBy: userObjectId,
@@ -2196,6 +2212,77 @@ const partyController = {
         success: false,
         message: "Error searching companies",
         error: error.message,
+      });
+    }
+  },
+
+  // ✅ NEW: Upload profile image for party (Simplified version)
+  async uploadProfileImage(req, res) {
+    try {
+      const partyId = req.params.id;
+      
+      console.log("🔥 Profile image upload endpoint hit!", { partyId, hasFile: !!req.file });
+      
+      // For now, just return success to test if the route works
+      if (!req.file && !req.body.profileImage) {
+        return res.status(400).json({
+          success: false,
+          message: "No image file or URL provided"
+        });
+      }
+
+      // Validate party exists
+      const party = await Party.findById(partyId);
+      if (!party) {
+        return res.status(404).json({
+          success: false,
+          message: "Party not found"
+        });
+      }
+
+      // For testing: just return success without actual file processing
+      const imageUrl = req.body.profileImage || `/uploads/profiles/test-${partyId}.jpg`;
+
+      // Update party with profile image
+      const updatedParty = await Party.findByIdAndUpdate(
+        partyId,
+        { profileImage: imageUrl },
+        { new: true, runValidators: true }
+      );
+
+      // Create audit log
+      await createAuditLog({
+        action: "PROFILE_IMAGE_UPLOAD",
+        userId: req.user?.id,
+        companyId: req.headers["x-company-id"],
+        resourceType: "Party",
+        resourceId: partyId,
+        details: {
+          imageUrl: imageUrl,
+          testMode: true
+        },
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+
+      logger.info(`✅ Profile image updated for party ${partyId}: ${imageUrl}`);
+
+      res.status(200).json({
+        success: true,
+        message: "Profile image updated successfully (test mode)",
+        data: {
+          party: updatedParty,
+          imageUrl: imageUrl,
+          profileImage: imageUrl
+        }
+      });
+
+    } catch (error) {
+      logger.error(`❌ Error uploading profile image:`, error);
+      res.status(500).json({
+        success: false,
+        message: "Error uploading profile image",
+        error: error.message
       });
     }
   },

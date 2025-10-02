@@ -11,6 +11,8 @@ import {
   Modal,
   InputGroup,
   Container,
+  Nav,
+  Tab,
 } from "react-bootstrap";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {
@@ -56,6 +58,7 @@ import {
 import itemsTableLogic from "./itemsTableWithTotals/itemsTableLogic";
 import PaymentModal from "./itemsTableWithTotals/PaymentModal";
 import itemService from "../../../../../services/itemService";
+import salesService from "../../../../../services/salesService";
 
 function SalesInvoiceFormSection({
   formData,
@@ -78,8 +81,23 @@ function SalesInvoiceFormSection({
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionRef = useRef(false);
+  
+  // Tab management state
+  const [activeTab, setActiveTab] = useState('bill');
+  
+  // Non-bill form data state
+  const [nonBillData, setNonBillData] = useState({
+    itemDescription: '',
+    purchaseDate: '',
+    vendorName: '',
+    amount: '',
+    quantity: '',
+    unitPrice: '',
+    notes: '',
+    category: ''
+  });
 
-  // Purple theme matching PurchaseInvoiceHeader
+  // Enhanced purple theme with modern styling
   const purpleTheme = {
     primary: "#6366f1",
     primaryLight: "#8b5cf6",
@@ -96,22 +114,77 @@ function SalesInvoiceFormSection({
     textMuted: "#64748b",
     border: "#e2e8f0",
     borderDark: "#cbd5e1",
+    shadow: "0 4px 20px rgba(99, 102, 241, 0.08)",
+    shadowMd: "0 8px 30px rgba(99, 102, 241, 0.12)",
+    shadowLg: "0 12px 40px rgba(99, 102, 241, 0.15)",
+    gradient: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    gradientLight: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)"
   };
 
-  // Enhanced input styles with purple theme
+  // Enhanced input styles with modern design
   const getInputStyle = (fieldName) => ({
     borderColor: errors[fieldName] ? purpleTheme.error : purpleTheme.border,
-    fontSize: "14px",
-    padding: "12px 16px",
-    height: "48px",
+    fontSize: "15px",
+    padding: "14px 18px",
+    height: "52px",
     borderWidth: "2px",
-    borderRadius: "8px",
-    transition: "all 0.2s ease",
+    borderRadius: "12px",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
     backgroundColor: purpleTheme.surface,
+    color: purpleTheme.text,
+    fontWeight: "500",
     boxShadow: errors[fieldName]
-      ? `0 0 0 3px rgba(239, 68, 68, 0.1)`
-      : `0 0 0 0px rgba(${purpleTheme.primaryRgb}, 0.1)`,
+      ? `0 0 0 3px rgba(239, 68, 68, 0.1), ${purpleTheme.shadow}`
+      : purpleTheme.shadow,
   });
+
+  // Enhanced card styles
+  const getCardStyle = () => ({
+    borderRadius: "20px",
+    border: `2px solid ${purpleTheme.border}`,
+    backgroundColor: purpleTheme.surface,
+    boxShadow: purpleTheme.shadowMd,
+    overflow: "hidden",
+    transition: "all 0.3s ease"
+  });
+
+  // Enhanced button styles
+  const getButtonStyle = (variant = 'primary', size = 'normal') => {
+    const baseStyle = {
+      borderRadius: "12px",
+      fontWeight: "600",
+      fontSize: size === 'large' ? "16px" : "14px",
+      padding: size === 'large' ? "14px 32px" : "12px 24px",
+      border: "2px solid transparent",
+      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      boxShadow: purpleTheme.shadow,
+      textTransform: "none",
+      letterSpacing: "0.025em"
+    };
+
+    const variants = {
+      primary: {
+        ...baseStyle,
+        background: purpleTheme.gradient,
+        color: "white",
+        borderColor: purpleTheme.primary
+      },
+      success: {
+        ...baseStyle,
+        background: `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`,
+        color: "white",
+        borderColor: purpleTheme.success
+      },
+      outline: {
+        ...baseStyle,
+        background: purpleTheme.surface,
+        color: purpleTheme.primary,
+        borderColor: purpleTheme.border
+      }
+    };
+
+    return variants[variant] || variants.primary;
+  };
 
   const inputStyle = getInputStyle();
 
@@ -952,8 +1025,12 @@ function SalesInvoiceFormSection({
           }
         : null;
 
+      // Include non-bill items in the save data
+      const nonBillItems = formData.nonBillItems || [];
+      
       const invoiceDataFromTable = {
         items: mappedItems,
+        nonBillItems: nonBillItems, // Add non-bill items to save data
         totals: {
           finalTotal: displayTotal,
           grandTotal: displayTotal,
@@ -1066,12 +1143,16 @@ function SalesInvoiceFormSection({
           result.data?.grandTotal ||
           displayTotal;
 
-        addToast?.(
-          `${
-            isQuotationsMode ? "Quotation" : "Invoice"
-          } saved successfully! Amount: ₹${savedAmount}`,
-          "success"
-        );
+        const nonBillCount = nonBillItems.length;
+        const nonBillTotal = nonBillItems.reduce((sum, item) => sum + item.amount, 0);
+        
+        let successMessage = `${isQuotationsMode ? "Quotation" : "Invoice"} saved successfully! Amount: ₹${savedAmount}`;
+        
+        if (nonBillCount > 0) {
+          successMessage += ` | Non-bill items: ${nonBillCount} (₹${nonBillTotal.toFixed(2)})`;
+        }
+        
+        addToast?.(successMessage, "success");
 
         if (Math.abs(savedAmount - displayTotal) >= 1) {
           addToast?.(
@@ -1292,59 +1373,98 @@ function SalesInvoiceFormSection({
 
   return (
     <Container fluid className="px-0">
-      {/* Header Section - Styled like PurchaseInvoiceHeader */}
+      {/* Enhanced Header Section */}
       <Card
         className="mb-4"
-        style={{
-          border: "none",
-          borderRadius: "16px",
-          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
-          overflow: "hidden",
-        }}
+        style={getCardStyle()}
       >
-        {/* Header */}
+        {/* Enhanced Header */}
         <div
           style={{
-            background: `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
+            background: purpleTheme.gradient,
             color: "white",
-            padding: "20px 24px",
+            padding: "20px 16px"
           }}
+          className="responsive-header"
         >
-          <div className="d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center">
-              <FontAwesomeIcon
-                icon={currentConfig.formIcon}
-                size="lg"
-                className="me-3"
-              />
-              <div>
-                <h5 className="mb-0 fw-bold">{currentConfig.title}</h5>
-                <small className="opacity-90">{currentConfig.subtitle}</small>
+          <div className="d-flex align-items-center justify-content-between flex-wrap">
+            <div className="d-flex align-items-center flex-grow-1 me-3">
+              <div 
+                className="rounded-circle d-flex align-items-center justify-content-center me-3 header-icon"
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  backgroundColor: "rgba(255, 255, 255, 0.2)",
+                  backdropFilter: "blur(10px)",
+                  flexShrink: 0
+                }}
+              >
+                <FontAwesomeIcon
+                  icon={currentConfig.formIcon}
+                  size="lg"
+                />
+              </div>
+              <div className="flex-grow-1 min-width-0">
+                <h4 className="mb-1 fw-bold header-title" style={{ fontSize: "18px" }}>
+                  {currentConfig.title}
+                </h4>
+                <div className="d-flex align-items-center flex-wrap">
+                  <small 
+                    className="opacity-90 me-2 header-subtitle" 
+                    style={{ fontSize: "12px" }}
+                  >
+                    {currentConfig.subtitle}
+                  </small>
+                  <div 
+                    className="px-2 py-1 rounded-pill header-badge"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.2)",
+                      fontSize: "10px",
+                      fontWeight: "600",
+                      whiteSpace: "nowrap"
+                    }}
+                  >
+                    {localItems.length} Item{localItems.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Action Button */}
-            <Button
-              variant="light"
-              size="sm"
-              onClick={handleAddProductClick}
-              disabled={disabled || isSubmitting || submissionRef.current}
-              style={{
-                fontWeight: "600",
-                padding: "8px 16px",
-                borderRadius: "8px",
-                border: "none",
-                color: currentConfig.primaryColor,
-                backgroundColor: "rgba(255, 255, 255, 0.9)",
-                backdropFilter: "blur(10px)",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <FontAwesomeIcon icon={faPlus} className="me-2" />
-              Add Item
-            </Button>
+            {/* Enhanced Action Section */}
+            <div className="d-flex align-items-center gap-2 header-actions">
+              <div 
+                className="text-end header-total"
+                style={{ opacity: 0.9 }}
+              >
+                <div className="fw-bold" style={{ fontSize: "16px" }}>
+                  ₹{(displayTotal || 0).toLocaleString()}
+                </div>
+                <small style={{ fontSize: "10px" }}>Total Amount</small>
+              </div>
+              <Button
+                onClick={handleAddProductClick}
+                disabled={disabled || isSubmitting || submissionRef.current}
+                className="header-add-btn"
+                style={{
+                  ...getButtonStyle('outline'),
+                  backgroundColor: "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(10px)",
+                  color: purpleTheme.primary,
+                  borderColor: "rgba(255, 255, 255, 0.3)",
+                  padding: "10px 16px",
+                  fontSize: "13px",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                <FontAwesomeIcon icon={faPlus} className="me-1" />
+                <span className="d-none d-sm-inline">Add New Item</span>
+                <span className="d-sm-none">Add</span>
+              </Button>
+            </div>
           </div>
         </div>
+          {/* </div>
+        </div> */}
 
         {/* Stats Section */}
         <div
@@ -1412,6 +1532,67 @@ function SalesInvoiceFormSection({
         </div>
       </Card>
 
+      {/* Tab Navigation Section */}
+      <Card className="mb-4" style={getCardStyle()}>
+        <Card.Body className="p-0">
+          <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k)}>
+            <Nav variant="tabs" className="nav-fill responsive-tabs" style={{ borderBottom: 'none' }}>
+              <Nav.Item>
+                <Nav.Link 
+                  eventKey="bill"
+                  className="responsive-tab"
+                  style={{
+                    padding: '16px 20px',
+                    fontWeight: '600',
+                    fontSize: '15px',
+                    color: activeTab === 'bill' ? 'white' : purpleTheme.text,
+                    background: activeTab === 'bill' 
+                      ? purpleTheme.gradient 
+                      : 'transparent',
+                    border: 'none',
+                    borderRadius: activeTab === 'bill' ? '12px 12px 0 0' : '0',
+                    transition: 'all 0.3s ease',
+                    minHeight: '60px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFileInvoice} className="me-2 tab-icon" />
+                  <span className="tab-text">With Bill</span>
+                </Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link 
+                  eventKey="non-bill"
+                  className="responsive-tab"
+                  style={{
+                    padding: '16px 20px',
+                    fontWeight: '600',
+                    fontSize: '15px',
+                    color: activeTab === 'non-bill' ? 'white' : purpleTheme.text,
+                    background: activeTab === 'non-bill' 
+                      ? purpleTheme.gradient 
+                      : 'transparent',
+                    border: 'none',
+                    borderRadius: activeTab === 'non-bill' ? '12px 12px 0 0' : '0',
+                    transition: 'all 0.3s ease',
+                    minHeight: '60px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faReceipt} className="me-2 tab-icon" />
+                  <span className="tab-text">Without Bill</span>
+                </Nav.Link>
+              </Nav.Item>
+            </Nav>
+
+            <Tab.Content style={{ minHeight: '400px' }}>
+              <Tab.Pane eventKey="bill">
+                {/* All existing bill functionality goes here */}
+
       {/* Items Table Section */}
       {hasValidItems && (
         <Card
@@ -1442,110 +1623,130 @@ function SalesInvoiceFormSection({
             </div>
           </Card.Header>
           <Card.Body className="p-0">
-            <div className="table-responsive">
-              <Table hover className="mb-0">
+            <div className="table-responsive" style={{ overflowX: 'auto' }}>
+              <Table hover className="mb-0 responsive-items-table" style={{ minWidth: '800px' }}>
                 <thead style={{backgroundColor: purpleTheme.background}}>
                   <tr>
                     <th
+                      className="text-center"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 8px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '40px',
+                        minWidth: '40px'
                       }}
                     >
                       #
                     </th>
                     <th
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 12px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        minWidth: '180px'
                       }}
                     >
                       ITEM
                     </th>
                     {formData.gstEnabled && (
                       <th
+                        className="d-none d-md-table-cell"
                         style={{
-                          fontSize: "13px",
-                          padding: "12px",
+                          fontSize: "12px",
+                          padding: "10px 8px",
                           fontWeight: "600",
                           color: purpleTheme.text,
+                          width: '80px'
                         }}
                       >
                         HSN
                       </th>
                     )}
                     <th
+                      className="text-center"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 8px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '60px'
                       }}
                     >
                       QTY
                     </th>
                     <th
+                      className="d-none d-sm-table-cell text-center"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 8px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '60px'
                       }}
                     >
                       UNIT
                     </th>
                     <th
+                      className="text-end"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 12px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '90px'
                       }}
                     >
                       PRICE
                     </th>
                     <th
+                      className="d-none d-lg-table-cell text-center"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 8px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '80px'
                       }}
                     >
-                      DISCOUNT
+                      DISC
                     </th>
                     {formData.gstEnabled && (
                       <th
+                        className="d-none d-xl-table-cell text-center"
                         style={{
-                          fontSize: "13px",
-                          padding: "12px",
+                          fontSize: "12px",
+                          padding: "10px 8px",
                           fontWeight: "600",
                           color: purpleTheme.text,
+                          width: '90px'
                         }}
                       >
                         TAX
                       </th>
                     )}
                     <th
+                      className="text-end"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 12px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '100px'
                       }}
                     >
                       AMOUNT
                     </th>
                     <th
+                      className="text-center"
                       style={{
-                        fontSize: "13px",
-                        padding: "12px",
+                        fontSize: "12px",
+                        padding: "10px 8px",
                         fontWeight: "600",
                         color: purpleTheme.text,
+                        width: '80px'
                       }}
                     >
                       ACTION
@@ -1563,17 +1764,18 @@ function SalesInvoiceFormSection({
                         }}
                       >
                         <td
+                          className="text-center"
                           style={{
-                            fontSize: "13px",
-                            padding: "12px",
+                            fontSize: "12px",
+                            padding: "10px 8px",
                             color: purpleTheme.text,
                           }}
                         >
                           {index + 1}
                         </td>
-                        <td style={{fontSize: "13px", padding: "12px"}}>
+                        <td style={{fontSize: "12px", padding: "10px 12px"}}>
                           <div>
-                            <div className="fw-semibold text-dark">
+                            <div className="fw-semibold text-dark" style={{ fontSize: "13px", lineHeight: "1.3" }}>
                               {item.itemName}
                             </div>
                             {item.itemCode && (
@@ -1581,7 +1783,7 @@ function SalesInvoiceFormSection({
                                 style={{
                                   backgroundColor: `rgba(${currentConfig.primaryRgb}, 0.1)`,
                                   color: currentConfig.primaryColor,
-                                  fontSize: "10px",
+                                  fontSize: "9px",
                                   fontWeight: "500",
                                 }}
                                 className="mt-1"
@@ -1591,18 +1793,25 @@ function SalesInvoiceFormSection({
                             )}
                           </div>
                           {item.description && (
-                            <small className="text-muted d-block mt-1">
-                              {item.description.length > 40
-                                ? `${item.description.substring(0, 40)}...`
+                            <small className="text-muted d-block mt-1" style={{ fontSize: "10px", lineHeight: "1.2" }}>
+                              {item.description.length > 30
+                                ? `${item.description.substring(0, 30)}...`
                                 : item.description}
                             </small>
                           )}
+                          {/* Mobile-only info */}
+                          <div className="d-sm-none mt-1">
+                            <small className="text-muted" style={{ fontSize: "10px" }}>
+                              {item.unit} | ₹{parseFloat(item.pricePerUnit || 0).toFixed(2)}
+                            </small>
+                          </div>
                         </td>
                         {formData.gstEnabled && (
                           <td
+                            className="d-none d-md-table-cell text-center"
                             style={{
-                              fontSize: "12px",
-                              padding: "12px",
+                              fontSize: "11px",
+                              padding: "10px 8px",
                               color: purpleTheme.textMuted,
                             }}
                           >
@@ -1610,33 +1819,35 @@ function SalesInvoiceFormSection({
                           </td>
                         )}
                         <td
+                          className="text-center"
                           style={{
-                            fontSize: "13px",
-                            padding: "12px",
+                            fontSize: "12px",
+                            padding: "10px 8px",
                             color: purpleTheme.text,
                           }}
                         >
                           <span className="fw-semibold">{item.quantity}</span>
                         </td>
                         <td
+                          className="d-none d-sm-table-cell text-center"
                           style={{
-                            fontSize: "13px",
-                            padding: "12px",
+                            fontSize: "11px",
+                            padding: "10px 8px",
                             color: purpleTheme.textMuted,
                           }}
                         >
                           {item.unit}
                         </td>
-                        <td style={{fontSize: "13px", padding: "12px"}}>
+                        <td className="text-end" style={{fontSize: "12px", padding: "10px 12px"}}>
                           <div className="fw-semibold text-dark">
                             ₹{parseFloat(item.pricePerUnit || 0).toFixed(2)}
                           </div>
                         </td>
-                        <td style={{fontSize: "13px", padding: "12px"}}>
+                        <td className="d-none d-lg-table-cell text-center" style={{fontSize: "11px", padding: "10px 8px"}}>
                           {item.discountPercent > 0 && (
                             <span
                               className="fw-semibold"
-                              style={{color: purpleTheme.warning}}
+                              style={{color: purpleTheme.warning, fontSize: "10px"}}
                             >
                               {item.discountPercent}%
                             </span>
@@ -1644,21 +1855,21 @@ function SalesInvoiceFormSection({
                           {item.discountAmount > 0 && (
                             <div
                               className="fw-semibold"
-                              style={{color: purpleTheme.warning}}
+                              style={{color: purpleTheme.warning, fontSize: "10px"}}
                             >
                               ₹{item.discountAmount.toFixed(2)}
                             </div>
                           )}
                         </td>
                         {formData.gstEnabled && (
-                          <td style={{fontSize: "12px", padding: "12px"}}>
+                          <td className="d-none d-xl-table-cell text-center" style={{fontSize: "10px", padding: "10px 8px"}}>
                             {item.cgstAmount + item.sgstAmount > 0 ? (
                               <div>
-                                <small style={{color: purpleTheme.success}}>
+                                <small style={{color: purpleTheme.success, fontSize: "9px"}}>
                                   C: ₹{item.cgstAmount.toFixed(2)}
                                 </small>
                                 <br />
-                                <small style={{color: purpleTheme.success}}>
+                                <small style={{color: purpleTheme.success, fontSize: "9px"}}>
                                   S: ₹{item.sgstAmount.toFixed(2)}
                                 </small>
                               </div>
@@ -1667,7 +1878,7 @@ function SalesInvoiceFormSection({
                                 style={{
                                   backgroundColor: purpleTheme.textMuted,
                                   color: "white",
-                                  fontSize: "10px",
+                                  fontSize: "8px",
                                 }}
                               >
                                 No Tax
@@ -1675,16 +1886,24 @@ function SalesInvoiceFormSection({
                             )}
                           </td>
                         )}
-                        <td style={{fontSize: "14px", padding: "12px"}}>
+                        <td className="text-end" style={{fontSize: "13px", padding: "10px 12px"}}>
                           <div
                             className="fw-bold"
                             style={{color: purpleTheme.success}}
                           >
                             ₹{(item.amount || 0).toFixed(2)}
                           </div>
+                          {/* Mobile-only discount info */}
+                          <div className="d-lg-none">
+                            {(item.discountPercent > 0 || item.discountAmount > 0) && (
+                              <small style={{color: purpleTheme.warning, fontSize: "9px"}}>
+                                -{item.discountPercent > 0 ? `${item.discountPercent}%` : `₹${item.discountAmount.toFixed(2)}`}
+                              </small>
+                            )}
+                          </div>
                         </td>
-                        <td style={{fontSize: "13px", padding: "12px"}}>
-                          <div className="d-flex gap-1">
+                        <td className="text-center" style={{fontSize: "12px", padding: "10px 8px"}}>
+                          <div className="d-flex gap-1 justify-content-center">
                             <Button
                               variant="outline-primary"
                               size="sm"
@@ -1695,12 +1914,14 @@ function SalesInvoiceFormSection({
                                 submissionRef.current
                               }
                               style={{
-                                padding: "4px 8px",
-                                borderRadius: "6px",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
                                 borderColor: currentConfig.primaryColor,
                                 color: currentConfig.primaryColor,
-                                fontSize: "12px",
+                                fontSize: "10px",
                                 transition: "all 0.2s ease",
+                                minWidth: "28px",
+                                height: "28px"
                               }}
                             >
                               <FontAwesomeIcon icon={faEdit} size="xs" />
@@ -1716,12 +1937,14 @@ function SalesInvoiceFormSection({
                                 submissionRef.current
                               }
                               style={{
-                                padding: "4px 8px",
-                                borderRadius: "6px",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
                                 borderColor: purpleTheme.error,
                                 color: purpleTheme.error,
-                                fontSize: "12px",
+                                fontSize: "10px",
                                 transition: "all 0.2s ease",
+                                minWidth: "28px",
+                                height: "28px"
                               }}
                             >
                               <FontAwesomeIcon icon={faTrash} size="xs" />
@@ -1747,20 +1970,20 @@ function SalesInvoiceFormSection({
           }}
         >
           <Card.Body style={{padding: "24px"}}>
-            <Row className="g-4">
+            <Row className="g-3 g-md-4">
               {/* Payment Button */}
-              <Col lg={gridLayout.payment || 5} md={6}>
+              <Col xs={12} sm={6} lg={gridLayout.payment || 5}>
                 <Button
                   variant={
                     paymentData.amount > 0
                       ? "success"
                       : currentConfig.actionButtonColor
                   }
-                  className="w-100 d-flex align-items-center justify-content-center flex-column border-0 fw-semibold"
+                  className="w-100 d-flex align-items-center justify-content-center flex-column border-0 fw-semibold responsive-payment-btn"
                   style={{
-                    minHeight: "120px",
+                    minHeight: "100px",
                     borderRadius: "12px",
-                    fontSize: "14px",
+                    fontSize: "13px",
                     background:
                       paymentData.amount > 0
                         ? `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`
@@ -1783,10 +2006,10 @@ function SalesInvoiceFormSection({
                         ? faCheckCircle
                         : currentConfig.paymentIcon
                     }
-                    className="mb-2"
+                    className="mb-2 payment-icon"
                     size="lg"
                   />
-                  <span>
+                  <span className="payment-text">
                     {paymentData.amount > 0
                       ? isQuotationsMode
                         ? "Update Terms"
@@ -1794,7 +2017,7 @@ function SalesInvoiceFormSection({
                       : currentConfig.paymentAction}
                   </span>
 
-                  <small className="mt-1" style={{opacity: 0.8}}>
+                  <small className="mt-1 payment-amount" style={{opacity: 0.8, fontSize: "11px"}}>
                     {paymentData.amount > 0
                       ? `₹${itemsTableLogic.formatCurrency(paymentData.amount)}`
                       : `₹${itemsTableLogic.formatCurrency(displayTotal)}`}
@@ -1804,7 +2027,7 @@ function SalesInvoiceFormSection({
 
               {/* GST Breakdown Card */}
               {formData.gstEnabled && totals.totalTax > 0 && (
-                <Col lg={gridLayout.tax || 3} md={6}>
+                <Col xs={12} sm={6} lg={gridLayout.tax || 3}>
                   <Card
                     className="h-100"
                     style={{
@@ -1888,7 +2111,7 @@ function SalesInvoiceFormSection({
               )}
 
               {/* Total Card */}
-              <Col lg={gridLayout.total || 2} md={6}>
+              <Col xs={12} sm={6} lg={gridLayout.total || 2}>
                 <Card
                   className="h-100"
                   style={{
@@ -1979,7 +2202,7 @@ function SalesInvoiceFormSection({
               </Col>
 
               {/* Action Buttons */}
-              <Col lg={gridLayout.actions || 2} md={6}>
+              <Col xs={12} sm={6} lg={gridLayout.actions || 2}>
                 <div className="d-grid gap-2 h-100">
                   <Button
                     variant="outline-info"
@@ -2002,7 +2225,6 @@ function SalesInvoiceFormSection({
                   </Button>
 
                   <Button
-                    variant={currentConfig.saveButtonVariant}
                     onClick={handleSaveInvoice}
                     disabled={
                       !hasValidItems ||
@@ -2012,22 +2234,20 @@ function SalesInvoiceFormSection({
                       (!isQuotationsMode && !formData.customer)
                     }
                     style={{
-                      padding: "12px 12px",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      borderRadius: "8px",
-                      background:
-                        currentConfig.saveButtonVariant === "success"
+                      ...getButtonStyle('success', 'large'),
+                      minWidth: "180px",
+                      background: saving || isSubmitting
+                        ? `linear-gradient(135deg, ${purpleTheme.textMuted} 0%, #9ca3af 100%)`
+                        : currentConfig.saveButtonVariant === "success"
                           ? `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`
-                          : `linear-gradient(135deg, ${currentConfig.primaryColor} 0%, ${purpleTheme.primaryLight} 100%)`,
-                      border: "none",
-                      boxShadow: `0 4px 15px rgba(${currentConfig.primaryRgb}, 0.3)`,
-                      opacity:
-                        saving || isSubmitting || submissionRef.current
-                          ? 0.6
-                          : 1,
-                      transition: "all 0.2s ease",
+                          : purpleTheme.gradient,
+                      boxShadow: saving || isSubmitting 
+                        ? "none" 
+                        : purpleTheme.shadowMd,
+                      transform: saving || isSubmitting ? "none" : "translateY(0)",
+                      cursor: saving || isSubmitting ? "not-allowed" : "pointer"
                     }}
+                    className="border-0"
                   >
                     {saving || isSubmitting ? (
                       <>
@@ -2035,7 +2255,7 @@ function SalesInvoiceFormSection({
                           icon={faSpinner}
                           className="fa-spin me-2"
                         />
-                        Saving...
+                        Processing...
                       </>
                     ) : (
                       <>
@@ -2143,10 +2363,11 @@ function SalesInvoiceFormSection({
           </Modal.Title>
         </Modal.Header>
         <Modal.Body
-          style={{padding: "24px", backgroundColor: purpleTheme.surface}}
+          className="responsive-modal-body"
+          style={{padding: "16px 20px", backgroundColor: purpleTheme.surface}}
         >
-          <Row>
-            <Col md={6}>
+          <Row className="g-3">
+            <Col xs={12} md={6}>
               <Form.Group className="mb-3 position-relative">
                 <Form.Label
                   className="fw-bold"
@@ -2334,11 +2555,11 @@ function SalesInvoiceFormSection({
               </Form.Group>
             </Col>
 
-            <Col md={3}>
+            <Col xs={6} md={3}>
               <Form.Group className="mb-3">
                 <Form.Label
                   className="fw-bold"
-                  style={{color: purpleTheme.error}}
+                  style={{color: purpleTheme.error, fontSize: "13px"}}
                 >
                   Quantity *
                 </Form.Label>
@@ -2348,7 +2569,7 @@ function SalesInvoiceFormSection({
                   onChange={(e) =>
                     handleTempFormChange("quantity", e.target.value)
                   }
-                  style={getInputStyle()}
+                  style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                   placeholder="0"
                   min="0"
                   step="0.01"
@@ -2357,23 +2578,23 @@ function SalesInvoiceFormSection({
               </Form.Group>
             </Col>
 
-            <Col md={3}>
+            <Col xs={6} md={3}>
               <Form.Group className="mb-3">
                 <Form.Label
                   className="fw-bold"
-                  style={{color: purpleTheme.error}}
+                  style={{color: purpleTheme.error, fontSize: "13px"}}
                 >
                   Price *
                 </Form.Label>
                 <InputGroup>
-                  <InputGroup.Text style={getInputStyle()}>₹</InputGroup.Text>
+                  <InputGroup.Text style={{...getInputStyle(), height: "44px", fontSize: "14px"}}>₹</InputGroup.Text>
                   <Form.Control
                     type="number"
                     value={tempFormData.pricePerUnit || ""}
                     onChange={(e) =>
                       handleTempFormChange("pricePerUnit", e.target.value)
                     }
-                    style={getInputStyle()}
+                    style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                     placeholder="0.00"
                     min="0"
                     step="0.01"
@@ -2384,19 +2605,19 @@ function SalesInvoiceFormSection({
             </Col>
           </Row>
 
-          <Row>
-            <Col md={3}>
+          <Row className="g-3">
+            <Col xs={6} md={3}>
               <Form.Group className="mb-3">
                 <Form.Label
                   className="fw-bold"
-                  style={{color: purpleTheme.text}}
+                  style={{color: purpleTheme.text, fontSize: "13px"}}
                 >
                   Unit
                 </Form.Label>
                 <Form.Select
                   value={tempFormData.unit || "PCS"}
                   onChange={(e) => handleTempFormChange("unit", e.target.value)}
-                  style={getInputStyle()}
+                  style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                   disabled={isSubmitting || submissionRef.current}
                 >
                   {itemsTableLogic.unitOptions.map((unit) => (
@@ -2410,7 +2631,7 @@ function SalesInvoiceFormSection({
 
             {formData.gstEnabled && (
               <>
-                <Col md={3}>
+                <Col xs={12} sm={6} md={3}>
                   <Form.Group className="mb-3">
                     <Form.Label
                       className="fw-bold"
@@ -2517,11 +2738,11 @@ function SalesInvoiceFormSection({
                       )}
                   </Form.Group>
                 </Col>
-                <Col md={3}>
+                <Col xs={6} sm={6} md={3}>
                   <Form.Group className="mb-3">
                     <Form.Label
                       className="fw-bold"
-                      style={{color: purpleTheme.text}}
+                      style={{color: purpleTheme.text, fontSize: "13px"}}
                     >
                       Tax Rate (%)
                     </Form.Label>
@@ -2530,7 +2751,7 @@ function SalesInvoiceFormSection({
                       onChange={(e) =>
                         handleTempFormChange("taxRate", e.target.value)
                       }
-                      style={getInputStyle()}
+                      style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                       disabled={isSubmitting || submissionRef.current}
                     >
                       <option value={0}>0% (Exempt)</option>
@@ -2541,11 +2762,11 @@ function SalesInvoiceFormSection({
                     </Form.Select>
                   </Form.Group>
                 </Col>
-                <Col md={3}>
+                <Col xs={12} sm={6} md={3}>
                   <Form.Group className="mb-3">
                     <Form.Label
                       className="fw-bold"
-                      style={{color: purpleTheme.text}}
+                      style={{color: purpleTheme.text, fontSize: "13px"}}
                     >
                       HSN Code
                     </Form.Label>
@@ -2555,7 +2776,7 @@ function SalesInvoiceFormSection({
                       onChange={(e) =>
                         handleTempFormChange("hsnCode", e.target.value)
                       }
-                      style={getInputStyle()}
+                      style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                       placeholder="HSN Code"
                       disabled={isSubmitting || submissionRef.current}
                     />
@@ -2564,11 +2785,11 @@ function SalesInvoiceFormSection({
               </>
             )}
 
-            <Col md={3}>
+            <Col xs={6} md={3}>
               <Form.Group className="mb-3">
                 <Form.Label
                   className="fw-bold"
-                  style={{color: purpleTheme.text}}
+                  style={{color: purpleTheme.text, fontSize: "13px"}}
                 >
                   Discount %
                 </Form.Label>
@@ -2578,7 +2799,7 @@ function SalesInvoiceFormSection({
                   onChange={(e) =>
                     handleTempFormChange("discountPercent", e.target.value)
                   }
-                  style={getInputStyle()}
+                  style={{...getInputStyle(), height: "44px", fontSize: "14px"}}
                   placeholder="0"
                   min="0"
                   max="100"
@@ -2590,7 +2811,7 @@ function SalesInvoiceFormSection({
           </Row>
 
           <Form.Group className="mb-3">
-            <Form.Label className="fw-bold" style={{color: purpleTheme.text}}>
+            <Form.Label className="fw-bold" style={{color: purpleTheme.text, fontSize: "13px"}}>
               Description
             </Form.Label>
             <Form.Control
@@ -2600,7 +2821,7 @@ function SalesInvoiceFormSection({
               onChange={(e) =>
                 handleTempFormChange("description", e.target.value)
               }
-              style={getInputStyle()}
+              style={{...getInputStyle(), minHeight: "60px", fontSize: "14px"}}
               placeholder="Enter item description..."
               disabled={isSubmitting || submissionRef.current}
             />
@@ -2861,26 +3082,270 @@ function SalesInvoiceFormSection({
           box-shadow: 0 0 0 0.25rem rgba(${currentConfig.primaryRgb}, 0.25) !important;
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 767.98px) {
-          .d-grid.gap-2 {
-            gap: 1rem !important;
+        /* Comprehensive Mobile-First Responsive Styles */
+        
+        /* Mobile Devices (up to 575px) */
+        @media (max-width: 575.98px) {
+          .responsive-header {
+            padding: 16px 12px !important;
           }
-
-          .table-responsive {
+          
+          .header-icon {
+            width: 40px !important;
+            height: 40px !important;
+          }
+          
+          .header-title {
+            font-size: 16px !important;
+          }
+          
+          .header-subtitle {
+            font-size: 11px !important;
+          }
+          
+          .header-badge {
+            font-size: 9px !important;
+            padding: 2px 6px !important;
+          }
+          
+          .header-total {
+            font-size: 13px !important;
+          }
+          
+          .header-add-btn {
+            padding: 8px 12px !important;
             font-size: 12px !important;
           }
-
-          .card-body {
+          
+          .responsive-tabs .responsive-tab {
+            padding: 12px 16px !important;
+            font-size: 13px !important;
+            min-height: 50px !important;
+          }
+          
+          .tab-icon {
+            font-size: 12px !important;
+          }
+          
+          .responsive-items-table {
+            min-width: 600px !important;
+            font-size: 11px !important;
+          }
+          
+          .responsive-payment-btn {
+            min-height: 80px !important;
+            font-size: 12px !important;
+          }
+          
+          .payment-icon {
+            font-size: 16px !important;
+          }
+          
+          .payment-text {
+            font-size: 11px !important;
+          }
+          
+          .payment-amount {
+            font-size: 10px !important;
+          }
+          
+          .responsive-modal-body {
+            padding: 12px 16px !important;
+          }
+          
+          .responsive-non-bill-form {
             padding: 16px !important;
+          }
+          
+          .card-body {
+            padding: 12px !important;
+          }
+          
+          .d-grid.gap-2 {
+            gap: 0.75rem !important;
+          }
+        }
+        
+        /* Small Tablets (576px to 767px) */
+        @media (min-width: 576px) and (max-width: 767.98px) {
+          .responsive-header {
+            padding: 18px 16px !important;
+          }
+          
+          .header-title {
+            font-size: 17px !important;
+          }
+          
+          .responsive-tabs .responsive-tab {
+            padding: 14px 18px !important;
+            font-size: 14px !important;
+            min-height: 55px !important;
+          }
+          
+          .responsive-items-table {
+            min-width: 700px !important;
+            font-size: 12px !important;
+          }
+          
+          .responsive-payment-btn {
+            min-height: 90px !important;
+          }
+          
+          .responsive-modal-body {
+            padding: 14px 18px !important;
+          }
+          
+          .responsive-non-bill-form {
+            padding: 18px !important;
+          }
+        }
+        
+        /* Large Tablets (768px to 991px) */
+        @media (min-width: 768px) and (max-width: 991.98px) {
+          .responsive-items-table {
+            min-width: 750px !important;
+          }
+          
+          .card-body {
+            padding: 18px !important;
+          }
+        }
+        
+        /* General Mobile Optimizations */
+        @media (max-width: 767.98px) {
+          /* Touch-friendly buttons */
+          .btn {
+            min-height: 44px !important;
+            padding: 10px 16px !important;
+            font-size: 14px !important;
+            border-radius: 8px !important;
+          }
+          
+          .btn-sm {
+            min-height: 36px !important;
+            padding: 8px 12px !important;
+            font-size: 12px !important;
+          }
+          
+          /* Form controls */
+          .form-control, .form-select {
+            min-height: 44px !important;
+            font-size: 14px !important;
+            padding: 10px 14px !important;
+          }
+          
+          .form-label {
+            font-size: 13px !important;
+            margin-bottom: 6px !important;
+          }
+          
+          /* Cards */
+          .card {
+            border-radius: 12px !important;
+          }
+          
+          .card-header {
+            padding: 12px 16px !important;
+          }
+          
+          /* Modals */
+          .modal-dialog {
+            margin: 0.5rem !important;
+          }
+          
+          .modal-content {
+            border-radius: 12px !important;
+          }
+          
+          .modal-header {
+            padding: 12px 16px !important;
+          }
+          
+          .modal-title {
+            font-size: 16px !important;
+          }
+          
+          .modal-footer {
+            padding: 12px 16px !important;
+            gap: 8px !important;
+          }
+          
+          /* Tables */
+          .table-responsive {
+            border-radius: 8px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+          }
+          
+          .table th, .table td {
+            padding: 8px 6px !important;
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+          }
+          
+          /* Badges */
+          .badge {
+            font-size: 9px !important;
+            padding: 2px 6px !important;
+          }
+          
+          /* Input groups */
+          .input-group-text {
+            min-height: 44px !important;
+            font-size: 14px !important;
+            padding: 10px 12px !important;
+          }
+        }
+        
+        /* Landscape phone adjustments */
+        @media (max-width: 767.98px) and (orientation: landscape) {
+          .responsive-header {
+            padding: 12px 16px !important;
+          }
+          
+          .responsive-tabs .responsive-tab {
+            min-height: 45px !important;
+            padding: 10px 16px !important;
+          }
+          
+          .responsive-payment-btn {
+            min-height: 70px !important;
+          }
+        }
+        
+        /* Extra optimizations for very small screens */
+        @media (max-width: 320px) {
+          .container-fluid {
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+          }
+          
+          .responsive-header {
+            padding: 12px 8px !important;
+          }
+          
+          .header-title {
+            font-size: 14px !important;
+          }
+          
+          .responsive-tabs .responsive-tab {
+            padding: 10px 12px !important;
+            font-size: 12px !important;
+          }
+          
+          .tab-text {
+            display: none !important;
+          }
+          
+          .responsive-items-table {
+            min-width: 500px !important;
           }
         }
 
-        /* Animation for cards */
+        /* Animation for cards - optimized for mobile */
         @keyframes fadeInUp {
           from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(15px);
           }
           to {
             opacity: 1;
@@ -2889,7 +3354,42 @@ function SalesInvoiceFormSection({
         }
 
         .card {
-          animation: fadeInUp 0.4s ease-out;
+          animation: fadeInUp 0.3s ease-out;
+        }
+        
+        /* Mobile-specific utilities */
+        @media (max-width: 767.98px) {
+          .mobile-hide {
+            display: none !important;
+          }
+          
+          .mobile-stack {
+            flex-direction: column !important;
+          }
+          
+          .mobile-center {
+            text-align: center !important;
+          }
+          
+          .mobile-full-width {
+            width: 100% !important;
+          }
+          
+          /* Improved touch targets */
+          .btn, .form-control, .form-select {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+          }
+          
+          /* Prevent zoom on input focus */
+          .form-control, .form-select {
+            font-size: 16px !important;
+          }
+          
+          /* Better scroll behavior */
+          .table-responsive {
+            -webkit-overflow-scrolling: touch;
+          }
         }
 
         /* Spinner animation */
@@ -2924,6 +3424,445 @@ function SalesInvoiceFormSection({
           background: ${purpleTheme.borderDark};
         }
       `}</style>
+
+              </Tab.Pane>
+              
+              <Tab.Pane eventKey="non-bill">
+                <div style={{ padding: '24px' }}>
+                  {/* Non-Bill Header */}
+                  <div className="text-center mb-4">
+                    <div className="d-inline-flex align-items-center justify-content-center mb-3"
+                         style={{
+                           width: '80px',
+                           height: '80px',
+                           background: purpleTheme.gradient,
+                           borderRadius: '50%',
+                           color: 'white'
+                         }}>
+                      <FontAwesomeIcon icon={faReceipt} size="2x" />
+                    </div>
+                    <h4 style={{ color: purpleTheme.text, fontWeight: '700' }}>Purchase Without Bill</h4>
+                    <p style={{ color: purpleTheme.textMuted, maxWidth: '500px', margin: '0 auto' }}>
+                      Record purchases made without formal bills or receipts (e.g., buying from individuals, small vendors, etc.)
+                    </p>
+                  </div>
+
+                  {/* Non-Bill Form */}
+                  <Card style={{ 
+                    border: `2px solid ${purpleTheme.border}`,
+                    borderRadius: '16px',
+                    boxShadow: purpleTheme.shadow
+                  }}>
+                    <Card.Body className="responsive-non-bill-form" style={{ padding: '20px' }}>
+                      <Row className="g-3">
+                        {/* Item Description */}
+                        <Col xs={12} md={6} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faBox} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Item Description *
+                            </Form.Label>
+                            <Form.Control
+                              type="text"
+                              value={nonBillData.itemDescription}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, itemDescription: e.target.value }))}
+                              placeholder="Enter item description (e.g., Laptop, Mobile Phone, etc.)"
+                              style={getInputStyle('itemDescription')}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Purchase Date */}
+                        <Col xs={12} md={6} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faCalendarAlt} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Purchase Date *
+                            </Form.Label>
+                            <Form.Control
+                              type="date"
+                              value={nonBillData.purchaseDate}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                              style={getInputStyle('purchaseDate')}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Vendor/Seller Name */}
+                        <Col xs={12} md={6} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faUser} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Vendor/Seller Name *
+                            </Form.Label>
+                            <Form.Control
+                              type="text"
+                              value={nonBillData.vendorName}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, vendorName: e.target.value }))}
+                              placeholder="Enter vendor or seller name"
+                              style={getInputStyle('vendorName')}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Category */}
+                        <Col xs={12} md={6} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faClipboardList} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Category
+                            </Form.Label>
+                            <Form.Select
+                              value={nonBillData.category}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, category: e.target.value }))}
+                              style={getInputStyle('category')}
+                            >
+                              <option value="">Select category</option>
+                              <option value="Electronics">Electronics</option>
+                              <option value="Furniture">Furniture</option>
+                              <option value="Stationery">Stationery</option>
+                              <option value="Equipment">Equipment</option>
+                              <option value="Supplies">Supplies</option>
+                              <option value="Services">Services</option>
+                              <option value="Other">Other</option>
+                            </Form.Select>
+                          </Form.Group>
+                        </Col>
+
+                        {/* Quantity */}
+                        <Col xs={6} sm={4} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text, fontSize: "13px" }}>
+                              <FontAwesomeIcon icon={faBoxOpen} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Quantity *
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={nonBillData.quantity}
+                              onChange={(e) => {
+                                const qty = e.target.value;
+                                const unitPrice = parseFloat(nonBillData.unitPrice) || 0;
+                                setNonBillData(prev => ({ 
+                                  ...prev, 
+                                  quantity: qty,
+                                  amount: qty && unitPrice ? (parseFloat(qty) * unitPrice).toFixed(2) : prev.amount
+                                }));
+                              }}
+                              placeholder="1"
+                              style={{...getInputStyle('quantity'), height: "44px", fontSize: "14px"}}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Unit Price */}
+                        <Col xs={6} sm={4} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text, fontSize: "13px" }}>
+                              <FontAwesomeIcon icon={faRupeeSign} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Unit Price *
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={nonBillData.unitPrice}
+                              onChange={(e) => {
+                                const price = e.target.value;
+                                const qty = parseFloat(nonBillData.quantity) || 0;
+                                setNonBillData(prev => ({ 
+                                  ...prev, 
+                                  unitPrice: price,
+                                  amount: price && qty ? (parseFloat(price) * qty).toFixed(2) : prev.amount
+                                }));
+                              }}
+                              placeholder="0.00"
+                              style={{...getInputStyle('unitPrice'), height: "44px", fontSize: "14px"}}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Total Amount */}
+                        <Col xs={12} sm={4} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faMoneyBillWave} className="me-2" style={{ color: purpleTheme.success }} />
+                              Total Amount *
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={nonBillData.amount}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, amount: e.target.value }))}
+                              placeholder="0.00"
+                              style={{
+                                ...getInputStyle('amount'),
+                                backgroundColor: `${purpleTheme.success}10`,
+                                borderColor: purpleTheme.success,
+                                fontWeight: '600'
+                              }}
+                            />
+                          </Form.Group>
+                        </Col>
+
+                        {/* Notes */}
+                        <Col xs={12} className="mb-3">
+                          <Form.Group>
+                            <Form.Label className="fw-bold" style={{ color: purpleTheme.text }}>
+                              <FontAwesomeIcon icon={faEdit} className="me-2" style={{ color: purpleTheme.primary }} />
+                              Additional Notes
+                            </Form.Label>
+                            <Form.Control
+                              as="textarea"
+                              rows={3}
+                              value={nonBillData.notes}
+                              onChange={(e) => setNonBillData(prev => ({ ...prev, notes: e.target.value }))}
+                              placeholder="Any additional information about this purchase..."
+                              style={{
+                                ...getInputStyle('notes'),
+                                minHeight: '80px',
+                                resize: 'vertical'
+                              }}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+
+                      {/* Action Buttons */}
+                      <div className="d-flex flex-column flex-sm-row justify-content-end gap-2 gap-sm-3 mt-4 pt-3"
+                           style={{ borderTop: `2px solid ${purpleTheme.border}` }}>
+                          <Button
+                            variant="outline-info"
+                            onClick={async () => {
+                              try {
+                                const result = await salesService.getNonBillSummary(companyId);
+                                if (result.success) {
+                                  addToast(`Total Non-bill Items: ${result.data.totalItems} | Total Value: ₹${result.data.totalAmount.toFixed(2)}`, 'info');
+                                }
+                              } catch (error) {
+                                console.error('Error fetching non-bill summary:', error);
+                              }
+                            }}
+                            style={{
+                              ...getButtonStyle('outline'),
+                              borderColor: purpleTheme.primary,
+                              color: purpleTheme.primary
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                            View All Non-Bills
+                          </Button>
+                          
+                          <Button
+                            variant="outline-secondary"
+                            onClick={() => {
+                              setNonBillData({
+                                itemDescription: '',
+                                purchaseDate: '',
+                                vendorName: '',
+                                amount: '',
+                                quantity: '',
+                                unitPrice: '',
+                                notes: '',
+                                category: ''
+                              });
+                            }}
+                            style={{
+                              ...getButtonStyle('outline'),
+                              borderColor: purpleTheme.textMuted,
+                              color: purpleTheme.textMuted
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faTimes} className="me-2" />
+                            Clear Form
+                          </Button>                        <Button
+                          onClick={() => {
+                            // Handle non-bill form submission
+                            if (nonBillData.itemDescription && nonBillData.vendorName && nonBillData.amount) {
+                              // Create a structured non-bill entry similar to regular items
+                              const nonBillEntry = {
+                                id: Date.now(), // Simple ID generation
+                                type: 'non-bill',
+                                itemName: nonBillData.itemDescription,
+                                vendorName: nonBillData.vendorName,
+                                purchaseDate: nonBillData.purchaseDate,
+                                category: nonBillData.category,
+                                quantity: parseFloat(nonBillData.quantity) || 1,
+                                pricePerUnit: parseFloat(nonBillData.unitPrice) || 0,
+                                amount: parseFloat(nonBillData.amount) || 0,
+                                notes: nonBillData.notes,
+                                createdAt: new Date().toISOString()
+                              };
+                              
+                              // Add to form data through parent component
+                              const currentNonBillItems = formData.nonBillItems || [];
+                              onFormDataChange('nonBillItems', [...currentNonBillItems, nonBillEntry]);
+                              
+                              // Clear form after successful save
+                              setNonBillData({
+                                itemDescription: '',
+                                purchaseDate: '',
+                                vendorName: '',
+                                amount: '',
+                                quantity: '',
+                                unitPrice: '',
+                                notes: '',
+                                category: ''
+                              });
+                              
+                              addToast(`Non-bill purchase "${nonBillData.itemDescription}" recorded successfully! ₹${nonBillData.amount}`, 'success');
+                            } else {
+                              addToast('Please fill in all required fields', 'error');
+                            }
+                          }}
+                          disabled={
+                            !nonBillData.itemDescription || 
+                            !nonBillData.vendorName || 
+                            !nonBillData.amount ||
+                            !nonBillData.purchaseDate ||
+                            !nonBillData.quantity ||
+                            !nonBillData.unitPrice
+                          }
+                          style={getButtonStyle('success')}
+                        >
+                          <FontAwesomeIcon icon={faSave} className="me-2" />
+                          Save Non-Bill Purchase
+                        </Button>
+                      </div>
+                    </Card.Body>
+                  </Card>
+
+                  {/* Display saved non-bill items */}
+                  {formData.nonBillItems && formData.nonBillItems.length > 0 && (
+                    <Card className="mt-4" style={{ 
+                      border: `2px solid ${purpleTheme.success}`,
+                      borderRadius: '16px',
+                      boxShadow: purpleTheme.shadow
+                    }}>
+                      <Card.Header style={{
+                        background: `linear-gradient(135deg, ${purpleTheme.success} 0%, #34d399 100%)`,
+                        color: 'white',
+                        padding: '20px 24px',
+                        borderRadius: '14px 14px 0 0'
+                      }}>
+                        <h5 className="mb-0 fw-bold">
+                          <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+                          Saved Non-Bill Purchases ({formData.nonBillItems.length})
+                        </h5>
+                      </Card.Header>
+                      <Card.Body className="p-0">
+                        <div className="table-responsive">
+                          <Table hover className="mb-0">
+                            <thead style={{ backgroundColor: purpleTheme.background }}>
+                              <tr>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>#</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>ITEM</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>VENDOR</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>DATE</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>QTY</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>RATE</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>AMOUNT</th>
+                                <th style={{ padding: '16px', fontWeight: '600', color: purpleTheme.text, fontSize: '13px' }}>ACTIONS</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {formData.nonBillItems.map((item, index) => (
+                                <tr key={item.id}>
+                                  <td style={{ padding: '16px', color: purpleTheme.textMuted, fontSize: '14px' }}>
+                                    {index + 1}
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <div>
+                                      <div style={{ fontWeight: '600', color: purpleTheme.text, fontSize: '14px' }}>
+                                        {item.itemName}
+                                      </div>
+                                      {item.category && (
+                                        <Badge style={{ 
+                                          backgroundColor: purpleTheme.primary, 
+                                          fontSize: '10px',
+                                          marginTop: '4px'
+                                        }}>
+                                          {item.category}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '16px', color: purpleTheme.text, fontSize: '14px' }}>
+                                    {item.vendorName}
+                                  </td>
+                                  <td style={{ padding: '16px', color: purpleTheme.textMuted, fontSize: '13px' }}>
+                                    {new Date(item.purchaseDate).toLocaleDateString('en-IN')}
+                                  </td>
+                                  <td style={{ padding: '16px', color: purpleTheme.text, fontSize: '14px' }}>
+                                    {item.quantity}
+                                  </td>
+                                  <td style={{ padding: '16px', color: purpleTheme.text, fontSize: '14px' }}>
+                                    ₹{item.pricePerUnit.toFixed(2)}
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <span style={{ 
+                                      fontWeight: '700', 
+                                      color: purpleTheme.success,
+                                      fontSize: '14px'
+                                    }}>
+                                      ₹{item.amount.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <Button
+                                      variant="outline-danger"
+                                      size="sm"
+                                      onClick={() => {
+                                        const updatedItems = formData.nonBillItems.filter(i => i.id !== item.id);
+                                        onFormDataChange('nonBillItems', updatedItems);
+                                        addToast('Non-bill item removed', 'success');
+                                      }}
+                                      style={{
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        padding: '6px 12px'
+                                      }}
+                                    >
+                                      <FontAwesomeIcon icon={faTrash} />
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </div>
+                        
+                        {/* Total Summary */}
+                        <div style={{
+                          padding: '20px 24px',
+                          backgroundColor: purpleTheme.background,
+                          borderTop: `2px solid ${purpleTheme.border}`
+                        }}>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span style={{ fontWeight: '600', color: purpleTheme.text }}>
+                              Total Non-Bill Purchases:
+                            </span>
+                            <span style={{ 
+                              fontWeight: '700', 
+                              color: purpleTheme.success,
+                              fontSize: '18px'
+                            }}>
+                              ₹{formData.nonBillItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  )}
+                </div>
+              </Tab.Pane>
+            </Tab.Content>
+          </Tab.Container>
+        </Card.Body>
+      </Card>
+
     </Container>
   );
 }

@@ -4,8 +4,12 @@ const User = require("../models/User");
 
 const authenticate = async (req, res, next) => {
   try {
+    console.log('🔐 Authentication middleware called for:', req.method, req.path);
+    
     const authHeader = req.headers.authorization;
     const xAuthToken = req.headers["x-auth-token"]; // ✅ ADD: Support for x-auth-token header
+
+    console.log('🔑 Auth headers:', { authHeader: authHeader ? 'Present' : 'Missing', xAuthToken: xAuthToken ? 'Present' : 'Missing' });
 
     let token = null;
 
@@ -54,12 +58,14 @@ const authenticate = async (req, res, next) => {
 
     req.user = {
       id: user._id,
+      _id: user._id,  // Add _id for compatibility
       email: user.email,
       name: user.name,
       role: user.role,
       phone: user.phone,
       isActive: user.isActive,
       currentCompany: req.headers["x-company-id"] || null,
+      companyId: req.headers["x-company-id"] || null,  // Add companyId for compatibility
       tokenExp: decoded.exp,
       tokenIat: decoded.iat,
     };
@@ -223,12 +229,14 @@ const optionalAuth = async (req, res, next) => {
         if (user && user.isActive) {
           req.user = {
             id: user._id,
+            _id: user._id,  // Add _id for compatibility
             email: user.email,
             role: user.role,
             name: user.name,
             phone: user.phone,
             isActive: user.isActive,
             currentCompany: req.headers["x-company-id"] || null,
+            companyId: req.headers["x-company-id"] || null,  // Add companyId for compatibility
             tokenExp: decoded.exp,
             tokenIat: decoded.iat,
           };

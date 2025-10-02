@@ -6,7 +6,7 @@ const API_BASE_URL = apiConfig.baseURL;
 // ✅ Regular API client for authenticated requests
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000, // Increased to 60 seconds
   headers: {
     "Content-Type": "application/json",
   },
@@ -15,7 +15,7 @@ const apiClient = axios.create({
 // ✅ NEW: Admin API client for admin-only requests (no aggressive logout)
 const adminApiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000, // Increased to 60 seconds
   headers: {
     "Content-Type": "application/json",
   },
@@ -24,10 +24,24 @@ const adminApiClient = axios.create({
 // ✅ Regular client interceptors
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    // Try multiple token sources
+    const token = localStorage.getItem("token") || 
+                  localStorage.getItem("accessToken") || 
+                  sessionStorage.getItem("token") || 
+                  sessionStorage.getItem("accessToken");
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      config.headers["x-auth-token"] = token; // Add x-auth-token as fallback
     }
+    
+    console.log('🔑 Company service request headers:', {
+      hasAuth: !!config.headers.Authorization,
+      hasXAuth: !!config.headers["x-auth-token"],
+      url: config.url,
+      method: config.method
+    });
+    
     return config;
   },
   (error) => {
@@ -150,9 +164,17 @@ class CompanyService {
         }
       });
 
+      console.log('🏢 Creating company with payload:', payload);
       const response = await apiClient.post("/api/companies", payload);
+      console.log('✅ Company created successfully:', response.data);
       return response.data;
     } catch (error) {
+      console.error('❌ Company creation failed:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       throw error;
     }
   }

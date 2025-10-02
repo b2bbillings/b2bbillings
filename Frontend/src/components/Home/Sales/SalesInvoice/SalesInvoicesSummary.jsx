@@ -128,293 +128,489 @@ function SalesInvoicesSummary({
 
   const isPositiveGrowth = displayData.growthPercentage >= 0;
 
+  // Enhanced styling theme object
+  const modernTheme = {
+    colors: {
+      primary: '#6366f1',
+      primaryLight: '#8b5cf6',
+      primaryDark: '#4f46e5',
+      success: '#10b981',
+      successLight: '#34d399',
+      warning: '#f59e0b',
+      warningLight: '#fbbf24',
+      background: '#ffffff',
+      backgroundLight: '#f8fafc',
+      border: '#e2e8f0',
+      text: '#1e293b',
+      textLight: '#64748b',
+      shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+      gradient: {
+        primary: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        success: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        warning: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        info: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
+      }
+    },
+    borderRadius: {
+      sm: '0.375rem',
+      md: '0.5rem',
+      lg: '0.75rem',
+      xl: '1rem'
+    }
+  };
+
   if (loading) {
     return (
-      <Card className="h-100 mb-3" style={{borderRadius: 0}}>
-        <Card.Body className="p-3">
-          <div className="text-center">
-            <div
-              className="spinner-border spinner-border-sm text-primary"
-              role="status"
-            >
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p className="mt-2 mb-0 text-muted small">Loading summary...</p>
-          </div>
-        </Card.Body>
-      </Card>
+      <div 
+        style={{
+          background: modernTheme.colors.background,
+          borderRadius: modernTheme.borderRadius.xl,
+          boxShadow: modernTheme.colors.shadow,
+          border: `1px solid ${modernTheme.colors.border}`,
+          padding: '2rem',
+          textAlign: 'center',
+          height: '200px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
+        <div 
+          style={{
+            width: '40px',
+            height: '40px',
+            border: `3px solid ${modernTheme.colors.primary}`,
+            borderTop: '3px solid transparent',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }}
+        />
+        <p style={{ 
+          marginTop: '1rem', 
+          marginBottom: 0, 
+          color: modernTheme.colors.textLight,
+          fontSize: '0.875rem'
+        }}>
+          Loading summary...
+        </p>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
     );
   }
 
   return (
-    <div style={{height: "100%"}} className="mb-3">
-      <Card className="h-100 shadow-sm" style={{borderRadius: 0}}>
-        <Card.Header
-          className={`py-2 ${
-            isQuotationsMode ? "bg-info" : "bg-primary"
-          } text-white`}
-          style={{borderRadius: 0}}
+    <div style={{ height: "100%" }}>
+      <div 
+        style={{
+          background: modernTheme.colors.background,
+          borderRadius: modernTheme.borderRadius.xl,
+          boxShadow: modernTheme.colors.shadowLg,
+          border: `1px solid ${modernTheme.colors.border}`,
+          overflow: 'hidden',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        {/* Modern header with gradient */}
+        <div 
+          style={{
+            background: isQuotationsMode ? modernTheme.colors.gradient.info : modernTheme.colors.gradient.primary,
+            color: 'white',
+            padding: '1rem 1.5rem',
+            textAlign: 'center',
+            position: 'relative'
+          }}
         >
-          <h6 className="mb-0 fw-bold text-center small">
+          <div 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: `${modernTheme.borderRadius.xl} ${modernTheme.borderRadius.xl} 0 0`
+            }}
+          />
+          <div style={{ position: 'relative', zIndex: 1 }}>
             <FontAwesomeIcon
               icon={isQuotationsMode ? faQuoteRight : faChartLine}
               className="me-2"
+              style={{ fontSize: '1.1rem' }}
             />
-            {labels.title}
-          </h6>
-        </Card.Header>
+            <span style={{ fontWeight: '600', fontSize: '1rem' }}>
+              {labels.title}
+            </span>
+          </div>
+        </div>
 
-        <Card.Body className="p-2" style={{borderRadius: 0}}>
-          <Row className="g-1 mb-2">
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className={`p-1 ${
-                        isQuotationsMode ? "bg-info" : "bg-primary"
-                      }`}
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={isQuotationsMode ? faQuoteRight : faChartLine}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg={isPositiveGrowth ? "success" : "danger"}
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      <FontAwesomeIcon
-                        icon={isPositiveGrowth ? faArrowUp : faArrowDown}
-                        className="me-1"
-                      />
-                      {Math.abs(displayData.growthPercentage).toFixed(0)}%
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.totalLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-dark"
-                    style={{fontSize: "0.8rem"}}
+        {/* Modern body */}
+        <div 
+          style={{
+            padding: '1rem',
+            background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, ${modernTheme.colors.backgroundLight} 100%)`,
+            flex: 1
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {/* Total Amount Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, #f1f5f9 100%)`,
+                borderRadius: modernTheme.borderRadius.lg,
+                padding: '1rem',
+                border: `1px solid ${modernTheme.colors.border}`,
+                boxShadow: modernTheme.colors.shadow,
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '250px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: isQuotationsMode ? modernTheme.colors.gradient.info : modernTheme.colors.gradient.primary,
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: isQuotationsMode ? modernTheme.colors.gradient.info : modernTheme.colors.gradient.primary,
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: modernTheme.borderRadius.md,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: modernTheme.colors.shadow
+                    }}
                   >
-                    {formatCurrency(displayData.totalAmount)}
-                  </h6>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className="bg-success p-1"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={faWallet}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg="success"
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      {labels.paidStatus}
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.receivedLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-success"
-                    style={{fontSize: "0.8rem"}}
-                  >
-                    {formatCurrency(displayData.received)}
-                  </h6>
-                  <small className="text-muted" style={{fontSize: "0.6rem"}}>
-                    {displayData.totalAmount > 0
-                      ? (
-                          (displayData.received / displayData.totalAmount) *
-                          100
-                        ).toFixed(0)
-                      : 0}
-                    %
-                  </small>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className="bg-warning p-1"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={faReceipt}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg="warning"
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      {labels.pendingStatus}
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.balanceLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-warning"
-                    style={{fontSize: "0.8rem"}}
-                  >
-                    {formatCurrency(displayData.balance)}
-                  </h6>
-                  <small className="text-muted" style={{fontSize: "0.6rem"}}>
-                    {displayData.totalAmount > 0
-                      ? (
-                          (displayData.balance / displayData.totalAmount) *
-                          100
-                        ).toFixed(0)
-                      : 0}
-                    %
-                  </small>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
-
-          <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-            <Card.Body className="p-2" style={{borderRadius: 0}}>
-              <div className="d-flex justify-content-between align-items-center py-1 border-bottom border-light">
-                <div className="d-flex align-items-center">
-                  <FontAwesomeIcon
-                    icon={faCalendarDay}
-                    className={`me-2 ${
-                      isQuotationsMode ? "text-info" : "text-primary"
-                    }`}
-                    style={{fontSize: "0.6rem"}}
-                  />
-                  <span className="text-muted" style={{fontSize: "0.65rem"}}>
-                    {labels.todayLabel}
-                  </span>
-                </div>
-                <span
-                  className={`fw-bold ${
-                    isQuotationsMode ? "text-info" : "text-primary"
-                  }`}
-                  style={{fontSize: "0.7rem"}}
-                >
-                  {formatCurrency(displayData.todaysAmount)}
-                </span>
-              </div>
-
-              <div className="d-flex justify-content-between align-items-center py-1 border-bottom border-light">
-                <div className="d-flex align-items-center">
-                  <FontAwesomeIcon
-                    icon={isQuotationsMode ? faQuoteRight : faFileInvoice}
-                    className="text-secondary me-2"
-                    style={{fontSize: "0.6rem"}}
-                  />
-                  <span className="text-muted" style={{fontSize: "0.65rem"}}>
-                    {labels.countLabel}
-                  </span>
-                </div>
-                <span
-                  className="fw-bold text-secondary"
-                  style={{fontSize: "0.7rem"}}
-                >
-                  {displayData.totalCount || 0}
-                </span>
-              </div>
-
-              <div className="d-flex justify-content-between align-items-center py-1">
-                <div className="d-flex align-items-center">
-                  <FontAwesomeIcon
-                    icon={faRupeeSign}
-                    className="text-success me-2"
-                    style={{fontSize: "0.6rem"}}
-                  />
-                  <span className="text-muted" style={{fontSize: "0.65rem"}}>
-                    {labels.avgLabel}
-                  </span>
-                </div>
-                <span
-                  className="fw-bold text-success"
-                  style={{fontSize: "0.7rem"}}
-                >
-                  {formatCurrency(displayData.avgValue)}
-                </span>
-              </div>
-
-              {isQuotationsMode && displayData.convertedCount > 0 && (
-                <div className="d-flex justify-content-between align-items-center py-1 border-top border-light">
-                  <div className="d-flex align-items-center">
                     <FontAwesomeIcon
-                      icon={faFileInvoice}
-                      className="text-purple me-2"
-                      style={{fontSize: "0.6rem"}}
+                      icon={isQuotationsMode ? faQuoteRight : faChartLine}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
                     />
-                    <span className="text-muted" style={{fontSize: "0.65rem"}}>
-                      Converted
-                    </span>
                   </div>
-                  <span
-                    className="fw-bold text-purple"
-                    style={{fontSize: "0.7rem"}}
+                  <div 
+                    style={{
+                      background: isPositiveGrowth ? modernTheme.colors.success : '#ef4444',
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: modernTheme.borderRadius.md,
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
                   >
-                    {displayData.convertedCount}
+                    <FontAwesomeIcon
+                      icon={isPositiveGrowth ? faArrowUp : faArrowDown}
+                      style={{ marginRight: '0.25rem', fontSize: '0.7rem' }}
+                    />
+                    {Math.abs(displayData.growthPercentage).toFixed(0)}%
+                  </div>
+                </div>
+                <p style={{ color: modernTheme.colors.textLight, marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.totalLabel}
+                </p>
+                <h5 style={{ color: modernTheme.colors.text, marginBottom: 0, fontWeight: '700', fontSize: '1.1rem' }}>
+                  {formatCurrency(displayData.totalAmount)}
+                </h5>
+              </div>
+            </div>
+
+            {/* Received/Approved Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, #ecfdf5 100%)`,
+                borderRadius: modernTheme.borderRadius.lg,
+                padding: '1rem',
+                border: `1px solid ${modernTheme.colors.success}25`,
+                boxShadow: modernTheme.colors.shadow,
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '250px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: modernTheme.colors.gradient.success,
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: modernTheme.colors.gradient.success,
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: modernTheme.borderRadius.md,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: modernTheme.colors.shadow
+                    }}
+                  >
+                    <FontAwesomeIcon
+                      icon={faWallet}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: modernTheme.colors.success,
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: modernTheme.borderRadius.md,
+                      fontSize: '0.7rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {labels.paidStatus}
+                  </div>
+                </div>
+                <p style={{ color: modernTheme.colors.textLight, marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.receivedLabel}
+                </p>
+                <h6 style={{ color: modernTheme.colors.success, marginBottom: '0.25rem', fontWeight: '700', fontSize: '1rem' }}>
+                  {formatCurrency(displayData.received)}
+                </h6>
+                <small style={{ color: modernTheme.colors.textLight, fontSize: '0.7rem' }}>
+                  {displayData.totalAmount > 0
+                    ? ((displayData.received / displayData.totalAmount) * 100).toFixed(0)
+                    : 0}% of total
+                </small>
+              </div>
+            </div>
+
+            {/* Balance/Pending Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, #fffbeb 100%)`,
+                borderRadius: modernTheme.borderRadius.lg,
+                padding: '1rem',
+                border: `1px solid ${modernTheme.colors.warning}25`,
+                boxShadow: modernTheme.colors.shadow,
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '250px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: modernTheme.colors.gradient.warning,
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: modernTheme.colors.gradient.warning,
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: modernTheme.borderRadius.md,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: modernTheme.colors.shadow
+                    }}
+                  >
+                    <FontAwesomeIcon
+                      icon={faReceipt}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: modernTheme.colors.warning,
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: modernTheme.borderRadius.md,
+                      fontSize: '0.7rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {labels.pendingStatus}
+                  </div>
+                </div>
+                <p style={{ color: modernTheme.colors.textLight, marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.balanceLabel}
+                </p>
+                <h6 style={{ color: modernTheme.colors.warning, marginBottom: '0.25rem', fontWeight: '700', fontSize: '1rem' }}>
+                  {formatCurrency(displayData.balance)}
+                </h6>
+                <small style={{ color: modernTheme.colors.textLight, fontSize: '0.7rem' }}>
+                  {displayData.totalAmount > 0
+                    ? ((displayData.balance / displayData.totalAmount) * 100).toFixed(0)
+                    : 0}% of total
+                </small>
+              </div>
+            </div>
+          </div>
+
+          {/* Details Section */}
+          <div 
+            style={{
+              background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, ${modernTheme.colors.backgroundLight} 100%)`,
+              borderRadius: modernTheme.borderRadius.lg,
+              padding: '1rem',
+              border: `1px solid ${modernTheme.colors.border}`,
+              boxShadow: modernTheme.colors.shadow
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: `1px solid ${modernTheme.colors.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <FontAwesomeIcon
+                  icon={faCalendarDay}
+                  style={{ 
+                    color: isQuotationsMode ? '#06b6d4' : modernTheme.colors.primary, 
+                    marginRight: '0.5rem',
+                    fontSize: '0.875rem'
+                  }}
+                />
+                <span style={{ color: modernTheme.colors.textLight, fontSize: '0.8rem' }}>
+                  {labels.todayLabel}
+                </span>
+              </div>
+              <span style={{ 
+                fontWeight: '700', 
+                color: isQuotationsMode ? '#06b6d4' : modernTheme.colors.primary,
+                fontSize: '0.85rem'
+              }}>
+                {formatCurrency(displayData.todaysAmount)}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: `1px solid ${modernTheme.colors.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <FontAwesomeIcon
+                  icon={isQuotationsMode ? faQuoteRight : faFileInvoice}
+                  style={{ color: modernTheme.colors.textLight, marginRight: '0.5rem', fontSize: '0.875rem' }}
+                />
+                <span style={{ color: modernTheme.colors.textLight, fontSize: '0.8rem' }}>
+                  {labels.countLabel}
+                </span>
+              </div>
+              <span style={{ fontWeight: '700', color: modernTheme.colors.text, fontSize: '0.85rem' }}>
+                {displayData.totalCount || 0}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <FontAwesomeIcon
+                  icon={faRupeeSign}
+                  style={{ color: modernTheme.colors.success, marginRight: '0.5rem', fontSize: '0.875rem' }}
+                />
+                <span style={{ color: modernTheme.colors.textLight, fontSize: '0.8rem' }}>
+                  {labels.avgLabel}
+                </span>
+              </div>
+              <span style={{ fontWeight: '700', color: modernTheme.colors.success, fontSize: '0.85rem' }}>
+                {formatCurrency(displayData.avgValue)}
+              </span>
+            </div>
+
+            {isQuotationsMode && displayData.convertedCount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderTop: `1px solid ${modernTheme.colors.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <FontAwesomeIcon
+                    icon={faFileInvoice}
+                    style={{ color: modernTheme.colors.primaryLight, marginRight: '0.5rem', fontSize: '0.875rem' }}
+                  />
+                  <span style={{ color: modernTheme.colors.textLight, fontSize: '0.8rem' }}>
+                    Converted
                   </span>
                 </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Card.Body>
-      </Card>
+                <span style={{ fontWeight: '700', color: modernTheme.colors.primaryLight, fontSize: '0.85rem' }}>
+                  {displayData.convertedCount}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <style>{`
-        .text-purple {
-          color: #8b5cf6 !important;
+        /* Enhanced hover effects for cards */
+        .summary-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        .summary-card:hover {
+          transform: translateY(-2px);
+          box-shadow: ${modernTheme.colors.shadowLg};
+        }
+
+        /* Responsive adjustments */
         @media (max-width: 575.98px) {
-          .card-body {
-            padding: 1rem !important;
+          .summary-header {
+            padding: 0.75rem 1rem !important;
           }
 
-          h6 {
+          .summary-body {
+            padding: 0.75rem !important;
+          }
+
+          .summary-card {
+            padding: 0.75rem !important;
+          }
+
+          h5, h6 {
             font-size: 0.9rem !important;
           }
         }
 
-        @media (max-width: 991.98px) {
-          .card {
-            margin-bottom: 1rem;
+        @media (max-width: 767.98px) {
+          .summary-cards-container {
+            gap: 0.5rem;
           }
+        }
+
+        /* Loading animation */
+        @keyframes shimmer {
+          0% { background-position: -200px 0; }
+          100% { background-position: calc(200px + 100%) 0; }
+        }
+
+        .shimmer {
+          background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+          background-size: 200px 100%;
+          animation: shimmer 1.5s infinite;
         }
       `}</style>
     </div>

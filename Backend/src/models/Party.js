@@ -144,11 +144,33 @@ const partySchema = new mongoose.Schema(
     },
     phoneNumbers: [phoneNumberSchema],
 
+    // ✅ NEW: Profile Image
+    profileImage: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: [500, "Profile image URL cannot exceed 500 characters"],
+    },
+
     // Company Details
     companyName: {
       type: String,
       trim: true,
       maxlength: [100, "Company name cannot exceed 100 characters"],
+      default: "",
+    },
+
+    // ✅ NEW: Shop Information
+    shopName: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Shop name cannot exceed 100 characters"],
+      default: "",
+    },
+    shopOwner: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Shop owner name cannot exceed 100 characters"],
       default: "",
     },
 

@@ -17,6 +17,7 @@ import {
   faCog,
   faShoppingCart,
   faFileInvoice,
+  faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import {useNavigate, useParams} from "react-router-dom";
 
@@ -32,6 +33,8 @@ function PurchaseBillsHeader({
   currentCompany,
   addToast,
   onNavigate,
+  showFilters,
+  onToggleFilters,
 }) {
   const navigate = useNavigate();
   const {companyId: urlCompanyId} = useParams();
@@ -149,6 +152,25 @@ function PurchaseBillsHeader({
 
             <Col lg={6} md={5}>
               <div className="d-flex justify-content-end gap-2 flex-wrap">
+                {/* Filter Button */}
+                <Button
+                  size="sm"
+                  className={`d-flex align-items-center px-3 fw-semibold custom-filter-btn ${showFilters ? 'active' : ''}`}
+                  onClick={onToggleFilters}
+                  style={{
+                    background: showFilters 
+                      ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' 
+                      : 'transparent',
+                    border: '2px solid #6366f1',
+                    borderRadius: '0.5rem',
+                    color: showFilters ? 'white' : '#6366f1',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFilter} className="me-2" />
+                  <span className="d-none d-sm-inline">Filter</span>
+                </Button>
+
                 <Button
                   variant="primary"
                   size="sm"
@@ -286,6 +308,27 @@ function PurchaseBillsHeader({
         }
 
         .custom-outline-primary:focus {
+          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
+        }
+
+        .custom-filter-btn {
+          transition: all 0.3s ease;
+        }
+
+        .custom-filter-btn:hover {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+          color: white !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .custom-filter-btn.active {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+          color: white !important;
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .custom-filter-btn:focus {
           box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
         }
 

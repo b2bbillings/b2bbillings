@@ -23,6 +23,7 @@ import {
   faDotCircle,
   faTimes,
   faCheck,
+  faBox,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import "./Sidebar.css";
@@ -53,6 +54,8 @@ const NAVIGATION_CONSTANTS = Object.freeze({
 // ✅ PERFORMANCE: Pre-computed route patterns (removed insights, reports, settings)
 const ROUTE_PATTERNS = new Map([
   ["daybook", [/\/daybook/, /\/companies\/[^/]+\/daybook/]],
+  ["categories", [/\/categories/, /\/companies\/[^/]+\/categories/]],
+  ["items", [/\/items/, /\/companies\/[^/]+\/items/]],
   ["parties", [/\/parties/, /\/companies\/[^/]+\/parties/]],
   ["quotations", [/\/quotations/, /\/companies\/[^/]+\/quotations/]],
   ["invoices", [/\/sales/, /\/invoices/, /\/companies\/[^/]+\/sales/]],
@@ -72,6 +75,20 @@ const NAVIGATION_ITEMS = [
     id: "dailySummary",
     label: "Day Book",
     icon: faBook,
+    type: "single",
+    requiresCompany: false,
+  },
+  {
+    id: "categories",
+    label: "Category Management",
+    icon: faClipboardList,
+    type: "single",
+    requiresCompany: false,
+  },
+  {
+    id: "items",
+    label: "Item Management",
+    icon: faBox,
     type: "single",
     requiresCompany: false,
   },
@@ -341,6 +358,20 @@ const Sidebar = React.memo(
         const route = effectiveCompanyId
           ? `/companies/${effectiveCompanyId}/daybook`
           : "/daybook";
+        navigate(route);
+      });
+
+      handlers.set("categories", () => {
+        const route = effectiveCompanyId
+          ? `/companies/${effectiveCompanyId}/categories`
+          : "/categories";
+        navigate(route);
+      });
+
+      handlers.set("items", () => {
+        const route = effectiveCompanyId
+          ? `/companies/${effectiveCompanyId}/items`
+          : "/items";
         navigate(route);
       });
 

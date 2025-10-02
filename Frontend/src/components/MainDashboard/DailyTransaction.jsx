@@ -20,6 +20,9 @@ import {
   faRefresh,
 } from "@fortawesome/free-solid-svg-icons";
 
+// Import AdvertisementDisplay component
+import AdvertisementDisplay from "../Advertisements/AdvertisementDisplay";
+
 // Import services for real data fetching
 import transactionService from "../../services/transactionService";
 import salesService from "../../services/salesService";
@@ -78,6 +81,90 @@ const styles = `
   color: #64748b;
   margin: 0;
   font-size: 0.9rem;
+}
+
+/* Advertisement integration styles */
+.transaction-banner-ads {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  min-height: 120px;
+  position: relative;
+}
+
+.ad-placeholder {
+  background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
+  border: 2px dashed #3b82f6;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: #1e40af;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.ad-placeholder::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.ad-placeholder-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.ad-placeholder h4 {
+  margin-bottom: 0.75rem;
+  color: #1e40af;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.ad-placeholder p {
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  color: #3730a3;
+  opacity: 0.8;
+}
+
+.ad-placeholder-demo {
+  margin-top: 1rem;
+}
+
+.demo-ad-banner {
+  background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+  transform: scale(0.9);
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+.ad-placeholder:hover .demo-ad-banner {
+  transform: scale(1);
+  opacity: 1;
 }
 
 .refresh-button {
@@ -493,6 +580,9 @@ function DailyTransaction({
   onNavigate,
   addToast,
   isOnline = true,
+  bannerAds = [],
+  onAdClick,
+  onAdImpression,
 }) {
   const navigate = useNavigate();
   const [loadingAction, setLoadingAction] = useState(null);
@@ -1050,6 +1140,33 @@ function DailyTransaction({
             <FontAwesomeIcon icon={faRefresh} />
           </button>
         </div>
+
+        {/* Advertisement Space - Integrated inside Daily Transactions */}
+        {bannerAds && bannerAds.length > 0 ? (
+          <div className="transaction-banner-ads mb-4">
+            <AdvertisementDisplay
+              ads={bannerAds}
+              section="banner"
+              autoScrollInterval={10000}
+              showControls={true}
+              onAdClick={onAdClick}
+              onAdImpression={onAdImpression}
+              className="transaction-banner-ad"
+            />
+          </div>
+        ) : (
+          <div className="ad-placeholder mb-4">
+            <div className="ad-placeholder-content">
+              <h4>📢 Advertisement Space</h4>
+              <p>Banner ads will appear here inside Daily Transactions</p>
+              <div className="ad-placeholder-demo">
+                <div className="demo-ad-banner">
+                  <span>Your ads will display in this prominent space</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quick Stats - Real Data */}
         <div className="quick-stats">

@@ -492,7 +492,9 @@ function MainNavbar({
   const handleProfileAction = (action) => {
     switch (action) {
       case "profile":
-        onNavigate?.("profile");
+        // Navigate to profile page instead of modal
+        navigate("/profile");
+        addToast?.("Opening profile...", "info");
         break;
       case "settings":
         onNavigate?.("settings");
@@ -1736,6 +1738,8 @@ function MainNavbar({
           }
         }
       `}</style>
+
+
     </>
   );
 }

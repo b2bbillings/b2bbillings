@@ -13,6 +13,9 @@ const {
   exportUsers,
   searchUsers,
   getUserDetailsForAdmin,
+  getUserProfileWithShops,
+  updateUserProfile,
+  getUserDashboard,
 } = require("../controllers/userController");
 
 // ============================================================================
@@ -66,5 +69,14 @@ router.patch("/:id/reset-login-attempts", resetLoginAttempts);
 
 // GET /api/users/:id/details - Get detailed user info for admin
 router.get("/:id/details", getUserDetailsForAdmin);
+
+// GET /api/users/:userId/profile - Get user profile with associated shops
+router.get("/:userId/profile", getUserProfileWithShops);
+
+// PUT /api/users/:userId/profile - Update user profile
+router.put("/:userId/profile", updateUserProfile);
+
+// GET /api/users/:userId/dashboard - Get user dashboard data
+router.get("/:userId/dashboard", getUserDashboard);
 
 module.exports = router;

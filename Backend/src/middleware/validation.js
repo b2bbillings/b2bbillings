@@ -6,6 +6,11 @@ const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
+        console.log('❌ Validation Errors:', {
+            requestBody: JSON.stringify(req.body, null, 2),
+            errors: errors.array(),
+            timestamp: new Date().toISOString()
+        });
         const errorMessages = errors.array().map(error => error.msg);
         return res.status(400).json({
             success: false,

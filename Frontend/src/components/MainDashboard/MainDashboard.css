@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MAIN DASHBOARD - COMPACT RESPONSIVE LAYOUT
+   MAIN DASHBOARD - COMPACT RESPONSIVE LAYOUT WITH ADVERTISEMENTS
    ========================================================================== */
 
 /* CSS Custom Properties */
@@ -47,6 +47,11 @@
   
   /* Transitions */
   --transition: 0.15s ease-out;
+  
+  /* Advertisement specific variables */
+  --ad-banner-height: 200px;
+  --ad-sidebar-width: 300px;
+  --ad-whatsapp-height: 120px;
   
   /* Z-index */
   --z-sticky: 1020;
@@ -759,6 +764,304 @@
   
   .mobile-quick-chat .btn {
     min-height: 46px;
+  }
+}
+
+/* ==========================================================================
+   ADVERTISEMENT SECTIONS
+   ========================================================================== */
+
+/* Banner Advertisement Section */
+.banner-ad-section {
+  margin: var(--spacing-md) 0;
+  padding: 0 var(--spacing-lg);
+  position: relative;
+  z-index: 10;
+}
+
+.banner-ad-section.mobile-banner {
+  margin: var(--spacing-sm) 0;
+  padding: 0 var(--spacing-md);
+}
+
+.banner-ad-wrapper {
+  max-width: 100%;
+  height: var(--ad-banner-height);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  background: var(--dashboard-gray-50);
+}
+
+.banner-ad-wrapper .banner-ad {
+  height: 100%;
+  width: 100%;
+}
+
+/* WhatsApp Section Ads */
+.whatsapp-ads-section {
+  margin-bottom: var(--spacing-lg);
+}
+
+.whatsapp-ads-section .whatsapp-ad {
+  height: var(--ad-whatsapp-height);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.mobile-whatsapp-ads {
+  padding: 0 var(--spacing-md);
+}
+
+.mobile-whatsapp-ads .mobile-whatsapp-ad {
+  height: var(--ad-whatsapp-height);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Sidebar Advertisement Section */
+.right-column {
+  padding-left: var(--spacing-lg);
+}
+
+.sidebar-ads-section {
+  position: sticky;
+  top: var(--spacing-lg);
+  height: fit-content;
+}
+
+.sidebar-ads-section .sidebar-ad {
+  height: 400px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  background: var(--dashboard-gray-50);
+}
+
+.mobile-sidebar-ads {
+  padding: 0 var(--spacing-md);
+}
+
+.mobile-sidebar-ads .mobile-sidebar-ad {
+  height: 180px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Single View Layout with Sidebar Ads */
+.single-view-layout {
+  display: flex;
+  gap: var(--spacing-lg);
+  height: 100%;
+}
+
+.single-view-layout .main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.single-view-layout .sidebar-ads {
+  flex: 0 0 var(--ad-sidebar-width);
+  position: sticky;
+  top: var(--spacing-lg);
+  height: fit-content;
+}
+
+.single-view-layout .single-view-sidebar-ad {
+  height: 400px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+/* Chat View Ads */
+.chat-view-ads {
+  padding: 0 var(--spacing-lg);
+}
+
+.chat-view-ads .chat-view-ad {
+  height: var(--ad-whatsapp-height);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Advertisement Responsive Design */
+@media (max-width: 1400px) {
+  :root {
+    --ad-sidebar-width: 280px;
+  }
+  
+  .sidebar-ads-section .sidebar-ad {
+    height: 350px;
+  }
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --ad-sidebar-width: 260px;
+    --ad-banner-height: 180px;
+  }
+  
+  .sidebar-ads-section .sidebar-ad {
+    height: 300px;
+  }
+}
+
+@media (max-width: 992px) {
+  .right-column {
+    display: none;
+  }
+  
+  .single-view-layout {
+    flex-direction: column;
+  }
+  
+  .single-view-layout .sidebar-ads {
+    flex: none;
+    position: relative;
+    top: auto;
+    margin-top: var(--spacing-lg);
+  }
+  
+  .single-view-layout .single-view-sidebar-ad {
+    height: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --ad-banner-height: 150px;
+    --ad-whatsapp-height: 100px;
+  }
+  
+  .banner-ad-section {
+    margin: var(--spacing-sm) 0;
+    padding: 0 var(--spacing-sm);
+  }
+  
+  .chat-view-ads {
+    padding: 0 var(--spacing-sm);
+  }
+  
+  .mobile-sidebar-ads .mobile-sidebar-ad {
+    height: 150px;
+  }
+  
+  .single-view-layout .single-view-sidebar-ad {
+    height: 150px;
+  }
+}
+
+/* Advertisement Loading States */
+.ad-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--dashboard-gray-50);
+  border-radius: var(--radius-md);
+}
+
+.ad-loading .spinner-border {
+  color: var(--dashboard-primary);
+}
+
+/* Advertisement Error States */
+.ad-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--dashboard-gray-100);
+  border: 1px dashed var(--dashboard-gray-300);
+  border-radius: var(--radius-md);
+  color: var(--dashboard-gray-500);
+  font-size: var(--font-size-sm);
+}
+
+/* Advertisement Hover Effects */
+.banner-ad:hover,
+.sidebar-ad:hover,
+.whatsapp-ad:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+  transition: all var(--transition);
+}
+
+/* Popup Active State for Ads */
+.popup-active .banner-ad,
+.popup-active .sidebar-ad,
+.popup-active .whatsapp-ad {
+  pointer-events: none;
+  filter: blur(1px);
+}
+
+/* Advertisement Section Animations */
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-ad-section {
+  animation: slideInFromTop 0.5s ease-out;
+}
+
+.sidebar-ads-section {
+  animation: slideInFromRight 0.5s ease-out 0.1s both;
+}
+
+.whatsapp-ads-section {
+  animation: slideInFromBottom 0.5s ease-out 0.2s both;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .banner-ad-wrapper,
+  .sidebar-ads-section .sidebar-ad,
+  .whatsapp-ads-section .whatsapp-ad {
+    border: 2px solid var(--dashboard-gray-700);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .banner-ad-section,
+  .sidebar-ads-section,
+  .whatsapp-ads-section {
+    animation: none;
+  }
+  
+  .banner-ad:hover,
+  .sidebar-ad:hover,
+  .whatsapp-ad:hover {
+    transform: none;
+    transition: none;
   }
   
   .view-tab {

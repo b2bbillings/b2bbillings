@@ -450,6 +450,72 @@ const saleSchema = new mongoose.Schema(
       },
     ],
 
+    // Non-Bill Items Array - For purchases without formal bills
+    nonBillItems: [
+      {
+        // Item Details
+        itemName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        vendorName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        purchaseDate: {
+          type: Date,
+          required: true,
+        },
+        category: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        
+        // Quantity and Pricing
+        quantity: {
+          type: Number,
+          required: true,
+          min: 0.01,
+          default: 1,
+        },
+        pricePerUnit: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        amount: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        
+        // Additional Information
+        notes: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        
+        // Tracking
+        type: {
+          type: String,
+          default: "non-bill",
+          enum: ["non-bill"],
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        createdBy: {
+          type: String,
+          default: "system",
+        },
+      },
+    ],
+
     // Totals Section - COMPLETE
     totals: {
       subtotal: {

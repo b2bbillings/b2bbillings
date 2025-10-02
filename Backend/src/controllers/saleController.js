@@ -6862,6 +6862,148 @@ const saleController = {
       });
     }
   },
+
+  // Non-Bill Items Management
+  getNonBillItems: async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const { page = 1, limit = 10, search = "" } = req.query;
+
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid Company ID is required",
+        });
+      }
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Build search query
+      let searchQuery = { companyId: new mongoose.Types.ObjectId(companyId) };
+      
+      if (search) {
+        searchQuery.$or = [
+          { "nonBillItems.itemName": { $regex: search, $options: "i" } },
+          { "nonBillItems.vendorName": { $regex: search, $options: "i" } },
+          { "nonBillItems.category": { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // Get sales with non-bill items
+      const sales = await Sale.find(searchQuery)
+        .select("invoiceNumber invoiceDate nonBillItems")
+        .populate("customer", "name businessName")
+        .sort({ invoiceDate: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      // Extract and flatten non-bill items
+      const nonBillItems = [];
+      sales.forEach(sale => {
+        if (sale.nonBillItems && sale.nonBillItems.length > 0) {
+          sale.nonBillItems.forEach(item => {
+            nonBillItems.push({
+              ...item.toObject(),
+              invoiceNumber: sale.invoiceNumber,
+              invoiceDate: sale.invoiceDate,
+              invoiceId: sale._id,
+            });
+          });
+        }
+      });
+
+      // Get total count for pagination
+      const totalSales = await Sale.countDocuments(searchQuery);
+
+      res.json({
+        success: true,
+        data: {
+          nonBillItems,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalSales / parseInt(limit)),
+            totalItems: totalSales,
+            itemsPerPage: parseInt(limit),
+          },
+        },
+        message: "Non-bill items retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error retrieving non-bill items:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve non-bill items",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get non-bill items summary/statistics
+  getNonBillSummary: async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid Company ID is required",
+        });
+      }
+
+      let dateFilter = { companyId: new mongoose.Types.ObjectId(companyId) };
+      
+      if (startDate && endDate) {
+        dateFilter.invoiceDate = {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate),
+        };
+      }
+
+      // Aggregate non-bill items data
+      const summary = await Sale.aggregate([
+        { $match: dateFilter },
+        { $unwind: "$nonBillItems" },
+        {
+          $group: {
+            _id: null,
+            totalItems: { $sum: 1 },
+            totalAmount: { $sum: "$nonBillItems.amount" },
+            totalQuantity: { $sum: "$nonBillItems.quantity" },
+            avgAmount: { $avg: "$nonBillItems.amount" },
+            categories: { $addToSet: "$nonBillItems.category" },
+            vendors: { $addToSet: "$nonBillItems.vendorName" },
+          },
+        },
+      ]);
+
+      const result = summary.length > 0 ? summary[0] : {
+        totalItems: 0,
+        totalAmount: 0,
+        totalQuantity: 0,
+        avgAmount: 0,
+        categories: [],
+        vendors: [],
+      };
+
+      res.json({
+        success: true,
+        data: {
+          ...result,
+          categoriesCount: result.categories.length,
+          vendorsCount: result.vendors.length,
+        },
+        message: "Non-bill summary retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error retrieving non-bill summary:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve non-bill summary",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = saleController;

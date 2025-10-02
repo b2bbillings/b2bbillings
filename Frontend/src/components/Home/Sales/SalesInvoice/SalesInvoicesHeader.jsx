@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Navbar,
   Container,
@@ -16,8 +16,11 @@ import {
   faEllipsisH,
   faCog,
   faClipboardList,
+  faFilter,
+  faFileInvoice,
 } from "@fortawesome/free-solid-svg-icons";
 import {useNavigate, useParams} from "react-router-dom";
+import BillForm from "../../../Bills/BillForm";
 
 function SalesInvoicesHeader({
   searchTerm,
@@ -31,9 +34,12 @@ function SalesInvoicesHeader({
   currentCompany,
   addToast,
   onNavigate,
+  showFilters,
+  onToggleFilters,
 }) {
   const navigate = useNavigate();
   const {companyId: urlCompanyId} = useParams();
+  const [showBillForm, setShowBillForm] = useState(false);
 
   const getCompanyId = () => {
     return (
@@ -94,6 +100,32 @@ function SalesInvoicesHeader({
     }
   };
 
+  const handleCreateBill = (e) => {
+    e.preventDefault();
+    const effectiveCompanyId = getCompanyId();
+
+    if (!effectiveCompanyId) {
+      addToast?.(
+        "Please select a company first to create a bill",
+        "warning"
+      );
+      return;
+    }
+
+    setShowBillForm(true);
+    addToast?.("Opening bill form...", "info");
+  };
+
+  const handleBillFormClose = () => {
+    setShowBillForm(false);
+  };
+
+  const handleBillFormSave = (billData) => {
+    addToast?.("Bill created successfully!", "success");
+    setShowBillForm(false);
+    // Optionally refresh the page or update the list
+  };
+
   const handleMoreOptions = (e) => {
     e.preventDefault();
     if (onMoreOptions && typeof onMoreOptions === "function") {
@@ -121,46 +153,119 @@ function SalesInvoicesHeader({
     }
   };
 
+  // Enhanced styling theme object
+  const modernTheme = {
+    colors: {
+      primary: '#6366f1',
+      primaryLight: '#8b5cf6',
+      primaryDark: '#4f46e5',
+      success: '#10b981',
+      successDark: '#059669',
+      background: '#ffffff',
+      backgroundGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      border: '#e2e8f0',
+      shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+    },
+    borderRadius: {
+      sm: '0.375rem',
+      md: '0.5rem',
+      lg: '0.75rem',
+      xl: '1rem'
+    }
+  };
+
   return (
-    <div className="p-3">
-      <Navbar
-        expand="lg"
-        className="bg-light border border-2 border-start-0 border-end-0 border-top-0 shadow-sm invoice-navbar"
-        style={{borderRadius: 0}}
+    <div>
+      <div
+        style={{
+          background: modernTheme.colors.background,
+          borderRadius: modernTheme.borderRadius.lg,
+          boxShadow: modernTheme.colors.shadow,
+          border: `1px solid ${modernTheme.colors.border}`,
+          overflow: 'hidden'
+        }}
       >
-        <Container fluid>
-          <Row className="w-100 align-items-center g-3">
-            {/* Search Section */}
-            <Col lg={6} md={7}>
-              <InputGroup>
-                <InputGroup.Text
-                  className="bg-white border-end-0 custom-input-text"
-                  style={{borderRadius: 0}}
-                >
-                  <FontAwesomeIcon icon={faSearch} className="text-primary" />
-                </InputGroup.Text>
-                <Form.Control
-                  type="text"
-                  placeholder="Search invoices, customers, items..."
-                  value={searchTerm || ""}
-                  onChange={onSearchChange}
-                  className="border-start-0 custom-form-control"
-                  style={{borderRadius: 0}}
-                />
-              </InputGroup>
+        <Container fluid className="p-0">
+          <Row className="w-100 align-items-center g-0" style={{ minHeight: '70px' }}>
+            {/* Search Section - Enhanced */}
+            <Col lg={6} md={7} className="p-3">
+              <div 
+                style={{
+                  background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, #f8fafc 100%)`,
+                  borderRadius: modernTheme.borderRadius.lg,
+                  padding: '0.5rem',
+                  border: `1px solid ${modernTheme.colors.border}`,
+                  boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}
+              >
+                <InputGroup>
+                  <InputGroup.Text
+                    style={{
+                      background: `linear-gradient(135deg, ${modernTheme.colors.primary}15, ${modernTheme.colors.primaryLight}10)`,
+                      border: 'none',
+                      borderRadius: `${modernTheme.borderRadius.md} 0 0 ${modernTheme.borderRadius.md}`,
+                      color: modernTheme.colors.primary
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faSearch} />
+                  </InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    placeholder="Search invoices, customers, items..."
+                    value={searchTerm || ""}
+                    onChange={onSearchChange}
+                    style={{
+                      border: 'none',
+                      borderRadius: `0 ${modernTheme.borderRadius.md} ${modernTheme.borderRadius.md} 0`,
+                      fontSize: '0.95rem',
+                      padding: '0.75rem 1rem'
+                    }}
+                    className="modern-search-input"
+                  />
+                </InputGroup>
+              </div>
             </Col>
 
-            {/* Action Buttons Section */}
-            <Col lg={6} md={5}>
-              <div className="d-flex justify-content-end gap-2 flex-wrap">
+            {/* Action Buttons Section - Enhanced */}
+            <Col lg={6} md={5} className="p-3">
+              <div className="d-flex justify-content-end gap-3 flex-wrap align-items-center">
+                {/* Filter Button */}
+                <Button
+                  size="sm"
+                  className={`modern-filter-btn d-flex align-items-center px-3 py-2 fw-semibold ${showFilters ? 'active' : ''}`}
+                  onClick={onToggleFilters}
+                  style={{
+                    background: showFilters 
+                      ? `linear-gradient(135deg, ${modernTheme.colors.primary} 0%, ${modernTheme.colors.primaryLight} 100%)` 
+                      : 'transparent',
+                    border: `2px solid ${modernTheme.colors.primary}`,
+                    borderRadius: modernTheme.borderRadius.lg,
+                    color: showFilters ? 'white' : modernTheme.colors.primary,
+                    fontSize: '0.9rem',
+                    boxShadow: showFilters ? modernTheme.colors.shadow : 'none',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFilter} className="me-2" />
+                  <span className="d-none d-sm-inline">Filter</span>
+                </Button>
+                
                 {/* Add Sales Invoice Button */}
                 <Button
-                  variant="primary"
                   size="sm"
-                  className="d-flex align-items-center px-3 fw-semibold custom-primary-btn"
+                  className="modern-primary-btn d-flex align-items-center px-4 py-2 fw-semibold"
                   onClick={handleAddSale}
                   disabled={!getCompanyId()}
-                  style={{borderRadius: 0}}
+                  style={{
+                    background: `linear-gradient(135deg, ${modernTheme.colors.primary} 0%, ${modernTheme.colors.primaryLight} 100%)`,
+                    border: 'none',
+                    borderRadius: modernTheme.borderRadius.lg,
+                    color: 'white',
+                    fontSize: '0.9rem',
+                    boxShadow: modernTheme.colors.shadow,
+                    transition: 'all 0.3s ease'
+                  }}
                 >
                   <FontAwesomeIcon icon={faClipboardList} className="me-2" />
                   <span className="d-none d-sm-inline">Add Sale</span>
@@ -169,152 +274,143 @@ function SalesInvoicesHeader({
 
                 {/* Add Purchase Button */}
                 <Button
-                  variant="success"
                   size="sm"
-                  className="d-flex align-items-center px-3 fw-semibold custom-success-btn"
+                  className="modern-success-btn d-flex align-items-center px-4 py-2 fw-semibold"
                   onClick={handleAddPurchase}
                   disabled={!getCompanyId()}
-                  style={{borderRadius: 0}}
+                  style={{
+                    background: `linear-gradient(135deg, ${modernTheme.colors.success} 0%, ${modernTheme.colors.successDark} 100%)`,
+                    border: 'none',
+                    borderRadius: modernTheme.borderRadius.lg,
+                    color: 'white',
+                    fontSize: '0.9rem',
+                    boxShadow: modernTheme.colors.shadow,
+                    transition: 'all 0.3s ease'
+                  }}
                 >
                   <FontAwesomeIcon icon={faPlus} className="me-2" />
                   <span className="d-none d-sm-inline">Add Purchase</span>
                   <span className="d-sm-none">Purchase</span>
                 </Button>
 
-                {/* Settings ButtonGroup */}
-                <ButtonGroup size="sm">
-                  <Button
-                    variant="outline-secondary"
-                    onClick={handleMoreOptions}
-                    title="More Options"
-                    className="d-flex align-items-center justify-content-center custom-outline-primary"
-                    style={{minWidth: "38px", borderRadius: 0}}
-                  >
-                    <FontAwesomeIcon icon={faEllipsisH} />
-                  </Button>
-                  <Button
-                    variant="outline-secondary"
-                    onClick={handleSettings}
-                    title="Settings"
-                    className="d-flex align-items-center justify-content-center custom-outline-primary"
-                    style={{minWidth: "38px", borderRadius: 0}}
-                  >
-                    <FontAwesomeIcon icon={faCog} />
-                  </Button>
-                </ButtonGroup>
+                {/* Create Bill Button */}
+                <Button
+                  size="sm"
+                  className="modern-info-btn d-flex align-items-center px-4 py-2 fw-semibold"
+                  onClick={handleCreateBill}
+                  disabled={!getCompanyId()}
+                  style={{
+                    background: `linear-gradient(135deg, ${modernTheme.colors.info} 0%, ${modernTheme.colors.infoDark} 100%)`,
+                    border: 'none',
+                    borderRadius: modernTheme.borderRadius.lg,
+                    color: 'white',
+                    fontSize: '0.9rem',
+                    boxShadow: modernTheme.colors.shadow,
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
+                  <span className="d-none d-sm-inline">Create Bill</span>
+                  <span className="d-sm-none">Bill</span>
+                </Button>
               </div>
             </Col>
           </Row>
         </Container>
-      </Navbar>
+      </div>
 
       <style>{`
-        /* Container spacing */
-        .p-3 {
-          margin: 0.75rem 0;
+        /* Modern search input styling */
+        .modern-search-input:focus {
+          border-color: ${modernTheme.colors.primary} !important;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+          outline: none;
         }
 
-        /* Navbar theme */
-        .invoice-navbar {
-          background: linear-gradient(
-            135deg,
-            rgba(99, 102, 241, 0.03) 0%,
-            rgba(139, 92, 246, 0.02) 100%
-          ) !important;
-          border-color: #6366f1 !important;
-          backdrop-filter: blur(10px);
-          margin-bottom: 0.5rem;
+        .modern-search-input::placeholder {
+          color: #94a3b8;
+          font-style: italic;
         }
 
-        /* Form controls */
-        .custom-form-control:focus {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
+        /* Modern button hover effects */
+        .modern-primary-btn:hover {
+          background: linear-gradient(135deg, ${modernTheme.colors.primaryDark} 0%, #7c3aed 100%) !important;
+          transform: translateY(-2px);
+          box-shadow: ${modernTheme.colors.shadowLg} !important;
         }
 
-        .custom-input-text {
-          background: rgba(99, 102, 241, 0.05);
-          border-color: rgba(99, 102, 241, 0.15);
+        .modern-primary-btn:active {
+          transform: translateY(0);
         }
 
-        /* Primary button theme */
-        .custom-primary-btn {
-          background: linear-gradient(
-            135deg,
-            #6366f1 0%,
-            #8b5cf6 100%
-          ) !important;
-          border-color: #6366f1 !important;
-          transition: all 0.15s ease-in-out;
+        .modern-success-btn:hover {
+          background: linear-gradient(135deg, ${modernTheme.colors.successDark} 0%, #047857 100%) !important;
+          transform: translateY(-2px);
+          box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3) !important;
         }
 
-        .custom-primary-btn:hover {
-          background: linear-gradient(
-            135deg,
-            #4f46e5 0%,
-            #7c3aed 100%
-          ) !important;
-          border-color: #4f46e5 !important;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        .modern-success-btn:active {
+          transform: translateY(0);
         }
 
-        .custom-primary-btn:focus {
-          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
-        }
-
-        /* Success button */
-        .custom-success-btn {
-          background: linear-gradient(
-            135deg,
-            #10b981 0%,
-            #059669 100%
-          ) !important;
-          border-color: #10b981 !important;
-          transition: all 0.15s ease-in-out;
-        }
-
-        .custom-success-btn:hover {
-          background: linear-gradient(
-            135deg,
-            #059669 0%,
-            #047857 100%
-          ) !important;
-          border-color: #059669 !important;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-
-        /* Outline buttons */
-        .custom-outline-primary {
-          border-color: #6366f1 !important;
-          color: #6366f1 !important;
-          transition: all 0.15s ease-in-out;
-        }
-
-        .custom-outline-primary:hover {
-          background-color: #6366f1 !important;
-          border-color: #6366f1 !important;
+        .modern-outline-btn:hover {
+          background: ${modernTheme.colors.primary} !important;
           color: white !important;
+          transform: translateY(-1px);
+          box-shadow: ${modernTheme.colors.shadow} !important;
         }
 
-        .custom-outline-primary:focus {
-          box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25) !important;
+        .modern-outline-btn:active {
+          transform: translateY(0);
+        }
+
+        .modern-filter-btn:hover {
+          background: linear-gradient(135deg, ${modernTheme.colors.primary} 0%, ${modernTheme.colors.primaryLight} 100%) !important;
+          color: white !important;
+          transform: translateY(-2px);
+          box-shadow: ${modernTheme.colors.shadowLg} !important;
+        }
+
+        .modern-filter-btn:active {
+          transform: translateY(0);
+        }
+
+        .modern-filter-btn.active {
+          background: linear-gradient(135deg, ${modernTheme.colors.primary} 0%, ${modernTheme.colors.primaryLight} 100%) !important;
+          color: white !important;
+          box-shadow: ${modernTheme.colors.shadow} !important;
+        }
+
+        /* Disabled state */
+        .modern-primary-btn:disabled,
+        .modern-success-btn:disabled {
+          opacity: 0.6;
+          transform: none !important;
+          box-shadow: none !important;
+          cursor: not-allowed;
+        }
+
+        /* Enhanced responsive design */
+        @media (max-width: 991.98px) {
+          .gap-3 {
+            gap: 0.75rem !important;
+          }
         }
 
         @media (max-width: 767.98px) {
-          .gap-2 {
+          .gap-3 {
             gap: 0.5rem !important;
           }
 
-          .btn-sm {
-            font-size: 0.8rem;
-            padding: 0.375rem 0.5rem;
+          .modern-primary-btn,
+          .modern-success-btn {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.85rem !important;
           }
 
-          .p-3 {
-            margin: 0.5rem 0;
-            padding: 0.75rem !important;
+          .modern-outline-btn {
+            min-width: 36px !important;
+            height: 36px !important;
           }
         }
 
@@ -327,11 +423,50 @@ function SalesInvoicesHeader({
             justify-content: center;
           }
 
-          .p-3 {
-            padding: 0.5rem !important;
+          .modern-primary-btn,
+          .modern-success-btn {
+            flex: 1;
+            min-width: 120px;
           }
         }
+
+        /* Animation for smooth interactions */
+        .modern-primary-btn,
+        .modern-success-btn,
+        .modern-outline-btn {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .modern-primary-btn::before,
+        .modern-success-btn::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+          transition: left 0.5s;
+        }
+
+        .modern-primary-btn:hover::before,
+        .modern-success-btn:hover::before {
+          left: 100%;
+        }
       `}</style>
+
+      {/* Bill Form Modal */}
+      {showBillForm && (
+        <BillForm
+          show={showBillForm}
+          onHide={handleBillFormClose}
+          onSave={handleBillFormSave}
+          companyId={getCompanyId()}
+          currentUser={currentCompany}
+          addToast={addToast}
+        />
+      )}
     </div>
   );
 }

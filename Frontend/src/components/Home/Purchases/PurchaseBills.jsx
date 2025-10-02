@@ -2,7 +2,7 @@ import React, {useState, useEffect, useCallback, useMemo, useRef} from "react";
 import {Container, Row, Col, Alert, Button} from "react-bootstrap";
 import {useParams, useLocation} from "react-router-dom";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faPlus, faRefresh} from "@fortawesome/free-solid-svg-icons";
+import {faPlus, faRefresh, faFilter} from "@fortawesome/free-solid-svg-icons";
 
 import PurchaseBillsHeader from "./PurchaseBill/PurchaseBillsHeader";
 import PurchaseBillsPageTitle from "./PurchaseBill/PurchaseBillsPageTitle";
@@ -64,6 +64,7 @@ function PurchaseBills({
   const [selectedFirm, setSelectedFirm] = useState("All Firms");
   const [topSearchTerm, setTopSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [enhancementStats, setEnhancementStats] = useState({
     enhanced: 0,
@@ -877,6 +878,174 @@ function PurchaseBills({
           .col {
             overflow: visible;
           }
+
+          /* Modern Purchase Bills Overview Wrapper */
+          .purchase-overview-wrapper {
+            background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%) !important;
+            border-radius: 20px !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            will-change: transform, box-shadow, border-color;
+          }
+
+          .purchase-overview-wrapper:hover {
+            background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%) !important;
+          }
+
+          .purchase-overview-wrapper:hover::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 1;
+          }
+
+          /* Enhanced card hover effects inside wrapper */
+          .purchase-overview-wrapper:hover .summary-card {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+          }
+
+          .purchase-overview-wrapper:hover [style*="flex: '1 1 calc(33.333% - 0.75rem')"] {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+          }
+
+          /* Smooth transitions for all elements */
+          .purchase-overview-wrapper * {
+            transition: all 0.2s ease-in-out;
+          }
+
+          /* Pulse animation on load */
+          @keyframes pulseGlow {
+            0% { box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12); }
+            50% { box-shadow: 0 10px 35px rgba(99, 102, 241, 0.16); }
+            100% { box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12); }
+          }
+
+          .purchase-overview-wrapper {
+            animation: pulseGlow 3s ease-in-out infinite;
+          }
+
+          .purchase-overview-wrapper:hover {
+            animation: none;
+          }
+
+          /* Ensure z-index for proper stacking */
+          .purchase-overview-wrapper > div:first-child {
+            position: relative;
+            z-index: 2;
+          }
+
+          /* Enhanced Typography for Summary Cards */
+          .purchase-overview-wrapper h5,
+          .purchase-overview-wrapper h6 {
+            font-weight: 700 !important;
+            letter-spacing: 0.5px !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+          }
+
+          .purchase-overview-wrapper h5 {
+            font-size: 1.35rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .purchase-overview-wrapper h6 {
+            font-size: 1.1rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .purchase-overview-wrapper p {
+            font-size: 0.95rem !important;
+            font-weight: 500 !important;
+            letter-spacing: 0.3px !important;
+            line-height: 1.5 !important;
+          }
+
+          .purchase-overview-wrapper small {
+            font-size: 0.85rem !important;
+            font-weight: 500 !important;
+            letter-spacing: 0.2px !important;
+            line-height: 1.4 !important;
+          }
+
+          /* Improved text contrast and readability */
+          .purchase-overview-wrapper .text-muted {
+            color: #64748b !important;
+            font-weight: 500 !important;
+          }
+
+          .purchase-overview-wrapper .text-dark {
+            color: #1e293b !important;
+            font-weight: 700 !important;
+          }
+
+          .purchase-overview-wrapper .text-success {
+            color: #059669 !important;
+            font-weight: 700 !important;
+          }
+
+          .purchase-overview-wrapper .text-warning {
+            color: #d97706 !important;
+            font-weight: 700 !important;
+          }
+
+          .purchase-overview-wrapper .text-info {
+            color: #0891b2 !important;
+            font-weight: 700 !important;
+          }
+
+          /* Mobile responsiveness enhancements */
+          @media (max-width: 768px) {
+            .purchase-overview-wrapper {
+              padding: 1.5rem !important;
+            }
+
+            .purchase-overview-wrapper h5 {
+              font-size: 1.2rem !important;
+            }
+
+            .purchase-overview-wrapper h6 {
+              font-size: 1rem !important;
+            }
+
+            .purchase-overview-wrapper p {
+              font-size: 0.9rem !important;
+            }
+
+            .purchase-overview-wrapper small {
+              font-size: 0.8rem !important;
+            }
+          }
+
+          @media (max-width: 576px) {
+            .purchase-overview-wrapper {
+              padding: 1.25rem !important;
+            }
+
+            .purchase-overview-wrapper h5 {
+              font-size: 1.1rem !important;
+            }
+
+            .purchase-overview-wrapper h6 {
+              font-size: 0.95rem !important;
+            }
+          }
+          
+          /* Filter Animation */
+          @keyframes slideDown {
+            from {
+              opacity: 0;
+              transform: translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
         `}
       </style>
 
@@ -887,55 +1056,96 @@ function PurchaseBills({
         onMoreOptions={handleMoreOptions}
         onSettings={handleSettings}
         companyId={effectiveCompanyId}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
       />
 
-      <PurchaseBillsPageTitle
-        onAddPurchase={handleCreatePurchase}
-        billCount={purchases.length}
-        companyId={effectiveCompanyId}
-        mode="bills"
-        documentType="bill"
-        title="Purchase Bills"
-        subtitle={`Manage your purchase transactions and supplier bills${
-          bankAccounts.length > 0
-            ? ` • ${bankAccounts.length} bank accounts loaded`
-            : ""
-        }${
-          enhancementStats.total > 0
-            ? ` • ${enhancementStats.withBankData}/${enhancementStats.total} enhanced with bank data`
-            : ""
-        }`}
-      />
+      {/* Removed PurchaseBillsPageTitle with subtitle */}
 
-      <div className="px-3">
-        <PurchaseBillsFilter
-          dateRange={dateRange}
-          startDate={startDate}
-          endDate={endDate}
-          selectedFirm={selectedFirm}
-          dateRangeOptions={dateRangeOptions}
-          firmOptions={firmOptions}
-          onDateRangeChange={handleDateRangeChange}
-          onStartDateChange={handleStartDateChange}
-          onEndDateChange={handleEndDateChange}
-          onFirmChange={setSelectedFirm}
-          onExcelExport={handleExcelExport}
-          onPrint={handlePrint}
-          resultCount={filteredPurchases.length}
-        />
-      </div>
+      {/* Collapsible Filter Section */}
+      {showFilters && (
+        <div 
+          className="px-3"
+          style={{
+            animation: 'slideDown 0.3s ease-out',
+            background: '#f8fafc',
+            borderRadius: '0.5rem',
+            margin: '0 1rem 1rem',
+            padding: '1rem',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+          }}
+        >
+          <PurchaseBillsFilter
+            dateRange={dateRange}
+            startDate={startDate}
+            endDate={endDate}
+            selectedFirm={selectedFirm}
+            dateRangeOptions={dateRangeOptions}
+            firmOptions={firmOptions}
+            onDateRangeChange={handleDateRangeChange}
+            onStartDateChange={handleStartDateChange}
+            onEndDateChange={handleEndDateChange}
+            onFirmChange={setSelectedFirm}
+            onExcelExport={handleExcelExport}
+            onPrint={handlePrint}
+            resultCount={filteredPurchases.length}
+          />
+        </div>
+      )}
 
       <div className="px-3 pb-3">
-        <Row className="g-3">
-          <Col xl={2} lg={3} md={3} sm={12}>
-            <PurchaseBillsSummary
-              summary={summary}
-              loading={loading}
-              dateRange={dateRange}
-            />
+        {/* Purchase Bills Analysis Row */}
+        {/* Purchase Bills Analysis Row */}
+        <Row className="mb-4">
+          <Col xs={12}>
+            <div 
+              className="purchase-overview-wrapper"
+              style={{
+                padding: '2rem',
+                background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                borderRadius: '20px',
+                border: '2px solid #e2e8f0',
+                boxShadow: '0 8px 30px rgba(99, 102, 241, 0.12)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                cursor: 'default',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-6px)';
+                e.currentTarget.style.boxShadow = '0 15px 45px rgba(99, 102, 241, 0.20)';
+                e.currentTarget.style.borderColor = '#6366f1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 8px 30px rgba(99, 102, 241, 0.12)';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '5px',
+                  background: 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 33%, #06b6d4 66%, #10b981 100%)',
+                  borderRadius: '20px 20px 0 0'
+                }}
+              />
+              <PurchaseBillsSummary
+                summary={summary}
+                loading={loading}
+                dateRange={dateRange}
+              />
+            </div>
           </Col>
+        </Row>
 
-          <Col xl={10} lg={9} md={9} sm={12}>
+        {/* Purchase Bills Table Row */}
+        <Row>
+          <Col xs={12}>
             <PurchaseBillsTable
               purchases={filteredPurchases}
               onCreatePurchase={handleCreatePurchase}

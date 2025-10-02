@@ -31,6 +31,10 @@ import {
   faReceipt,
   faCheckCircle, // ✅ NEW: For name verification
   faExclamationTriangle, // ✅ NEW: For urgent items
+  faAd, // ✅ NEW: For advertisements
+  faTimes, // ✅ NEW: For reject actions
+  faEdit, // ✅ NEW: For edit actions
+  faAddressBook, // ✅ NEW: For contact management
 } from "@fortawesome/free-solid-svg-icons";
 
 function AdminSidebar({
@@ -47,6 +51,7 @@ function AdminSidebar({
     inventory: true,
     sales: true,
     verification: true, // ✅ NEW: Add verification section
+    advertisements: true, // ✅ NEW: For advertisements section
     system: false,
   });
 
@@ -113,6 +118,13 @@ function AdminSidebar({
           description: "User accounts and permissions",
         },
         {
+          key: "contacts",
+          label: "Contact Manager",
+          icon: faAddressBook,
+          badge: adminData?.totalContacts || 0,
+          description: "Manage contacts added by users",
+        },
+        {
           key: "products",
           label: "Products",
           icon: faBoxes,
@@ -155,6 +167,35 @@ function AdminSidebar({
           icon: faChartLine,
           badge: null,
           description: "Verification performance metrics",
+        },
+      ],
+    },
+    // Advertisement Management Section
+    {
+      section: "advertisements",
+      title: "Advertisement Management",
+      items: [
+        {
+          key: "ad-review",
+          label: "Advertisement Review",
+          icon: faAd,
+          badge: adminData?.pendingAds || 0,
+          badgeVariant: adminData?.pendingAds > 0 ? "warning" : "success",
+          description: "Review and approve advertisements",
+        },
+        {
+          key: "ad-analytics",
+          label: "Ad Analytics",
+          icon: faChartLine,
+          badge: null,
+          description: "Advertisement performance metrics",
+        },
+        {
+          key: "ad-settings",
+          label: "Ad Settings",
+          icon: faCog,
+          badge: null,
+          description: "Advertisement policies and settings",
         },
       ],
     },
@@ -319,26 +360,58 @@ function AdminSidebar({
       background: linear-gradient(180deg, #4e73df 0%, #3a5bd7 100%);
       transition: width 0.3s ease;
       z-index: 1000;
+      color: white;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Sidebar Menu - Scrollable Content Area */
+    .sidebar-menu {
+      flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      color: white;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+      /* Mobile touch scrolling */
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
     }
 
-    .admin-sidebar::-webkit-scrollbar {
-      width: 4px;
+    /* Custom Scrollbar for Webkit browsers */
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
     }
 
-    .admin-sidebar::-webkit-scrollbar-track {
+    .sidebar-menu::-webkit-scrollbar-track {
       background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
     }
 
-    .admin-sidebar::-webkit-scrollbar-thumb {
+    .sidebar-menu::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.3);
-      border-radius: 2px;
+      border-radius: 3px;
+      transition: background 0.3s ease;
     }
 
-    .admin-sidebar::-webkit-scrollbar-thumb:hover {
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Improve touch scrolling for mobile */
+    @media (max-width: 768px) {
+      .sidebar-menu {
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: y proximity;
+      }
+      
+      .sidebar-section {
+        scroll-snap-align: start;
+      }
+    }
+
+    /* Remove old scrollbar styles from main container */
+    .admin-sidebar::-webkit-scrollbar {
+      display: none;
     }
 
     /* Header */
@@ -399,12 +472,6 @@ function AdminSidebar({
 
     .sidebar-sections {
       flex-grow: 1;
-    }
-
-    .sidebar-logout {
-      margin-top: auto;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      padding-top: 15px;
     }
 
     /* Lists */
@@ -598,22 +665,6 @@ function AdminSidebar({
     /* Dropdown Container */
     .sidebar-dropdown-container {
       margin-top: 5px;
-    }
-
-    /* Logout Special Styling */
-    .logout-link {
-      transition: all 0.3s ease;
-    }
-
-    .logout-link:hover {
-      background: rgba(255, 107, 107, 0.15) !important;
-      color: #ff6b6b !important;
-    }
-
-    .logout-link:hover .sidebar-icon {
-      color: #ff6b6b !important;
-      transform: scale(1.15);
-      text-shadow: 0 0 10px rgba(255, 107, 107, 0.4);
     }
 
     /* Tooltips for collapsed state */

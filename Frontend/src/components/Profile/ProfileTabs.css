@@ -266,10 +266,10 @@
 }
 
 .profile-avatar {
-  width: 120px;
-  height: 120px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  border: 4px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   margin-bottom: 1rem;
   transition: all 0.2s ease;
 }
@@ -301,7 +301,7 @@
   }
   
   .profile-nav-link {
-    padding: 0.75rem 1rem !important;
+    padding: 0.5rem 0.5rem !important;
   }
   
   .profile-nav-title {
@@ -327,7 +327,7 @@
   
   .profile-nav-link {
     white-space: nowrap;
-    min-width: 120px;
+    min-width: 50px;
     text-align: center;
     border-bottom: none !important;
     border-right: 1px solid #f3f4f6 !important;
@@ -346,8 +346,8 @@
   }
   
   .profile-avatar {
-    width: 100px;
-    height: 100px;
+    width: 50px;
+    height: 50px;
   }
 }
 

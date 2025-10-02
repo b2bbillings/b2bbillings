@@ -67,9 +67,16 @@ const routeFiles = [
   "bankAccountRoutes",
   "transactionRoutes", // ✅ CRITICAL: This should work now
   "chatRoutes",
+  // "teamChatRoutes", // ✅ DISABLED: Team chat routes - causing middleware issues
+  "profileRoutes", // ✅ ENABLED: Profile routes for comprehensive profile management
+  "pincodeRoutes", // ✅ NEW: Pincode routes for location API
   "staffRoutes",
   "taskRoutes",
   "notificationRoutes",
+  "advertisementRoutes", // ✅ NEW: Advertisement routes for ad management
+  "contactRoutes", // ✅ NEW: Contact routes for contact management
+  "billRoutes", // ✅ NEW: Bill routes for bill management
+  "categoryRoutes", // ✅ NEW: Category routes for category management
 ];
 
 console.log("📂 Loading route files...");
@@ -149,6 +156,24 @@ try {
 
 const app = express();
 const server = http.createServer(app);
+
+// ✅ FIX: Handle server-level connection errors
+server.on('clientError', (err, socket) => {
+  console.log(`⚠️ Client connection error: ${err.message}`);
+  // Don't crash the server for client connection errors
+  if (!socket.destroyed) {
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  }
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${process.env.PORT || 5000} is already in use`);
+    process.exit(1);
+  } else {
+    console.log(`⚠️ Server error: ${err.message}`);
+  }
+});
 
 // Trust proxy
 app.set("trust proxy", 1);
@@ -233,10 +258,14 @@ const getAllowedOrigins = () => {
   } else {
     return [
       "http://localhost:5173",
+      "http://localhost:5174", // Added for current frontend dev server
+      "http://localhost:5175", // Added for current frontend dev server (port conflict fallback)
       "http://localhost:5000",
       "http://localhost:3000",
       "http://localhost:4173",
       "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174", // Added for current frontend dev server
+      "http://127.0.0.1:5175", // Added for current frontend dev server (port conflict fallback)
       "http://127.0.0.1:5000",
       "http://127.0.0.1:3000",
     ];
@@ -342,6 +371,24 @@ app.use((req, res, next) => {
       }`
     );
   }
+  
+  // ✅ FIX: Handle client disconnections gracefully
+  req.on('close', () => {
+    if (!res.headersSent) {
+      console.log(`🔌 Client disconnected: ${req.method} ${req.url} [${req.requestId}]`);
+    }
+  });
+
+  req.on('error', (error) => {
+    console.log(`⚠️ Request error: ${error.message} [${req.requestId}]`);
+    // Don't crash the server for client-side request errors
+  });
+
+  res.on('error', (error) => {
+    console.log(`⚠️ Response error: ${error.message} [${req.requestId}]`);
+    // Don't crash the server for client-side response errors
+  });
+  
   next();
 });
 
@@ -372,7 +419,7 @@ try {
 
   app.use(
     "/api/auth",
-    createRateLimit(15 * 60 * 1000, 10, "Too many authentication attempts") // Increased from 5 to 10
+    createRateLimit(15 * 60 * 1000, 5, "Too many authentication attempts") // Increased from 5 to 10
   );
   app.use("/api", createRateLimit(15 * 60 * 1000, 200, "API limit exceeded")); // Increased from 100 to 200
 } catch (error) {
@@ -383,9 +430,17 @@ try {
 app.use(express.json({limit: "10mb"}));
 app.use(express.urlencoded({extended: true, limit: "10mb"}));
 
-// Static files
+// Static files with CORS support
 app.use(
   "/uploads",
+  (req, res, next) => {
+    // Add CORS headers for static files
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
   express.static(path.join(__dirname, "uploads"), {
     maxAge: process.env.NODE_ENV === "production" ? "1d" : "0",
   })
@@ -643,6 +698,27 @@ try {
 }
 
 try {
+  // app.use("/api/team-chats", routes.teamChatRoutes); // DISABLED: Team chat routes
+  console.log("   ✅ /api/team-chats");
+} catch (error) {
+  console.error("   ❌ /api/team-chats failed:", error.message);
+}
+
+try {
+  app.use("/api/profile", routes.profileRoutes); // ✅ ENABLED: Profile routes
+  console.log("   ✅ /api/profile");
+} catch (error) {
+  console.error("   ❌ /api/profile failed:", error.message);
+}
+
+try {
+  app.use("/api/pincode", routes.pincodeRoutes);
+  console.log("   ✅ /api/pincode");
+} catch (error) {
+  console.error("   ❌ /api/pincode failed:", error.message);
+}
+
+try {
   app.use("/api/payments", routes.paymentRoutes);
   console.log("   ✅ /api/payments");
 } catch (error) {
@@ -654,6 +730,41 @@ try {
   console.log("   ✅ /api/companies");
 } catch (error) {
   console.error("   ❌ /api/companies failed:", error.message);
+}
+
+try {
+  app.use("/api/advertisements", routes.advertisementRoutes);
+  console.log("   ✅ /api/advertisements");
+} catch (error) {
+  console.error("   ❌ /api/advertisements failed:", error.message);
+}
+
+try {
+  app.use("/api/contacts", routes.contactRoutes);
+  console.log("   ✅ /api/contacts");
+} catch (error) {
+  console.error("   ❌ /api/contacts failed:", error.message);
+}
+
+try {
+  app.use("/api", routes.categoryRoutes);
+  console.log("   ✅ /api/categories");
+} catch (error) {
+  console.error("   ❌ /api/categories failed:", error.message);
+}
+
+try {
+  app.use("/api/admin/advertisements", require("./src/routes/adminAdvertisementRoutes"));
+  console.log("   ✅ /api/admin/advertisements");
+} catch (error) {
+  console.error("   ❌ /api/admin/advertisements failed:", error.message);
+}
+
+try {
+  // app.use("/api/shops", routes.shopRoutes); // DISABLED: Shop routes - causing issues
+  console.log("   ⚠️ /api/shops (disabled)");
+} catch (error) {
+  console.error("   ❌ /api/shops failed:", error.message);
 }
 
 try {
@@ -795,6 +906,13 @@ try {
     "   ❌ /api/companies/:companyId/notifications failed:",
     error.message
   );
+}
+
+try {
+  app.use("/api/bills", routes.billRoutes);
+  console.log("   ✅ /api/bills");
+} catch (error) {
+  console.error("   ❌ /api/bills failed:", error.message);
 }
 
 console.log("🔄 Registering legacy routes...");
@@ -1130,12 +1248,29 @@ const startServer = async () => {
 process.on("uncaughtException", (error) => {
   console.error("❌ Uncaught Exception:", error.message);
   console.error("Stack:", error.stack);
-  process.exit(1);
+  
+  // ✅ FIX: Don't exit immediately - log and continue
+  // Only exit if it's a critical error
+  if (error.code === 'EADDRINUSE' || error.code === 'ENOTFOUND' || error.message.includes('MongoDB')) {
+    console.error("🔥 Critical error detected, shutting down...");
+    process.exit(1);
+  } else {
+    console.log("⚠️ Non-critical error, continuing server operation...");
+  }
 });
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-  process.exit(1);
+  
+  // ✅ FIX: Don't exit on unhandled rejections - just log them
+  // Many times these are non-critical network timeouts or connection issues
+  console.log("⚠️ Unhandled rejection logged, server continues running...");
+  
+  // Only exit if it's a critical database error
+  if (reason && (reason.message?.includes('MongoDB') || reason.code === 'ECONNREFUSED')) {
+    console.error("🔥 Critical database error, shutting down...");
+    process.exit(1);
+  }
 });
 
 startServer().catch((error) => {

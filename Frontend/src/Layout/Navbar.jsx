@@ -165,6 +165,8 @@ function Navbar({
   const userDropdownRef = useRef(null);
   const businessDropdownRef = useRef(null);
 
+
+
   // ===============================
   // UTILITY FUNCTIONS
   // ===============================
@@ -601,11 +603,13 @@ function Navbar({
 
   // Handle profile actions
   const handleProfileAction = (action) => {
+    console.log('🔧 Profile action triggered:', action); // ✅ Debug log
     setShowUserDropdown(false);
 
     switch (action) {
       case "profile":
-        // TODO: Navigate to profile page
+        console.log('🔧 Navigating to profile page'); // ✅ Debug log
+        navigate('/profile');
         break;
       case "settings":
         if (effectiveCompanyId) {
@@ -631,17 +635,39 @@ function Navbar({
     setToastNotifications((prev) => prev.filter((t) => t.id !== toastId));
   };
 
-  // ===============================
+  // Add toast notification
+  const addToast = (message, type = 'info', title = null) => {
+    const toastId = Date.now();
+    const newToast = {
+      id: toastId,
+      message,
+      type,
+      title: title || (type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Info'),
+      show: true,
+    };
+    
+    setToastNotifications((prev) => [...prev, newToast]);
+    
+    // Auto-remove toast after 5 seconds
+    setTimeout(() => {
+      removeToast(toastId);
+    }, 5000);
+  };
+
+  // ==============================
   // CLICK OUTSIDE DETECTION
   // ===============================
 
   useEffect(() => {
     function handleClickOutside(event) {
+      console.log('🔧 Click outside detected:', event.target);
+      
       if (
         showNotifications &&
         notificationRef.current &&
         !notificationRef.current.contains(event.target)
       ) {
+        console.log('🔧 Closing notifications dropdown');
         setShowNotifications(false);
       }
 
@@ -650,6 +676,7 @@ function Navbar({
         userDropdownRef.current &&
         !userDropdownRef.current.contains(event.target)
       ) {
+        console.log('🔧 Closing user dropdown');
         setShowUserDropdown(false);
       }
 
@@ -658,8 +685,11 @@ function Navbar({
         businessDropdownRef.current &&
         !businessDropdownRef.current.contains(event.target)
       ) {
+        console.log('🔧 Closing business dropdown');
         setShowBusinessDropdown(false);
       }
+
+
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -1396,6 +1426,8 @@ function Navbar({
           </Toast>
         ))}
       </ToastContainer>
+
+
     </>
   );
 }

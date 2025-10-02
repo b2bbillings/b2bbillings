@@ -1126,68 +1126,168 @@ function SalesInvoicesTable({
   return (
     <>
       <style>{`
-        .purple-table-header {
-          background: linear-gradient(
-            135deg,
-            #646cff 0%,
-            #8b5cf6 50%,
-            #c084fc 100%
-          ) !important;
-          color: white !important;
-          border: none !important;
+        /* Modern table styling */
+        .modern-table {
+          border-radius: 1rem;
+          overflow: hidden;
+          border: none;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
-        .purple-table-header th {
+        .modern-table-header {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+          color: white !important;
+          border: none !important;
+          position: relative;
+        }
+
+        .modern-table-header::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(255, 255, 255, 0.1);
+          pointer-events: none;
+        }
+
+        .modern-table-header th {
           background: transparent !important;
           color: white !important;
-          border-color: rgba(255, 255, 255, 0.2) !important;
+          border: none !important;
           font-weight: 600 !important;
-          padding: 16px 12px !important;
+          position: relative;
+          z-index: 1;
+          font-size: 0.875rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .modern-header-cell {
+          transition: all 0.2s ease;
+        }
+
+        .sort-icon {
+          opacity: 0.7;
+          transition: all 0.2s ease;
+        }
+
+        .sort-icon:hover {
+          opacity: 1;
+          transform: scale(1.1);
+          color: #fbbf24 !important;
+        }
+
+        /* Modern table body styling */
+        .modern-table tbody tr {
+          border-bottom: 1px solid #e2e8f0;
+          transition: all 0.2s ease;
+        }
+
+        .modern-table tbody tr:hover {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          transform: scale(1.005);
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .modern-table tbody td {
+          padding: 1rem 0.75rem;
+          vertical-align: middle;
+          border: none;
+          font-size: 0.875rem;
+        }
+
+        /* Modern checkbox styling */
+        .modern-checkbox input[type="checkbox"] {
+          width: 1.25rem;
+          height: 1.25rem;
+          accent-color: #6366f1;
+          border-radius: 0.375rem;
         }
 
         .text-purple {
-          color: #646cff !important;
+          color: #6366f1 !important;
         }
 
+        /* Modern action button styling */
         .action-menu-button {
           background: transparent;
-          border: 1px solid #646cff;
-          color: #646cff;
-          padding: 4px 8px;
+          border: 2px solid #6366f1;
+          color: #6366f1;
+          padding: 0.375rem 0.75rem;
           cursor: pointer;
-          font-size: 12px;
-          transition: all 0.2s ease;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border-radius: 0.5rem;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .action-menu-button::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          transition: left 0.3s ease;
+          z-index: -1;
         }
 
         .action-menu-button:hover {
-          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
           color: white;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+        }
+
+        .action-menu-button:hover::before {
+          left: 0;
+        }
+
+        .action-menu-button:active {
+          transform: translateY(0);
         }
 
         .action-menu-button:disabled {
-          opacity: 0.6;
+          opacity: 0.5;
           cursor: not-allowed;
+          transform: none;
         }
 
+        .action-menu-button:disabled:hover {
+          color: #6366f1;
+          box-shadow: none;
+        }
+
+        /* Modern dropdown menu styling */
         .szh-menu {
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-          border-radius: 0;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          border-radius: 0.75rem;
           background: white;
           z-index: 1000;
+          overflow: hidden;
+          backdrop-filter: blur(10px);
         }
 
         .szh-menu__item {
-          padding: 8px 16px;
-          font-size: 14px;
-          color: #374151;
+          padding: 0.75rem 1rem;
+          font-size: 0.875rem;
+          color: #1e293b;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          align-items: center;
+          font-weight: 500;
         }
 
         .szh-menu__item:hover {
-          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
           color: white;
+          transform: translateX(4px);
         }
 
         .szh-menu__item.text-danger {
@@ -1195,36 +1295,69 @@ function SalesInvoicesTable({
         }
 
         .szh-menu__item.text-danger:hover {
-          background: #fef2f2 !important;
-          color: #dc2626 !important;
+          background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%) !important;
+          color: #b91c1c !important;
+          transform: translateX(4px);
         }
 
+        .szh-menu__item.text-success {
+          color: #16a34a !important;
+        }
+
+        .szh-menu__item.text-success:hover {
+          background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%) !important;
+          color: #15803d !important;
+          transform: translateX(4px);
+        }
+
+        /* Modern button styling */
         .btn-purple {
-          background: linear-gradient(135deg, #646cff 0%, #8b5cf6 100%);
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
           border: none;
           color: white;
-          border-radius: 0;
-          padding: 8px 16px;
-          font-weight: 500;
+          border-radius: 0.5rem;
+          padding: 0.5rem 1rem;
+          font-weight: 600;
+          font-size: 0.875rem;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 2px 4px -1px rgba(99, 102, 241, 0.3);
         }
 
         .btn-purple:hover {
-          background: linear-gradient(135deg, #5752d1 0%, #7c3aed 100%);
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
           color: white;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);
         }
 
-        .card {
-          border-radius: 0 !important;
-          border-top-left-radius: 0 !important;
-          border-top-right-radius: 0 !important;
+        .btn-purple:active {
+          transform: translateY(0);
         }
 
-        .table {
-          border-radius: 0 !important;
+        /* Modern badge styling */
+        .badge {
+          font-weight: 600;
+          font-size: 0.75rem;
+          padding: 0.375rem 0.75rem;
+          border-radius: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.025em;
         }
 
-        .table-responsive {
-          border-radius: 0 !important;
+        .badge.bg-success {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        }
+
+        .badge.bg-warning {
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        }
+
+        .badge.bg-danger {
+          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+        }
+
+        .badge.bg-primary {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
         }
 
         /* Conversion menu item styles */
@@ -1382,13 +1515,45 @@ function SalesInvoicesTable({
         }
       `}</style>
 
-      <div className="card shadow-sm border-0" style={{borderRadius: 0}}>
-        <div className="table-responsive">
-          <Table hover className="mb-0 table-sm">
-            <thead className="purple-table-header">
+      {/* Enhanced styling theme object */}
+      <div 
+        style={{
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+          borderRadius: '1rem',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #e2e8f0',
+          overflow: 'hidden',
+          position: 'relative'
+        }}
+      >
+        {/* Decorative background gradient */}
+        <div 
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '300px',
+            height: '200px',
+            background: 'linear-gradient(135deg, #6366f115, #8b5cf610)',
+            borderRadius: '50%',
+            transform: 'translate(50%, -50%)',
+            pointerEvents: 'none'
+          }}
+        />
+        
+        <div 
+          className="table-responsive"
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            borderRadius: '1rem'
+          }}
+        >
+          <Table hover className="mb-0 modern-table">
+            <thead className="modern-table-header">
               <tr>
                 {enableBulkActions && (
-                  <th style={{width: "40px"}}>
+                  <th style={{width: "40px", padding: '1rem 0.75rem'}}>
                     <Form.Check
                       type="checkbox"
                       checked={
@@ -1404,44 +1569,55 @@ function SalesInvoicesTable({
                           );
                         }
                       }}
+                      className="modern-checkbox"
                     />
                   </th>
                 )}
-                <th style={{width: "80px"}}>
-                  <div className="d-flex align-items-center">
-                    Date
+                <th style={{width: "80px", padding: '1rem 0.75rem'}}>
+                  <div className="d-flex align-items-center modern-header-cell">
+                    <span style={{ fontWeight: '600', marginRight: '0.5rem' }}>Date</span>
                     <FontAwesomeIcon
                       icon={faSort}
-                      className="ms-1 text-white-50"
-                      style={{cursor: "pointer"}}
+                      className="sort-icon"
+                      style={{cursor: "pointer", transition: 'all 0.2s ease'}}
                       onClick={() => handleSort("date")}
                     />
                   </div>
                 </th>
-                <th style={{width: "100px"}}>
-                  {isQuotationMode ? "Quote No." : "Invoice No."}
+                <th style={{width: "100px", padding: '1rem 0.75rem'}}>
+                  <span style={{ fontWeight: '600' }}>
+                    {isQuotationMode ? "Quote No." : "Invoice No."}
+                  </span>
                 </th>
-                <th style={{width: "150px"}}>Customer</th>
-                <th style={{width: "80px"}}>Type</th>
-                <th style={{width: "100px"}} className="text-end">
-                  <div className="d-flex align-items-center justify-content-end">
-                    Amount
+                <th style={{width: "150px", padding: '1rem 0.75rem'}}>
+                  <span style={{ fontWeight: '600' }}>Customer</span>
+                </th>
+                <th style={{width: "80px", padding: '1rem 0.75rem'}}>
+                  <span style={{ fontWeight: '600' }}>Type</span>
+                </th>
+                <th style={{width: "100px", padding: '1rem 0.75rem'}} className="text-end">
+                  <div className="d-flex align-items-center justify-content-end modern-header-cell">
+                    <span style={{ fontWeight: '600', marginRight: '0.5rem' }}>Amount</span>
                     <FontAwesomeIcon
                       icon={faSort}
-                      className="ms-1 text-white-50"
-                      style={{cursor: "pointer"}}
+                      className="sort-icon"
+                      style={{cursor: "pointer", transition: 'all 0.2s ease'}}
                       onClick={() => handleSort("amount")}
                     />
                   </div>
                 </th>
-                <th style={{width: "90px"}} className="text-end">
-                  Balance
+                <th style={{width: "90px", padding: '1rem 0.75rem'}} className="text-end">
+                  <span style={{ fontWeight: '600' }}>Balance</span>
                 </th>
-                <th style={{width: "80px"}}>Status</th>
-                <th style={{width: "80px"}}>Payment</th>
+                <th style={{width: "80px", padding: '1rem 0.75rem'}}>
+                  <span style={{ fontWeight: '600' }}>Status</span>
+                </th>
+                <th style={{width: "80px", padding: '1rem 0.75rem'}}>
+                  <span style={{ fontWeight: '600' }}>Payment</span>
+                </th>
                 {enableActions && (
-                  <th style={{width: "70px"}} className="text-center">
-                    Actions
+                  <th style={{width: "70px", padding: '1rem 0.75rem'}} className="text-center">
+                    <span style={{ fontWeight: '600' }}>Actions</span>
                   </th>
                 )}
               </tr>

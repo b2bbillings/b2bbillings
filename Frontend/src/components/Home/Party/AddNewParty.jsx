@@ -27,10 +27,17 @@ import {
   faFileInvoice,
   faDatabase,
 } from "@fortawesome/free-solid-svg-icons";
+import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import useKeyboardNavigation from "../../../hooks/useKeyboardNavigation";
 import KeyboardShortcutsHelp from "../../../hooks/KeyboardShortcutsHelp";
 import partyService from "../../../services/partyService";
 import DatabaseSearch from "./DatabaseSearch";
+import { 
+  sendWhatsAppToContact, 
+  generateDefaultMessage, 
+  isValidWhatsAppNumber,
+  getWhatsAppStatus 
+} from "../../../utils/whatsappUtils";
 
 function AddNewParty({
   show,
@@ -50,6 +57,10 @@ function AddNewParty({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  
+  // WhatsApp related states
+  const [whatsappSending, setWhatsappSending] = useState(false);
+  const [whatsappSent, setWhatsappSent] = useState(false);
 
   // Form refs for keyboard navigation
   const nameRef = useRef(null);
@@ -104,12 +115,14 @@ function AddNewParty({
 
   // Quick add refs
   const quickNameRef = useRef(null);
+  const quickShopOwnerRef = useRef(null);
   const quickPhoneRef = useRef(null);
   const quickSaveRef = useRef(null);
   const quickCancelRef = useRef(null);
 
   const quickNavigationRefs = [
     quickNameRef,
+    quickShopOwnerRef,
     quickPhoneRef,
     quickSaveRef,
     quickCancelRef,
@@ -182,6 +195,7 @@ function AddNewParty({
   // Quick add form data
   const [quickFormData, setQuickFormData] = useState({
     name: "",
+    shopOwner: "",
     phone: "",
   });
 
@@ -383,6 +397,71 @@ function AddNewParty({
     }));
   };
 
+  // Handle WhatsApp sending
+  const handleSendWhatsApp = async (contactData = null) => {
+    try {
+      setWhatsappSending(true);
+      setError("");
+
+      let contact;
+      let senderName = "";
+      let companyName = "";
+
+      // Get current user info from localStorage or context
+      try {
+        const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
+        const currentCompany = JSON.parse(localStorage.getItem("currentCompany") || "{}");
+        senderName = currentUser?.name || currentUser?.username || "";
+        companyName = currentCompany?.businessName || currentCompany?.companyName || "";
+      } catch (e) {
+        console.log("Could not get user/company info for WhatsApp");
+      }
+
+      if (contactData) {
+        // Use provided contact data (e.g., from saved party)
+        contact = {
+          name: contactData.name,
+          phoneNumber: contactData.phoneNumber
+        };
+      } else {
+        // Use current form data
+        const phoneNumber = isQuickAddMode ? quickFormData.phone : formData.phoneNumber;
+        const name = isQuickAddMode ? quickFormData.name : formData.name;
+
+        if (!phoneNumber || !name) {
+          setError("Please enter both name and phone number before sending WhatsApp message");
+          return;
+        }
+
+        if (!isValidWhatsAppNumber(phoneNumber)) {
+          setError("Please enter a valid phone number for WhatsApp");
+          return;
+        }
+
+        contact = { name, phoneNumber };
+      }
+
+      // Send WhatsApp message
+      const result = await sendWhatsAppToContact(contact, {
+        senderName,
+        companyName
+      });
+
+      if (result.success) {
+        setSuccess(`WhatsApp message sent to ${contact.name}!`);
+        setWhatsappSent(true);
+      } else {
+        setError(result.error || "Failed to send WhatsApp message");
+      }
+
+    } catch (error) {
+      console.error("Error sending WhatsApp:", error);
+      setError("Failed to send WhatsApp message. Please try again.");
+    } finally {
+      setWhatsappSending(false);
+    }
+  };
+
   // Clear alerts after 5 seconds
   useEffect(() => {
     if (error || success) {
@@ -434,10 +513,13 @@ function AddNewParty({
       if (e.target === nameRef.current || e.target === quickNameRef.current) {
         e.preventDefault();
         if (isQuickAddMode) {
-          quickPhoneRef.current?.focus();
+          quickShopOwnerRef.current?.focus();
         } else {
           emailRef.current?.focus();
         }
+      } else if (e.target === quickShopOwnerRef.current) {
+        e.preventDefault();
+        quickPhoneRef.current?.focus();
       }
     },
   });
@@ -453,6 +535,7 @@ function AddNewParty({
       const partyData = {
         partyType: quickAddType,
         name: companyData.name || companyData.companyName || "",
+        shopOwner: companyData.shopOwner || companyData.ownerName || "",
         phoneNumber: companyData.phoneNumber || companyData.phone || "",
         email: companyData.email || "",
         companyName: companyData.companyName || "",
@@ -627,7 +710,7 @@ function AddNewParty({
         // Reset forms for new party creation
         if (isQuickAdd) {
           // Quick add mode - reset quick form
-          setQuickFormData({name: "", phone: ""});
+          setQuickFormData({name: "", shopOwner: "", phone: ""});
         } else {
           // Regular mode - reset main form
           setFormData({
@@ -703,7 +786,7 @@ function AddNewParty({
   }, [show, editingParty, isQuickAdd, quickAddType]); // ✅ REMOVED isQuickAddMode from dependencies
 
   // Handle form input changes
-  const handleInputChange = (e) => {
+  const handleInputChange = async (e) => {
     const {name, value, type, checked} = e.target;
     const fieldValue = type === "checkbox" ? checked : value;
 
@@ -731,19 +814,72 @@ function AddNewParty({
 
       return newData;
     });
+
+    // Auto-check for duplicates when name is entered in full form
+    if (name === 'fullName' && value.trim().length > 2) {
+      try {
+        const isDuplicate = await checkDuplicateParty(value, formData.phoneNumbers[0]?.number || '');
+        
+        if (isDuplicate) {
+          setErrors(prev => ({...prev, fullName: '🚫 This contact is already registered in the system'}));
+        } else {
+          setErrors(prev => ({...prev, fullName: ''}));
+        }
+      } catch (error) {
+        console.error('Error checking duplicate:', error);
+      }
+    }
   };
 
   // Handle quick form input changes
-  const handleQuickInputChange = (e) => {
+  const handleQuickInputChange = async (e) => {
     const {name, value} = e.target;
     setQuickFormData((prev) => ({...prev, [name]: value}));
+    
+    // Reset WhatsApp sent status when user changes data
+    if (whatsappSent) {
+      setWhatsappSent(false);
+    }
+
+    // Auto-check for duplicates when name or phone is entered
+    if ((name === 'fullName' || name === 'phoneNumber') && value.trim().length > 2) {
+      try {
+        const isDuplicate = await checkDuplicateParty(
+          name === 'fullName' ? value : quickFormData.fullName,
+          name === 'phoneNumber' ? value : quickFormData.phoneNumber
+        );
+        
+        if (isDuplicate) {
+          setQuickAddError('🚫 This contact is already registered in the system');
+        } else {
+          setQuickAddError('');
+        }
+      } catch (error) {
+        console.error('Error checking duplicate:', error);
+      }
+    }
   };
 
   // Handle phone number changes
-  const handlePhoneNumberChange = (index, field, value) => {
+  const handlePhoneNumberChange = async (index, field, value) => {
     const newPhoneNumbers = [...formData.phoneNumbers];
     newPhoneNumbers[index][field] = value;
     setFormData((prev) => ({...prev, phoneNumbers: newPhoneNumbers}));
+
+    // Auto-check for duplicates when phone number is entered
+    if (field === 'number' && value.trim().length > 5) {
+      try {
+        const isDuplicate = await checkDuplicateParty(formData.fullName, value);
+        
+        if (isDuplicate) {
+          setErrors(prev => ({...prev, phoneNumbers: '🚫 This phone number is already registered in the system'}));
+        } else {
+          setErrors(prev => ({...prev, phoneNumbers: ''}));
+        }
+      } catch (error) {
+        console.error('Error checking duplicate:', error);
+      }
+    }
   };
 
   // Add new phone number field
@@ -780,6 +916,40 @@ function AddNewParty({
     }
   };
 
+  // ✅ NEW: Enhanced duplicate checking for existing parties
+  const checkDuplicateParty = async (name, phoneNumber) => {
+    try {
+      // Check both name and phone number for duplicates
+      const response = await partyService.getParties({
+        search: name.trim(),
+        limit: 100
+      });
+      
+      if (response?.data?.parties) {
+        const existingParty = response.data.parties.find(party => 
+          party.name?.toLowerCase().trim() === name.toLowerCase().trim() ||
+          party.phoneNumber === phoneNumber.trim()
+        );
+        
+        if (existingParty) {
+          return {
+            isDuplicate: true,
+            existingParty,
+            duplicateType: 
+              existingParty.name?.toLowerCase().trim() === name.toLowerCase().trim() 
+                ? 'name' 
+                : 'phone'
+          };
+        }
+      }
+      
+      return { isDuplicate: false };
+    } catch (error) {
+      console.warn("Party duplicate check failed:", error);
+      return { isDuplicate: false };
+    }
+  };
+
   // ✅ ENHANCED: handleSubmit with linking data processing
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -806,21 +976,37 @@ function AddNewParty({
       try {
         setIsLoading(true);
 
-        // Check for duplicate phone number
-        const isDuplicate = await checkDuplicatePhone(
+        // Enhanced duplicate checking
+        const duplicateCheck = await checkDuplicateParty(
+          quickFormData.name.trim(),
           quickFormData.phone.trim()
         );
-        if (isDuplicate) {
-          setError(
-            `A ${quickAddType} with phone number ${quickFormData.phone.trim()} already exists. Please use a different phone number or edit the existing ${quickAddType}.`
-          );
+        
+        if (duplicateCheck.isDuplicate) {
+          const { existingParty, duplicateType } = duplicateCheck;
+          let errorMessage = "";
+          
+          if (duplicateType === 'name') {
+            errorMessage = `🔍 "${existingParty.name}" is already registered in the system! This contact already exists with phone: ${existingParty.phoneNumber || 'N/A'}. Please check your contacts list or use a different name.`;
+          } else {
+            errorMessage = `📱 This phone number is already registered! The contact "${existingParty.name}" is using ${quickFormData.phone.trim()}. Please check your contacts list or use a different phone number.`;
+          }
+          
+          setError(errorMessage);
           setIsLoading(false);
+          
+          // Show success-style alert for better UX since they found an existing contact
+          setTimeout(() => {
+            setError("");
+            setSuccess(`✅ Found existing contact: "${existingParty.name}" - You can chat with them directly from your contacts list!`);
+          }, 3000);
           return;
         }
 
         const newRunningCustomer = {
           partyType: quickAddType, // ✅ Use quickAddType instead of hardcoded "customer"
           name: quickFormData.name.trim(),
+          shopOwner: quickFormData.shopOwner.trim(),
           phoneNumber: quickFormData.phone.trim(),
           email: "",
           companyName: "",
@@ -875,10 +1061,19 @@ function AddNewParty({
           // Call parent callback
           onSaveParty(savedParty, true);
 
+          // Ask user if they want to send WhatsApp message
+          const sendWhatsApp = window.confirm(
+            `${quickAddType.charAt(0).toUpperCase() + quickAddType.slice(1)} added successfully!\n\nWould you like to send them a WhatsApp message about B2B Billings?`
+          );
+
+          if (sendWhatsApp) {
+            await handleSendWhatsApp(savedParty);
+          }
+
           // Close modal after short delay
           setTimeout(() => {
             onHide();
-          }, 1000);
+          }, sendWhatsApp ? 2000 : 1000);
         } else {
           throw new Error(
             response.message || response.error || "Failed to create party"
@@ -961,18 +1156,28 @@ function AddNewParty({
       try {
         setIsLoading(true);
 
-        // Check for duplicate phone number (only for new parties or if phone changed)
+        // Enhanced duplicate checking (only for new parties or if phone/name changed)
         if (
           !editingParty ||
-          editingParty.phoneNumber !== formData.phoneNumber.trim()
+          editingParty.phoneNumber !== formData.phoneNumber.trim() ||
+          editingParty.name !== formData.name.trim()
         ) {
-          const isDuplicate = await checkDuplicatePhone(
+          const duplicateCheck = await checkDuplicateParty(
+            formData.name.trim(),
             formData.phoneNumber.trim()
           );
-          if (isDuplicate) {
-            setError(
-              `A party with phone number ${formData.phoneNumber.trim()} already exists. Please use a different phone number or edit the existing party.`
-            );
+          
+          if (duplicateCheck.isDuplicate) {
+            const { existingParty, duplicateType } = duplicateCheck;
+            let errorMessage = "";
+            
+            if (duplicateType === 'name') {
+              errorMessage = `🔍 "${existingParty.name}" is already registered! This contact exists with phone: ${existingParty.phoneNumber || 'N/A'}. Please check your contacts list or use a different name.`;
+            } else {
+              errorMessage = `📱 This phone number is already registered! The contact "${existingParty.name}" is using ${formData.phoneNumber.trim()}. Please check your contacts list or use a different phone number.`;
+            }
+            
+            setError(errorMessage);
             setIsLoading(false);
             return;
           }
@@ -1289,13 +1494,105 @@ function AddNewParty({
 
               {/* Quick Action Options */}
               <div className="mb-4">
+                {/* Simple Quick Add Form - Always Visible */}
+                <div className="border rounded p-3 bg-light mb-4">
+                  <h6 className="mb-3 text-muted">
+                    <FontAwesomeIcon icon={faRocket} className="me-2" />
+                    Quick Add {quickAddType === "customer" ? "Customer" : "Supplier"}
+                  </h6>
+                  
+                  <Form onSubmit={handleSubmit}>
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label className="text-muted small">
+                            {quickAddType === "customer" ? "Customer" : "Supplier"} Name *
+                          </Form.Label>
+                          <Form.Control
+                            ref={quickNameRef}
+                            type="text"
+                            name="name"
+                            value={quickFormData.name}
+                            onChange={handleQuickInputChange}
+                            placeholder={`Enter ${quickAddType} name`}
+                            required
+                            disabled={isLoading}
+                            autoFocus
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label className="text-muted small">
+                            Shop Owner
+                          </Form.Label>
+                          <Form.Control
+                            ref={quickShopOwnerRef}
+                            type="text"
+                            name="shopOwner"
+                            value={quickFormData.shopOwner}
+                            onChange={handleQuickInputChange}
+                            placeholder="Enter shop owner name"
+                            disabled={isLoading}
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label className="text-muted small">
+                            Phone Number *
+                          </Form.Label>
+                          <InputGroup>
+                            <InputGroup.Text className="small">+91</InputGroup.Text>
+                            <Form.Control
+                              ref={quickPhoneRef}
+                              type="tel"
+                              name="phone"
+                              value={quickFormData.phone}
+                              onChange={handleQuickInputChange}
+                              placeholder="Enter phone number"
+                              required
+                              disabled={isLoading}
+                              maxLength={10}
+                            />
+                          </InputGroup>
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <div className="d-flex align-items-end h-100">
+                          <Button
+                            ref={quickSaveRef}
+                            variant="primary"
+                            type="submit"
+                            disabled={isLoading || !quickFormData.name.trim() || !quickFormData.phone.trim()}
+                            className="w-100"
+                          >
+                            {isLoading ? (
+                              <>
+                                <Spinner size="sm" className="me-1" />
+                                Adding...
+                              </>
+                            ) : (
+                              <>
+                                <FontAwesomeIcon icon={faRocket} className="me-1" />
+                                Add {quickAddType === "customer" ? "Customer" : "Supplier"}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Form>
+                </div>
+
                 <div className="text-center mb-3">
-                  <small className="text-muted">Choose an option:</small>
+                  <small className="text-muted">Or choose an option:</small>
                 </div>
 
                 <div className="d-grid gap-2">
                   {/* Search Database Option */}
-
                   <Button
                     variant="outline-info"
                     size="lg"
@@ -1322,6 +1619,7 @@ function AddNewParty({
                       </small>
                     </div>
                   </Button>
+                  
                   {/* Manual Entry Option */}
                   <Button
                     variant="outline-primary"
@@ -1338,6 +1636,34 @@ function AddNewParty({
                       </small>
                     </div>
                   </Button>
+                  
+                  {/* WhatsApp Contact Option - Show if we have valid data */}
+                  {(quickFormData.name.trim() && quickFormData.phone.trim() && isValidWhatsAppNumber(quickFormData.phone)) && (
+                    <Button
+                      variant="outline-success"
+                      size="lg"
+                      onClick={() => handleSendWhatsApp()}
+                      disabled={isLoading || whatsappSending}
+                      className={`d-flex align-items-center justify-content-center p-3 border-2 ${whatsappSent ? 'whatsapp-sent' : ''}`}
+                    >
+                      <FontAwesomeIcon
+                        icon={faWhatsapp}
+                        className="me-2"
+                        size="lg"
+                      />
+                      <div className="text-start">
+                        <div className="fw-bold">
+                          {whatsappSending ? "Sending..." : whatsappSent ? "Message Sent!" : "Send WhatsApp Message"}
+                        </div>
+                        <small className="text-muted">
+                          {whatsappSending ? "Please wait..." : whatsappSent ? "Check WhatsApp!" : "Introduce them to B2B Billings"}
+                        </small>
+                      </div>
+                      {whatsappSending && (
+                        <Spinner size="sm" className="ms-2" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -2127,38 +2453,66 @@ function AddNewParty({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="d-flex gap-2 justify-content-end">
-                  <Button
-                    ref={cancelButtonRef}
-                    variant="outline-secondary"
-                    onClick={onHide}
-                    size="sm"
-                    disabled={isLoading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    ref={saveButtonRef}
-                    variant="primary"
-                    type="submit"
-                    size="sm"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Spinner size="sm" className="me-1" />
-                        {editingParty ? "Updating..." : "Saving..."}
-                      </>
-                    ) : (
-                      <>
-                        <FontAwesomeIcon
-                          icon={editingParty ? faEdit : faPlus}
-                          className="me-1"
-                        />
-                        {editingParty ? "Update" : "Save"} Party
-                      </>
+                <div className="d-flex gap-2 justify-content-between align-items-center">
+                  {/* WhatsApp Button - Show when there's valid phone data */}
+                  <div>
+                    {(formData.phoneNumber && isValidWhatsAppNumber(formData.phoneNumber)) && (
+                      <Button
+                        variant="success"
+                        size="sm"
+                        onClick={() => handleSendWhatsApp()}
+                        disabled={isLoading || whatsappSending}
+                        title="Send WhatsApp message with app information"
+                      >
+                        {whatsappSending ? (
+                          <>
+                            <Spinner size="sm" className="me-1" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <FontAwesomeIcon icon={faWhatsapp} className="me-1" />
+                            {whatsappSent ? "Sent!" : "Send WhatsApp"}
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                  </div>
+                  
+                  {/* Main Action Buttons */}
+                  <div className="d-flex gap-2">
+                    <Button
+                      ref={cancelButtonRef}
+                      variant="outline-secondary"
+                      onClick={onHide}
+                      size="sm"
+                      disabled={isLoading}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      ref={saveButtonRef}
+                      variant="primary"
+                      type="submit"
+                      size="sm"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Spinner size="sm" className="me-1" />
+                          {editingParty ? "Updating..." : "Saving..."}
+                        </>
+                      ) : (
+                        <>
+                          <FontAwesomeIcon
+                            icon={editingParty ? faEdit : faPlus}
+                            className="me-1"
+                          />
+                          {editingParty ? "Update" : "Save"} Party
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </Form>
             </Modal.Body>

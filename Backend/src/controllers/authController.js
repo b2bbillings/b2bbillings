@@ -551,12 +551,12 @@ const signup = async (req, res) => {
   const clientIp = req.ip || req.connection.remoteAddress;
 
   try {
-    // ✅ FIXED: Extract fields without requiring termsAccepted
+    // ✅ FIXED: Extract fields - only email and password are required
     const {
-      name,
+      name = "",
       email,
       password,
-      phone,
+      phone = "",
       companyName = "",
       gstNumber = "",
       termsAccepted = true, // ✅ Default to true since no T&C exist yet
@@ -564,8 +564,8 @@ const signup = async (req, res) => {
 
     console.log("🔐 Signup attempt:", {
       email,
-      name,
-      phone,
+      name: name || "NOT_PROVIDED",
+      phone: phone || "NOT_PROVIDED",
       companyName: companyName || "NOT_PROVIDED",
       gstNumber: gstNumber ? "PROVIDED" : "NOT_PROVIDED",
       termsAccepted: "AUTO_ACCEPTED", // ✅ Since no T&C exist
@@ -577,10 +577,7 @@ const signup = async (req, res) => {
     // ✅ REMOVED: Terms validation (no T&C exist yet)
 
     // Check for existing user
-    const [existingUser, existingPhone] = await Promise.all([
-      User.findOne({email: email.toLowerCase()}).lean(),
-      User.findOne({phone}).lean(),
-    ]);
+    const existingUser = await User.findOne({email: email.toLowerCase()}).lean();
 
     if (existingUser) {
       logger.warn("Signup attempt with existing email", {
@@ -596,26 +593,29 @@ const signup = async (req, res) => {
       });
     }
 
-    if (existingPhone) {
-      logger.warn("Signup attempt with existing phone", {
-        phone,
-        ip: clientIp,
-        existingUserId: existingPhone._id,
-      });
+    // Check for existing phone only if phone is provided
+    if (phone && phone.trim().length > 0) {
+      const existingPhone = await User.findOne({phone: phone.trim()}).lean();
+      
+      if (existingPhone) {
+        logger.warn("Signup attempt with existing phone", {
+          phone,
+          ip: clientIp,
+          existingUserId: existingPhone._id,
+        });
 
-      return res.status(409).json({
-        success: false,
-        message: "An account with this phone number already exists",
-        code: "PHONE_EXISTS",
-      });
+        return res.status(409).json({
+          success: false,
+          message: "An account with this phone number already exists",
+          code: "PHONE_EXISTS",
+        });
+      }
     }
 
-    // ✅ FIXED: Create user data with automatic terms acceptance
+    // ✅ FIXED: Create user data with only required fields (email and password)
     const userData = {
-      name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
-      phone: phone.trim(),
       termsAccepted: true, // ✅ Auto-accept since no T&C exist
       termsAcceptedAt: new Date(), // ✅ Set current timestamp
       metadata: {
@@ -627,6 +627,14 @@ const signup = async (req, res) => {
     };
 
     // ✅ Add optional fields only if provided
+    if (name && name.trim().length > 0) {
+      userData.name = name.trim();
+    }
+
+    if (phone && phone.trim().length > 0) {
+      userData.phone = phone.trim();
+    }
+
     if (companyName && companyName.trim().length > 0) {
       userData.companyName = companyName.trim();
     }

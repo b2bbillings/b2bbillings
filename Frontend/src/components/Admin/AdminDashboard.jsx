@@ -60,6 +60,12 @@ import PurchaseOrderManagement from "./PurchaseOrderManegment";
 // Import the name verification components
 import ItemNameVerification from "./ItemNameVerification";
 
+// Import the advertisement management components
+import AdReviewPanel from "./AdReviewPanel";
+
+// Import the contact management component
+import ContactManager from "./ContactManager";
+
 // Verification History Component
 const VerificationHistory = ({adminData, currentUser, addToast}) => (
   <Container fluid>
@@ -853,6 +859,12 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
       setActiveTab("verification-history");
     } else if (path.includes("/verification-stats")) {
       setActiveTab("verification-stats");
+    } else if (path.includes("/ad-review")) {
+      setActiveTab("ad-review");
+    } else if (path.includes("/ad-analytics")) {
+      setActiveTab("ad-analytics");
+    } else if (path.includes("/ad-settings")) {
+      setActiveTab("ad-settings");
     } else {
       setActiveTab("dashboard");
     }
@@ -884,6 +896,7 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
         pendingVerifications: 12,
         urgentVerifications: 3,
         totalVerifications: 1245,
+        pendingAds: 8, // ✅ NEW: Add pending advertisements count
         verificationStats: {
           approved: 1156,
           rejected: 89,
@@ -1162,6 +1175,48 @@ function AdminDashboard({currentUser, isOnline, addToast, onLogout}) {
                 path="/verification-stats"
                 element={
                   <VerificationAnalytics
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+
+              {/* Advertisement Management Routes */}
+              <Route
+                path="/ad-review"
+                element={
+                  <AdReviewPanel
+                    adminData={adminData}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                  />
+                }
+              />
+              <Route
+                path="/ad-analytics"
+                element={
+                  <div className="container-fluid">
+                    <h4>Advertisement Analytics</h4>
+                    <p>Coming soon...</p>
+                  </div>
+                }
+              />
+              <Route
+                path="/ad-settings"
+                element={
+                  <div className="container-fluid">
+                    <h4>Advertisement Settings</h4>
+                    <p>Coming soon...</p>
+                  </div>
+                }
+              />
+
+              {/* Contact Management Routes */}
+              <Route
+                path="/contacts"
+                element={
+                  <ContactManager
                     adminData={adminData}
                     currentUser={currentUser}
                     addToast={addToast}

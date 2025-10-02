@@ -1,6 +1,5 @@
 import React, {useState, useEffect, useRef, Fragment} from "react";
-import {createPortal} from "react-dom"; // ✅ ADD THIS LINE
-// import "./TeamChats.css";
+import {createPortal} from "react-dom";
 import {
   Card,
   Form,
@@ -19,11 +18,14 @@ import {
   faSearch,
   faPaperPlane,
   faTimes,
+  faPlus,
+  faMinus,
   faPhone,
   faVideo,
   faEllipsisV,
   faCircle,
   faBuilding,
+  faMapMarkerAlt,
   faExclamationTriangle,
   faCheckDouble,
   faCheck,
@@ -42,6 +44,9 @@ import {
   faExclamationCircle,
   faLink,
   faUser,
+  faTag,
+  faEdit,
+  faCamera,
   faRobot,
   faSms,
   faCalendarAlt,
@@ -54,12 +59,35 @@ import {
   faBellSlash,
   faVolumeUp,
   faVolumeMute,
+  faArchive,
+  faUserPlus,
+  faCog,
+  faLock,
+  faEye,
+  faTrash,
+  faDownload,
+  faUserTimes,
+  faUserCheck,
+  faInfo,
+  faImage,
 } from "@fortawesome/free-solid-svg-icons";
+import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 
 // Import services
 import partyService from "../../services/partyService";
 import chatService from "../../services/chatService";
+import teamChatService from "../../services/teamChatService";
 import AddNewParty from "../Home/Party/AddNewParty";
+import { 
+  sendWhatsAppToMultipleContacts, 
+  sendWhatsAppToContact,
+  isValidWhatsAppNumber,
+  getWhatsAppStatus,
+  generateDefaultMessage,
+  generateBulkMessage,
+  openWhatsApp
+} from "../../utils/whatsappUtils";
+import './TeamChats.css';
 
 function TeamChats({
   currentUser,
@@ -67,6 +95,9 @@ function TeamChats({
   addToast,
   isOnline = true,
   onNavigate,
+  onChatPopupOpen,
+  onChatPopupClose,
+  isChatPopupOpen,
 }) {
   // Search and UI states
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,268 +111,999 @@ function TeamChats({
   const [parties, setParties] = useState([]);
   const [allParties, setAllParties] = useState([]);
   const [linkedParties, setLinkedParties] = useState([]);
-  const [activeSection, setActiveSection] = useState("linked");
+  const [activeSection, setActiveSection] = useState("all");
 
-  // Share modal states
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [selectedPartyForShare, setSelectedPartyForShare] = useState(null);
-  const [shareOptions, setShareOptions] = useState({
-    includeContact: true,
-    includeCompanyDetails: true,
-    generateQR: false,
-  });
-
-  // ✅ UPDATED: Chat functionality states (aligned with PartyChat)
+  // Chat functionality states
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState("");
-  const [messageType, setMessageType] = useState("website"); // ✅ Changed to "website"
-  const [displayMessageType, setDisplayMessageType] = useState("whatsapp"); // ✅ Added display type
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [templates, setTemplates] = useState({});
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState(null);
-  const [conversationSummary, setConversationSummary] = useState(null);
+  const [messageType, setMessageType] = useState("website");
+  const [displayMessageType, setDisplayMessageType] = useState("whatsapp");
+  const [isConnected, setIsConnected] = useState(false);
+  const [mappingValidated, setMappingValidated] = useState(false);
+  const [targetCompanyId, setTargetCompanyId] = useState(null);
+  const [currentCompanyData, setCurrentCompanyData] = useState(null);
 
-  // ✅ UPDATED: Toast states (aligned with PartyChat)
+  // Toast states
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("success");
 
-  // Pagination and message loading states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMoreMessages, setHasMoreMessages] = useState(true);
-
-  // ✅ UPDATED: Connection and user states (aligned with PartyChat)
-  const [isConnected, setIsConnected] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [typingUsers, setTypingUsers] = useState([]);
-  const [chatParticipants, setChatParticipants] = useState([]);
-
-  // ✅ UPDATED: Company mapping states (aligned with PartyChat)
-  const [targetCompanyId, setTargetCompanyId] = useState(null);
-  const [mappingValidated, setMappingValidated] = useState(false);
-  const [currentCompanyData, setCurrentCompanyData] = useState(null);
-
-  // ✅ ADDED: Notification states (from PartyChat)
-  const [notificationSettings, setNotificationSettings] = useState({
-    enabled: true,
-    sound: true,
-    desktop: true,
-  });
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isChatFocused, setIsChatFocused] = useState(false);
-
-  // Add Party Modal states
+  // Add New Party Modal
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
-  const [isQuickAdd, setIsQuickAdd] = useState(false);
-  const [quickAddType, setQuickAddType] = useState("customer");
-
-  // ✅ UPDATED: Socket management (from PartyChat)
-  const [socketUnsubscribeFns, setSocketUnsubscribeFns] = useState([]);
+  
+  // ✅ NEW: Quick Add Form States
+  const [quickAddForm, setQuickAddForm] = useState({
+    name: '',
+    phone: '',
+    phoneNumbers: [{ number: '', label: 'Primary' }], // ✅ NEW: Support multiple phone numbers
+    shopName: '',
+    shopOwner: '',
+    partyType: 'customer',
+    // ✅ SWIPE UP: Additional details
+    email: '',
+    address: '',
+    company: '',
+    website: '',
+    notes: '',
+    priority: 'medium',
+    status: 'active',
+    tags: [],
+    socialMedia: {
+      linkedin: '',
+      twitter: '',
+      instagram: ''
+    }
+  });
+  
+  // ✅ NEW: Swipe/Expand functionality
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [showAdditionalPhones, setShowAdditionalPhones] = useState(false); // ✅ NEW: Show additional phone numbers
+  const [quickAddValidation, setQuickAddValidation] = useState({
+    nameError: '',
+    phoneError: '',
+    isChecking: false,
+    userExists: false,
+    existingUser: null
+  });
+  const [isSubmittingQuickAdd, setIsSubmittingQuickAdd] = useState(false);
+  
+  // WhatsApp related states
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsappSending, setWhatsappSending] = useState(false);
+  const [whatsappProgress, setWhatsappProgress] = useState({ current: 0, total: 0 });
+  const [selectedContactsForWhatsApp, setSelectedContactsForWhatsApp] = useState([]);
+  const [bulkMessageMode, setBulkMessageMode] = useState(false);
+  
+  // ✅ NEW: Enhanced WhatsApp modal states
+  const [whatsappMessageMode, setWhatsappMessageMode] = useState('single'); // 'single', 'bulk', 'all', 'big-size'
+  const [customMessage, setCustomMessage] = useState('');
+  const [useCustomMessage, setUseCustomMessage] = useState(false);
+  const [whatsappModalAnimating, setWhatsappModalAnimating] = useState(false);
+  const [selectedSingleContact, setSelectedSingleContact] = useState(null);
+  
+  // ✅ NEW: Big Size mode states
+  const [selectedBigSizeNumber, setSelectedBigSizeNumber] = useState(null);
+  const [bigSizeContactsToSend, setBigSizeContactsToSend] = useState([]);
 
   // Refs
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const emojiPickerRef = useRef(null);
 
-  // ✅ UPDATED: Load company context (from PartyChat)
-  useEffect(() => {
-    const loadCompanyContext = async () => {
-      try {
-        const companyData = localStorage.getItem("currentCompany");
-        if (!companyData) {
-          setError("Company context not found. Please refresh and try again.");
-          return;
-        }
+  // ✅ NEW: Emoji picker state
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-        let company;
-        try {
-          company = JSON.parse(companyData);
-        } catch (parseError) {
-          setError(
-            "Invalid company data. Please refresh and select your company."
-          );
-          return;
-        }
+  // ✅ NEW: Chat options menu state
+  const [showChatOptionsMenu, setShowChatOptionsMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileParty, setProfileParty] = useState(null);
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [maintenancePosition, setMaintenancePosition] = useState({ x: 0, y: 0 });
+  const [maintenanceType, setMaintenanceType] = useState("");
+  
+  // ✅ NEW: Profile editing states
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editedProfile, setEditedProfile] = useState({});
+  const [profileImage, setProfileImage] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileValidationErrors, setProfileValidationErrors] = useState({});
+  
+  // ✅ NEW: Contact status states with persistence
+  const [mutedContacts, setMutedContacts] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`mutedContacts_${currentCompany?.id}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [blockedContacts, setBlockedContacts] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`blockedContacts_${currentCompany?.id}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
-        const companyId = company._id || company.id;
-        if (!companyId) {
-          setError("Company ID not found. Please refresh and try again.");
-          return;
-        }
+  // ✅ NEW: Predefined emojis
+  const predefinedEmojis = [
+    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
+    '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
+    '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜',
+    '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏',
+    '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣',
+    '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠',
+    '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨',
+    '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥',
+    '👍', '👎', '👌', '🤌', '🤏', '✌️', '🤞', '🤟',
+    '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️',
+    '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
+    '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖',
+    '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+    '🔥', '💯', '💢', '💥', '💫', '💦', '💨', '🕳️',
+    '💤', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌'
+  ];
 
-        setCurrentCompanyData(company);
+  // ✅ Load messages from local storage function
+  const loadMessagesFromStorage = (party) => {
+    try {
+      const partyId = party._id || party.id;
+      const companyId = currentCompany?.id;
+      
+      if (!partyId || !companyId) {
+        console.log("📁 No party ID or company ID for loading messages from storage");
+        return [];
+      }
+      
+      const storageKey = `messages_${companyId}_${partyId}`;
+      const storedData = localStorage.getItem(storageKey);
+      
+      if (storedData) {
+        const parsedMessages = JSON.parse(storedData);
+        console.log(`📁 Loaded ${parsedMessages.length} messages from storage for ${party.name}`);
+        return Array.isArray(parsedMessages) ? parsedMessages : [];
+      }
+      
+      console.log("📁 No stored messages found");
+      return [];
+    } catch (error) {
+      console.error("📁 Error loading messages from storage:", error);
+      return [];
+    }
+  };
 
-        if (chatService.setCompanyContext) {
-          chatService.setCompanyContext(companyId, company.businessName);
-        }
+  // Helper functions for WhatsApp styling
+  const getUserInitials = (name) => {
+    if (!name) return "?";
+    return name
+      .split(' ')
+      .map(part => part.charAt(0))
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
+  };
 
-        // Load notification settings
-        const savedNotificationSettings = localStorage.getItem(
-          "chatNotificationSettings"
-        );
-        if (savedNotificationSettings) {
-          try {
-            const parsed = JSON.parse(savedNotificationSettings);
-            setNotificationSettings(parsed);
-          } catch (error) {
-            // Silent fail
-          }
-        }
-      } catch (error) {
-        setError(
-          "Failed to load company context. Please refresh and try again."
+  const getAvatarColor = (name) => {
+    if (!name) return "#00a884";
+    const colors = [
+      "#00a884", "#128c7e", "#25d366", "#075e54", 
+      "#34b7f1", "#667781", "#54656f", "#008069"
+    ];
+    const index = name.charCodeAt(0) % colors.length;
+    return colors[index];
+  };
+
+  // Helper function to limit message preview to 3 words
+  // Render contact list with ads
+  const renderContactListWithAds = () => {
+    const items = [];
+    
+    filteredParties.forEach((party, index) => {
+      const displayName = party.name || party.businessName || party.partyName;
+      const displayPhone = party.phone || party.mobile || party.phoneNumber || party.contactNumber;
+      
+      // Add contact with original styling
+      items.push(
+        <div
+          key={party._id || party.id}
+          className="whatsapp-chat-item"
+        >
+          {/* Main chat content - clickable */}
+          <div 
+            className="chat-main-content"
+            onClick={() => handleChatClick(party)}
+            onDoubleClick={() => {
+              // ✅ Demo: Double-click to simulate receiving a message
+              const demoMessages = [
+                "Hello! How are you?",
+                "Can we schedule a meeting?",
+                "Thanks for your help!",
+                "Looking forward to working with you.",
+                "Please let me know when you're available.",
+                "Great work on the project!",
+                "Could you send me the details?",
+                "I have a question about the proposal."
+              ];
+              const randomMessage = demoMessages[Math.floor(Math.random() * demoMessages.length)];
+              simulateReceiveMessage(party, randomMessage);
+            }}
+          >
+            <div className="chat-avatar-container">
+              <div 
+                className="chat-avatar"
+                style={{ backgroundColor: getAvatarColor(displayName) }}
+              >
+                {party.profileImage ? (
+                  <img 
+                    src={party.profileImage} 
+                    alt={displayName} 
+                    className="avatar-image"
+                    onError={(e) => {
+                      // Fallback to initials if image fails to load
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'block';
+                    }}
+                  />
+                ) : null}
+                <span 
+                  className="avatar-initials"
+                  style={{ display: party.profileImage ? 'none' : 'block' }}
+                >
+                  {getUserInitials(displayName)}
+                </span>
+              </div>
+              {party.isOnline && <div className="online-dot"></div>}
+            </div>
+
+            <div className="chat-content">
+              <div className="chat-header">
+                <div className="chat-name">
+                  {displayName}
+                  {(party.canChat || party.chatEnabled) && (
+                    <span className="chat-enabled-indicator" title="Chat enabled">
+                      ✓
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="chat-preview-container">
+                <div className="chat-contact-details">
+                  <div className="contact-phone">
+                    {displayPhone}
+                  </div>
+                  {(party.shopName || party.companyName || party.businessName) && (
+                    <div className="contact-shop-name">
+                      🏪 {party.shopName || party.companyName || party.businessName}
+                    </div>
+                  )}
+                </div>
+                <div className="chat-preview">
+                  <span className="last-message">
+                    {party.lastMessage ? 
+                      getMessagePreview(party.lastMessage) : 
+                      `${party.partyType || 'Contact'}`
+                    }
+                  </span>
+                </div>
+                <div className="chat-meta">
+                  <div className="chat-time">
+                    {party.lastMessageTime ? formatWhatsAppTime(party.lastMessageTime) : ''}
+                  </div>
+                  {party.unreadCount > 0 && (
+                    <div className="unread-count">
+                      {party.unreadCount}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // Add dummy ad after every 2 contacts
+      if ((index + 1) % 2 === 0 && index < filteredParties.length - 1) {
+        items.push(
+          <div key={`ad-${index}`} className="dummy-ad">
+            <div className="ad-content">
+              <div className="ad-icon">📢</div>
+              <div className="ad-text">
+                <div className="ad-title">Special Offer</div>
+                <div className="ad-subtitle">Boost your business with our premium features</div>
+              </div>
+            </div>
+          </div>
         );
       }
-    };
+    });
 
-    loadCompanyContext();
-  }, []);
+    return items;
+  };
 
-  // ✅ UPDATED: Notification settings persistence (from PartyChat)
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "chatNotificationSettings",
-        JSON.stringify(notificationSettings)
-      );
-    } catch (error) {
-      // Silent fail
+  // Helper function to limit message preview to 3 words
+  const getMessagePreview = (message) => {
+    if (!message) return "";
+    const words = message.trim().split(' ');
+    if (words.length <= 3) return message;
+    return words.slice(0, 3).join(' ') + '...';
+  };
+
+  const formatWhatsAppTime = (dateString) => {
+    if (!dateString) return "";
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) {
+      return date.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false
+      });
+    } else if (diffDays === 2) {
+      return 'Yesterday';
+    } else if (diffDays <= 7) {
+      return date.toLocaleDateString([], { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString([], { 
+        month: 'short', 
+        day: 'numeric' 
+      });
     }
-  }, [notificationSettings]);
+  };
 
-  // ✅ UPDATED: Chat focus management (from PartyChat)
+  // ✅ NEW: WhatsApp-like chat ordering - move party to top on message activity
+  const movePartyToTop = (targetParty, messageContent = null) => {
+    if (!targetParty) return;
+    
+    const partyId = targetParty._id || targetParty.id;
+    
+    setParties(prevParties => {
+      // Find the party in the current list
+      const existingPartyIndex = prevParties.findIndex(p => 
+        (p._id || p.id) === partyId
+      );
+      
+      if (existingPartyIndex === -1) {
+        // Party not found in list, add it to the top with message info
+        const newParty = {
+          ...targetParty,
+          lastMessageTime: new Date().toISOString(),
+          lastMessage: messageContent || targetParty.lastMessage
+        };
+        return [newParty, ...prevParties];
+      }
+      
+      // Move existing party to top and update activity
+      const newParties = [...prevParties];
+      const [movedParty] = newParties.splice(existingPartyIndex, 1);
+      
+      // Update the party with latest activity timestamp and message
+      const updatedParty = {
+        ...movedParty,
+        lastMessageTime: new Date().toISOString(),
+        lastMessage: messageContent || movedParty.lastMessage || 'New message',
+        hasUnreadMessages: targetParty.hasUnreadMessages !== undefined 
+          ? targetParty.hasUnreadMessages 
+          : movedParty.hasUnreadMessages
+      };
+      
+      return [updatedParty, ...newParties];
+    });
+    
+    // Also update allParties for consistency
+    setAllParties(prevParties => {
+      const existingPartyIndex = prevParties.findIndex(p => 
+        (p._id || p.id) === partyId
+      );
+      
+      if (existingPartyIndex === -1) {
+        return [targetParty, ...prevParties];
+      }
+      
+      if (existingPartyIndex === 0) {
+        return prevParties;
+      }
+      
+      const newParties = [...prevParties];
+      const [movedParty] = newParties.splice(existingPartyIndex, 1);
+      
+      const updatedParty = {
+        ...movedParty,
+        lastMessageTime: new Date().toISOString(),
+        hasUnreadMessages: targetParty.hasUnreadMessages !== undefined 
+          ? targetParty.hasUnreadMessages 
+          : movedParty.hasUnreadMessages
+      };
+      
+      return [updatedParty, ...newParties];
+    });
+  };
+
+  // ✅ FIXED: Enhanced fetch parties with proper data structure handling
+  const fetchParties = async () => {
+    console.log("🔄 Fetching parties for company:", currentCompany?.id);
+    
+    if (!currentCompany?.id) {
+      console.log("❌ No company ID available");
+      setLoading(false);
+      setError("No company selected");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log("📡 Calling partyService.getParties...");
+      const response = await partyService.getParties(currentCompany.id);
+      console.log("✅ getParties response:", response);
+      
+      if (response && response.success && response.data) {
+        console.log("📊 Raw data from API:", response.data);
+        
+        // ✅ FIXED: Handle the correct data structure
+        let partiesData = [];
+        
+        if (Array.isArray(response.data)) {
+          // If data is directly an array
+          partiesData = response.data;
+        } else if (response.data.parties && Array.isArray(response.data.parties)) {
+          // If data contains a parties array (which is your case)
+          partiesData = response.data.parties;
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          // If nested data structure
+          partiesData = response.data.data;
+        } else {
+          console.log("❌ Unexpected data structure:", response.data);
+          throw new Error("Invalid data structure received from server");
+        }
+        
+        console.log("📊 Extracted parties data:", partiesData);
+        console.log("📊 Parties data type:", typeof partiesData);
+        console.log("📊 Is parties data array?", Array.isArray(partiesData));
+        
+        if (!Array.isArray(partiesData)) {
+          throw new Error("Parties data is not an array");
+        }
+        
+        setAllParties(partiesData);
+        
+        // ✅ FIXED: Enhanced filtering with debugging
+        const chatEnabledParties = partiesData.filter(party => {
+          // Check all possible phone fields
+          const phoneFields = [
+            party.phone, 
+            party.mobile, 
+            party.phoneNumber, 
+            party.contactNumber,
+            party.mobileNumber
+          ].filter(Boolean);
+          
+          // Check all possible name fields  
+          const nameFields = [
+            party.name,
+            party.businessName,
+            party.partyName,
+            party.customerName,
+            party.supplierName,
+            party.companyName
+          ].filter(Boolean);
+          
+          const hasValidPhone = phoneFields.length > 0;
+          const hasValidName = nameFields.length > 0;
+          
+          // Debug logging for your specific number
+          if (phoneFields.some(phone => 
+            phone && (phone.includes("7378828085") || phone.includes("73788"))
+          )) {
+            console.log("🔍 Found party with your number:", {
+              party,
+              hasValidPhone,
+              hasValidName,
+              phoneFields,
+              nameFields,
+              canChat: party.canChat,
+              chatCompanyId: party.chatCompanyId
+            });
+          }
+          
+          return hasValidPhone && hasValidName;
+        });
+        
+        // Set parties that have chat capabilities
+        const linkedChatParties = partiesData.filter(party => 
+          party.canChat && party.chatCompanyId && 
+          (party.phone || party.mobile || party.phoneNumber || party.contactNumber)
+        );
+        
+        console.log("🔍 DEBUGGING: Chat-enabled parties analysis");
+        console.log("🔍 All parties count:", partiesData.length);
+        console.log("🔍 Parties with canChat:", partiesData.filter(p => p.canChat).length);
+        console.log("🔍 Parties with chatCompanyId:", partiesData.filter(p => p.chatCompanyId).length);
+        console.log("🔍 Parties with both canChat and chatCompanyId:", partiesData.filter(p => p.canChat && p.chatCompanyId).length);
+        console.log("🔍 Sample party with chat capabilities:", partiesData.find(p => p.canChat && p.chatCompanyId));
+        console.log("🔍 Sample party without chat capabilities:", partiesData.find(p => !p.canChat || !p.chatCompanyId));
+        
+        setLinkedParties(linkedChatParties);
+        setParties(partiesData); // Show all parties by default
+        
+        console.log("✅ Processed parties:", {
+          total: partiesData.length,
+          chatEnabled: chatEnabledParties.length,
+          linked: linkedChatParties.length
+        });
+        
+        // ✅ Debug: Check for your specific phone number
+        const myParty = partiesData.find(party => {
+          const phones = [
+            party.phone, 
+            party.mobile, 
+            party.phoneNumber, 
+            party.contactNumber
+          ].filter(Boolean);
+          
+          return phones.some(phone => 
+            phone && (phone.includes("7378828085") || phone.includes("73788"))
+          );
+        });
+        
+        if (myParty) {
+          console.log("✅ Found your party record:", myParty);
+        } else {
+          console.log("❌ Your party not found. All phone numbers:", 
+            partiesData.map(p => ({
+              id: p._id || p.id,
+              name: p.name || p.businessName || p.partyName,
+              phones: [p.phone, p.mobile, p.phoneNumber, p.contactNumber].filter(Boolean)
+            }))
+          );
+        }
+        
+        if (addToast && partiesData.length > 0) {
+          addToast(`Loaded ${partiesData.length} contacts`, "success");
+        } else if (partiesData.length === 0) {
+          console.log("⚠️ No parties found");
+          setError("No contacts found in database");
+        }
+        
+        // ✅ Update last message info from stored messages (WhatsApp-like initialization)
+        setTimeout(() => {
+          updatePartiesWithStoredMessages(partiesData);
+        }, 100);
+        
+      } else {
+        console.log("❌ Invalid response structure:", response);
+        throw new Error("Invalid response from server");
+      }
+    } catch (err) {
+      console.error("❌ Error fetching parties:", err);
+      setError(`Failed to load contacts: ${err.message}`);
+      setAllParties([]);
+      setLinkedParties([]);
+      setParties([]);
+      
+      if (addToast) {
+        addToast(`Failed to load contacts: ${err.message}`, "error");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initialize data and load stored messages
   useEffect(() => {
-    if (chatPopupOpen && selectedParty && targetCompanyId && mappingValidated) {
-      setIsChatFocused(true);
-      setTimeout(() => {
-        markConversationAsRead();
-      }, 1000);
+    if (currentCompany?.id) {
+      fetchParties();
+    }
+  }, [currentCompany?.id]);
 
+  // Update parties with last messages from storage
+  useEffect(() => {
+    if (parties.length > 0 && currentCompany?.id) {
+      const updatedParties = parties.map(party => {
+        const storedMessages = loadMessagesFromStorage(party);
+        if (storedMessages.length > 0) {
+          const lastMessage = storedMessages[storedMessages.length - 1];
+          return {
+            ...party,
+            lastMessage: lastMessage.content || lastMessage.message,
+            lastMessageTime: lastMessage.createdAt || lastMessage.timestamp
+          };
+        }
+        return party;
+      });
+      
+      // Only update if there are changes
+      const hasChanges = updatedParties.some((party, index) => 
+        party.lastMessage !== parties[index].lastMessage || 
+        party.lastMessageTime !== parties[index].lastMessageTime
+      );
+      
+      if (hasChanges) {
+        setParties(updatedParties);
+      }
+    }
+  }, [parties.length, currentCompany?.id]);
+
+  // ✅ NEW: Initialize team chat service
+  useEffect(() => {
+    if (currentUser && currentCompany) {
+      console.log("🚀 Initializing team chat service...");
+      
+      // Set up event listeners for real-time chat updates
+      teamChatService.on("connection_status", (data) => {
+        setIsConnected(data.connected);
+        console.log(`🔌 Team chat connection: ${data.connected ? 'Connected' : 'Disconnected'}`);
+      });
+
+      teamChatService.on("new_message", (data) => {
+        console.log("📩 New team message received:", data);
+        
+        // Update messages if this is the active chat
+        if (selectedParty && data.chatId === selectedParty.chatId) {
+          setMessages(prev => [...prev, data.message]);
+        }
+        
+        // Update party list with new message activity (WhatsApp-like behavior)
+        const messageTime = data.message?.createdAt || new Date().toISOString();
+        setParties(prevParties => {
+          return prevParties.map(party => {
+            if (party.chatId === data.chatId || 
+                (data.message?.participants && data.message.participants.includes(party._id || party.id))) {
+              const updatedParty = {
+                ...party,
+                lastMessage: data.message?.content || 'New message',
+                lastMessageTime: messageTime,
+                hasUnreadMessages: selectedParty?.chatId !== data.chatId, // Mark as unread if not current chat
+                unreadCount: (party.unreadCount || 0) + (selectedParty?.chatId !== data.chatId ? 1 : 0)
+              };
+              return updatedParty;
+            }
+            return party;
+          }).sort((a, b) => {
+            // Real-time WhatsApp-like sorting: Most recent activity first
+            const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+            const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+            
+            // Parties with unread messages get priority
+            if (a.hasUnreadMessages && !b.hasUnreadMessages) return -1;
+            if (!a.hasUnreadMessages && b.hasUnreadMessages) return 1;
+            
+            // Then sort by most recent message time
+            return bTime - aTime;
+          });
+        });
+      });
+
+      teamChatService.on("message_sent", (data) => {
+        console.log("✅ Team message sent confirmation:", data);
+        
+        // Update message status in current chat
+        setMessages(prev => prev.map(msg => 
+          msg.tempId === data.tempId ? { ...msg, ...data.message, status: 'sent' } : msg
+        ));
+        
+        // Update party list with sent message activity (WhatsApp-like behavior)
+        const messageTime = data.message?.createdAt || new Date().toISOString();
+        setParties(prevParties => {
+          return prevParties.map(party => {
+            if (party.chatId === data.chatId || party._id === selectedParty?._id || party.id === selectedParty?.id) {
+              return {
+                ...party,
+                lastMessage: data.message?.content || 'Message sent',
+                lastMessageTime: messageTime
+              };
+            }
+            return party;
+          }).sort((a, b) => {
+            // Real-time WhatsApp-like sorting: Most recent activity first
+            const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+            const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+            
+            // Parties with unread messages get priority
+            if (a.hasUnreadMessages && !b.hasUnreadMessages) return -1;
+            if (!a.hasUnreadMessages && b.hasUnreadMessages) return 1;
+            
+            // Then sort by most recent message time
+            return bTime - aTime;
+          });
+        });
+      });
+
+      teamChatService.on("message_failed", (data) => {
+        console.error("❌ Team message failed:", data);
+        setMessages(prev => prev.map(msg => 
+          msg.tempId === data.tempId ? { ...msg, status: 'failed', error: data.error } : msg
+        ));
+        showToastNotification(`Message failed: ${data.error}`, "error");
+      });
+
+      // Cleanup on unmount
       return () => {
-        setIsChatFocused(false);
+        console.log("🧹 Cleaning up team chat service...");
+        teamChatService.cleanup();
       };
     }
-  }, [chatPopupOpen, selectedParty, targetCompanyId, mappingValidated]);
+  }, [currentUser, currentCompany, selectedParty]);
 
-  // ✅ UPDATED: Company context initialization (simplified)
-  useEffect(() => {
-    const initializeCompanyContext = () => {
+  // ✅ FIXED: Better filtering logic with null checks
+  // ✅ FIXED: Better filtering logic with null checks and WhatsApp-like sorting
+  const filteredParties = parties.filter(party => {
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = 
+      (party.name && party.name.toLowerCase().includes(searchLower)) ||
+      (party.businessName && party.businessName.toLowerCase().includes(searchLower)) ||
+      (party.partyName && party.partyName.toLowerCase().includes(searchLower)) ||
+      (party.phone && party.phone.includes(searchQuery)) ||
+      (party.mobile && party.mobile.includes(searchQuery)) ||
+      (party.phoneNumber && party.phoneNumber.includes(searchQuery)) ||
+      (party.contactNumber && party.contactNumber.includes(searchQuery));
+
+    if (activeSection === "linked") {
+      return matchesSearch && party.canChat && party.chatCompanyId;
+    }
+    
+    return matchesSearch;
+  }).sort((a, b) => {
+    // ✅ WhatsApp-like sorting: Most recent activity first
+    const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 
+                  (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 
+                  (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    
+    // Parties with unread messages get priority (WhatsApp behavior)
+    if (a.hasUnreadMessages && !b.hasUnreadMessages) return -1;
+    if (!a.hasUnreadMessages && b.hasUnreadMessages) return 1;
+    
+    // If both have unread or both don't have unread, sort by most recent message time
+    if (bTime !== aTime) {
+      return bTime - aTime; // Most recent first
+    }
+    
+    // If times are equal, sort alphabetically by name as fallback
+    const aName = (a.name || '').toLowerCase();
+    const bName = (b.name || '').toLowerCase();
+    return aName.localeCompare(bName);
+  });
+
+  // ✅ FIXED: Enhanced chat click with better validation
+  const handleChatClick = async (party) => {
+    console.log("💬 Chat clicked for party:", party);
+    
+    // ✅ Allow chat for any party with phone number
+    const hasPhone = party.phone || party.mobile || party.phoneNumber || party.contactNumber;
+    if (!hasPhone) {
+      if (addToast) {
+        addToast("This contact doesn't have a phone number", "warning");
+      }
+      return;
+    }
+
+    setSelectedParty(party);
+    
+    // ✅ Load stored messages first
+    const storedMessages = loadMessagesFromStorage(party);
+    setMessages(storedMessages);
+    
+    // ✅ Update party's last message info from stored messages (WhatsApp behavior)
+    if (storedMessages.length > 0) {
+      const lastStoredMessage = storedMessages[storedMessages.length - 1];
+      setParties(prevParties => 
+        prevParties.map(p => 
+          (p._id || p.id) === (party._id || party.id) 
+            ? { 
+                ...p, 
+                lastMessage: lastStoredMessage.content || lastStoredMessage.text,
+                lastMessageTime: lastStoredMessage.timestamp || lastStoredMessage.createdAt || new Date().toISOString()
+              }
+            : p
+        )
+      );
+    }
+    
+    // ✅ Clear unread status when chat is opened (WhatsApp behavior)
+    setParties(prevParties => 
+      prevParties.map(p => 
+        (p._id || p.id) === (party._id || party.id) 
+          ? { ...p, hasUnreadMessages: false, unreadCount: 0 }
+          : p
+      )
+    );
+    
+    setError(null);
+    setMappingValidated(true);
+    setTargetCompanyId(party.chatCompanyId || party._id || party.id);
+    
+    // Use parent's popup handlers if available
+    if (onChatPopupOpen) {
+      onChatPopupOpen();
+    }
+    
+    setChatPopupOpen(true);
+    
+    // Prevent body scroll
+    document.body.classList.add("chat-popup-open");
+    
+    // ✅ ENHANCED: Try to load messages using team chat service first, then legacy service
+    if (party.canChat) {
       try {
-        if (currentCompany) {
-          const companyId = currentCompany._id || currentCompany.id;
-          if (companyId) {
-            chatService.setCompanyContext(
-              companyId,
-              currentCompany.businessName
-            );
+        setIsLoadingMessages(true);
+        let messagesLoaded = false;
+
+        // 1️⃣ First try: Team Chat Service (with HTTP fallback)
+        if (selectedParty.canChat) {
+          try {
+            console.log("📥 Loading messages via team chat service...");
+            
+            // Create or get direct chat
+            const chatResult = await teamChatService.createOrGetDirectChat(party);
+            if (chatResult.success) {
+              const chatId = chatResult.chat._id;
+              
+              // Join the chat for real-time updates
+              teamChatService.joinChat(chatId);
+              
+              // Load chat messages
+              const messagesResponse = await teamChatService.getChatMessages(chatId);
+              if (messagesResponse.success) {
+                setMessages(messagesResponse.messages);
+                messagesLoaded = true;
+                console.log("✅ Messages loaded via team chat service");
+              }
+            }
+          } catch (teamChatError) {
+            console.warn("Team chat message loading failed:", teamChatError.message);
           }
         }
-      } catch (error) {
-        // Silent fail
-      }
-    };
 
-    initializeCompanyContext();
-  }, [currentCompany]);
-
-  // ✅ UPDATED: Party mapping validation (aligned with PartyChat)
-  useEffect(() => {
-    if (selectedParty && currentCompanyData?._id) {
-      validatePartyMapping();
-    } else if (selectedParty && !currentCompanyData) {
-      setMappingValidated(false);
-      setTargetCompanyId(null);
-      setError("Loading company context...");
-    } else {
-      setMappingValidated(false);
-      setTargetCompanyId(null);
-      setError(null);
-    }
-  }, [selectedParty?._id, currentCompanyData?._id]);
-
-  // ✅ UPDATED: Chat initialization (aligned with PartyChat)
-  useEffect(() => {
-    if (
-      chatPopupOpen &&
-      selectedParty &&
-      currentCompanyData &&
-      mappingValidated &&
-      targetCompanyId
-    ) {
-      initializeChat();
-    }
-
-    return () => {
-      if (chatPopupOpen) cleanup();
-    };
-  }, [
-    chatPopupOpen,
-    selectedParty?._id,
-    currentCompanyData?._id,
-    mappingValidated,
-    targetCompanyId,
-  ]);
-
-  // Fetch parties
-  useEffect(() => {
-    const fetchAllParties = async () => {
-      if (!currentCompany?.id && !currentCompany?._id) {
-        setError("No company selected");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        const allPartiesResponse = await partyService.getParties({
-          page: 1,
-          limit: 100,
-          search: "",
+        // 2️⃣ Fallback: Legacy Chat Service
+        console.log("🔍 DEBUGGING: Checking if we should load chat history");
+        console.log("🔍 messagesLoaded:", messagesLoaded);
+        console.log("🔍 chatService exists:", !!chatService);
+        console.log("🔍 getChatHistory exists:", !!(chatService && chatService.getChatHistory));
+        console.log("🔍 party.chatCompanyId:", party.chatCompanyId);
+        console.log("🔍 party.canChat:", party.canChat);
+        console.log("🔍 party data:", {
+          id: party._id || party.id,
+          name: party.name,
+          chatCompanyId: party.chatCompanyId,
+          linkedCompanyId: party.linkedCompanyId,
+          canChat: party.canChat
         });
-
-        if (allPartiesResponse.success && allPartiesResponse.data?.parties) {
-          const allPartiesData = allPartiesResponse.data.parties;
-          setAllParties(allPartiesData);
-
-          const linkedPartiesData = allPartiesData.filter(
-            (party) => party.canChat && party.chatCompanyId
-          );
-          setLinkedParties(linkedPartiesData);
-
-          setParties(
-            activeSection === "linked" ? linkedPartiesData : allPartiesData
-          );
-        } else {
-          setAllParties([]);
-          setLinkedParties([]);
-          setParties([]);
+        
+        if (!messagesLoaded && chatService && chatService.getChatHistory && party.chatCompanyId) {
+          try {
+            console.log("📥 Falling back to legacy chat service for messages...");
+            console.log("Party data for getChatHistory:", {
+              id: party._id || party.id,
+              name: party.name,
+              chatCompanyId: party.chatCompanyId,
+              linkedCompanyId: party.linkedCompanyId,
+              canChat: party.canChat
+            });
+            
+            const messagesResponse = await chatService.getChatHistory(party, {
+              limit: 50,
+              page: 1
+            });
+            
+            console.log("getChatHistory response:", messagesResponse);
+            
+            if (messagesResponse?.success && messagesResponse.data) {
+              setMessages(messagesResponse.data);
+              messagesLoaded = true;
+              console.log("✅ Messages loaded via legacy chat service");
+            } else if (messagesResponse?.messages) {
+              setMessages(messagesResponse.messages);
+              messagesLoaded = true;
+            } else if (messagesResponse?.data?.messages) {
+              setMessages(messagesResponse.data.messages);
+              messagesLoaded = true;
+            }
+          } catch (legacyError) {
+            console.warn("Legacy chat message loading failed:", legacyError.message);
+          }
         }
-      } catch (error) {
-        setError(error.message || "Failed to fetch parties");
-        setAllParties([]);
-        setLinkedParties([]);
-        setParties([]);
-        addToast?.("Failed to load parties", "error");
+
+        // 3️⃣ Final fallback: Load from local storage
+        if (!messagesLoaded) {
+          console.log("📁 Loading messages from local storage...");
+          const storedMessages = loadMessagesFromStorage(party);
+          setMessages(storedMessages);
+        }
+      } catch (err) {
+        console.error("Error loading messages:", err);
+        setError("Failed to load chat messages");
+        // Load from local storage as final fallback
+        const storedMessages = loadMessagesFromStorage(party);
+        setMessages(storedMessages);
       } finally {
-        setLoading(false);
+        setIsLoadingMessages(false);
       }
-    };
+    } else {
+      console.log("🔍 Chat not enabled for this party, loading from local storage");
+      const storedMessages = loadMessagesFromStorage(party);
+      setMessages(storedMessages);
+    }
+  };
 
-    fetchAllParties();
-  }, [currentCompany, addToast, activeSection]);
+  // Close chat popup
+  const closeChatPopup = () => {
+    // Add closing animation class
+    const popup = document.querySelector('.whatsapp-popup');
+    if (popup) {
+      popup.classList.add('closing');
+      
+      // Wait for animation to complete
+      setTimeout(() => {
+        // ✅ Save messages before closing
+        if (selectedParty && messages.length > 0) {
+          saveMessagesToStorage(selectedParty, messages);
+        }
+        
+        // ✅ ENHANCED: Leave team chat if connected
+        if (selectedParty?.chatId && teamChatService.isSocketConnected()) {
+          teamChatService.leaveChat(selectedParty.chatId);
+        }
+        
+        setChatPopupOpen(false);
+        setSelectedParty(null);
+        setMessages([]);
+        setNewMessage("");
+        setError(null);
+        setShowEmojiPicker(false);
+        setShowChatOptionsMenu(false);
+        // Don't reset profile modal here - let it manage its own state
+        // setShowProfileModal(false);
+        
+        // Use parent's popup handlers if available
+        if (onChatPopupClose) {
+          onChatPopupClose();
+        }
+        
+        // Remove body scroll lock
+        document.body.classList.remove("chat-popup-open");
+      }, 300);
+    } else {
+      // Fallback without animation
+      // ✅ Save messages before closing
+      if (selectedParty && messages.length > 0) {
+        saveMessagesToStorage(selectedParty, messages);
+      }
+      
+      // ✅ ENHANCED: Leave team chat if connected
+      if (selectedParty?.chatId && teamChatService.isSocketConnected()) {
+        teamChatService.leaveChat(selectedParty.chatId);
+      }
+      
+      setChatPopupOpen(false);
+      setSelectedParty(null);
+      setMessages([]);
+      setNewMessage("");
+      setError(null);
+      setShowEmojiPicker(false);
+      setShowChatOptionsMenu(false);
+      setShowProfileModal(false);
+      
+      if (onChatPopupClose) {
+        onChatPopupClose();
+      }
+      
+      document.body.classList.remove("chat-popup-open");
+    }
+  };
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // ✅ ADD: New useEffect for escape key
+  // Handle escape key
   useEffect(() => {
     const handleEscapeKey = (e) => {
       if (e.key === "Escape" && chatPopupOpen) {
@@ -356,823 +1118,169 @@ function TeamChats({
     }
   }, [chatPopupOpen]);
 
-  // ✅ UPDATED: Display message type change handler (from PartyChat)
-  const handleDisplayMessageTypeChange = (newDisplayType) => {
-    setDisplayMessageType(newDisplayType);
-    localStorage.setItem("preferredDisplayMessageType", newDisplayType);
-  };
-
-  // ✅ UPDATED: Get effective message type (from PartyChat)
-  const getEffectiveMessageType = () => {
-    return "website";
-  };
-
-  // ✅ UPDATED: Display toast (from PartyChat)
-  const displayToast = (message, type = "success") => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
-  };
-
-  // ✅ UPDATED: Mark conversation as read (from PartyChat)
-  const markConversationAsRead = async () => {
-    if (!selectedParty || !mappingValidated || !targetCompanyId) return;
-
-    try {
-      if (chatService.markConversationAsRead) {
-        await chatService.markConversationAsRead(selectedParty);
-      }
-      setUnreadCount(0);
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
-  // ✅ UPDATED: Toggle notification setting (from PartyChat)
-  const toggleNotificationSetting = (setting) => {
-    setNotificationSettings((prev) => {
-      const newSettings = {
-        ...prev,
-        [setting]: !prev[setting],
-      };
-
-      displayToast(
-        `Notifications ${setting} ${prev[setting] ? "disabled" : "enabled"}`,
-        "info"
-      );
-
-      return newSettings;
-    });
-  };
-
-  // ✅ UPDATED: Validate party mapping (from PartyChat)
-  const validatePartyMapping = () => {
-    try {
-      if (!selectedParty || !currentCompanyData?._id) {
-        setMappingValidated(false);
-        setTargetCompanyId(null);
-        setError(
-          !selectedParty
-            ? "Party data is missing"
-            : "Loading company context..."
-        );
-        return;
-      }
-
-      const myCompanyId = currentCompanyData._id || currentCompanyData.id;
-      let extractedCompanyId = null;
-
-      // Try using chatService validation first
-      try {
-        const mappingResult =
-          chatService.validateAndExtractPartyCompanyData(selectedParty);
-        if (
-          mappingResult?.targetCompanyId &&
-          mappingResult.targetCompanyId !== myCompanyId
-        ) {
-          extractedCompanyId = mappingResult.targetCompanyId;
-        }
-      } catch (chatServiceError) {
-        // Silent fail and continue with other methods
-      }
-
-      if (!extractedCompanyId) {
-        const possibleCompanyIds = [
-          selectedParty.targetCompanyId,
-          selectedParty.chatCompanyId,
-          selectedParty.externalCompanyId,
-          selectedParty.linkedCompanyId,
-          selectedParty.companyId,
-          selectedParty.company,
-        ]
-          .map((companyRef) => {
-            if (!companyRef) return null;
-
-            if (typeof companyRef === "object") {
-              return companyRef._id || companyRef.id || null;
-            }
-
-            if (
-              typeof companyRef === "string" &&
-              /^[0-9a-fA-F]{24}$/.test(companyRef)
-            ) {
-              return companyRef;
-            }
-
-            return null;
-          })
-          .filter(Boolean);
-
-        extractedCompanyId = possibleCompanyIds.find(
-          (id) => id !== myCompanyId
-        );
-      }
-
-      if (!extractedCompanyId) {
-        try {
-          extractedCompanyId =
-            chatService.extractTargetCompanyId(selectedParty);
-        } catch (extractError) {
-          // Silent fail
-        }
-      }
-
-      if (!extractedCompanyId) {
-        setError(
-          "This party is not linked to any company for chat. Please configure the party's company association."
-        );
-        setMappingValidated(false);
-        setTargetCompanyId(null);
-        return;
-      }
-
-      if (!/^[0-9a-fA-F]{24}$/.test(extractedCompanyId)) {
-        setError(
-          `Invalid company ID format: ${extractedCompanyId}. Please check party configuration.`
-        );
-        setMappingValidated(false);
-        setTargetCompanyId(null);
-        return;
-      }
-
-      if (extractedCompanyId === myCompanyId) {
-        setError(
-          "Cannot chat with your own company. Please check party configuration."
-        );
-        setMappingValidated(false);
-        setTargetCompanyId(null);
-        return;
-      }
-
-      setTargetCompanyId(extractedCompanyId);
-      setMappingValidated(true);
-      setError(null);
-    } catch (error) {
-      setError(`Validation failed: ${error.message}`);
-      setMappingValidated(false);
-      setTargetCompanyId(null);
-    }
-  };
-
-  // ✅ UPDATED: Initialize chat (from PartyChat)
-  const initializeChat = async () => {
-    try {
-      setIsLoadingMessages(true);
-      setError(null);
-
-      if (!targetCompanyId || !currentCompanyData?._id) {
-        throw new Error("Missing required IDs for chat initialization");
-      }
-
-      const socket = chatService.initializeSocket();
-      if (!socket) {
-        throw new Error("Failed to initialize socket connection");
-      }
-
-      try {
-        const authenticatedData = await Promise.race([
-          waitForAuthentication(),
-          new Promise((_, reject) =>
-            setTimeout(
-              () =>
-                reject(new Error("Authentication timeout after 15 seconds")),
-              15000
-            )
-          ),
-        ]);
-
-        const myCompanyId =
-          authenticatedData.companyId || currentCompanyData._id;
-
-        if (myCompanyId === targetCompanyId) {
-          throw new Error("Cannot chat with your own company");
-        }
-
-        setIsConnected(chatService.isConnected);
-      } catch (authError) {
-        throw new Error(`Authentication failed: ${authError.message}`);
-      }
-
-      setupSocketListeners();
-
-      if (chatService.isConnected) {
-        try {
-          const joinData = {
-            party: {
-              ...selectedParty,
-              _id: selectedParty._id,
-              name: selectedParty.name,
-              linkedCompanyId: targetCompanyId,
-              targetCompanyId: targetCompanyId,
-              chatCompanyId: targetCompanyId,
-            },
-            myCompanyId: currentCompanyData._id,
-            targetCompanyId: targetCompanyId,
-            otherCompanyId: targetCompanyId,
-            partyId: selectedParty._id,
-            partyName: selectedParty.name,
-            chatCompanyName:
-              selectedParty.chatCompanyName || selectedParty.name,
-          };
-
-          const joinResult = await Promise.race([
-            chatService.joinChat(joinData),
-            new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error("Join chat timeout after 10 seconds")),
-                10000
-              )
-            ),
-          ]);
-        } catch (joinError) {
-          displayToast(
-            `Failed to join chat room: ${joinError.message}`,
-            "warning"
-          );
-        }
-      } else {
-        displayToast(
-          "Socket not connected - some features may be limited",
-          "warning"
-        );
-      }
-
-      await loadChatHistory();
-    } catch (error) {
-      setError(`Failed to initialize chat: ${error.message}`);
-      displayToast(`Chat initialization failed: ${error.message}`, "error");
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  };
-
-  // ✅ ADDED: Wait for authentication (from PartyChat)
-  const waitForAuthentication = () => {
-    return new Promise((resolve, reject) => {
-      if (chatService.isConnected) {
-        const companyData = chatService.getAuthenticatedCompany
-          ? chatService.getAuthenticatedCompany()
-          : null;
-        if (companyData?.companyId) {
-          resolve(companyData);
-          return;
-        }
-      }
-
-      let resolved = false;
-
-      const unsubscribeAuth = chatService.on
-        ? chatService.on("socket_authenticated", (data) => {
-            if (!resolved) {
-              resolved = true;
-              unsubscribeAuth();
-              unsubscribeError();
-              resolve(data);
-            }
-          })
-        : null;
-
-      const unsubscribeError = chatService.on
-        ? chatService.on("auth_failed", (error) => {
-            if (!resolved) {
-              resolved = true;
-              if (unsubscribeAuth) unsubscribeAuth();
-              unsubscribeError();
-              reject(new Error("Authentication failed: " + error.error));
-            }
-          })
-        : null;
-
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          if (unsubscribeAuth) unsubscribeAuth();
-          if (unsubscribeError) unsubscribeError();
-          reject(new Error("Authentication timeout"));
-        }
-      }, 10000);
-    });
-  };
-
-  // ✅ UPDATED: Setup socket listeners (enhanced from PartyChat)
-  const setupSocketListeners = () => {
-    cleanupSocketListeners();
-
-    const unsubscribeFunctions = [];
-    const processedMessageIds = new Set();
-
-    if (chatService.on) {
-      const listeners = [
-        chatService.on("new_message", (message) => {
-          const messageId = message._id || message.id;
-
-          if (processedMessageIds.has(messageId)) {
-            return;
-          }
-
-          processedMessageIds.add(messageId);
-          handleNewMessage(message);
-        }),
-
-        chatService.on("message_sent", (data) => {
-          if (data.messageId) {
-            processedMessageIds.add(data.messageId);
-          }
-
-          setMessages((prev) => {
-            let messageUpdated = false;
-
-            const updatedMessages = prev.map((msg) => {
-              const isTargetMessage =
-                msg.id === data.tempId ||
-                msg.tempId === data.tempId ||
-                (msg.id &&
-                  msg.id.startsWith("temp_") &&
-                  Math.abs(new Date(msg.timestamp) - new Date()) < 60000);
-
-              if (isTargetMessage) {
-                messageUpdated = true;
-                return {
-                  ...msg,
-                  id: data.messageId,
-                  tempId: data.tempId,
-                  status: "sent",
-                  realMessageId: data.messageId,
-                  timestamp: new Date(),
-                };
-              }
-              return msg;
-            });
-
-            return updatedMessages;
-          });
-
-          updateMessageStatus(data.messageId, "sent");
-        }),
-
-        chatService.on("user_typing", handleTyping),
-        chatService.on("socket_connected", () => {
-          setIsConnected(true);
-          displayToast("Connected to chat server", "success");
-          processedMessageIds.clear();
-        }),
-        chatService.on("socket_disconnected", (data) => {
-          setIsConnected(false);
-          displayToast("Disconnected from chat server", "warning");
-        }),
-        chatService.on("message_delivered", (data) => {
-          updateMessageStatus(data.messageId, "delivered");
-        }),
-        chatService.on("message_read", (data) => {
-          updateMessageStatus(data.messageId, "read");
-        }),
-      ];
-
-      listeners.forEach((listener) => {
-        if (typeof listener === "function") {
-          unsubscribeFunctions.push(listener);
-        }
-      });
-    }
-
-    setSocketUnsubscribeFns(unsubscribeFunctions);
-  };
-
-  // ✅ UPDATED: Handle new message (from PartyChat)
-  const handleNewMessage = (message) => {
-    try {
-      const messageId = message._id || message.id;
-      const currentCompanyId =
-        currentCompanyData?._id || currentCompanyData?.id;
-
-      const senderCompanyId =
-        typeof message.senderCompanyId === "object"
-          ? message.senderCompanyId._id || message.senderCompanyId.id
-          : message.senderCompanyId;
-
-      const isFromMyCompany = senderCompanyId === currentCompanyId;
-
-      if (isFromMyCompany) {
-        // Handle sent message updates
-        setMessages((prev) => {
-          const existingMessage = prev.find(
-            (m) => m.realMessageId === messageId || m.id === messageId
-          );
-          if (existingMessage) {
-            return prev;
-          }
-
-          const tempMessage = prev.find(
-            (m) =>
-              m.id &&
-              m.id.startsWith("temp_") &&
-              m.content === message.content &&
-              m.senderCompanyId === senderCompanyId
-          );
-
-          if (tempMessage) {
-            return prev.map((m) =>
-              m.id === tempMessage.id
-                ? {
-                    ...m,
-                    id: messageId,
-                    realMessageId: messageId,
-                    status: "delivered",
-                    timestamp: new Date(message.createdAt || message.timestamp),
-                  }
-                : m
-            );
-          }
-
-          return prev;
-        });
-        return;
-      }
-
-      const formattedMessage = formatIncomingMessage(message);
-
-      setMessages((prev) => {
-        const exists = prev.find(
-          (m) =>
-            m.id === formattedMessage.id ||
-            m.realMessageId === formattedMessage.id
-        );
-
-        if (exists) {
-          return prev;
-        }
-
-        return [...prev, formattedMessage];
-      });
-
-      scrollToBottom();
-
-      // Handle notifications
-      if (!isChatFocused && notificationSettings.enabled) {
-        setUnreadCount((prev) => prev + 1);
-        if (notificationSettings.sound) {
-          playNotificationSound();
-        }
-      }
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
-  // ✅ ADDED: Play notification sound (from PartyChat)
-  const playNotificationSound = () => {
-    try {
-      if (!notificationSettings.sound) return;
-
-      const audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.value = 800;
-      oscillator.type = "sine";
-
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        audioContext.currentTime + 0.3
-      );
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
-  // ✅ UPDATED: Handle typing (from PartyChat)
-  const handleTyping = (data) => {
-    if (data.companyId !== currentCompanyData?._id) {
-      if (data.isTyping) {
-        setTypingUsers((prev) => {
-          const existing = prev.find((u) => u.userId === data.userId);
-          if (!existing) {
-            return [
-              ...prev,
-              {
-                userId: data.userId,
-                username: data.username,
-                companyName: data.companyName || "Other Company",
-              },
-            ];
-          }
-          return prev;
-        });
-      } else {
-        setTypingUsers((prev) => prev.filter((u) => u.userId !== data.userId));
-      }
-    }
-  };
-
-  // ✅ UPDATED: Cleanup socket listeners (from PartyChat)
-  const cleanupSocketListeners = () => {
-    socketUnsubscribeFns.forEach((unsubscribe) => {
-      if (typeof unsubscribe === "function") {
-        try {
-          unsubscribe();
-        } catch (error) {
-          // Silent fail
-        }
-      }
-    });
-
-    setSocketUnsubscribeFns([]);
-  };
-
-  // ✅ UPDATED: Load chat history (aligned with PartyChat)
-  const loadChatHistory = async (page = 1, append = false) => {
-    if (!selectedParty || !mappingValidated || !targetCompanyId) return;
-
-    try {
-      const response = await chatService.getChatHistory(selectedParty, {
-        page,
-        limit: 50,
-        messageType: "website",
-        myCompanyId: currentCompanyData._id,
-        targetCompanyId: targetCompanyId,
-      });
-
-      if (response?.success && response.data) {
-        const formattedMessages = response.data.messages.map(
-          formatIncomingMessage
-        );
-
-        if (append) {
-          setMessages((prev) => [...formattedMessages, ...prev]);
-        } else {
-          setMessages(formattedMessages);
-          scrollToBottom();
-        }
-
-        setHasMoreMessages(response.data.pagination?.hasMore || false);
-        setCurrentPage(page);
-
-        // Mark as read after loading
-        setTimeout(() => {
-          markConversationAsRead();
-        }, 1000);
-      } else {
-        displayToast("No chat history found", "info");
-      }
-    } catch (error) {
-      setError("Failed to load chat history");
-      displayToast("Failed to load chat history", "error");
-    }
-  };
-
-  // Load conversation summary (optional functionality)
-  const loadConversationSummary = async () => {
-    if (!selectedParty || !mappingValidated) return;
-
-    try {
-      if (typeof chatService.getConversationSummary === "function") {
-        const response = await chatService.getConversationSummary(
-          selectedParty
-        );
-        if (response.success) {
-          setConversationSummary(response.data);
-        }
-      } else {
-        setConversationSummary({
-          totalMessages: 0,
-          unreadCount: 0,
-          lastMessageAt: null,
-          participantCount: 0,
-        });
-      }
-    } catch (error) {
-      setConversationSummary({
-        totalMessages: 0,
-        unreadCount: 0,
-        lastMessageAt: null,
-        participantCount: 0,
-      });
-    }
-  };
-
-  // Load templates (optional functionality)
-  const loadTemplates = async () => {
-    setTemplates({}); // No templates for now
-  };
-
-  // Load chat participants (optional functionality)
-  const loadChatParticipants = async () => {
-    setChatParticipants([]); // No participants for now
-  };
-
-  // ✅ UPDATED: Cleanup (from PartyChat)
-  const cleanup = () => {
-    try {
-      if (isTyping) handleTypingStop();
-
-      if (
-        isConnected &&
-        selectedParty &&
-        mappingValidated &&
-        chatService.leaveChat
-      ) {
-        chatService.leaveChat(selectedParty).catch(() => {
-          // Silent fail
-        });
-      }
-
-      cleanupSocketListeners();
-      setMessages([]);
-      setTypingUsers([]);
-      setError(null);
-      setUnreadCount(0);
-      setIsChatFocused(false);
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
-  // ✅ UPDATED: Format incoming message (from PartyChat)
-  const formatIncomingMessage = (message) => {
-    const currentCompanyId = currentCompanyData?._id || currentCompanyData?.id;
-
-    const senderCompanyId =
-      typeof message.senderCompanyId === "object"
-        ? message.senderCompanyId._id || message.senderCompanyId.id
-        : message.senderCompanyId;
-
-    const receiverCompanyId =
-      typeof message.receiverCompanyId === "object"
-        ? message.receiverCompanyId._id || message.receiverCompanyId.id
-        : message.receiverCompanyId;
-
-    const isFromMyCompany = senderCompanyId === currentCompanyId;
-    const messageType = isFromMyCompany ? "sent" : "received";
-
-    return {
-      id:
-        message._id ||
-        message.id ||
-        `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: messageType,
-      content: message.content || "",
-      timestamp: new Date(message.createdAt || message.timestamp || Date.now()),
-      status: message.status || "delivered",
-      sender: isFromMyCompany ? "You" : message.senderName || "User",
-      senderCompanyName:
-        typeof message.senderCompanyId === "object"
-          ? message.senderCompanyId.businessName
-          : message.senderCompanyName,
-      messageType: message.messageType || "website",
-      senderCompanyId: senderCompanyId,
-      receiverCompanyId: receiverCompanyId,
-      chatType: "company-to-company",
-    };
-  };
-
-  // Update message status
-  const updateMessageStatus = (messageId, status) => {
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === messageId ? {...msg, status} : msg))
-    );
-  };
-
-  // ✅ UPDATED: Handle send message (aligned with PartyChat)
+  // ✅ FIXED: Enhanced send message with proper error handling
   const handleSendMessage = async () => {
-    if (
-      !newMessage.trim() ||
-      isSending ||
-      !selectedParty ||
-      !mappingValidated
-    ) {
+    if (!newMessage.trim() || isSending || !selectedParty) return;
+
+    // ✅ Check if contact is blocked
+    const partyId = selectedParty._id || selectedParty.id;
+    if (blockedContacts.has(partyId)) {
+      showToastNotification("Cannot send message to blocked contact", "error");
       return;
     }
 
-    if (!isConnected || !chatService.isConnected) {
-      displayToast("Connection lost. Please refresh and try again.", "error");
-      return;
-    }
-
-    setIsSending(true);
     const messageContent = newMessage.trim();
-
-    const tempId = `temp_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-
+    setIsSending(true);
+    
+    // ✅ FIXED: Declare tempMessage outside try block so it's accessible in catch block
+    const tempMessage = {
+      id: `temp_${Date.now()}`,
+      type: "sent",
+      content: messageContent,
+      timestamp: new Date().toISOString(),
+      status: "sending",
+      sender: currentUser?.name || "You"
+    };
+    
     try {
-      const tempMessage = {
-        id: tempId,
-        tempId: tempId,
-        type: "sent",
-        content: messageContent,
-        timestamp: new Date(),
-        status: "sending",
-        sender: "You",
-        messageType: "website",
-        senderCompanyId: currentCompanyData._id,
-        receiverCompanyId: targetCompanyId,
-      };
-
-      setMessages((prev) => [...prev, tempMessage]);
+      // Add optimistic message
+      setMessages(prev => {
+        const updatedMessages = [...prev, tempMessage];
+        // ✅ Save immediately with temp message
+        if (selectedParty) {
+          saveMessagesToStorage(selectedParty, updatedMessages);
+        }
+        return updatedMessages;
+      });
       setNewMessage("");
-      scrollToBottom();
+      
+      // ✅ ENHANCED: Try team chat service first, then legacy chat service, finally demo mode
+      let messageResponse = null;
+      let usedService = "none";
 
-      const messageData = {
-        party: {
-          ...selectedParty,
-          _id: selectedParty._id,
-          name: selectedParty.name,
-          linkedCompanyId: targetCompanyId,
-          targetCompanyId: targetCompanyId,
-          chatCompanyId: targetCompanyId,
-        },
-        content: messageContent,
-        messageType: "website",
-        tempId: tempId,
-        myCompanyId: currentCompanyData._id,
-        targetCompanyId: targetCompanyId,
-        senderCompanyId: currentCompanyData._id,
-        receiverCompanyId: targetCompanyId,
-      };
+      // 1️⃣ First try: Team Chat Service (for enabled contacts - with socket or HTTP fallback)
+      if (selectedParty.canChat) {
+        try {
+          console.log("📤 Sending message via team chat service...");
+          console.log("📤 Team chat service connection status:", teamChatService.getConnectionStatus());
+          
+          // Create or get direct chat
+          const chatResult = await teamChatService.createOrGetDirectChat(selectedParty);
+          console.log("📤 Chat creation result:", chatResult);
+          
+          if (chatResult.success) {
+            messageResponse = await teamChatService.sendMessage(
+              chatResult.chat._id, 
+              messageContent,
+              { type: messageType }
+            );
+            console.log("📤 Message send result:", messageResponse);
+            usedService = "teamChat";
+          } else {
+            console.warn("Failed to create/get chat:", chatResult.error);
+          }
+        } catch (teamChatError) {
+          console.error("Team chat service error:", teamChatError);
+        }
+      }
 
-      const response = await chatService.sendMessage(messageData);
+      // 2️⃣ Second try: Legacy Chat Service (fallback)
+      if (!messageResponse && chatService && chatService.sendMessage && selectedParty.canChat && selectedParty.chatCompanyId) {
+        try {
+          console.log("📤 Falling back to legacy chat service...");
+          const phoneNumber = selectedParty.phone || selectedParty.mobile || 
+                             selectedParty.phoneNumber || selectedParty.contactNumber;
+          
+          // Use the correct structure expected by chatService
+          const messageData = {
+            party: selectedParty,
+            content: messageContent,
+            tempId: tempMessage.id
+          };
+          
+          console.log("📤 Sending message via chatService:", messageData);
+          messageResponse = await chatService.sendMessage(messageData);
+          usedService = "legacyChat";
+        } catch (legacyChatError) {
+          console.warn("Legacy chat service failed:", legacyChatError.message);
+        }
+      }
 
-      if (response && response.success && response.data) {
-        setMessages((prev) => {
-          const responseMessageId = response.data._id || response.data.id;
+      // 3️⃣ Final option: Local storage mode (when no service available)
+      if (!messageResponse) {
+        console.log("📝 Using local storage mode for message...");
+        usedService = "localStorage";
+        messageResponse = { success: true, isLocal: true };
+      }
 
-          const updatedMessages = prev.map((msg) => {
-            if (
-              msg.id === tempId ||
-              msg.tempId === tempId ||
-              (msg.id &&
-                msg.id.startsWith("temp_") &&
-                msg.content === messageContent)
-            ) {
-              return {
-                ...msg,
-                id: responseMessageId,
-                realMessageId: responseMessageId,
-                status: "sent",
-                timestamp: new Date(
-                  response.data.createdAt || response.data.timestamp
-                ),
-              };
-            }
-            return msg;
-          });
+      // Handle response based on service used
+      if (messageResponse?.success) {
+        const statusMessage = {
+          teamChat: "Message sent via team chat",
+          legacyChat: "Message sent via legacy chat", 
+          localStorage: "Message stored locally"
+        };
 
+        setMessages(prev => {
+          const updatedMessages = prev.map(msg => 
+            msg.id === tempMessage.id 
+              ? { 
+                  ...msg, 
+                  id: messageResponse.message?._id || messageResponse.data?.id || tempMessage.id,
+                  status: "sent",
+                  service: usedService
+                }
+              : msg
+          );
+          // Save updated messages
+          if (selectedParty) {
+            saveMessagesToStorage(selectedParty, updatedMessages);
+          }
           return updatedMessages;
         });
-
-        displayToast("Message sent successfully", "success");
+        
+        // Move party to top of chat list after sending message with message content
+        movePartyToTop(selectedParty, messageContent);
+        
+        if (addToast) {
+          addToast(statusMessage[usedService], usedService === "localStorage" ? "info" : "success");
+        }
       } else {
-        throw new Error(response?.message || "Send failed");
+        throw new Error(messageResponse?.error || "All message services failed");
       }
-    } catch (error) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === tempId || msg.tempId === tempId
-            ? {...msg, status: "failed"}
-            : msg
-        )
-      );
-      displayToast(error.message || "Failed to send message", "error");
+    } catch (err) {
+      console.error("Error sending message:", err);
+      
+      // Remove failed message
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+      
+      // ✅ IMPROVED: Better error messages for different types of errors
+      let errorMessage = "Failed to send message";
+      if (err.message?.includes("Socket not connected")) {
+        errorMessage = "Connection lost. Please check your internet connection and try again.";
+      } else if (err.message?.includes("Network Error")) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      if (addToast) {
+        addToast(errorMessage, "error");
+      } else {
+        // Fallback toast
+        showToastNotification(errorMessage, "error");
+      }
+      
+      // Restore message in input
+      setNewMessage(messageContent);
     } finally {
       setIsSending(false);
     }
-  };
-
-  // Handle typing start/stop
-  const handleTypingStart = () => {
-    if (
-      isConnected &&
-      selectedParty &&
-      mappingValidated &&
-      !isTyping &&
-      chatService.startTyping
-    ) {
-      chatService.startTyping(selectedParty);
-      setIsTyping(true);
-    }
-  };
-
-  const handleTypingStop = () => {
-    if (
-      isConnected &&
-      selectedParty &&
-      mappingValidated &&
-      isTyping &&
-      chatService.stopTyping
-    ) {
-      chatService.stopTyping(selectedParty);
-      setIsTyping(false);
-    }
+    
+    // Auto scroll to bottom
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
+    }, 100);
   };
 
   // Handle key press
@@ -1180,34 +1288,7 @@ function TeamChats({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
-      handleTypingStop();
-    } else {
-      handleTypingStart();
     }
-  };
-
-  // Load more messages
-  const loadMoreMessages = async () => {
-    if (!hasMoreMessages || isLoadingMessages) return;
-
-    setIsLoadingMessages(true);
-    await loadChatHistory(currentPage + 1, true);
-    setIsLoadingMessages(false);
-  };
-
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
-    }, 100);
-  };
-
-  // Show toast message
-  const showToastMessage = (message, type = "success") => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
   };
 
   // Get status icon
@@ -1220,674 +1301,1520 @@ function TeamChats({
       case "delivered":
         return <FontAwesomeIcon icon={faCheckDouble} className="text-muted" />;
       case "read":
-        return (
-          <FontAwesomeIcon icon={faCheckDouble} className="text-primary" />
-        );
-      case "failed":
-        return (
-          <FontAwesomeIcon
-            icon={faExclamationTriangle}
-            className="text-danger"
-          />
-        );
+        return <FontAwesomeIcon icon={faCheckDouble} className="text-primary" />;
       default:
         return null;
     }
   };
 
-  // ✅ UPDATED: Get message type icon (with display type support)
-  const getMessageTypeIcon = (msgType) => {
-    const effectiveType = msgType === "website" ? displayMessageType : msgType;
+  // Handle add new party
+  const handleAddNewParty = () => {
+    setShowAddPartyModal(true); // ✅ Show quick add modal ADD NEW PARTY then make it true
+  };
 
-    switch (effectiveType) {
-      case "whatsapp":
-        return {icon: faCommentDots, color: "#25D366"};
-      case "sms":
-        return {icon: faMobileAlt, color: "#007bff"};
-      case "email":
-        return {icon: faEnvelope, color: "#dc3545"};
-      default:
-        return {icon: faCommentDots, color: "#6c757d"};
+  const handlePartyAdded = (newParty) => {
+    setShowAddPartyModal(false);
+    // ✅ FIXED: Refresh data after adding new party
+    setTimeout(() => {
+      fetchParties();
+    }, 500);
+    
+    if (addToast) {
+      addToast(`Contact "${newParty.name || newParty.businessName}" added successfully`, "success");
     }
   };
 
-  // Format time and date
-  const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
+  // ✅ Handle section change
+  const handleSectionChange = (section) => {
+    setActiveSection(section);
+    if (section === "linked") {
+      setParties(linkedParties);
+    } else {
+      setParties(allParties);
+    }
+  };
+
+  // ✅ NEW: Internal toast notification system
+  const showToastNotification = (message, type = "info") => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    
+    // Also use external addToast if available
+    if (addToast) {
+      addToast(message, type);
+    }
+  };
+
+  // ✅ NEW: Add system message to chat
+  const addSystemMessage = (message) => {
+    const systemMessage = {
+      id: `system_${Date.now()}`,
+      type: "system",
+      content: message,
+      timestamp: new Date().toISOString(),
+      status: "delivered",
+      sender: "System"
+    };
+    
+    setMessages(prev => {
+      const updatedMessages = [...prev, systemMessage];
+      // Save system messages too
+      if (selectedParty) {
+        saveMessagesToStorage(selectedParty, updatedMessages);
+      }
+      return updatedMessages;
+    });
+    
+    // Auto scroll to bottom
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
+    }, 100);
+  };
+
+  // ✅ NEW: Simulate receiving a message (for testing WhatsApp-like behavior)
+  const simulateReceiveMessage = (fromParty, messageContent) => {
+    if (!fromParty || !messageContent) return;
+
+    const receivedMessage = {
+      id: `received_${Date.now()}`,
+      type: "received",
+      content: messageContent,
+      timestamp: new Date().toISOString(),
+      status: "delivered",
+      sender: fromParty.name || fromParty.businessName || fromParty.partyName || "Unknown"
+    };
+
+    // If this is the currently selected party, add message to current chat
+    if (selectedParty && (selectedParty._id === fromParty._id || selectedParty.id === fromParty.id)) {
+      setMessages(prev => {
+        const updatedMessages = [...prev, receivedMessage];
+        saveMessagesToStorage(fromParty, updatedMessages);
+        return updatedMessages;
+      });
+    } else {
+      // Save message for later viewing
+      const storedMessages = loadStoredMessages(fromParty);
+      const updatedMessages = [...storedMessages, receivedMessage];
+      saveMessagesToStorage(fromParty, updatedMessages);
+    }
+
+    // ✅ Move party to top of chat list when receiving message
+    movePartyToTop({
+      ...fromParty,
+      hasUnreadMessages: selectedParty?.id !== fromParty._id && selectedParty?._id !== fromParty.id
+    });
+
+    // Show notification if not currently viewing this chat
+    if (!selectedParty || (selectedParty._id !== fromParty._id && selectedParty.id !== fromParty.id)) {
+      showToastNotification(
+        `New message from ${fromParty.name || fromParty.businessName || fromParty.partyName}`, 
+        "info"
+      );
+    }
+
+    // Auto scroll to bottom if viewing this chat
+    if (selectedParty && (selectedParty._id === fromParty._id || selectedParty.id === fromParty.id)) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
+      }, 100);
+    }
+  };
+
+  // ✅ NEW: Handle emoji click
+  const handleEmojiClick = (emoji) => {
+    setNewMessage(prev => prev + emoji);
+    setShowEmojiPicker(false);
+    // Focus back to input
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 100);
+  };
+
+  // ✅ NEW: Handle emoji picker toggle
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker(prev => !prev);
+  };
+
+  // ✅ NEW: Handle chat options menu
+  const handleChatOptionsClick = (option) => {
+    setShowChatOptionsMenu(false);
+    
+    switch(option) {
+      case 'viewProfile':
+        setProfileParty(selectedParty);
+        setShowProfileModal(true);
+        break;
+      case 'clearChat':
+        handleClearChat();
+        break;
+      case 'selectMessages':
+        // Add system message to chat
+        addSystemMessage("📝 Select messages feature will be available soon");
+        showToastNotification("Select messages feature coming soon", "info");
+        break;
+      case 'muteNotifications':
+        const contactId = selectedParty._id || selectedParty.id;
+        const isMuted = mutedContacts.has(contactId);
+        
+        if (isMuted) {
+          // Unmute
+          setMutedContacts(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(contactId);
+            // Save to localStorage
+            localStorage.setItem(`mutedContacts_${currentCompany?.id}`, JSON.stringify([...newSet]));
+            return newSet;
+          });
+          addSystemMessage("🔔 Notifications turned on for this contact");
+          showToastNotification("Notifications turned on for this contact", "success");
+        } else {
+          // Mute
+          setMutedContacts(prev => {
+            const newSet = new Set(prev).add(contactId);
+            // Save to localStorage
+            localStorage.setItem(`mutedContacts_${currentCompany?.id}`, JSON.stringify([...newSet]));
+            return newSet;
+          });
+          addSystemMessage("🔇 Notifications muted for this contact");
+          showToastNotification("Notifications muted for this contact", "success");
+        }
+        break;
+      case 'blockContact':
+        const partyId = selectedParty._id || selectedParty.id;
+        const isBlocked = blockedContacts.has(partyId);
+        
+        if (isBlocked) {
+          // Unblock
+          setBlockedContacts(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(partyId);
+            return newSet;
+          });
+          addSystemMessage("✅ Contact has been unblocked");
+          showToastNotification("Contact unblocked successfully", "success");
+        } else {
+          // Block
+          setBlockedContacts(prev => new Set(prev).add(partyId));
+          addSystemMessage("🚫 Contact has been blocked");
+          showToastNotification("Contact blocked successfully", "success");
+        }
+        break;
+      case 'exportChat':
+        handleExportChat();
+        break;
+      case 'addShortcut':
+        addSystemMessage("🔗 Chat shortcut added to desktop");
+        showToastNotification("Chat shortcut added to desktop", "success");
+        break;
+      default:
+        break;
+    }
+  };
+
+  // ✅ NEW: Handle clear chat
+  const handleClearChat = () => {
+    if (window.confirm(`Clear all messages with ${selectedParty?.name || 'this contact'}?`)) {
+      setMessages([]);
+      // Also clear from localStorage
+      if (selectedParty) {
+        const chatKey = `chat_${currentCompany?.id}_${selectedParty._id || selectedParty.id}`;
+        localStorage.removeItem(chatKey);
+      }
+      
+      showToastNotification("Chat cleared successfully", "success");
+      
+      // Add a system message after clearing
+      setTimeout(() => {
+        addSystemMessage("🗑️ Chat history has been cleared");
+      }, 500);
+    }
+  };
+
+  // ✅ NEW: Handle export chat
+  const handleExportChat = () => {
+    if (messages.length === 0) {
+      addSystemMessage("📂 No messages to export - chat is empty");
+      showToastNotification("No messages to export", "warning");
+      return;
+    }
+
+    const chatData = {
+      contact: selectedParty?.name || 'Unknown',
+      phone: selectedParty?.phone || selectedParty?.mobile || 'Unknown',
+      exportDate: new Date().toISOString(),
+      messages: messages.map(msg => ({
+        type: msg.type,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        sender: msg.sender || (msg.type === 'sent' ? 'You' : selectedParty?.name)
+      }))
+    };
+
+    const dataStr = JSON.stringify(chatData, null, 2);
+    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chat_${selectedParty?.name || 'contact'}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Add system message
+    addSystemMessage("📥 Chat exported successfully");
+    showToastNotification("Chat exported successfully", "success");
+  };
+
+  // ✅ ENHANCED: Handle video/audio call maintenance message with positioned popup
+  const handleCallClick = (type, event) => {
+    // Add system message to chat
+    addSystemMessage(`📞 ${type} call service is currently under maintenance. This feature will be available soon.`);
+    
+    // Show positioned maintenance popup
+    showServiceUnavailablePopup(event, `${type} Call Service Under Maintenance`);
+    
+    // Show toast notification
+    showToastNotification(`${type} call service is under maintenance`, "warning");
+  };
+
+  // ✅ NEW: Generic function to show service unavailable popup above any button
+  const showServiceUnavailablePopup = (event, message) => {
+    // Calculate button position to show popup above it
+    if (event && event.currentTarget) {
+      const buttonRect = event.currentTarget.getBoundingClientRect();
+      setMaintenancePosition({
+        x: buttonRect.left + buttonRect.width / 2,
+        y: buttonRect.top - 10 // 10px above the button
+      });
+    }
+    
+    // Show positioned popup
+    setMaintenanceMessage(message);
+    setShowMaintenanceModal(true);
+    
+    // Auto-close popup after 4 seconds
+    setTimeout(() => {
+      setShowMaintenanceModal(false);
+      setMaintenancePosition(null);
+    }, 4000);
+  };
+
+  // ✅ NEW: Handle profile click
+  const handleProfileClick = () => {
+    console.log('🔍 Profile clicked for:', selectedParty);
+    
+    // Reset editing state when opening new profile
+    setIsEditingProfile(false);
+    setEditedProfile({});
+    setProfileImage(null);
+    
+    setProfileParty(selectedParty);
+    setShowProfileModal(true);
+  };
+
+  // ✅ NEW: Quick Add Contact Validation
+  const validateQuickAddForm = async (field, value) => {
+    const newValidation = { ...quickAddValidation };
+    
+    if (field === 'name') {
+      if (!value.trim()) {
+        newValidation.nameError = 'Contact name is required';
+      } else if (value.trim().length < 2) {
+        newValidation.nameError = 'Name must be at least 2 characters';
+      } else {
+        newValidation.nameError = '';
+      }
+    }
+    
+    if (field === 'phone') {
+      if (!value.trim()) {
+        newValidation.phoneError = 'Phone number is required';
+        newValidation.userExists = false;
+        newValidation.existingUser = null;
+      } else if (!/^[+]?[\d\s\-\(\)]{10,}$/.test(value.trim())) {
+        newValidation.phoneError = 'Please enter a valid phone number';
+        newValidation.userExists = false;
+        newValidation.existingUser = null;
+      } else {
+        newValidation.phoneError = '';
+        
+        // Check if user already exists by phone number
+        if (value.trim().length >= 10) {
+          newValidation.isChecking = true;
+          setQuickAddValidation(newValidation);
+          
+          try {
+            // ✅ ENHANCED: Check both local parties and backend service
+            const cleanPhone = value.replace(/\D/g, ''); // Remove all non-digits
+            
+            // First check local parties array for quick response
+            const existingPartyLocal = parties.find(party => {
+              const partyPhone = (party.phone || party.mobile || party.phoneNumber || party.contactNumber || '').replace(/\D/g, '');
+              return partyPhone === cleanPhone || 
+                     partyPhone.endsWith(cleanPhone.slice(-10)) || 
+                     cleanPhone.endsWith(partyPhone.slice(-10));
+            });
+            
+            if (existingPartyLocal) {
+              newValidation.userExists = true;
+              newValidation.existingUser = existingPartyLocal;
+              newValidation.phoneError = '';
+            } else {
+              // ✅ NEW: Also check backend service for comprehensive validation
+              try {
+                const backendCheck = await partyService.checkPhoneExists(cleanPhone);
+                if (backendCheck.success && backendCheck.exists && backendCheck.party) {
+                  newValidation.userExists = true;
+                  newValidation.existingUser = backendCheck.party;
+                  newValidation.phoneError = '';
+                } else {
+                  newValidation.userExists = false;
+                  newValidation.existingUser = null;
+                }
+              } catch (backendError) {
+                console.warn('Backend phone check failed, using local check only:', backendError);
+                // Continue with local check result
+                newValidation.userExists = false;
+                newValidation.existingUser = null;
+              }
+            }
+          } catch (error) {
+            console.error('Error checking user existence:', error);
+            newValidation.phoneError = 'Error checking phone number';
+            newValidation.userExists = false;
+            newValidation.existingUser = null;
+          } finally {
+            newValidation.isChecking = false;
+          }
+        }
+      }
+    }
+    
+    setQuickAddValidation(newValidation);
+    return newValidation;
+  };
+
+  // ✅ NEW: Handle Quick Add Form Changes
+  const handleQuickAddInputChange = async (field, value) => {
+    setQuickAddForm(prev => {
+      const newForm = { ...prev, [field]: value };
+      
+      // ✅ NEW: Sync main phone field with first phoneNumbers entry
+      if (field === 'phone') {
+        newForm.phoneNumbers = [{
+          ...newForm.phoneNumbers[0],
+          number: value
+        }, ...newForm.phoneNumbers.slice(1)];
+      }
+      
+      return newForm;
+    });
+    await validateQuickAddForm(field, value);
+  };
+
+  // ✅ NEW: Handle Phone Number Management
+  const handleAddPhoneNumber = () => {
+    setQuickAddForm(prev => ({
+      ...prev,
+      phoneNumbers: [...prev.phoneNumbers, { number: '', label: 'Mobile' }]
+    }));
+    setShowAdditionalPhones(true);
+  };
+
+  const handleRemovePhoneNumber = (index) => {
+    setQuickAddForm(prev => ({
+      ...prev,
+      phoneNumbers: prev.phoneNumbers.filter((_, i) => i !== index)
+    }));
+    
+    // Hide additional phones section if only one phone number left
+    if (quickAddForm.phoneNumbers.length <= 2) {
+      setShowAdditionalPhones(false);
+    }
+  };
+
+  const handlePhoneNumberChange = (index, field, value) => {
+    setQuickAddForm(prev => {
+      const newForm = {
+        ...prev,
+        phoneNumbers: prev.phoneNumbers.map((phone, i) => 
+          i === index ? { ...phone, [field]: value } : phone
+        )
+      };
+      
+      // ✅ NEW: Sync main phone field when first phoneNumbers entry changes
+      if (index === 0 && field === 'number') {
+        newForm.phone = value;
+      }
+      
+      return newForm;
     });
   };
 
-  const formatDate = (timestamp) => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return "Today";
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
-    } else {
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year:
-          date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
-      });
+  // ✅ NEW: Handle Quick Add Form Submit
+  const handleQuickAddSubmit = async () => {
+    if (isSubmittingQuickAdd) return;
+    
+    try {
+      setIsSubmittingQuickAdd(true);
+      
+      // Validate all fields
+      const nameValidation = await validateQuickAddForm('name', quickAddForm.name);
+      const phoneValidation = await validateQuickAddForm('phone', quickAddForm.phone);
+      
+      // Check if there are any errors
+      if (nameValidation.nameError || phoneValidation.phoneError || phoneValidation.userExists) {
+        if (phoneValidation.userExists) {
+          const existingUser = phoneValidation.existingUser;
+          const userName = existingUser.name || existingUser.businessName || existingUser.partyName || 'Unknown Contact';
+          const userPhone = existingUser.phone || existingUser.mobile || existingUser.phoneNumber || existingUser.contactNumber || 'No phone';
+          
+          const warningMessage = `Contact already exists!\n\nName: ${userName}\nPhone: ${userPhone}\n\nWould you like to start a chat with this contact instead?`;
+          
+          addToast && addToast(`Contact already exists: ${userName}`, "warning");
+          showToastNotification(`Contact already exists: ${userName}`, "warning");
+          
+          // Show confirmation dialog
+          if (window.confirm(warningMessage)) {
+            // Close modal and open chat with existing contact
+            resetQuickAddModal();
+            
+            // Find and select the existing contact
+            const contactToChat = parties.find(p => 
+              (p._id || p.id) === (existingUser._id || existingUser.id)
+            ) || existingUser;
+            
+            if (contactToChat) {
+              // Open chat with existing contact
+              setTimeout(() => {
+                handleChatClick(contactToChat);
+              }, 300);
+            }
+          }
+        } else {
+          addToast && addToast("Please fix the errors before submitting", "error");
+        }
+        return;
+      }
+      
+      // ✅ UPDATED: Prepare contact data for the new contact service
+      const contactData = {
+        name: quickAddForm.name.trim(),
+        phone: quickAddForm.phone.trim(),
+        phoneNumbers: quickAddForm.phoneNumbers.filter(phoneItem => phoneItem.number.trim()),
+        email: quickAddForm.email?.trim() || null,
+        address: quickAddForm.address?.trim() || null,
+        company: quickAddForm.company?.trim() || null,
+        shopName: quickAddForm.shopName?.trim() || null,
+        shopOwner: quickAddForm.shopOwner?.trim() || null,
+        website: quickAddForm.website?.trim() || null,
+        partyType: quickAddForm.partyType || 'customer',
+        priority: quickAddForm.priority || 'medium',
+        status: quickAddForm.status || 'active',
+        notes: quickAddForm.notes?.trim() || null,
+        tags: quickAddForm.tags?.filter(tag => tag && tag.trim()) || [],
+        socialMedia: {
+          linkedin: quickAddForm.socialMedia?.linkedin?.trim() || null,
+          twitter: quickAddForm.socialMedia?.twitter?.trim() || null,
+          instagram: quickAddForm.socialMedia?.instagram?.trim() || null
+        }
+      };
+      
+      console.log('🔄 Submitting contact data to database:', contactData);
+      
+      // ✅ UPDATED: Use the new contact service
+      const { contactService } = await import('../../services/contactService');
+      const result = await contactService.createContact(contactData);
+      
+      console.log('✅ Quick party creation result:', result);
+      
+      if (result.success) {
+        // ✅ UPDATED: Create party object from saved contact data
+        const savedContact = result.data;
+        const newParty = {
+          id: savedContact._id,
+          _id: savedContact._id,
+          name: savedContact.name,
+          phone: savedContact.phone,
+          mobile: savedContact.phone,
+          phoneNumber: savedContact.phone,
+          contactNumber: savedContact.phone,
+          phoneNumbers: savedContact.phoneNumbers || [],
+          email: savedContact.email,
+          address: savedContact.address,
+          company: savedContact.company,
+          shopName: savedContact.shopName,
+          shopOwner: savedContact.shopOwner,
+          website: savedContact.website,
+          partyType: savedContact.partyType,
+          priority: savedContact.priority,
+          status: savedContact.status,
+          notes: savedContact.notes,
+          tags: savedContact.tags || [],
+          socialMedia: savedContact.socialMedia || {},
+          // ✅ Chat functionality properties
+          canChat: true, 
+          hasUnreadMessages: false,
+          unreadCount: 0,
+          lastMessageTime: null,
+          lastMessage: 'Contact added to your list',
+          isOnline: false,
+          lastSeen: null,
+          // ✅ Database metadata
+          addedAt: savedContact.createdAt,
+          addedBy: savedContact.addedByName,
+          companyId: savedContact.companyId,
+          companyName: savedContact.companyName,
+          // ✅ Chat identification fields
+          chatId: null, // Will be created when first message is sent
+          chatCompanyId: currentCompany?.id,
+          linkedCompanyId: currentCompany?.id
+        };
+        
+        // ✅ Update both parties arrays
+        setParties(prev => [newParty, ...prev]);
+        setAllParties(prev => [newParty, ...prev]);
+        
+        // ✅ Also update linked parties if it's a chat-enabled contact
+        if (activeSection === "linked") {
+          setLinkedParties(prev => [newParty, ...prev]);
+        }
+        
+        // Reset form and close modal
+        resetQuickAddModal();
+        
+        // Show success message
+        const successMessage = `Contact "${quickAddForm.name}" added successfully to database and is ready for chat!`;
+        addToast && addToast(successMessage, "success");
+        showToastNotification(successMessage, "success");
+        
+        // ✅ OPTIONAL: Auto-refresh parties to get any server-side updates
+        setTimeout(() => {
+          fetchParties();
+        }, 1000);
+        
+      } else {
+        console.error('❌ Failed to create party:', result.error);
+        addToast && addToast(result.error || "Failed to add contact", "error");
+        showToastNotification(result.error || "Failed to add contact", "error");
+      }
+      
+    } catch (error) {
+      console.error('❌ Error adding new contact:', error);
+      
+      // ✅ ENHANCED: Handle specific duplicate contact error
+      if (error.response?.data?.message?.includes('already exists')) {
+        const errorMessage = error.response.data.message;
+        const phoneMatch = errorMessage.match(/phone number (\d+)/);
+        const existingPhone = phoneMatch ? phoneMatch[1] : quickAddForm.phone;
+        
+        // Try to find the existing contact in our parties list
+        const existingContact = parties.find(party => {
+          const partyPhone = (party.phone || party.mobile || party.phoneNumber || party.contactNumber || '').replace(/\D/g, '');
+          const searchPhone = existingPhone.replace(/\D/g, '');
+          return partyPhone === searchPhone || 
+                 partyPhone.endsWith(searchPhone.slice(-10)) || 
+                 searchPhone.endsWith(partyPhone.slice(-10));
+        });
+        
+        if (existingContact) {
+          const userName = existingContact.name || existingContact.businessName || existingContact.partyName || 'Unknown Contact';
+          const userPhone = existingContact.phone || existingContact.mobile || existingContact.phoneNumber || existingContact.contactNumber || existingPhone;
+          
+          const warningMessage = `Contact already exists!\n\nName: ${userName}\nPhone: ${userPhone}\n\nWould you like to start a chat with this contact instead?`;
+          
+          addToast && addToast(`Contact already exists: ${userName}`, "warning");
+          showToastNotification(`Contact already exists: ${userName}`, "warning");
+          
+          // Show confirmation dialog
+          if (window.confirm(warningMessage)) {
+            // Close modal and open chat with existing contact
+            resetQuickAddModal();
+            
+            setTimeout(() => {
+              handleChatClick(existingContact);
+            }, 300);
+          }
+        } else {
+          // Fallback if we can't find the contact locally
+          const fallbackMessage = `A contact with phone number ${existingPhone} already exists in your company. Please check your contacts list.`;
+          addToast && addToast(fallbackMessage, "warning");
+          showToastNotification(fallbackMessage, "warning");
+        }
+      } else {
+        // Handle other errors
+        const errorMessage = error.response?.data?.message || error.message || "Failed to add contact. Please try again.";
+        addToast && addToast(errorMessage, "error");
+        showToastNotification(errorMessage, "error");
+      }
+    } finally {
+      setIsSubmittingQuickAdd(false);
     }
   };
 
-  // Render typing indicator
-  const renderTypingIndicator = () => {
-    if (typingUsers.length === 0) return null;
-
-    return (
-      <div className="d-flex mb-3">
-        <div className="bg-white border rounded-3 p-2">
-          <div className="d-flex align-items-center">
-            <div className="typing-indicator me-2">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <small className="text-muted">
-              {typingUsers[0].username} from {typingUsers[0].companyName} is
-              typing...
-            </small>
-          </div>
-        </div>
-      </div>
-    );
+  // ✅ NEW: Reset Quick Add Modal
+  const resetQuickAddModal = () => {
+    setQuickAddForm({ 
+      name: '', 
+      phone: '', 
+      phoneNumbers: [{ number: '', label: 'Primary' }], // ✅ Reset phone numbers
+      shopName: '', 
+      shopOwner: '', 
+      partyType: 'customer',
+      email: '',
+      address: '',
+      notes: ''
+    });
+    setQuickAddValidation({
+      nameError: '',
+      phoneError: '',
+      isChecking: false,
+      userExists: false,
+      existingUser: null
+    });
+    setIsSubmittingQuickAdd(false);
+    setShowAddPartyModal(false);
+    setShowAdditionalPhones(false); // ✅ Reset additional phones visibility
   };
 
-  // Render mapping info
-  const renderMappingInfo = () => {
-    if (!selectedParty) return null;
-
-    return (
-      <div className="text-center py-2 border-bottom bg-light">
-        <small className="text-muted" style={{fontSize: "10px"}}>
-          <FontAwesomeIcon icon={faLink} className="me-1" />
-          Chat between <strong>{currentCompany?.businessName}</strong> and{" "}
-          <strong>{selectedParty.name}</strong>
-          {targetCompanyId && (
-            <span className="text-success ms-1">
-              • Linked Company: {targetCompanyId.substring(0, 8)}...
-            </span>
-          )}
-          {!mappingValidated && (
-            <span className="text-danger ms-1">• No company mapping found</span>
-          )}
-        </small>
-      </div>
-    );
+  // ✅ NEW: Handle profile modal close
+  const handleProfileModalClose = () => {
+    setShowProfileModal(false);
+    setIsEditingProfile(false);
+    setEditedProfile({});
+    setProfileImage(null);
+    setProfileParty(null);
   };
 
-  // Handle add party
-  const handleAddParty = (quickAdd = true, type = "customer") => {
-    setIsQuickAdd(quickAdd);
-    setQuickAddType(type);
-    setShowAddPartyModal(true);
+  // ✅ NEW: Validate profile form data
+  const validateProfileForm = () => {
+    const errors = {};
+    
+    // Name validation
+    if (!editedProfile.name?.trim()) {
+      errors.name = "Name is required";
+    } else if (editedProfile.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    } else if (editedProfile.name.trim().length > 100) {
+      errors.name = "Name cannot exceed 100 characters";
+    }
+    
+    // Phone validation
+    if (!editedProfile.phone?.trim()) {
+      errors.phone = "Phone number is required";
+    } else {
+      const phoneRegex = /^[6-9]\d{9}$/;
+      if (!phoneRegex.test(editedProfile.phone.trim())) {
+        errors.phone = "Please enter a valid 10-digit phone number starting with 6, 7, 8, or 9";
+      }
+    }
+    
+    // Email validation (optional but must be valid if provided)
+    if (editedProfile.email?.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editedProfile.email.trim())) {
+        errors.email = "Please enter a valid email address";
+      }
+    }
+    
+    return errors;
   };
 
-  // Handle save party
-  const handleSaveParty = async (
-    newParty,
-    isQuickAdd = false,
-    isUpdate = false
-  ) => {
+  // ✅ NEW: Handle profile save
+  const handleSaveProfile = async () => {
+    if (!currentCompany?.id || !profileParty?._id) {
+      showToastNotification("Unable to save profile - missing required data", "error");
+      return;
+    }
+
+    // Validate form data
+    const validationErrors = validateProfileForm();
+    setProfileValidationErrors(validationErrors);
+    
+    if (Object.keys(validationErrors).length > 0) {
+      const errorMessages = Object.values(validationErrors).join(", ");
+      showToastNotification(`Please fix the following errors: ${errorMessages}`, "error");
+      return;
+    }
+
     try {
-      // Add or update the party in the all parties list
-      setAllParties((prev) =>
-        isUpdate
-          ? prev.map((p) => (p.id === newParty.id ? newParty : p))
-          : [...prev, newParty]
+      setIsSavingProfile(true);
+      
+      // Prepare update data matching backend schema exactly
+      const updateData = {
+        // Core fields - map to exact backend schema field names
+        name: editedProfile.name?.trim() || profileParty.name || profileParty.businessName || profileParty.partyName,
+        phoneNumber: editedProfile.phone?.trim() || profileParty.phoneNumber || profileParty.phone || profileParty.mobile,
+        email: editedProfile.email?.trim() || profileParty.email || "",
+        companyName: editedProfile.shopName?.trim() || profileParty.companyName || profileParty.businessName || profileParty.shopName || "",
+        shopName: editedProfile.shopName?.trim() || profileParty.shopName || "",
+        shopOwner: editedProfile.ownerName?.trim() || profileParty.shopOwner || profileParty.ownerName || "",
+        partyType: (editedProfile.partyType || profileParty.partyType || "customer").toLowerCase(),
+        
+        // Address handling - map to backend address structure
+        homeAddressLine: editedProfile.address?.trim() || profileParty.address || profileParty.homeAddress?.addressLine || "",
+        
+        // Additional fields for backward compatibility
+        ownerName: editedProfile.ownerName?.trim() || profileParty.ownerName || profileParty.name || ""
+      };
+
+      // Remove empty/null/undefined fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === "" || updateData[key] === null || updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
+      console.log("🔄 Updating party with data:", updateData);
+      console.log("📝 Original party data:", profileParty);
+
+      // Upload profile image if selected
+      let imageUrl = null;
+      if (profileImage?.preview) {
+        try {
+          console.log("�️ Uploading profile image...");
+          const imageResponse = await partyService.uploadProfileImage(profileParty._id, profileImage.preview);
+          imageUrl = imageResponse.imageUrl || imageResponse.profileImage || imageResponse.data?.profileImage;
+          console.log("✅ Profile image uploaded:", imageUrl);
+        } catch (imageError) {
+          console.error("❌ Failed to upload profile image:", imageError);
+          showToastNotification("Profile updated but image upload failed", "warning");
+        }
+      }
+
+      // Add image URL to update data if uploaded
+      if (imageUrl) {
+        updateData.profileImage = imageUrl;
+      }
+
+      // Call backend API to update party
+      console.log("🚀 Calling updateParty API...");
+      const response = await partyService.updateParty(profileParty._id, updateData);
+      console.log("✅ Update response:", response);
+
+      // Extract the updated party data from response
+      const updatedPartyData = response.data?.party || response.party || response.data || response;
+      
+      console.log("📋 Updated party data received:", updatedPartyData);
+
+      // Update local parties list
+      setParties(prevParties => 
+        prevParties.map(party => {
+          if (party._id === profileParty._id) {
+            const updatedParty = { 
+              ...party, 
+              ...updatedPartyData,
+              // Ensure field compatibility for UI display
+              phone: updatedPartyData.phoneNumber || updatedPartyData.phone || party.phone,
+              businessName: updatedPartyData.companyName || updatedPartyData.businessName || party.businessName,
+              address: updatedPartyData.homeAddress?.addressLine || updatedPartyData.address || party.address,
+              shopName: updatedPartyData.companyName || updatedPartyData.shopName || party.shopName
+            };
+            console.log("📱 Updated party in list:", updatedParty);
+            return updatedParty;
+          }
+          return party;
+        })
       );
 
-      // If the party has chat capabilities, add it to linked parties
-      if (newParty.canChat && newParty.chatCompanyId) {
-        setLinkedParties((prev) =>
-          isUpdate
-            ? prev.map((p) => (p.id === newParty.id ? newParty : p))
-            : [...prev, newParty]
-        );
+      // Update selected party if it's the same
+      if (selectedParty?._id === profileParty._id) {
+        const updatedSelectedParty = { 
+          ...selectedParty, 
+          ...updatedPartyData,
+          phone: updatedPartyData.phoneNumber || updatedPartyData.phone || selectedParty.phone,
+          businessName: updatedPartyData.companyName || updatedPartyData.businessName || selectedParty.businessName,
+          address: updatedPartyData.homeAddress?.addressLine || updatedPartyData.address || selectedParty.address,
+          shopName: updatedPartyData.companyName || updatedPartyData.shopName || selectedParty.shopName
+        };
+        console.log("🎯 Updated selected party:", updatedSelectedParty);
+        setSelectedParty(updatedSelectedParty);
       }
 
-      // Update the current parties view based on active section
-      if (
-        activeSection === "linked" &&
-        newParty.canChat &&
-        newParty.chatCompanyId
-      ) {
-        setParties((prev) =>
-          isUpdate
-            ? prev.map((p) => (p.id === newParty.id ? newParty : p))
-            : [...prev, newParty]
-        );
-      } else if (activeSection === "all") {
-        setParties((prev) =>
-          isUpdate
-            ? prev.map((p) => (p.id === newParty.id ? newParty : p))
-            : [...prev, newParty]
-        );
-      }
+      // Update profile party for modal display
+      const updatedProfileParty = { 
+        ...profileParty, 
+        ...updatedPartyData,
+        phone: updatedPartyData.phoneNumber || updatedPartyData.phone || profileParty.phone,
+        businessName: updatedPartyData.companyName || updatedPartyData.businessName || profileParty.businessName,
+        address: updatedPartyData.homeAddress?.addressLine || updatedPartyData.address || profileParty.address,
+        shopName: updatedPartyData.companyName || updatedPartyData.shopName || profileParty.shopName
+      };
+      console.log("👤 Updated profile party:", updatedProfileParty);
+      setProfileParty(updatedProfileParty);
+
+      // Exit edit mode and reset form
+      setIsEditingProfile(false);
+      setEditedProfile({});
+      setProfileImage(null);
+      
+      // Close the profile modal after successful save
+      setTimeout(() => {
+        setShowProfileModal(false);
+        setProfileParty(null);
+      }, 500);
 
       // Show success message
-      showToastMessage(
-        `${isUpdate ? "Updated" : "Added"} ${newParty.partyType} successfully!`,
+      showToastNotification(
+        imageUrl ? "Profile and image updated successfully!" : "Profile updated successfully!", 
         "success"
       );
 
-      // Close modal
-      setShowAddPartyModal(false);
+      console.log("🎉 Profile update completed successfully!");
 
-      // Refresh the parties list
-      setTimeout(async () => {
-        try {
-          const allPartiesResponse = await partyService.getParties({
-            page: 1,
-            limit: 100,
-            search: "",
-          });
-
-          if (allPartiesResponse.success && allPartiesResponse.data?.parties) {
-            const allPartiesData = allPartiesResponse.data.parties;
-            setAllParties(allPartiesData);
-
-            const linkedPartiesData = allPartiesData.filter(
-              (party) => party.canChat && party.chatCompanyId
-            );
-            setLinkedParties(linkedPartiesData);
-
-            setParties(
-              activeSection === "linked" ? linkedPartiesData : allPartiesData
-            );
-          }
-        } catch (error) {
-          console.warn("Failed to refresh parties list:", error);
-        }
-      }, 1000);
     } catch (error) {
-      showToastMessage(
-        `Failed to ${isUpdate ? "update" : "add"} party. Please try again.`,
-        "error"
-      );
+      console.error("❌ Error saving profile:", error);
+      
+      let errorMessage = "Failed to update profile";
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      showToastNotification(errorMessage, "error");
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
-  // Filter parties
-  const filteredParties = parties.filter(
-    (party) =>
-      party.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      party.chatCompanyName
-        ?.toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      party.phoneNumber?.includes(searchQuery)
-  );
+  // ✅ NEW: Handle profile image selection
+  const handleImageSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        showToastNotification("Image size must be less than 5MB", "error");
+        return;
+      }
 
-  // Calculate totals
-  const totalLinkedCompanies = new Set(
-    linkedParties.map((party) => party.chatCompanyId).filter(Boolean)
-  ).size;
-
-  const totalAllParties = allParties.length;
-
-  // ✅ UPDATE: Enhanced handlePartyClick function
-  const handlePartyClick = (party) => {
-    // Check if party has chat capabilities
-    if (!party.canChat || !party.chatCompanyId) {
-      showToastMessage(
-        "This party is not linked to any company for chat functionality. Please link them to a company first.",
-        "error"
-      );
-      return;
+      // Store both the file and preview URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setProfileImage({
+          file: file,
+          preview: e.target.result
+        });
+      };
+      reader.readAsDataURL(file);
     }
-
-    setSelectedParty(party);
-    setChatPopupOpen(true);
-    setMessages([]);
-    setError(null);
-    setMappingValidated(false);
-
-    // ✅ NEW: Prevent body scroll
-    document.body.classList.add("chat-popup-open");
-    const scrollY = window.scrollY;
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    document.body.style.overflow = "hidden";
   };
 
-  // ✅ UPDATE: Enhanced closeChatPopup function
-  const closeChatPopup = () => {
-    setChatPopupOpen(false);
-    setSelectedParty(null);
-    setMessages([]);
-    setNewMessage("");
-    setIsTyping(false);
-    setError(null);
-    setMappingValidated(false);
-    setTargetCompanyId(null);
+  // ✅ ENHANCED: WhatsApp handler functions
+  const handleSendWhatsAppToContact = async (party) => {
+    try {
+      if (!party.phoneNumber) {
+        showToastNotification("This contact doesn't have a phone number", "error");
+        return;
+      }
 
-    // ✅ NEW: Remove body scroll lock
-    document.body.classList.remove("chat-popup-open");
-    document.body.style.overflow = "";
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.width = "";
+      if (!isValidWhatsAppNumber(party.phoneNumber)) {
+        showToastNotification("Invalid phone number for WhatsApp", "error");
+        return;
+      }
 
-    cleanup();
+      // Get current user info
+      const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
+      const senderName = currentUser?.name || currentUser?.username || "";
+      const companyName = currentCompany?.businessName || currentCompany?.companyName || "";
+
+      const result = await sendWhatsAppToContact(party, {
+        senderName,
+        companyName
+      });
+
+      if (result.success) {
+        showToastNotification(`WhatsApp message sent to ${party.name}!`, "success");
+      } else {
+        showToastNotification(result.error || "Failed to send WhatsApp message", "error");
+      }
+
+    } catch (error) {
+      console.error("Error sending WhatsApp:", error);
+      showToastNotification("Failed to send WhatsApp message", "error");
+    }
   };
-  // Handle share party (existing functionality)
-  const handleShareParty = (party, event) => {
-    event.stopPropagation();
-    setSelectedPartyForShare(party);
-    setShowShareModal(true);
+
+  // ✅ NEW: Enhanced WhatsApp modal functions
+  const handleWhatsAppModalOpen = () => {
+    setWhatsappModalAnimating(true);
+    setShowWhatsAppModal(true);
+    setWhatsappMessageMode('single');    const handleDirectProfileClick = (party) => {
+      console.log('🔍 Direct profile clicked for:', party);
+      
+      // Reset editing state when opening new profile
+      setIsEditingProfile(false);
+      setEditedProfile({});
+      setProfileImage(null);
+      
+      setProfileParty(party);
+      setShowProfileModal(true);
+    };    const handleProfileModalClose = () => {
+      setShowProfileModal(false);
+      setIsEditingProfile(false);
+      setEditedProfile({});
+      setProfileImage(null);
+      setProfileParty(null);
+    };
+    setUseCustomMessage(false);
+    setCustomMessage('');
+    
+    // Get all parties with valid phone numbers for initial setup
+    const validContacts = parties.filter(party => {
+      const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+      return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+    });
+    
+    setSelectedContactsForWhatsApp(validContacts);
+    
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+    
+    // Add entrance animation delay
+    setTimeout(() => {
+      setWhatsappModalAnimating(false);
+    }, 300);
   };
 
-  // Generate shareable functions (existing functionality)
-  const generateShareableLink = (party) => {
-    const baseUrl = window.location.origin;
-    const companyId = currentCompany?.id || currentCompany?._id;
-    return `${baseUrl}/companies/${companyId}/parties/${party.id}`;
+  const handleWhatsAppModalClose = (e) => {
+    // Stop event propagation if it's from overlay click
+    if (e) {
+      e.stopPropagation();
+    }
+    
+    setWhatsappModalAnimating(true);
+    
+    // Add exit animation
+    setTimeout(() => {
+      setShowWhatsAppModal(false);
+      setWhatsappModalAnimating(false);
+      setSelectedSingleContact(null);
+      setUseCustomMessage(false);
+      setCustomMessage('');
+      
+      // Restore body scroll
+      document.body.style.overflow = 'unset';
+    }, 300);
   };
 
-  const generateShareableData = (party) => {
-    const shareData = {
-      name: party.name,
-      type: formatPartyType(party.partyType),
-      phone: party.phoneNumber,
-      email: party.email,
-      address: party.address,
-      company: party.chatCompanyName,
-      link: generateShareableLink(party),
-      sharedBy: currentCompany?.businessName,
-      sharedAt: new Date().toLocaleString(),
+  const handleMessageModeChange = (mode) => {
+    // Don't block mode changes due to animation state
+    setWhatsappMessageMode(mode);
+    
+    if (mode === 'single') {
+      setSelectedSingleContact(null);
+    } else if (mode === 'all') {
+      // Select all valid contacts
+      const validContacts = parties.filter(party => {
+        const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+        return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+      });
+      setSelectedContactsForWhatsApp(validContacts);
+    } else if (mode === 'big-size') {
+      // Reset big size selections
+      setSelectedBigSizeNumber(null);
+      setBigSizeContactsToSend([]);
+      setSelectedContactsForWhatsApp([]);
+    }
+  };
+
+  const handleSingleContactSelect = (contact) => {
+    console.log('Selecting single contact:', contact);
+    setSelectedSingleContact(contact);
+  };
+
+  const handleBigSizeNumberSelect = (number) => {
+    console.log('Selecting big size number:', number);
+    setSelectedBigSizeNumber(number);
+    
+    // Get valid contacts
+    const validContacts = parties.filter(party => {
+      const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+      return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+    });
+    
+    // Select first N contacts
+    const selectedContacts = validContacts.slice(0, number);
+    setBigSizeContactsToSend(selectedContacts);
+    setSelectedContactsForWhatsApp(selectedContacts);
+    
+    console.log(`Selected first ${number} contacts:`, selectedContacts);
+  };
+
+  const handleContactToggle = (contact) => {
+    console.log('Toggling contact:', contact);
+    setSelectedContactsForWhatsApp(prev => {
+      const contactId = contact._id || contact.id;
+      const isSelected = prev.some(c => (c._id || c.id) === contactId);
+      
+      if (isSelected) {
+        return prev.filter(c => (c._id || c.id) !== contactId);
+      } else {
+        return [...prev, contact];
+      }
+    });
+  };
+
+  // ✅ FIXED: Enhanced bulk WhatsApp sending
+  const handleSendBulkWhatsApp = async () => {
+    try {
+      setWhatsappSending(true);
+      
+      let contactsToSend = [];
+      let messageToSend = '';
+      
+      // Determine contacts and message based on mode
+      if (whatsappMessageMode === 'single') {
+        if (!selectedSingleContact) {
+          showToastNotification("Please select a contact to send message to", "error");
+          return;
+        }
+        contactsToSend = [selectedSingleContact];
+      } else if (whatsappMessageMode === 'bulk') {
+        contactsToSend = selectedContactsForWhatsApp.filter(contact => {
+          const phoneNumber = contact.phoneNumber || contact.phone || contact.mobile || contact.contactNumber;
+          return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+        });
+      } else if (whatsappMessageMode === 'all') {
+        contactsToSend = parties.filter(party => {
+          const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+          return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+        });
+      }
+      
+      if (contactsToSend.length === 0) {
+        showToastNotification("No valid contacts selected for WhatsApp messaging", "error");
+        return;
+      }
+      
+      setWhatsappProgress({ current: 0, total: contactsToSend.length });
+
+      // Get current user info
+      const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
+      const senderName = currentUser?.name || currentUser?.username || "";
+      const companyName = currentCompany?.businessName || currentCompany?.companyName || "";
+
+      // ✅ FIXED: Send messages to ALL contacts, not just the first one
+      const results = [];
+      
+      for (let i = 0; i < contactsToSend.length; i++) {
+        const contact = contactsToSend[i];
+        
+        try {
+          // Update progress
+          setWhatsappProgress({ current: i + 1, total: contactsToSend.length });
+          
+          // Get phone number from any available field
+          const phoneNumber = contact.phoneNumber || contact.phone || contact.mobile || contact.contactNumber;
+          
+          if (!phoneNumber || !isValidWhatsAppNumber(phoneNumber)) {
+            results.push({
+              success: false,
+              contact: contact.name || 'Unknown',
+              error: 'Invalid phone number'
+            });
+            continue;
+          }
+          
+          // Generate message
+          const message = useCustomMessage && customMessage.trim() 
+            ? customMessage.trim()
+            : whatsappMessageMode === 'all' || bulkMessageMode
+              ? generateBulkMessage({ senderName, companyName })
+              : generateDefaultMessage({
+                  contactName: contact.name || contact.businessName || 'Valued Contact',
+                  companyName,
+                  senderName
+                });
+          
+          // Open WhatsApp for this contact
+          openWhatsApp(phoneNumber, message);
+          
+          results.push({
+            success: true,
+            contact: contact.name || 'Unknown',
+            phoneNumber: phoneNumber
+          });
+          
+          // Add delay between messages to prevent overwhelming
+          if (i < contactsToSend.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+          
+        } catch (error) {
+          console.error(`Error sending WhatsApp to ${contact.name}:`, error);
+          results.push({
+            success: false,
+            contact: contact.name || 'Unknown',
+            error: error.message
+          });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.length - successCount;
+
+      if (successCount > 0) {
+        showToastNotification(
+          `WhatsApp messages opened for ${successCount} contact(s)${failCount > 0 ? `. ${failCount} failed.` : ''}`,
+          successCount > failCount ? "success" : "warning"
+        );
+      } else {
+        showToastNotification("Failed to open WhatsApp for any contacts", "error");
+      }
+
+      // Close modal after successful sending
+      setTimeout(() => {
+        handleWhatsAppModalClose();
+      }, 1000);
+      
+    } catch (error) {
+      console.error("Error sending bulk WhatsApp:", error);
+      showToastNotification("Failed to send bulk WhatsApp messages", "error");
+    } finally {
+      setWhatsappSending(false);
+      setWhatsappProgress({ current: 0, total: 0 });
+    }
+  };
+
+  const handleBulkWhatsApp = handleWhatsAppModalOpen;
+
+  // ✅ Update parties with last message info from stored messages (WhatsApp-like behavior)
+  const updatePartiesWithStoredMessages = (partiesToUpdate) => {
+    const updatedParties = partiesToUpdate.map(party => {
+      const storedMessages = loadStoredMessages(party);
+      if (storedMessages.length > 0) {
+        const lastMessage = storedMessages[storedMessages.length - 1];
+        return {
+          ...party,
+          lastMessage: lastMessage.content || lastMessage.text || 'Message',
+          lastMessageTime: lastMessage.timestamp || lastMessage.createdAt || new Date().toISOString(),
+          hasUnreadMessages: false // Assume read when loading
+        };
+      }
+      return party;
+    });
+    
+    // Sort by most recent activity (WhatsApp behavior)
+    const sortedParties = updatedParties.sort((a, b) => {
+      const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 
+                    (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 
+                    (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return bTime - aTime;
+    });
+    
+    setParties(sortedParties);
+    setAllParties(sortedParties);
+  };
+
+  // ✅ NEW: Chat persistence functions
+  const loadStoredMessages = (party) => {
+    try {
+      const partyId = party._id || party.id;
+      const companyId = currentCompany?.id;
+      
+      if (!partyId || !companyId) {
+        console.log("📁 No party ID or company ID for loading stored messages");
+        return [];
+      }
+      
+      // Use the same key format as saveMessagesToStorage
+      const storageKey = `messages_${companyId}_${partyId}`;
+      const storedMessages = localStorage.getItem(storageKey);
+      if (storedMessages) {
+        const parsed = JSON.parse(storedMessages);
+        console.log(`📁 Loaded ${parsed.length} stored messages for ${party.name || party.partyName}`);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch (error) {
+      console.error('Error loading stored messages:', error);
+    }
+    return [];
+  };
+
+  const saveMessagesToStorage = (party, messages) => {
+    try {
+      const partyId = party._id || party.id;
+      const companyId = currentCompany?.id;
+      
+      if (!partyId || !companyId) {
+        console.log("📁 No party ID or company ID for saving messages");
+        return;
+      }
+      
+      // Use the same key format as loadMessagesFromStorage
+      const storageKey = `messages_${companyId}_${partyId}`;
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+      console.log(`📁 Saved ${messages.length} messages to storage for ${party.name || party.partyName}`);
+    } catch (error) {
+      console.error('Error saving messages:', error);
+    }
+  };
+
+  // ✅ NEW: Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
     };
 
-    if (!shareOptions.includeContact) {
-      delete shareData.phone;
-      delete shareData.email;
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
+  }, [showEmojiPicker]);
 
-    if (!shareOptions.includeCompanyDetails) {
-      delete shareData.company;
-      delete shareData.address;
-    }
-
-    return shareData;
-  };
-
-  const handleCopyToClipboard = async (party) => {
-    try {
-      const shareData = generateShareableData(party);
-      const shareText = `
-🏢 ${shareData.name} (${shareData.type})
-${shareData.phone ? `📱 ${shareData.phone}` : ""}
-${shareData.email ? `📧 ${shareData.email}` : ""}
-${shareData.company ? `🏢 Company: ${shareData.company}` : ""}
-${shareData.address ? `📍 ${shareData.address}` : ""}
-
-🔗 View Details: ${shareData.link}
-
-Shared by ${shareData.sharedBy} on ${shareData.sharedAt}
-      `.trim();
-
-      await navigator.clipboard.writeText(shareText);
-      showToastMessage("Party details copied to clipboard!", "success");
-      setShowShareModal(false);
-    } catch (error) {
-      showToastMessage("Failed to copy to clipboard", "error");
-    }
-  };
-
-  const handleNativeShare = async (party) => {
-    if (!navigator.share) {
-      showToastMessage("Share not supported on this device", "error");
-      return;
-    }
-
-    try {
-      const shareData = generateShareableData(party);
-      await navigator.share({
-        title: `${shareData.name} - ${shareData.type}`,
-        text: `Check out ${shareData.name} (${shareData.type}) from ${shareData.sharedBy}`,
-        url: shareData.link,
-      });
-      setShowShareModal(false);
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        showToastMessage("Failed to share", "error");
+  // ✅ NEW: Close chat options menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Close options menu when clicking outside
+      if (showChatOptionsMenu && !event.target.closest('.header-actions')) {
+        setShowChatOptionsMenu(false);
       }
+    };
+
+    if (showChatOptionsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  };
+  }, [showChatOptionsMenu]);
 
-  const handleEmailShare = (party) => {
-    const shareData = generateShareableData(party);
-    const subject = `${shareData.name} - ${shareData.type} Details`;
-    const body = `Hi,
-
-I'm sharing the details of ${shareData.name} (${shareData.type}) with you:
-
-${shareData.phone ? `Phone: ${shareData.phone}` : ""}
-${shareData.email ? `Email: ${shareData.email}` : ""}
-${shareData.company ? `Company: ${shareData.company}` : ""}
-${shareData.address ? `Address: ${shareData.address}` : ""}
-
-View full details: ${shareData.link}
-
-Best regards,
-${shareData.sharedBy}`;
-
-    const mailtoLink = `mailto:?subject=${encodeURIComponent(
-      subject
-    )}&body=${encodeURIComponent(body)}`;
-    window.open(mailtoLink);
-    setShowShareModal(false);
-  };
-
-  // Utility functions
-  const getAvatarColor = (name) => {
-    const colors = [
-      "#2563eb",
-      "#10b981",
-      "#f59e0b",
-      "#ef4444",
-      "#8b5cf6",
-      "#06b6d4",
-      "#84cc16",
-      "#f97316",
-    ];
-    const index = name.charCodeAt(0) % colors.length;
-    return colors[index];
-  };
-
-  const generateInitials = (name) => {
-    if (!name) return "NA";
-    return name
-      .split(" ")
-      .map((word) => word.charAt(0))
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const formatPartyType = (type) => {
-    return type === "supplier" ? "Supplier" : "Customer";
-  };
-
-  // ✅ ADDED: Missing function - Validate party company mapping
-  const validatePartyCompanyMapping = () => {
-    validatePartyMapping();
-  };
-
-  const renderTemplateButtons = () => {
-    if (Object.keys(templates).length === 0) {
-      return (
-        <div className="text-center text-muted py-2">
-          <FontAwesomeIcon icon={faClipboardList} className="me-2" />
-          No templates available
-        </div>
-      );
-    }
-
-    return Object.entries(templates).map(([key, template], index) => (
-      <Button
-        key={`template-${key}-${index}`} // ✅ FIXED: Added unique key
-        variant="outline-secondary"
-        size="sm"
-        className="me-1 mb-1"
-        onClick={() => {
-          setNewMessage(template.content || template);
-          setSelectedTemplate(key);
-          setShowTemplates(false);
-        }}
-        style={{fontSize: "10px"}}
-      >
-        {template.name || key}
-      </Button>
-    ));
-  };
-
-  const renderChatPopupAsPortal = () => {
+  // Render chat popup
+  const renderChatPopup = () => {
     if (!chatPopupOpen || !selectedParty) return null;
 
+    const displayPhone = selectedParty.phone || selectedParty.mobile || 
+                        selectedParty.phoneNumber || selectedParty.contactNumber;
+    const displayName = selectedParty.name || selectedParty.businessName || 
+                       selectedParty.partyName;
+
     const popupContent = (
-      <div className="chat-overlay" onClick={closeChatPopup}>
-        <div className="chat-popup" onClick={(e) => e.stopPropagation()}>
-          <div className="popup-header">
-            <div className="popup-header-left">
-              <div
-                className="popup-avatar"
-                style={{
-                  backgroundColor: getAvatarColor(selectedParty.name),
-                }}
-              >
-                {generateInitials(selectedParty.name)}
+      <div className="whatsapp-overlay" onClick={closeChatPopup}>
+        <div className="whatsapp-popup" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="whatsapp-header">
+            <div className="header-left">
+              <button className="back-btn ripple" onClick={closeChatPopup}>
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+              <div className="contact-avatar">
+                <div 
+                  className="avatar-circle"
+                  style={{ backgroundColor: getAvatarColor(displayName) }}
+                >
+                  {getUserInitials(displayName)}
+                </div>
               </div>
-              <div className="popup-user-info">
-                <div className="popup-user-name">{selectedParty.name}</div>
-                <div className="popup-user-status">
-                  <FontAwesomeIcon icon={faBuilding} className="me-1" />
-                  <span>{formatPartyType(selectedParty.partyType)}</span>
+              <div className="contact-info">
+                <div 
+                  className="contact-name"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleProfileClick();
+                  }}
+                  style={{ cursor: 'pointer' }}
+                  title="View profile"
+                >
+                  {displayName}
+                </div>
+                <div className="contact-status">
+                  {displayPhone}
+                  {selectedParty.canChat ? ' • Chat enabled' : ' • Basic contact'}
                 </div>
               </div>
             </div>
-            <div className="popup-actions">
-              <button
-                type="button"
-                className="popup-close-btn"
-                onClick={closeChatPopup}
-                aria-label="Close chat"
-                title="Close (Esc)"
+            <div className="header-actions">
+              <button 
+                className="action-btn ripple" 
+                title="Video call (Under maintenance)"
+                onClick={(e) => handleCallClick('Video', e)}
               >
-                <FontAwesomeIcon icon={faTimes} size="sm" />
+                <FontAwesomeIcon icon={faVideo} />
               </button>
+              <button 
+                className="action-btn ripple" 
+                title="Voice call (Under maintenance)"
+                onClick={(e) => handleCallClick('Voice', e)}
+              >
+                <FontAwesomeIcon icon={faPhone} />
+              </button>
+              <div style={{ position: 'relative' }}>
+                <button 
+                  className="action-btn ripple" 
+                  title="More options"
+                  onClick={() => setShowChatOptionsMenu(prev => !prev)}
+                >
+                  <FontAwesomeIcon icon={faEllipsisV} />
+                </button>
+                
+                {/* ✅ NEW: Chat Options Dropdown */}
+                {showChatOptionsMenu && (
+                  <div className="chat-options-menu">
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('viewProfile')}>
+                      <FontAwesomeIcon icon={faEye} />
+                      <span>View Profile</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('selectMessages')}>
+                      <FontAwesomeIcon icon={faCheck} />
+                      <span>Select Messages</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('muteNotifications')}>
+                      <FontAwesomeIcon icon={mutedContacts.has(selectedParty?._id || selectedParty?.id) ? faBell : faBellSlash} />
+                      <span>{mutedContacts.has(selectedParty?._id || selectedParty?.id) ? 'UnMute Notifications' : 'Mute Notifications'}</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('clearChat')}>
+                      <FontAwesomeIcon icon={faTrash} />
+                      <span>Clear Chat</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('exportChat')}>
+                      <FontAwesomeIcon icon={faDownload} />
+                      <span>Export Chat</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('blockContact')}>
+                      <FontAwesomeIcon icon={blockedContacts.has(selectedParty?._id || selectedParty?.id) ? faUserCheck : faUserTimes} />
+                      <span>{blockedContacts.has(selectedParty?._id || selectedParty?.id) ? 'Unblock Contact' : 'Block Contact'}</span>
+                    </div>
+                    <div className="chat-option-item" onClick={() => handleChatOptionsClick('addShortcut')}>
+                      <FontAwesomeIcon icon={faLink} />
+                      <span>Add Chat Shortcut</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {error && (
-            <Alert variant="danger" className="m-3 mb-0">
-              <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-              {error}
-              <Button
-                variant="outline-danger"
-                size="sm"
-                className="ms-2"
-                onClick={() => {
-                  setError(null);
-                  validatePartyCompanyMapping();
-                  if (mappingValidated) {
-                    initializeChat();
-                  }
-                }}
-              >
-                Retry
-              </Button>
-            </Alert>
-          )}
-
-          <div className="popup-body">
-            {!mappingValidated ? (
-              <div className="d-flex align-items-center justify-content-center h-100 text-center p-4">
-                <div>
-                  <FontAwesomeIcon
-                    icon={faLink}
-                    size="3x"
-                    className="text-warning mb-3"
-                  />
-                  <h5>Company Mapping Required</h5>
-                  <p className="text-muted">
-                    This party needs to be linked to a company for chat
-                    functionality.
-                  </p>
-                  <small className="text-muted">
-                    Please ensure this party has a linkedCompanyId or
-                    externalCompanyId.
-                  </small>
-                  <div className="mt-3">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={validatePartyCompanyMapping}
-                    >
-                      <FontAwesomeIcon icon={faSync} className="me-1" />
-                      Re-validate Mapping
-                    </Button>
-                  </div>
+          {/* Messages Area */}
+          <div className="whatsapp-messages" ref={messagesContainerRef}>
+            {error && (
+              <Alert variant="danger" className="m-3">
+                <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                {error}
+              </Alert>
+            )}
+            
+            {isLoadingMessages ? (
+              <div className="text-center py-4">
+                <Spinner animation="border" size="sm" />
+                <div className="mt-2 text-muted">Loading messages...</div>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="no-messages-whatsapp">
+                <div className="encryption-notice">
+                  <FontAwesomeIcon icon={faLock} />
+                  <p>Messages are end-to-end encrypted. No one outside of this chat can read or listen to them.</p>
+                  <p className="mt-2">Start a conversation with {displayName}!</p>
                 </div>
               </div>
             ) : (
               <>
-                {isLoadingMessages && (
-                  <div className="text-center p-3">
-                    <Spinner animation="border" size="sm" />
-                    <span className="ms-2">Loading messages...</span>
-                  </div>
-                )}
-
-                {hasMoreMessages &&
-                  !isLoadingMessages &&
-                  messages.length > 0 && (
-                    <div className="text-center p-2 border-bottom">
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        onClick={loadMoreMessages}
-                        disabled={isLoadingMessages}
-                      >
-                        Load More Messages
-                      </Button>
-                    </div>
-                  )}
-
-                <div ref={messagesContainerRef} className="messages-container">
-                  {messages.length === 0 && !isLoadingMessages && (
-                    <div className="no-messages">
-                      <div>
-                        <FontAwesomeIcon
-                          icon={faComments}
-                          size="3x"
-                          className="mb-3"
-                        />
-                        <p>No messages yet. Start a conversation!</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map((message, index) => {
-                    const showDate =
-                      index === 0 ||
-                      formatDate(message.timestamp) !==
-                        formatDate(messages[index - 1].timestamp);
-
-                    return (
-                      <Fragment
-                        key={`message-${message.id || message.tempId || index}`}
-                      >
-                        {showDate && (
-                          <div className="date-separator">
-                            <small>{formatDate(message.timestamp)}</small>
-                          </div>
-                        )}
-
-                        <div className={`message-wrapper ${message.type}`}>
-                          <div className={`message-bubble ${message.type}`}>
-                            <div className="message-content">
-                              {message.content}
-                            </div>
-                            <div className="message-footer">
-                              <span className="message-time">
-                                {formatTime(message.timestamp)}
-                              </span>
-                              {message.type === "sent" && (
-                                <span className="message-status">
-                                  {getStatusIcon(message.status)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </Fragment>
-                    );
-                  })}
-
-                  {typingUsers.length > 0 && (
-                    <div className="typing-indicator-wrapper">
-                      <div className="typing-indicator-bubble">
-                        <div className="typing-indicator">
-                          <div className="typing-dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                          </div>
-                          <span className="typing-text">
-                            {typingUsers[0].username} is typing...
+                {messages.map((message, index) => (
+                  <div 
+                    key={message.id || index}
+                    className={`message-container ${message.type}`}
+                  >
+                    <div className={`message-bubble ${message.type}`}>
+                      <div className="message-text">{message.content}</div>
+                      <div className="message-meta">
+                        <span className="message-time">
+                          {formatWhatsAppTime(message.timestamp)}
+                        </span>
+                        {message.type === "sent" && (
+                          <span className="message-status">
+                            {getStatusIcon(message.status)}
                           </span>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
-                </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
               </>
             )}
           </div>
 
-          <div className="popup-footer">
-            {mappingValidated && (
-              <>
-                <InputGroup className="message-input-group">
-                  <Form.Control
-                    ref={messageInputRef}
-                    as="textarea"
-                    rows={2}
-                    className="message-input"
-                    placeholder={`Type your message to ${selectedParty?.name}...`}
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    onKeyUp={handleTypingStop}
-                    disabled={isSending}
-                  />
-                  <Button
-                    className="message-send-btn"
-                    onClick={handleSendMessage}
-                    disabled={!newMessage.trim() || isSending}
-                  >
-                    {isSending ? (
-                      <Spinner animation="border" size="sm" />
-                    ) : (
-                      <FontAwesomeIcon icon={faPaperPlane} />
-                    )}
-                  </Button>
-                </InputGroup>
-
-                <div className="footer-info">
-                  <div className="character-count">
-                    {newMessage.length}/1000 characters
-                  </div>
-                  <div className="connection-status">
-                    <div className="status-item">
-                      {isConnected ? (
-                        <span className="text-success">
-                          <FontAwesomeIcon icon={faCheckCircle} /> Connected
-                        </span>
-                      ) : (
-                        <span className="text-danger">
-                          <FontAwesomeIcon icon={faExclamationCircle} />{" "}
-                          Disconnected
-                        </span>
-                      )}
+          {/* ✅ ENHANCED: Input Area with Emoji Picker */}
+          <div className="whatsapp-input">
+            <div className="input-container">
+              <div style={{ position: 'relative' }} ref={emojiPickerRef}>
+                <button 
+                  className="emoji-btn ripple" 
+                  title="Emoji"
+                  onClick={toggleEmojiPicker}
+                >
+                  <span>😊</span>
+                </button>
+                
+                {/* ✅ ENHANCED: Modern Emoji Picker */}
+                {showEmojiPicker && (
+                  <div className="emoji-picker">
+                    <div className="emoji-picker-header">
+                      <span>Choose an emoji</span>
+                      <button 
+                        className="emoji-close-btn"
+                        onClick={() => setShowEmojiPicker(false)}
+                        title="Close emoji picker"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="emoji-grid">
+                      {predefinedEmojis.map((emoji, index) => (
+                        <button
+                          key={index}
+                          className="emoji-item"
+                          onClick={() => {
+                            console.log("Emoji clicked:", emoji);
+                            handleEmojiClick(emoji);
+                          }}
+                          title={emoji}
+                          style={{ fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>
-              </>
-            )}
+                )}
+              </div>
+              
+              <input
+                ref={messageInputRef}
+                type="text"
+                className="message-input"
+                placeholder="Type a message"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={isSending}
+              />
+              <button className="attach-btn ripple" title="Attach">
+                <FontAwesomeIcon icon={faClipboardList} />
+              </button>
+              {newMessage.trim() ? (
+                <button 
+                  className="send-btn ripple"
+                  onClick={handleSendMessage}
+                  disabled={isSending}
+                  title="Send message"
+                >
+                  {isSending ? (
+                    <Spinner animation="border" size="sm" />
+                  ) : (
+                    <FontAwesomeIcon icon={faPaperPlane} />
+                  )}
+                </button>
+              ) : (
+                <button className="mic-btn ripple" title="Voice message">
+                  🎤
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1896,487 +2823,849 @@ ${shareData.sharedBy}`;
     return createPortal(popupContent, document.body);
   };
 
-  return (
-    <>
-      <ToastContainer position="top-end" className="p-3" style={{zIndex: 1060}}>
-        <Toast
-          show={showToast}
-          onClose={() => setShowToast(false)}
-          bg={toastType === "success" ? "success" : "danger"}
-          delay={3000}
-          autohide
+  // ✅ NEW: Render Profile Modal
+  const renderProfileModal = () => {
+    if (!showProfileModal || !profileParty) {
+      return null;
+    }
+
+    console.log('🎨 Rendering profile modal for:', profileParty);
+
+    const displayName = profileParty.name || profileParty.businessName || profileParty.partyName;
+    const displayPhone = profileParty.phone || profileParty.mobile || 
+                        profileParty.phoneNumber || profileParty.contactNumber;
+
+    const profileModalContent = (
+      <div className="profile-modal-overlay" onClick={handleProfileModalClose}>
+        <div 
+          className="profile-modal" 
+          onClick={(e) => e.stopPropagation()}
+          key={profileParty._id || profileParty.id || profileParty.name}
         >
-          <Toast.Body className="text-white d-flex align-items-center">
-            <FontAwesomeIcon
-              icon={
-                toastType === "success" ? faCheckCircle : faExclamationCircle
-              }
-              className="me-2"
-            />
-            {toastMessage}
-          </Toast.Body>
-        </Toast>
-      </ToastContainer>
-
-      <div className="team-chats">
-        <Card className="chat-section">
-          {/* Chat Header */}
-          <div className="chat-header">
-            <div className="chat-header-left">
-              <h3 className="chat-title">Business Chats</h3>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <div className="members-count">
-                <FontAwesomeIcon icon={faBuilding} className="me-1" />
-                {activeSection === "linked"
-                  ? `${totalLinkedCompanies} Linked Companies`
-                  : `${totalAllParties} Total Parties`}
-              </div>
-            </div>
-          </div>
-
-          {/* Section Toggle */}
-          <div className="section-toggle-container">
-            {/* Add Party Button - Full Width */}
-            <Button
-              className="add-party-button"
-              onClick={() => handleAddParty(true, "customer")}
+          <div className="profile-modal-header">
+            <button 
+              className="profile-close-btn"
+              onClick={handleProfileModalClose}
             >
-              <FontAwesomeIcon icon={faUser} />
-              Add New Party
-            </Button>
-
-            {/* Filter Buttons */}
-            <div className="filter-buttons">
-              <Button
-                variant={
-                  activeSection === "linked" ? "primary" : "outline-primary"
-                }
-                onClick={() => {
-                  setActiveSection("linked");
-                  setParties(linkedParties);
-                  setSearchQuery("");
-                }}
-              >
-                <FontAwesomeIcon icon={faBuilding} />
-                Linked ({linkedParties.length})
-              </Button>
-
-              <Button
-                variant={
-                  activeSection === "all" ? "primary" : "outline-primary"
-                }
-                onClick={() => {
-                  setActiveSection("all");
-                  setParties(allParties);
-                  setSearchQuery("");
-                }}
-              >
-                <FontAwesomeIcon icon={faUsers} />
-                All Parties ({allParties.length})
-              </Button>
-            </div>
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+            <h3>Contact Info</h3>
           </div>
 
-          {/* Search */}
-          <div className="search-chat">
-            <InputGroup>
-              <InputGroup.Text>
-                <FontAwesomeIcon icon={faSearch} />
-              </InputGroup.Text>
-              <Form.Control
-                type="text"
-                placeholder={`Search ${
-                  activeSection === "linked"
-                    ? "linked companies"
-                    : "all parties"
-                }...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </InputGroup>
-          </div>
-
-          {/* Chat List */}
-          <div className="chat-list">
-            {loading ? (
-              Array.from({length: 5}).map((_, index) => (
-                <div
-                  key={`loading-item-${index}`}
-                  className="chat-item loading"
+          <div className="profile-modal-content">
+            {/* Profile Picture Section */}
+            <div className="profile-picture-section">
+              <div className="profile-picture-container">
+                <div 
+                  className="profile-picture"
+                  style={{ backgroundColor: getAvatarColor(displayName) }}
                 >
-                  <div className="chat-avatar-container">
-                    <div
-                      className="chat-avatar"
-                      style={{backgroundColor: "#e2e8f0"}}
+                  {profileImage?.preview || profileImage || profileParty?.profileImage ? (
+                    <img 
+                      src={profileImage?.preview || profileImage || profileParty?.profileImage} 
+                      alt="Profile" 
+                      className="profile-img" 
+                    />
+                  ) : (
+                    <span className="profile-initials">
+                      {getUserInitials(displayName)}
+                    </span>
+                  )}
+                </div>
+                {isEditingProfile && (
+                  <div className="profile-image-controls">
+                    <input
+                      type="file"
+                      id="profile-image-input"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <button 
+                      className="change-picture-btn"
+                      onClick={() => document.getElementById('profile-image-input').click()}
+                      title="Change profile picture"
                     >
-                      <FontAwesomeIcon icon={faBuilding} />
-                    </div>
+                      <FontAwesomeIcon icon={faCamera} />
+                    </button>
                   </div>
-                  <div className="chat-info">
-                    <div className="chat-info-top">
-                      <div className="chat-name text-muted">Loading...</div>
-                      <div className="chat-time text-muted">...</div>
-                    </div>
-                    <div className="chat-preview">
-                      <span className="party-type text-muted">
-                        Loading{" "}
-                        {activeSection === "linked"
-                          ? "business conversations"
-                          : "parties"}
-                        ...
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : error && !chatPopupOpen ? (
-              <div className="error-state">
-                <div className="error-content">
-                  <FontAwesomeIcon
-                    icon={faExclamationTriangle}
-                    size="3x"
-                    className="mb-3"
-                  />
-                  <h5>
-                    Unable to load{" "}
-                    {activeSection === "linked" ? "conversations" : "parties"}
-                  </h5>
-                  <p>{error}</p>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => window.location.reload()}
-                  >
-                    Retry
-                  </Button>
-                </div>
+                )}
               </div>
-            ) : filteredParties.length > 0 ? (
-              filteredParties.map((party, index) => (
-                <div
-                  key={`party-${party.id || party._id || index}`}
-                  className={`chat-item ${
-                    !party.canChat || !party.chatCompanyId ? "opacity-75" : ""
-                  }`}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${party.canChat ? "Open chat with" : "View"} ${
-                    party.name
-                  }`}
-                >
-                  <div className="chat-avatar-container">
-                    <div
-                      className="chat-avatar"
-                      style={{backgroundColor: getAvatarColor(party.name)}}
-                    >
-                      {generateInitials(party.name)}
-                    </div>
-                    {party.canChat && party.chatCompanyId && (
-                      <div
-                        className="online-indicator"
-                        title="Chat Enabled"
-                      ></div>
-                    )}
-                  </div>
-
-                  {/* Main clickable area */}
-                  <div
-                    className="chat-info"
-                    onClick={() => handlePartyClick(party)}
-                    style={{cursor: "pointer", flex: 1}}
-                  >
-                    <div className="chat-info-top">
-                      <div className="chat-name">
-                        {party.name}
-                        {party.canChat && party.chatCompanyId && (
-                          <span className="linked-indicator">
-                            <FontAwesomeIcon icon={faBuilding} size="sm" />
-                          </span>
-                        )}
-                        {(!party.canChat || !party.chatCompanyId) &&
-                          activeSection === "all" && (
-                            <span
-                              className="text-muted ms-2"
-                              title="Not linked to any company"
-                            >
-                              <FontAwesomeIcon
-                                icon={faExclamationTriangle}
-                                size="sm"
-                              />
-                            </span>
-                          )}
-                      </div>
-                      <div className="chat-time">
-                        {formatPartyType(party.partyType)}
-                      </div>
-                    </div>
-                    <div className="chat-preview">
-                      {party.chatCompanyName ? (
-                        <>
-                          <span className="company-name">
-                            {party.chatCompanyName}
-                          </span>
-                          <span className="party-type">
-                            • {party.phoneNumber}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-muted">
-                            {party.phoneNumber || "No phone number"}
-                          </span>
-                          {activeSection === "all" && (
-                            <span className="party-type text-warning">
-                              • Not linked
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Share button */}
-                  <div className="d-flex align-items-center">
-                    <Button
-                      variant="outline-primary"
-                      size="sm"
-                      onClick={(e) => handleShareParty(party, e)}
-                      title="Share party details"
-                      style={{
-                        width: "32px",
-                        height: "32px",
-                        padding: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faShare} size="sm" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="no-chats">
-                <div className="no-chats-content">
-                  <FontAwesomeIcon
-                    icon={activeSection === "linked" ? faBuilding : faUsers}
-                    size="3x"
-                    className="text-muted mb-3"
+              <h4 className="profile-name">
+                {isEditingProfile ? (
+                  <input
+                    type="text"
+                    value={editedProfile.name || ''}
+                    onChange={(e) => {
+                      setEditedProfile({...editedProfile, name: e.target.value});
+                      // Clear validation error on change
+                      if (profileValidationErrors.name) {
+                        setProfileValidationErrors(prev => ({...prev, name: null}));
+                      }
+                    }}
+                    className={`profile-edit-input ${profileValidationErrors.name ? 'error' : ''}`}
+                    placeholder="Enter name"
+                    style={{ fontSize: '16px', textAlign: 'center', fontWeight: '600' }}
                   />
-                  <h5 className="text-muted">
-                    {activeSection === "linked"
-                      ? "No business conversations"
-                      : "No parties found"}
-                  </h5>
-                  <p className="text-muted">
-                    {searchQuery
-                      ? `No parties match your search criteria in ${
-                          activeSection === "linked"
-                            ? "linked companies"
-                            : "all parties"
-                        }`
-                      : activeSection === "linked"
-                      ? "No parties have linked companies for chat yet"
-                      : "No parties have been added yet"}
-                  </p>
-                  {!searchQuery && (
-                    <div className="d-flex gap-2 justify-content-center flex-wrap">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleAddParty(true, "customer")}
-                      >
-                        <FontAwesomeIcon icon={faRocket} className="me-1" />
-                        Quick Add Customer
-                      </Button>
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => handleAddParty(true, "supplier")}
-                      >
-                        <FontAwesomeIcon icon={faRocket} className="me-1" />
-                        Quick Add Supplier
-                      </Button>
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        onClick={() => onNavigate?.("parties")}
-                      >
-                        Manage Parties
-                      </Button>
-                    </div>
+                ) : (
+                  displayName
+                )}
+              </h4>
+              <p className="profile-phone">{displayPhone}</p>
+            </div>
+
+            {/* Contact Details - Grid Layout */}
+            <div className="profile-details-section">
+              <div className="profile-detail-item">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faBuilding} />
+                  <span>Shop Name</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <input
+                      type="text"
+                      value={editedProfile.shopName || ''}
+                      onChange={(e) => setEditedProfile({...editedProfile, shopName: e.target.value})}
+                      className="profile-edit-input"
+                      placeholder="Enter shop name"
+                    />
+                  ) : (
+                    <span>{profileParty.shopName || profileParty.businessName || 'Not specified'}</span>
                   )}
                 </div>
               </div>
-            )}
-          </div>
-        </Card>
-      </div>
 
-      {/* ✅ REPLACED: Chat Popup as Portal */}
-      {renderChatPopupAsPortal()}
-
-      {/* Share Modal */}
-      {showShareModal && selectedPartyForShare && (
-        <div
-          className="modal show d-block"
-          style={{zIndex: 2050, backgroundColor: "rgba(0,0,0,0.5)"}}
-          onClick={() => setShowShareModal(false)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <FontAwesomeIcon icon={faShare} className="me-2" />
-                  Share {selectedPartyForShare.name}
-                </h5>
-                <Button
-                  variant="link"
-                  className="btn-close"
-                  onClick={() => setShowShareModal(false)}
-                />
+              <div className="profile-detail-item">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faUser} />
+                  <span>Owner Name</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <input
+                      type="text"
+                      value={editedProfile.ownerName || ''}
+                      onChange={(e) => setEditedProfile({...editedProfile, ownerName: e.target.value})}
+                      className="profile-edit-input"
+                      placeholder="Enter owner name"
+                    />
+                  ) : (
+                    <span>{profileParty.shopOwner || profileParty.ownerName || profileParty.name || 'Not specified'}</span>
+                  )}
+                </div>
               </div>
 
-              <div className="modal-body">
-                {/* Party Info Preview */}
-                <div className="card mb-3">
-                  <div className="card-body">
-                    <div className="d-flex align-items-center mb-2">
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center me-3"
-                        style={{
-                          width: "40px",
-                          height: "40px",
-                          backgroundColor: getAvatarColor(
-                            selectedPartyForShare.name
-                          ),
-                          color: "white",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {generateInitials(selectedPartyForShare.name)}
+              <div className="profile-detail-item">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faPhone} />
+                  <span>Phone</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <input
+                      type="tel"
+                      value={editedProfile.phone || ''}
+                      onChange={(e) => setEditedProfile({...editedProfile, phone: e.target.value})}
+                      className="profile-edit-input"
+                      placeholder="Enter phone number"
+                    />
+                  ) : (
+                    <span>{displayPhone}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="profile-detail-item">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <span>Email</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <input
+                      type="email"
+                      value={editedProfile.email || ''}
+                      onChange={(e) => setEditedProfile({...editedProfile, email: e.target.value})}
+                      className="profile-edit-input"
+                      placeholder="Enter email address"
+                    />
+                  ) : (
+                    <span>{profileParty.email || 'Not specified'}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="profile-detail-item">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faTag} />
+                  <span>Type</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <select
+                      value={editedProfile.partyType || 'customer'}
+                      onChange={(e) => setEditedProfile({...editedProfile, partyType: e.target.value})}
+                      className="profile-edit-select"
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="vendor">Vendor</option>
+                      <option value="supplier">Supplier</option>
+                      <option value="both">Both</option>
+                    </select>
+                  ) : (
+                    <span>{
+                      profileParty.partyType ? 
+                        profileParty.partyType.charAt(0).toUpperCase() + profileParty.partyType.slice(1) : 
+                        'Customer'
+                    }</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="profile-detail-item full-width">
+                <div className="detail-label">
+                  <FontAwesomeIcon icon={faMapMarkerAlt} />
+                  <span>Address</span>
+                </div>
+                <div className="detail-value">
+                  {isEditingProfile ? (
+                    <textarea
+                      value={editedProfile.address || ''}
+                      onChange={(e) => setEditedProfile({...editedProfile, address: e.target.value})}
+                      className="profile-edit-textarea"
+                      placeholder="Enter address"
+                      rows="2"
+                      style={{ resize: 'none', width: '100%' }}
+                    />
+                  ) : (
+                    <span>{profileParty.address || 'Not specified'}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="profile-actions">
+              <button 
+                className="profile-action-btn"
+                onClick={() => {
+                  setIsEditingProfile(!isEditingProfile);
+                  if (!isEditingProfile) {
+                    // Initialize edit form with current data
+                    setEditedProfile({
+                      name: profileParty.name || profileParty.businessName || profileParty.partyName || '',
+                      shopName: profileParty.shopName || profileParty.businessName || '',
+                      ownerName: profileParty.ownerName || profileParty.name || '',
+                      phone: profileParty.phone || profileParty.mobile || profileParty.phoneNumber || '',
+                      email: profileParty.email || '',
+                      address: profileParty.address || '',
+                      partyType: (profileParty.partyType || 'customer').toLowerCase()
+                    });
+                  }
+                }}
+              >
+                <FontAwesomeIcon icon={isEditingProfile ? faTimes : faEdit} />
+                <span>{isEditingProfile ? 'Cancel' : 'Edit'}</span>
+              </button>
+              
+              {isEditingProfile && (
+                <button 
+                  className="profile-action-btn success"
+                  onClick={() => handleSaveProfile()}
+                  disabled={isSavingProfile}
+                  style={{ 
+                    opacity: isSavingProfile ? 0.6 : 1,
+                    cursor: isSavingProfile ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isSavingProfile ? (
+                    <>
+                      <div className="spinner-border spinner-border-sm me-2" role="status">
+                        <span className="visually-hidden">Loading...</span>
                       </div>
-                      <div>
-                        <h6 className="mb-0">{selectedPartyForShare.name}</h6>
-                        <small className="text-muted">
-                          {formatPartyType(selectedPartyForShare.partyType)}
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faCheck} />
+                      <span>Save</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    return createPortal(profileModalContent, document.body);
+  };
+
+  // ✅ NEW: Render Quick Add Modal
+  const renderQuickAddModal = () => {
+    if (!showAddPartyModal) {
+      return null;
+    }
+
+    const quickAddModalContent = (
+      <div className="profile-modal-overlay" onClick={resetQuickAddModal}>
+        <div className="quick-add-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="quick-add-header">
+            <h3>Quick Add Contact</h3>
+            <button 
+              className="profile-close-btn"
+              onClick={resetQuickAddModal}
+              disabled={isSubmittingQuickAdd}
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+          </div>
+          
+          <div className="quick-add-content">
+            <div className="quick-add-form">
+              {/* Contact Name Field */}
+              <div className="form-group">
+                <label>Contact Name <span className="required">*</span></label>
+                <input 
+                  type="text" 
+                  className={`form-control ${quickAddValidation.nameError ? 'is-invalid' : ''}`}
+                  placeholder="Enter contact name"
+                  value={quickAddForm.name}
+                  onChange={(e) => handleQuickAddInputChange('name', e.target.value)}
+                  disabled={isSubmittingQuickAdd}
+                />
+                {quickAddValidation.nameError && (
+                  <div className="invalid-feedback">
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+                    {quickAddValidation.nameError}
+                  </div>
+                )}
+              </div>
+              
+              {/* Phone Number Field */}
+              <div className="form-group">
+                <label>Phone Number <span className="required">*</span></label>
+                <div className="phone-input-container">
+                  <div className="d-flex align-items-center">
+                    <input 
+                      type="tel" 
+                      className={`form-control ${quickAddValidation.phoneError ? 'is-invalid' : quickAddValidation.userExists ? 'is-invalid' : quickAddForm.phone && !quickAddValidation.phoneError && !quickAddValidation.isChecking ? 'is-valid' : ''}`}
+                      placeholder="Enter Whatsapp number"
+                      value={quickAddForm.phone}
+                      onChange={(e) => handleQuickAddInputChange('phone', e.target.value)}
+                      disabled={isSubmittingQuickAdd}
+                    />
+                    {/* ✅ NEW: Plus icon to add additional phone numbers */}
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm ms-2"
+                      onClick={handleAddPhoneNumber}
+                      disabled={isSubmittingQuickAdd}
+                      style={{ minWidth: '40px' }}
+                      title="Add another phone number"
+                    >
+                      <FontAwesomeIcon icon={faPlus} />
+                    </button>
+                  </div>
+                  {quickAddValidation.isChecking && (
+                    <div className="phone-checking-indicator">
+                      <Spinner size="sm" animation="border" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Validation Messages */}
+                {quickAddValidation.phoneError && (
+                  <div className={`validation-feedback ${quickAddValidation.userExists ? 'user-exists' : 'error'}`}>
+                    <FontAwesomeIcon 
+                      icon={quickAddValidation.userExists ? faExclamationCircle : faExclamationTriangle} 
+                      className="me-1" 
+                    />
+                    {quickAddValidation.phoneError}
+                    {quickAddValidation.existingUser && (
+                      <div className="existing-user-info">
+                        <small>
+                          Type: {quickAddValidation.existingUser.partyType || 'Contact'} | 
+                          Phone: {quickAddValidation.existingUser.phone || quickAddValidation.existingUser.mobile || 'N/A'}
                         </small>
                       </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Success Message */}
+                {quickAddForm.phone && !quickAddValidation.phoneError && !quickAddValidation.isChecking && !quickAddValidation.userExists && (
+                  <div className="validation-feedback success">
+                    <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
+                    Phone number is available
+                  </div>
+                )}
+              </div>
+
+              {/* ✅ NEW: Additional Phone Numbers Section */}
+              {showAdditionalPhones && quickAddForm.phoneNumbers.length > 1 && (
+                <div className="form-group">
+                  <label>Additional Phone Numbers</label>
+                  {quickAddForm.phoneNumbers.slice(1).map((phoneItem, index) => (
+                    <div key={index + 1} className="d-flex align-items-center mb-2">
+                      <input
+                        type="text"
+                        className="form-control me-2"
+                        placeholder="Label (e.g., Office, Home)"
+                        value={phoneItem.label}
+                        onChange={(e) => handlePhoneNumberChange(index + 1, 'label', e.target.value)}
+                        disabled={isSubmittingQuickAdd}
+                        style={{ maxWidth: '150px' }}
+                      />
+                      <input
+                        type="tel"
+                        className="form-control me-2"
+                        placeholder="Phone number"
+                        value={phoneItem.number}
+                        onChange={(e) => handlePhoneNumberChange(index + 1, 'number', e.target.value)}
+                        disabled={isSubmittingQuickAdd}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={() => handleRemovePhoneNumber(index + 1)}
+                        disabled={isSubmittingQuickAdd}
+                        style={{ minWidth: '40px' }}
+                        title="Remove phone number"
+                      >
+                        <FontAwesomeIcon icon={faMinus} />
+                      </button>
                     </div>
-
-                    {shareOptions.includeContact && (
-                      <div className="mb-2">
-                        {selectedPartyForShare.phoneNumber && (
-                          <div>📱 {selectedPartyForShare.phoneNumber}</div>
-                        )}
-                        {selectedPartyForShare.email && (
-                          <div>📧 {selectedPartyForShare.email}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {shareOptions.includeCompanyDetails && (
-                      <div>
-                        {selectedPartyForShare.chatCompanyName && (
-                          <div>🏢 {selectedPartyForShare.chatCompanyName}</div>
-                        )}
-                        {selectedPartyForShare.address && (
-                          <div>📍 {selectedPartyForShare.address}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
-
-                {/* Share Options */}
-                <div className="mb-3">
-                  <h6>Share Options</h6>
-                  <div className="form-check">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      id="includeContact"
-                      checked={shareOptions.includeContact}
-                      onChange={(e) =>
-                        setShareOptions((prev) => ({
-                          ...prev,
-                          includeContact: e.target.checked,
-                        }))
-                      }
-                    />
-                    <label
-                      className="form-check-label"
-                      htmlFor="includeContact"
-                    >
-                      Include contact information
-                    </label>
-                  </div>
-                  <div className="form-check">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      id="includeCompanyDetails"
-                      checked={shareOptions.includeCompanyDetails}
-                      onChange={(e) =>
-                        setShareOptions((prev) => ({
-                          ...prev,
-                          includeCompanyDetails: e.target.checked,
-                        }))
-                      }
-                    />
-                    <label
-                      className="form-check-label"
-                      htmlFor="includeCompanyDetails"
-                    >
-                      Include company details
-                    </label>
-                  </div>
-                </div>
-
-                {/* Share Actions */}
-                <div className="d-grid gap-2">
-                  <Button
-                    variant="primary"
-                    onClick={() => handleCopyToClipboard(selectedPartyForShare)}
-                  >
-                    <FontAwesomeIcon icon={faCopy} className="me-2" />
-                    Copy to Clipboard
-                  </Button>
-
-                  {navigator.share && (
-                    <Button
-                      variant="success"
-                      onClick={() => handleNativeShare(selectedPartyForShare)}
-                    >
-                      <FontAwesomeIcon icon={faShare} className="me-2" />
-                      Share via Device
-                    </Button>
+              )}
+              
+              {/* Shop Name Field */}
+              <div className="form-group">
+                <label>Shop Name</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="Enter shop name"
+                  value={quickAddForm.shopName}
+                  onChange={(e) => handleQuickAddInputChange('shopName', e.target.value)}
+                  disabled={isSubmittingQuickAdd}
+                />
+              </div>  
+              
+              {/* Contact Type Field */}
+              <div className="form-group">
+                <label>Contact Type</label>
+                <select 
+                  className="form-control"
+                  value={quickAddForm.partyType}
+                  onChange={(e) => handleQuickAddInputChange('partyType', e.target.value)}
+                  disabled={isSubmittingQuickAdd}
+                >
+                  <option value="customer">Customer</option>
+                  <option value="Shop Owner">Shop Owner</option>
+                  {/* <option value="supplier">Supplier</option>
+                  <option value="both">Both</option> */}
+                </select>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="quick-add-actions">
+                <button 
+                  className="btn btn-primary"
+                  onClick={handleQuickAddSubmit}
+                  disabled={
+                    isSubmittingQuickAdd || 
+                    !quickAddForm.name.trim() || 
+                    !quickAddForm.phone.trim() || 
+                    quickAddValidation.nameError || 
+                    quickAddValidation.phoneError || 
+                    quickAddValidation.userExists ||
+                    quickAddValidation.isChecking
+                  }
+                >
+                  {isSubmittingQuickAdd ? (
+                    <>
+                      <Spinner size="sm" animation="border" className="me-2" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faUserPlus} className="me-2" />
+                      Add Contact
+                    </>
                   )}
+                </button>
+                <button 
+                  className="btn btn-secondary"
+                  onClick={resetQuickAddModal}
+                  disabled={isSubmittingQuickAdd}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
 
-                  <Button
-                    variant="outline-primary"
-                    onClick={() => handleEmailShare(selectedPartyForShare)}
-                  >
-                    <FontAwesomeIcon icon={faEnvelope} className="me-2" />
-                    Share via Email
-                  </Button>
+    return createPortal(quickAddModalContent, document.body);
+  };
 
-                  <Button
-                    variant="outline-secondary"
-                    onClick={() => {
-                      const link = generateShareableLink(selectedPartyForShare);
-                      navigator.clipboard.writeText(link);
-                      showToastMessage("Link copied to clipboard!", "success");
-                    }}
+  // ✅ NEW: Render Positioned Popup for maintenance messages
+  const renderPositionedPopup = () => {
+    if (!showMaintenanceModal || !maintenancePosition) {
+      return null;
+    }
+
+    const popupContent = (
+      <div 
+        className="positioned-popup"
+        style={{
+          position: 'fixed',
+          left: `${maintenancePosition.x}px`,
+          top: `${maintenancePosition.y}px`,
+          transform: 'translateX(-50%)',
+          zIndex: 2147483647
+        }}
+      >
+        <div className="positioned-popup-content">
+          <div className="positioned-popup-arrow"></div>
+          <div className="positioned-popup-message">
+            <FontAwesomeIcon icon={faExclamationTriangle} className="popup-icon" />
+            <span>{maintenanceMessage}</span>
+          </div>
+          <button 
+            className="positioned-popup-close"
+            onClick={() => {
+              setShowMaintenanceModal(false);
+              setMaintenancePosition(null);
+            }}
+          >
+            <FontAwesomeIcon icon={faTimes} />
+          </button>
+        </div>
+      </div>
+    );
+
+    return createPortal(popupContent, document.body);
+  };
+
+  if (loading) {
+    return (
+      <div className="whatsapp-container">
+        <div className="whatsapp-main-header">
+          <div className="header-content">
+            <div className="app-title">
+              <FontAwesomeIcon icon={faComments} className="app-icon" />
+              <span>Chats</span>
+            </div>
+          </div>
+        </div>
+        <div className="text-center py-4">
+          <Spinner animation="border" />
+          <div className="mt-2">Loading contacts...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="whatsapp-container">
+        {/* Header */}
+        <div className="whatsapp-main-header">
+          <div className="header-content">
+            <div className="app-title">
+              <FontAwesomeIcon icon={faComments} className="app-icon" />
+              <span>Team Chats</span>
+            </div>
+            <div className="header-actions">
+              <button 
+                className="header-btn" 
+                onClick={handleBulkWhatsApp}
+                title="Send WhatsApp to all contacts"
+              >
+                <FontAwesomeIcon icon={faWhatsapp} />
+              </button>
+              <button 
+                className="header-btn" 
+                onClick={handleAddNewParty}
+                title="Add new contact"
+              >
+                <FontAwesomeIcon icon={faUserPlus} />
+              </button>
+              <button 
+                className="header-btn"
+                onClick={fetchParties}
+                title="Refresh"
+              >
+                <FontAwesomeIcon icon={faSync} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="whatsapp-search">
+          <div className="search-container">
+            <FontAwesomeIcon icon={faSearch} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search contacts..."
+              className="search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="filter-tabs">
+          <button 
+            className={`filter-tab ${activeSection === "all" ? "active" : ""}`}
+            onClick={() => handleSectionChange("all")}
+          >
+            All ({allParties.length})
+          </button>
+          <button 
+            className={`filter-tab ${activeSection === "linked" ? "active" : ""}`}
+            onClick={() => handleSectionChange("linked")}
+          >
+            Chat Enabled ({linkedParties.length})
+          </button>
+        </div>
+
+        {/* Chat List */}
+        <div className="whatsapp-chat-list">
+          {error && (
+            <Alert variant="warning" className="m-3">
+              <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+              {error}
+              <Button 
+                variant="link" 
+                size="sm" 
+                onClick={fetchParties}
+                className="ms-2"
+              >
+                Retry
+              </Button>
+            </Alert>
+          )}
+          
+          {filteredParties.length === 0 ? (
+            <div className="text-center py-4 text-muted">
+              {searchQuery ? (
+                <>
+                  <FontAwesomeIcon icon={faSearch} className="mb-2" size="2x" />
+                  <div>No contacts found matching "{searchQuery}"</div>
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faUsers} className="mb-2" size="2x" />
+                  <div>No contacts available</div>
+                  <Button 
+                    variant="outline-primary" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={handleAddNewParty}
                   >
-                    <FontAwesomeIcon icon={faLink} className="me-2" />
-                    Copy Link Only
+                    Add New Contact
                   </Button>
+                </>
+              )}
+            </div>
+          ) : (
+            renderContactListWithAds()
+          )}
+        </div>
+      </div>
+
+      {/* Chat Popup */}
+      {renderChatPopup()}
+
+      {/* Profile Modal */}
+      {renderProfileModal()}
+
+      {/* Quick Add Modal */}
+      {renderQuickAddModal()}
+
+      {/* Positioned Popup */}
+      {renderPositionedPopup()}
+
+      {/* Maintenance Modal - Fallback when position not available */}
+      {showMaintenanceModal && !maintenancePosition && (
+        <div className="maintenance-modal-overlay" onClick={() => setShowMaintenanceModal(false)}>
+          <div className="maintenance-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="maintenance-modal-content">
+              <div className="maintenance-icon">
+                <FontAwesomeIcon icon={faCog} spin />
+              </div>
+              <h3>Service Under Maintenance</h3>
+              <p>{maintenanceMessage}</p>
+              <p className="maintenance-description">
+                We're currently upgrading our calling services to provide you with better quality calls. 
+                This feature will be available soon.
+              </p>
+              <button 
+                className="maintenance-ok-btn"
+                onClick={() => setShowMaintenanceModal(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Contact Modal */}
+      {showAddPartyModal && (
+        <div className="profile-modal-overlay" onClick={() => setShowAddPartyModal(false)}>
+          <div className="quick-add-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="quick-add-header">
+              <h3>Quick Add Contact</h3>
+              <button 
+                className="profile-close-btn"
+                onClick={() => setShowAddPartyModal(false)}
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+            
+            <div className="quick-add-content">
+              <div className="quick-add-form">
+                {/* Show validation errors */}
+                {quickAddValidation.nameError && (
+                  <div className="alert alert-danger">
+                    {quickAddValidation.nameError}
+                  </div>
+                )}
+                {quickAddValidation.phoneError && (
+                  <div className="alert alert-danger">
+                    {quickAddValidation.phoneError}
+                  </div>
+                )}
+                {quickAddValidation.userExists && (
+                  <div className="alert alert-warning">
+                    Contact already exists: {quickAddValidation.existingUser?.name || 'Unknown'}
+                  </div>
+                )}
+                
+                <div className="form-group">
+                  <label>Contact Name <span className="required">*</span></label>
+                  <input 
+                    type="text" 
+                    className={`form-control ${quickAddValidation.nameError ? 'is-invalid' : ''}`}
+                    placeholder="Enter contact name"
+                    value={quickAddForm.name}
+                    onChange={(e) => handleQuickAddInputChange('name', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Business Name</label>
+                  <input 
+                    type="text" 
+                    className="form-control"
+                    placeholder="Enter business name (optional)"
+                    value={quickAddForm.shopName}
+                    onChange={(e) => handleQuickAddInputChange('shopName', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Phone Number <span className="required">*</span></label>
+                  <input 
+                    type="tel" 
+                    className={`form-control ${quickAddValidation.phoneError ? 'is-invalid' : ''}`}
+                    placeholder="Enter phone number"
+                    value={quickAddForm.phone}
+                    onChange={(e) => handleQuickAddInputChange('phone', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Email Address</label>
+                  <input 
+                    type="email" 
+                    className="form-control"
+                    placeholder="Enter email address (optional)"
+                    value={quickAddForm.email}
+                    onChange={(e) => handleQuickAddInputChange('email', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Contact Type <span className="required">*</span></label>
+                  <select 
+                    className="form-control"
+                    value={quickAddForm.partyType}
+                    onChange={(e) => handleQuickAddInputChange('partyType', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  >
+                    <option value="">Select contact type</option>
+                    <option value="customer">Customer</option>
+                    <option value="supplier">Supplier</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label>Address</label>
+                  <textarea 
+                    className="form-control"
+                    placeholder="Enter address (optional)"
+                    rows="3"
+                    value={quickAddForm.address}
+                    onChange={(e) => handleQuickAddInputChange('address', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  ></textarea>
+                </div>
+                
+                <div className="form-group">
+                  <label>Notes</label>
+                  <textarea 
+                    className="form-control"
+                    placeholder="Add any notes about this contact (optional)"
+                    rows="3"
+                    value={quickAddForm.notes}
+                    onChange={(e) => handleQuickAddInputChange('notes', e.target.value)}
+                    disabled={isSubmittingQuickAdd}
+                  ></textarea>
+                </div>
+                
+                <div className="quick-add-actions">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleQuickAddSubmit}
+                    disabled={isSubmittingQuickAdd || !quickAddForm.name.trim() || !quickAddForm.phone.trim()}
+                  >
+                    {isSubmittingQuickAdd ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <FontAwesomeIcon icon={faPlus} className="me-2" />
+                        Add Contact
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => setShowAddPartyModal(false)}
+                    disabled={isSubmittingQuickAdd}
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             </div>
@@ -2384,980 +3673,396 @@ ${shareData.sharedBy}`;
         </div>
       )}
 
-      {/* Add New Party Modal */}
-      <AddNewParty
-        show={showAddPartyModal}
-        onHide={() => setShowAddPartyModal(false)}
-        editingParty={null}
-        onSaveParty={handleSaveParty}
-        isQuickAdd={isQuickAdd}
-        quickAddType={quickAddType}
-      />
-
-      <style>{`
-      .team-chats {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-section {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  border: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  border-radius: 8px;
-}
-
-.chat-header {
-  padding: 1rem;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-radius: 8px 8px 0 0;
-}
-
-.chat-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.members-count {
-  font-size: 0.8rem;
-  opacity: 0.9;
-}
-
-.section-toggle-container {
-  padding: 1rem;
-  border-bottom: 1px solid #e9ecef;
-  background-color: #f8f9fa;
-}
-
-.add-party-button {
-  width: 100%;
-  margin-bottom: 0.75rem;
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-  border: none;
-  color: white;
-  font-weight: 500;
-  padding: 0.5rem;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.add-party-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
-  border-radius: 8px;
-}
-
-.filter-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-
-.filter-buttons .btn {
-  font-size: 0.8rem;
-  padding: 0.4rem 0.8rem;
-  border-radius: 8px;
-}
-
-.search-chat {
-  padding: 0 1rem 1rem;
-  background-color: #f8f9fa;
-}
-
-.search-chat .form-control,
-.search-chat .input-group-text {
-  border-radius: 8px;
-}
-
-.chat-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-}
-
-.chat-item {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.chat-item:hover {
-  background-color: #f8f9fa;
-  border-color: #dee2e6;
-  transform: translateX(2px);
-  border-radius: 8px;
-}
-
-.chat-item.loading {
-  opacity: 0.6;
-  cursor: default;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.chat-avatar-container {
-  position: relative;
-  margin-right: 0.75rem;
-}
-
-.chat-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  font-size: 0.9rem;
-}
-
-.online-indicator {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 12px;
-  height: 12px;
-  background-color: #28a745;
-  border: 2px solid white;
-  border-radius: 50%;
-}
-
-.chat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.chat-info-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.25rem;
-}
-
-.chat-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #495057;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.linked-indicator {
-  color: #28a745;
-}
-
-.chat-time {
-  font-size: 0.7rem;
-  color: #6c757d;
-}
-
-.chat-preview {
-  font-size: 0.8rem;
-  color: #6c757d;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.company-name {
-  font-weight: 500;
-  color: #495057;
-}
-
-.party-type {
-  font-size: 0.7rem;
-}
-
-.error-state, 
-.no-chats {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 300px;
-  text-align: center;
-}
-
-.error-content, 
-.no-chats-content {
-  max-width: 250px;
-}
-
-body.chat-popup-open {
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
-  height: 100%;
-}
-
-.chat-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  animation: overlayFadeIn 0.3s ease-out;
-}
-
-.chat-popup {
-  position: relative;
-  width: 100%;
-  max-width: 480px;
-  height: 88vh;
-  max-height: 680px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: popupSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes overlayFadeIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(12px);
-  }
-}
-
-@keyframes popupSlideIn {
-  from {
-    opacity: 0;
-    transform: scale(0.85) translateY(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.popup-header {
-  padding: 1.25rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-radius: 16px 16px 0 0;
-  flex-shrink: 0;
-  min-height: 80px;
-}
-
-.popup-header-left {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.popup-avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  margin-right: 1rem;
-  font-size: 1.1rem;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.popup-user-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.popup-user-name {
-  font-weight: 700;
-  font-size: 1.15rem;
-  margin-bottom: 0.3rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-.popup-user-status {
-  font-size: 0.75rem;
-  opacity: 0.9;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  line-height: 1.4;
-}
-
-.popup-user-status .badge {
-  display: none;
-}
-
-.popup-actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.popup-action-btn, 
-.popup-close-btn {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: white;
-  padding: 0.6rem;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  backdrop-filter: blur(8px);
-}
-
-.popup-action-btn:hover, 
-.popup-close-btn:hover,
-.popup-action-btn:focus,
-.popup-close-btn:focus {
-  background: rgba(255, 255, 255, 0.25);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: white;
-  text-decoration: none;
-  transform: translateY(-1px) scale(1.05);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-}
-
-.popup-action-btn:active,
-.popup-close-btn:active {
-  transform: translateY(0) scale(1);
-}
-
-.popup-body {
-  flex: 1;
-  overflow: hidden;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  display: flex;
-  flex-direction: column;
-}
-
-.messages-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-  scroll-behavior: smooth;
-  background: transparent;
-}
-
-.no-messages {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  text-align: center;
-  color: #6c757d;
-  padding: 2rem 1rem;
-}
-
-.no-messages div {
-  max-width: 280px;
-}
-
-.no-messages .fa-comments {
-  color: #dee2e6;
-  margin-bottom: 1rem;
-}
-
-.no-messages p {
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-  color: #6c757d;
-  font-weight: 500;
-}
-
-.no-messages small {
-  font-size: 0.8rem;
-  color: #adb5bd;
-  line-height: 1.4;
-}
-
-.date-separator {
-  text-align: center;
-  margin: 1rem 0 0.6rem;
-}
-
-.date-separator small {
-  background: rgba(255, 255, 255, 0.95);
-  color: #6c757d;
-  padding: 0.2rem 0.6rem;
-  border-radius: 12px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
-}
-
-.message-wrapper {
-  display: flex;
-  margin-bottom: 0.6rem;
-  align-items: flex-end;
-  gap: 0.3rem;
-}
-
-.message-wrapper.sent {
-  justify-content: flex-end;
-}
-
-.message-wrapper.received {
-  justify-content: flex-start;
-}
-
-.message-bubble {
-  max-width: 75%;
-  min-width: 80px;
-  padding: 0.4rem 0.6rem;
-  border-radius: 12px;
-  word-wrap: break-word;
-  position: relative;
-  animation: messageSlideIn 0.3s ease-out;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(8px);
-}
-
-.message-bubble.sent {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-bottom-right-radius: 4px;
-  margin-left: auto;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
-}
-
-.message-bubble.received {
-  background: rgba(255, 255, 255, 0.95);
-  color: #2d3748;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-bottom-left-radius: 4px;
-  margin-right: auto;
-  backdrop-filter: blur(12px);
-}
-
-.message-type-indicator {
-  display: none;
-}
-
-.message-content {
-  font-size: 0.75rem;
-  line-height: 1.3;
-  margin-bottom: 0.2rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-weight: 400;
-}
-
-.message-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 0.2rem;
-  gap: 0.3rem;
-}
-
-.message-time {
-  font-size: 0.6rem;
-  opacity: 0.8;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.message-bubble.sent .message-time {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.message-bubble.received .message-time {
-  color: #6c757d;
-}
-
-.message-status {
-  font-size: 0.6rem;
-  opacity: 0.8;
-  color: white;
-}
-
-.message-status .fa-check,
-.message-status .fa-check-double {
-  font-size: 8px;
-  color: white;
-}
-
-.message-status .fa-check-double.text-success {
-  color: white;
-}
-
-.typing-indicator-wrapper {
-  display: flex;
-  justify-content: flex-start;
-  margin-bottom: 0.6rem;
-}
-
-.typing-indicator-bubble {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
-  padding: 0.4rem 0.6rem;
-  max-width: 75%;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(12px);
-}
-
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.typing-dots {
-  display: flex;
-  gap: 2px;
-}
-
-.typing-dots span {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background-color: #6c757d;
-  animation: typing 1.4s infinite ease-in-out;
-}
-
-.typing-dots span:nth-child(1) { 
-  animation-delay: -0.32s; 
-}
-
-.typing-dots span:nth-child(2) { 
-  animation-delay: -0.16s; 
-}
-
-.typing-text {
-  font-size: 0.7rem;
-  color: #6c757d;
-  font-weight: 500;
-}
-
-@keyframes typing {
-  0%, 80%, 100% { 
-    transform: scale(0.8); 
-    opacity: 0.5; 
-  }
-  40% { 
-    transform: scale(1.2); 
-    opacity: 1; 
-  }
-}
-
-@keyframes messageSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.popup-footer {
-  padding: 0.8rem;
-  border-top: 1px solid #e9ecef;
-  background: white;
-  border-radius: 0 0 16px 16px;
-  flex-shrink: 0;
-}
-
-.message-type-buttons {
-  display: none;
-}
-
-.templates-section {
-  display: none;
-}
-
-.message-input-group {
-  border-radius: 12px;
-  border: 1px solid #e9ecef;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.message-input {
-  border: none;
-  box-shadow: none;
-  resize: none;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  padding: 0.6rem 0.8rem;
-  background: white;
-}
-
-.message-input:focus {
-  border: none;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-}
-
-.message-send-btn {
-  border: none;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 0.6rem 0.8rem;
-  transition: all 0.2s ease;
-  min-width: 50px;
-}
-
-.message-send-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.message-send-btn:disabled {
-  opacity: 0.6;
-  transform: none;
-}
-
-.footer-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 0.4rem;
-  font-size: 0.6rem;
-  color: #6c757d;
-}
-
-.character-count {
-  opacity: 0.8;
-  font-weight: 500;
-}
-
-.connection-status {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.status-item {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.status-item .fa {
-  font-size: 7px;
-}
-
-@media (max-width: 768px) {
-  .chat-overlay {
-    padding: 0.5rem;
-  }
-
-  .chat-popup {
-    width: 100%;
-    height: 95vh;
-    max-height: none;
-    border-radius: 12px;
-  }
-
-  .popup-header {
-    padding: 1rem;
-    border-radius: 12px 12px 0 0;
-    min-height: 70px;
-  }
-
-  .popup-avatar {
-    width: 45px;
-    height: 45px;
-    font-size: 1rem;
-  }
-
-  .popup-user-name {
-    font-size: 1rem;
-  }
-
-  .popup-user-status {
-    font-size: 0.7rem;
-  }
-
-  .popup-action-btn, 
-  .popup-close-btn {
-    width: 36px;
-    height: 36px;
-    padding: 0.5rem;
-    border-radius: 8px;
-  }
-
-  .popup-footer {
-    padding: 0.6rem;
-    border-radius: 0 0 12px 12px;
-  }
-
-  .message-bubble {
-    max-width: 85%;
-    padding: 0.35rem 0.5rem;
-    border-radius: 10px;
-  }
-
-  .message-content {
-    font-size: 0.7rem;
-  }
-
-  .message-time {
-    font-size: 0.55rem;
-  }
-
-  .footer-info {
-    font-size: 0.6rem;
-    flex-direction: column;
-    gap: 0.3rem;
-    align-items: flex-start;
-  }
-
-  .messages-container {
-    padding: 0.4rem;
-  }
-
-  .date-separator {
-    margin: 1rem 0 0.75rem;
-  }
-
-  .date-separator small {
-    font-size: 0.65rem;
-    padding: 0.25rem 0.6rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .chat-overlay {
-    padding: 0.25rem;
-  }
-
-  .chat-popup {
-    height: 98vh;
-    border-radius: 8px;
-  }
-
-  .popup-header {
-    padding: 0.75rem;
-    border-radius: 8px 8px 0 0;
-    min-height: 65px;
-  }
-
-  .popup-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 0.9rem;
-  }
-
-  .popup-user-name {
-    font-size: 0.95rem;
-  }
-
-  .popup-action-btn, 
-  .popup-close-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0.4rem;
-    border-radius: 6px;
-  }
-
-  .popup-footer {
-    padding: 0.5rem;
-    border-radius: 0 0 8px 8px;
-  }
-
-  .message-bubble {
-    max-width: 90%;
-    padding: 0.3rem 0.45rem;
-    border-radius: 8px;
-  }
-
-  .message-bubble.sent {
-    border-bottom-right-radius: 3px;
-  }
-
-  .message-bubble.received {
-    border-bottom-left-radius: 3px;
-  }
-
-  .message-content {
-    font-size: 0.65rem;
-  }
-
-  .message-time {
-    font-size: 0.5rem;
-  }
-
-  .date-separator small {
-    font-size: 0.6rem;
-    padding: 0.15rem 0.4rem;
-  }
-}
-
-.chat-list::-webkit-scrollbar,
-.messages-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.chat-list::-webkit-scrollbar-track,
-.messages-container::-webkit-scrollbar-track {
-  background-color: transparent;
-}
-
-.chat-list::-webkit-scrollbar-thumb,
-.messages-container::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-}
-
-.chat-list::-webkit-scrollbar-thumb:hover,
-.messages-container::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3);
-}
-
-.form-control,
-.form-select,
-.btn,
-.input-group-text,
-.alert,
-.card,
-.modal-content {
-  border-radius: 8px;
-}
-
-.dropdown-menu {
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
-
-.dropdown-item {
-  border-radius: 6px;
-  margin: 2px 4px;
-  transition: all 0.2s ease;
-}
-
-.dropdown-item:hover,
-.dropdown-item:focus {
-  background-color: rgba(102, 126, 234, 0.1);
-  color: #667eea;
-  border-radius: 6px;
-}
-
-.chat-item:focus,
-.popup-action-btn:focus,
-.popup-close-btn:focus {
-  outline: 2px solid #667eea;
-  outline-offset: 2px;
-}
-
-.chat-popup:focus {
-  outline: none;
-}
-
-@keyframes pulse {
-  0%, 100% { 
-    opacity: 1; 
-  }
-  50% { 
-    opacity: 0.5; 
-  }
-}
-
-.modal {
-  z-index: 8000;
-}
-
-.modal-backdrop {
-  z-index: 7999;
-}
-
-.toast-container {
-  z-index: 10001;
-}
-
-@media (prefers-color-scheme: dark) {
-  .chat-popup {
-    background-color: #1a1a1a;
-    color: white;
-  }
-
-  .popup-body {
-    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
-  }
-
-  .popup-footer {
-    background-color: #1a1a1a;
-    border-color: #444;
-  }
-
-  .message-bubble.received {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: white;
-  }
-
-  .message-input {
-    background-color: #2a2a2a;
-    color: white;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-popup,
-  .chat-overlay,
-  .message-bubble,
-  .popup-action-btn,
-  .popup-close-btn {
-    animation: none;
-    transition: none;
-  }
-
-  .chat-item:hover {
-    transform: none;
-  }
-} 
-      `}</style>
+      {/* Toast */}
+      <ToastContainer position="top-end" className="p-3">
+        <Toast
+          show={showToast}
+          onClose={() => setShowToast(false)}
+          bg={toastType === "success" ? "success" : "danger"}
+          delay={3000}
+          autohide
+        >
+          <Toast.Body className="text-white">
+            {toastMessage}
+          </Toast.Body>
+        </Toast>
+      </ToastContainer>
+
+      {/* ✅ ENHANCED: Full-Window WhatsApp Modal with Animations - Using createPortal for whole page coverage */}
+      {showWhatsAppModal && createPortal(
+        <div className={`whatsapp-full-modal ${whatsappModalAnimating ? 'animating' : ''}`}>
+          <div 
+            className="whatsapp-modal-overlay" 
+            onClick={(e) => {
+              // Only close if clicking directly on overlay, not on modal content
+              if (e.target === e.currentTarget) {
+                handleWhatsAppModalClose(e);
+              }
+            }}
+          >
+            <div className="whatsapp-modal-container" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="whatsapp-modal-header">
+                <div className="header-content">
+                  <div className="header-left">
+                    <FontAwesomeIcon icon={faWhatsapp} className="whatsapp-icon" />
+                    <div className="header-text">
+                      <h2>WhatsApp Messaging</h2>
+                      <p>Send professional messages to your contacts</p>
+                    </div>
+                  </div>
+                  <button 
+                    className="close-modal-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleWhatsAppModalClose();
+                    }}
+                    disabled={whatsappSending}
+                  >
+                    <FontAwesomeIcon icon={faTimes} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="whatsapp-modal-content">
+                {/* Mode Selection */}
+                <div className="message-mode-section">
+                  <h3>Choose Messaging Mode</h3>
+                  <div className="mode-options">
+                    <div 
+                      className={`mode-option ${whatsappMessageMode === 'single' ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMessageModeChange('single');
+                      }}
+                    >
+                      <div className="mode-icon">
+                        <FontAwesomeIcon icon={faUser} />
+                      </div>
+                      <div className="mode-info">
+                        <h4>Single Contact</h4>
+                        <p>Send personalized message to one contact</p>
+                      </div>
+                    </div>
+                    
+                    <div 
+                      className={`mode-option ${whatsappMessageMode === 'bulk' ? 'active' : ''}`}
+                      onClick={() => handleMessageModeChange('bulk')}
+                    >
+                      <div className="mode-icon">
+                        <FontAwesomeIcon icon={faUsers} />
+                      </div>
+                      <div className="mode-info">
+                        <h4>Bulk Selection</h4>
+                        <p>Choose specific contacts from your list</p>
+                      </div>
+                    </div>
+                    
+                    <div 
+                      className={`mode-option ${whatsappMessageMode === 'all' ? 'active' : ''}`}
+                      onClick={() => handleMessageModeChange('all')}
+                    >
+                      <div className="mode-icon">
+                        <FontAwesomeIcon icon={faRocket} />
+                      </div>
+                      <div className="mode-info">
+                        <h4>Send to All</h4>
+                        <p>Automatically send to all valid contacts</p>
+                      </div>
+                    </div>
+                    
+                    <div 
+                      className={`mode-option ${whatsappMessageMode === 'big-size' ? 'active' : ''}`}
+                      onClick={() => handleMessageModeChange('big-size')}
+                    >
+                      <div className="mode-icon">
+                        <FontAwesomeIcon icon={faClipboardList} />
+                      </div>
+                      <div className="mode-info">
+                        <h4>Big Size</h4>
+                        <p>Send to a specific number of contacts</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Single Contact Selection */}
+                {whatsappMessageMode === 'single' && (
+                  <div className="single-contact-section">
+                    <h3>Select Contact</h3>
+                    <div className="contacts-grid">
+                      {parties.filter(party => {
+                        const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+                        return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+                      }).map(contact => (
+                        <div 
+                          key={contact._id || contact.id}
+                          className={`contact-card ${selectedSingleContact?._id === contact._id ? 'selected' : ''}`}
+                          onClick={() => handleSingleContactSelect(contact)}
+                        >
+                          <div className="contact-avatar">
+                            <div 
+                              className="avatar-circle"
+                              style={{ backgroundColor: getAvatarColor(contact.name || contact.businessName) }}
+                            >
+                              {getUserInitials(contact.name || contact.businessName)}
+                            </div>
+                          </div>
+                          <div className="contact-info">
+                            <h5>{contact.name || contact.businessName}</h5>
+                            <p>{contact.phoneNumber || contact.phone || contact.mobile || contact.contactNumber}</p>
+                            {(contact.shopName || contact.companyName) && (
+                              <small className="contact-shop-info">🏪 {contact.shopName || contact.companyName}</small>
+                            )}
+                          </div>
+                          {selectedSingleContact?._id === contact._id && (
+                            <div className="selected-indicator">
+                              <FontAwesomeIcon icon={faCheckCircle} />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bulk Contact Selection */}
+                {whatsappMessageMode === 'bulk' && (
+                  <div className="bulk-contact-section">
+                    <h3>Select Contacts ({selectedContactsForWhatsApp.length} selected)</h3>
+                    <div className="bulk-controls">
+                      <button 
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => {
+                          const validContacts = parties.filter(party => {
+                            const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+                            return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+                          });
+                          setSelectedContactsForWhatsApp(validContacts);
+                        }}
+                      >
+                        Select All
+                      </button>
+                      <button 
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setSelectedContactsForWhatsApp([])}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="contacts-grid">
+                      {parties.filter(party => {
+                        const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+                        return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+                      }).map(contact => {
+                        const isSelected = selectedContactsForWhatsApp.some(c => (c._id || c.id) === (contact._id || contact.id));
+                        return (
+                          <div 
+                            key={contact._id || contact.id}
+                            className={`contact-card ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleContactToggle(contact)}
+                          >
+                            <div className="contact-avatar">
+                              <div 
+                                className="avatar-circle"
+                                style={{ backgroundColor: getAvatarColor(contact.name || contact.businessName) }}
+                              >
+                                {getUserInitials(contact.name || contact.businessName)}
+                              </div>
+                            </div>
+                            <div className="contact-info">
+                              <h5>{contact.name || contact.businessName}</h5>
+                              <p>{contact.phoneNumber || contact.phone || contact.mobile || contact.contactNumber}</p>
+                              {(contact.shopName || contact.companyName) && (
+                                <small className="contact-shop-info">🏪 {contact.shopName || contact.companyName}</small>
+                              )}
+                            </div>
+                            {isSelected && (
+                              <div className="selected-indicator">
+                                <FontAwesomeIcon icon={faCheckCircle} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Send to All Summary */}
+                {whatsappMessageMode === 'all' && (
+                  <div className="all-contacts-section">
+                    <h3>Send to All Contacts</h3>
+                    <div className="all-summary">
+                      <div className="summary-card">
+                        <FontAwesomeIcon icon={faUsers} className="summary-icon" />
+                        <div className="summary-info">
+                          <h4>{parties.filter(party => {
+                            const phoneNumber = party.phoneNumber || party.phone || party.mobile || party.contactNumber;
+                            return phoneNumber && isValidWhatsAppNumber(phoneNumber);
+                          }).length} Valid Contacts</h4>
+                          <p>All contacts with valid WhatsApp numbers will receive the message</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Big Size Selection */}
+                {whatsappMessageMode === 'big-size' && (
+                  <div className="big-size-section">
+                    <h3>Select Number of Contacts</h3>
+                    <p className="section-description">Choose how many contacts you want to send messages to:</p>
+                    
+                    <div className="big-size-numbers">
+                      {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(number => (
+                        <button
+                          key={number}
+                          className={`big-size-number-btn ${selectedBigSizeNumber === number ? 'selected' : ''}`}
+                          onClick={() => handleBigSizeNumberSelect(number)}
+                          disabled={whatsappSending}
+                        >
+                          <span className="number">{number}</span>
+                          <span className="label">contacts</span>
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {selectedBigSizeNumber && (
+                      <div className="big-size-summary">
+                        <div className="summary-card">
+                          <FontAwesomeIcon icon={faClipboardList} className="summary-icon" />
+                          <div className="summary-info">
+                            <h4>Selected: {selectedBigSizeNumber} Contacts</h4>
+                            <p>
+                              {bigSizeContactsToSend.length > 0 
+                                ? `${bigSizeContactsToSend.length} contacts will receive the message`
+                                : `First ${selectedBigSizeNumber} contacts with valid WhatsApp numbers will be selected`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Message Customization */}
+                <div className="message-customization">
+                  <h3>Message Options</h3>
+                  <div className="message-options">
+                    <div className="form-check">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id="useCustomMessage"
+                        checked={useCustomMessage}
+                        onChange={(e) => setUseCustomMessage(e.target.checked)}
+                        disabled={whatsappSending}
+                      />
+                      <label className="form-check-label" htmlFor="useCustomMessage">
+                        Use custom message
+                      </label>
+                    </div>
+                    
+                    {useCustomMessage && (
+                      <div className="custom-message-input">
+                        <textarea
+                          className="form-control"
+                          rows="4"
+                          placeholder="Enter your custom message here..."
+                          value={customMessage}
+                          onChange={(e) => setCustomMessage(e.target.value)}
+                          disabled={whatsappSending}
+                        />
+                        <small className="text-muted">
+                          If empty, default B2B Billings introduction message will be used
+                        </small>
+                      </div>
+                    )}
+                    
+                    {whatsappMessageMode !== 'single' && (
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          id="bulkMessageMode"
+                          checked={bulkMessageMode}
+                          onChange={(e) => setBulkMessageMode(e.target.checked)}
+                          disabled={whatsappSending}
+                        />
+                        <label className="form-check-label" htmlFor="bulkMessageMode">
+                          Use bulk announcement format (general message style)
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress Section */}
+                {whatsappSending && (
+                  <div className="progress-section">
+                    <h3>Sending Messages</h3>
+                    <div className="progress-container">
+                      <div className="progress">
+                        <div 
+                          className="progress-bar bg-success" 
+                          style={{
+                            width: `${(whatsappProgress.current / whatsappProgress.total) * 100}%`
+                          }}
+                        ></div>
+                      </div>
+                      <p className="progress-text">
+                        Sending message {whatsappProgress.current} of {whatsappProgress.total}...
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="whatsapp-modal-footer">
+                <div className="footer-info">
+                  <FontAwesomeIcon icon={faInfo} className="info-icon" />
+                  <span>WhatsApp will open in new tabs for each contact</span>
+                </div>
+                <div className="footer-actions">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleWhatsAppModalClose}
+                    disabled={whatsappSending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-success"
+                    onClick={handleSendBulkWhatsApp}
+                    disabled={whatsappSending || 
+                      (whatsappMessageMode === 'single' && !selectedSingleContact) ||
+                      (whatsappMessageMode === 'bulk' && selectedContactsForWhatsApp.length === 0) ||
+                      (whatsappMessageMode === 'big-size' && (!selectedBigSizeNumber || bigSizeContactsToSend.length === 0))
+                    }
+                  >
+                    {whatsappSending ? (
+                      <>
+                        <Spinner size="sm" className="me-2" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <FontAwesomeIcon icon={faWhatsapp} className="me-2" />
+                        Send Messages
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 }

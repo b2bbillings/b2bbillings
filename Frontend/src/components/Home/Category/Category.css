@@ -1,0 +1,908 @@
+/* Category Management Modern Styles - Enhanced Version */
+
+/* Root Variables for Consistent Theming */
+:root {
+  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  --danger-gradient: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+  --info-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+  --border-radius: 12px;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Base Container Styling */
+.category-management-page {
+  padding: 1.5rem;
+  background: linear-gradient(to bottom, #f8f9fa 0%, #ffffff 100%);
+  min-height: 100vh;
+}
+
+/* Custom Gradient Backgrounds */
+.bg-gradient-primary {
+  background: var(--primary-gradient) !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.bg-gradient-success {
+  background: var(--success-gradient) !important;
+  box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
+}
+
+/* Enhanced Card Styles */
+.category-management-page .card {
+  border: none;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.category-management-page .card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.category-management-page .card-header {
+  border: none;
+  padding: 1.25rem 1.5rem;
+  font-weight: 600;
+  position: relative;
+}
+
+.category-management-page .card-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+}
+
+.category-management-page .card-body {
+  padding: 1.5rem;
+}
+
+/* Border Color Enhancements */
+.category-management-page .border-primary {
+  border: 2px solid #667eea !important;
+  position: relative;
+}
+
+.category-management-page .border-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--primary-gradient);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.category-management-page .border-success {
+  border: 2px solid #11998e !important;
+  position: relative;
+}
+
+.category-management-page .border-success::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--success-gradient);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.category-management-page .border-secondary {
+  border: 2px solid #e9ecef !important;
+}
+
+/* Form Controls Enhancement */
+.category-management-page .form-control,
+.category-management-page .form-select {
+  border: 2px solid #e9ecef;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 15px;
+  transition: var(--transition);
+  background: #ffffff;
+}
+
+.category-management-page .form-control:focus,
+.category-management-page .form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
+  background: #ffffff;
+  transform: scale(1.01);
+}
+
+.category-management-page .form-control:hover:not(:focus),
+.category-management-page .form-select:hover:not(:focus) {
+  border-color: #d0d5dd;
+}
+
+.category-management-page .form-label {
+  font-weight: 600;
+  color: #344054;
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+.category-management-page textarea.form-control {
+  resize: none;
+  min-height: 100px;
+}
+
+/* Button Enhancements */
+.category-management-page .btn {
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.65rem 1.5rem;
+  transition: var(--transition);
+  border: none;
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.3px;
+}
+
+.category-management-page .btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.category-management-page .btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.category-management-page .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.category-management-page .btn:active {
+  transform: translateY(0);
+}
+
+.category-management-page .btn-primary {
+  background: var(--primary-gradient);
+  color: white;
+}
+
+.category-management-page .btn-success {
+  background: var(--success-gradient);
+  color: white;
+}
+
+.category-management-page .btn-outline-primary {
+  border: 2px solid #667eea;
+  color: #667eea;
+  background: transparent;
+}
+
+.category-management-page .btn-outline-primary:hover {
+  background: var(--primary-gradient);
+  border-color: transparent;
+  color: white;
+}
+
+.category-management-page .btn-outline-secondary {
+  border: 2px solid #6c757d;
+  color: #6c757d;
+  background: transparent;
+}
+
+.category-management-page .btn-outline-secondary:hover {
+  background: #6c757d;
+  color: white;
+}
+
+.category-management-page .btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 14px;
+}
+
+/* Badge Styles */
+.category-management-page .badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.category-management-page .badge.bg-primary {
+  background: var(--primary-gradient) !important;
+}
+
+.category-management-page .badge.bg-success {
+  background: var(--success-gradient) !important;
+}
+
+.category-management-page .badge.bg-info {
+  background: var(--info-gradient) !important;
+}
+
+/* Modal Enhancements */
+.category-management-page .modal-content {
+  border: none;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.category-management-page .modal-header {
+  border: none;
+  padding: 1.5rem;
+}
+
+.category-management-page .modal-header .btn-close {
+  opacity: 0.8;
+  transition: var(--transition);
+}
+
+.category-management-page .modal-header .btn-close:hover {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.category-management-page .modal-body {
+  padding: 2rem;
+}
+
+.category-management-page .modal-footer {
+  border: none;
+  padding: 1.5rem;
+  background: #f8f9fa;
+}
+
+/* Excel-Style Table Styles */
+.category-management-page .excel-table-container {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 2px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.category-management-page .excel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.category-management-page .excel-header {
+  background: linear-gradient(180deg, #f6f8fa 0%, #e1e4e8 100%);
+  border: 1px solid #d0d7de;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #24292f;
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: inset 0 -1px 0 #d0d7de;
+}
+
+.category-management-page .excel-header:first-child {
+  text-align: center;
+  width: 80px;
+}
+
+.category-management-page .excel-header:last-child {
+  text-align: center;
+  width: 120px;
+}
+
+.category-management-page .excel-row {
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.category-management-page .excel-row:hover {
+  background-color: #f6f8fa;
+}
+
+.category-management-page .excel-row.selected {
+  background-color: #dbeafe !important;
+  border-left: 4px solid #2563eb;
+}
+
+.category-management-page .excel-row.selected-sub {
+  background-color: #dcfce7 !important;
+  border-left: 4px solid #16a34a;
+}
+
+.category-management-page .excel-cell {
+  border: 1px solid #d0d7de;
+  padding: 12px 16px;
+  vertical-align: middle;
+  background: #ffffff;
+  color: #24292f;
+  line-height: 1.4;
+}
+
+.category-management-page .excel-row:hover .excel-cell {
+  background-color: #f6f8fa;
+}
+
+.category-management-page .excel-row.selected .excel-cell {
+  background-color: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.category-management-page .excel-row.selected-sub .excel-cell {
+  background-color: #dcfce7;
+  border-color: #86efac;
+}
+
+.category-management-page .serial-number {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: center;
+}
+
+.category-management-page .category-name {
+  font-weight: 600;
+  color: #24292f;
+  font-size: 14px;
+}
+
+.category-management-page .description-text {
+  color: #656d76;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.category-management-page .status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Excel Table Scrollbar */
+.category-management-page .excel-table-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.category-management-page .excel-table-container::-webkit-scrollbar-track {
+  background: #f1f3f4;
+  border-radius: 6px;
+  border: 1px solid #e8eaed;
+}
+
+.category-management-page .excel-table-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #c1c8cd 0%, #a8b3ba 100%);
+  border-radius: 6px;
+  border: 1px solid #9aa0a6;
+}
+
+.category-management-page .excel-table-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #9aa0a6 0%, #80868b 100%);
+}
+
+.category-management-page .excel-table-container::-webkit-scrollbar-corner {
+  background: #f1f3f4;
+}
+
+/* Excel-like grid lines */
+.category-management-page .excel-table tbody tr:last-child .excel-cell {
+  border-bottom: 2px solid #d0d7de;
+}
+
+/* Alternating row colors for better readability */
+.category-management-page .excel-row:nth-child(even):not(.selected):not(.selected-sub) {
+  background-color: #fafbfc;
+}
+
+.category-management-page .excel-row:nth-child(even):not(.selected):not(.selected-sub) .excel-cell {
+  background-color: #fafbfc;
+}
+
+.category-management-page .excel-row:nth-child(even):hover:not(.selected):not(.selected-sub) .excel-cell {
+  background-color: #f6f8fa;
+}
+
+/* Selected row animation */
+.category-management-page .excel-row.selected,
+.category-management-page .excel-row.selected-sub {
+  animation: selectRow 0.3s ease-out;
+}
+
+@keyframes selectRow {
+  0% {
+    transform: scale(1);
+    box-shadow: none;
+  }
+  50% {
+    transform: scale(1.01);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Table View Styles (keeping for compatibility) */
+.category-management-page .table {
+  font-size: 14px;
+}
+
+.category-management-page .table th {
+  background: #f8f9fa !important;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  color: #495057;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.category-management-page .table td {
+  vertical-align: middle;
+  border-bottom: 1px solid #f1f3f4;
+  padding: 1rem 0.75rem;
+}
+
+.category-management-page .table tbody tr {
+  transition: var(--transition);
+}
+
+.category-management-page .table tbody tr:hover {
+  background-color: rgba(102, 126, 234, 0.05) !important;
+  transform: translateX(2px);
+}
+
+.category-management-page .table-responsive {
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.category-management-page .table-responsive::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.category-management-page .table-responsive::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.category-management-page .table-responsive::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 10px;
+}
+
+.category-management-page .table-responsive::-webkit-scrollbar-thumb:hover {
+  background: #764ba2;
+}
+
+/* Sticky table header */
+.category-management-page .sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* List View Styles (keeping for compatibility) */
+.category-list {
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.category-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.category-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.category-list::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 10px;
+}
+
+.category-list::-webkit-scrollbar-thumb:hover {
+  background: #764ba2;
+}
+
+.category-list .category-item {
+  transition: var(--transition);
+  position: relative;
+}
+
+.category-list .category-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--primary-gradient);
+  transform: scaleY(0);
+  transition: var(--transition);
+}
+
+.category-list .category-item:hover {
+  background: linear-gradient(90deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.category-list .category-item:hover::before {
+  transform: scaleY(1);
+}
+
+.subcategories-list {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  padding: 1.5rem !important;
+}
+
+.subcategories-list .bg-white {
+  transition: var(--transition);
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.subcategories-list .bg-white:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: #11998e;
+}
+
+/* Alert Enhancements */
+.category-management-page .alert {
+  border: none;
+  border-radius: 10px;
+  font-weight: 500;
+  padding: 1rem 1.5rem;
+  box-shadow: var(--shadow-sm);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.category-management-page .alert-success {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  color: #155724;
+  border-left: 4px solid #28a745;
+}
+
+.category-management-page .alert-danger {
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+  color: #721c24;
+  border-left: 4px solid #dc3545;
+}
+
+.category-management-page .alert-warning {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+  color: #856404;
+  border-left: 4px solid #ffc107;
+}
+
+/* Loading Spinner */
+.category-management-page .spinner-border {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 3px;
+}
+
+/* Keyboard Shortcuts Card */
+.category-management-page kbd {
+  background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+  color: #fff;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: inline-block;
+  min-width: 32px;
+  text-align: center;
+}
+
+/* Empty State Styling */
+.empty-state {
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.empty-state .fa-3x {
+  margin-bottom: 1.5rem;
+  opacity: 0.3;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Icon Enhancements */
+.category-management-page .svg-inline--fa {
+  transition: var(--transition);
+}
+
+.category-management-page .btn:hover .svg-inline--fa,
+.category-management-page .card:hover .svg-inline--fa {
+  transform: scale(1.1);
+}
+
+/* Search Input Styling */
+.category-management-page .form-control-sm {
+  border-radius: 25px;
+  padding: 0.6rem 1.2rem;
+  border: 2px solid #e9ecef;
+  background: #ffffff;
+  transition: var(--transition);
+}
+
+.category-management-page .form-control-sm:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
+  padding-left: 1.5rem;
+}
+
+/* View Mode Buttons */
+.category-management-page .btn-outline-light {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+.category-management-page .btn-outline-light:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: white;
+}
+
+.category-management-page .btn-light {
+  background: white;
+  color: #667eea;
+  border: none;
+  font-weight: 700;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .category-management-page {
+    padding: 1rem;
+  }
+
+  .category-management-page .card-body {
+    padding: 1rem;
+  }
+
+  .category-management-page .modal-body {
+    padding: 1.5rem;
+  }
+
+  .category-management-page .d-flex.gap-2 {
+    gap: 0.5rem !important;
+  }
+
+  .subcategories-list .row > .col-md-6 {
+    margin-bottom: 0.75rem;
+  }
+}
+
+/* Focus Styles */
+.category-management-page .form-control:focus,
+.category-management-page .form-select:focus,
+.category-management-page .btn:focus {
+  outline: none;
+}
+
+/* Success Animation */
+@keyframes successPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.category-management-page .alert-success {
+  animation: slideDown 0.3s ease-out, successPulse 0.5s ease-in-out;
+}
+
+/* Smooth Transitions */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Header Enhancement */
+.category-management-page h4, 
+.category-management-page h5, 
+.category-management-page h6 {
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* Disabled State */
+.category-management-page .opacity-75 {
+  opacity: 0.6 !important;
+  filter: grayscale(30%);
+}
+
+/* Custom Dropdown Styles */
+.category-management-page .dropdown-item-custom {
+  transition: var(--transition);
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.category-management-page .dropdown-item-custom:last-child {
+  border-bottom: none;
+}
+
+.category-management-page .dropdown-item-custom:hover {
+  background: linear-gradient(90deg, #f8f9fa 0%, #e9ecef 100%) !important;
+}
+
+/* Search Input Focus Enhancement */
+.category-management-page .form-control:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
+  background: #ffffff;  
+}
+
+/* Enhanced List View Styles */
+.category-management-page .category-item {
+  transition: var(--transition);
+}
+
+.category-management-page .category-item:hover {
+  background-color: rgba(102, 126, 234, 0.02);
+}
+
+.category-management-page .cursor-pointer:hover {
+  background-color: rgba(102, 126, 234, 0.05) !important;
+}
+
+.category-management-page .hover-shadow:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Dropdown positioning improvements */
+.category-management-page .position-relative .position-absolute {
+  border: 2px solid #667eea;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.2);
+}
+
+/* Animation for expanding categories */
+.category-management-page .subcategories-list {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+/* Dropdown Override Styles */
+.category-management-page .dropdown-override {
+  position: absolute !important;
+  z-index: 10000 !important;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3) !important;
+  border: 2px solid #667eea !important;
+  background: white !important;
+}
+
+/* Ensure parent containers don't clip dropdowns */
+.category-management-page .position-relative {
+  overflow: visible !important;
+}
+
+.category-management-page .card-body {
+  overflow: visible !important;
+}
+
+.category-management-page .container-fluid {
+  overflow: visible !important;
+}
+
+/* Portal Dropdown Styles */
+.portal-dropdown {
+  background: white !important;
+  border-radius: 8px !important;
+  animation: dropdownFadeIn 0.2s ease-out;
+}
+
+.portal-dropdown .dropdown-item-custom {
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.portal-dropdown .dropdown-item-custom:last-child {
+  border-bottom: none;
+}
+
+.portal-dropdown .dropdown-item-custom:hover {
+  background-color: #f8f9fa !important;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Keyboard Navigation Styles */
+.portal-dropdown .keyboard-selected {
+  background-color: #e3f2fd !important;
+  border-left: 3px solid #667eea;
+}
+
+.portal-dropdown .dropdown-item-custom.keyboard-selected {
+  box-shadow: inset 0 0 0 1px rgba(102, 126, 234, 0.2);
+}
+
+/* Search input in subcategory list */
+.subcategories-list .form-control-sm {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.subcategories-list .form-control-sm:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}

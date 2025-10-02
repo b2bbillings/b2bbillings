@@ -286,6 +286,7 @@ const createAuthAuditLog = async (req, action, details = {}) => {
 
 const signupValidation = [
   body("name")
+    .optional()
     .trim()
     .isLength({min: 2, max: 100})
     .withMessage("Name must be between 2 and 100 characters")
@@ -343,6 +344,7 @@ const signupValidation = [
     }),
 
   body("phone")
+    .optional()
     .matches(/^[6-9]\d{9}$/)
     .withMessage(
       "Phone number must be a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9"

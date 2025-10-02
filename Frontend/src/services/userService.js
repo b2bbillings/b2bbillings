@@ -419,6 +419,62 @@ const handleUserServiceError = (error) => {
 };
 
 // ============================================================================
+// PROFILE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+const getProfile = async () => {
+  try {
+    const response = await api.get('/profile');
+    return response.data;
+  } catch (error) {
+    throw handleUserServiceError(error);
+  }
+};
+
+const updateProfile = async (profileData) => {
+  try {
+    const response = await api.put('/profile', profileData);
+    return response.data;
+  } catch (error) {
+    throw handleUserServiceError(error);
+  }
+};
+
+const uploadProfileImage = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append('profileImage', file);
+    
+    const response = await api.post('/profile/upload-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    throw handleUserServiceError(error);
+  }
+};
+
+const changePassword = async (passwordData) => {
+  try {
+    const response = await api.put('/profile/change-password', passwordData);
+    return response.data;
+  } catch (error) {
+    throw handleUserServiceError(error);
+  }
+};
+
+const deleteProfileImage = async () => {
+  try {
+    const response = await api.delete('/profile/image');
+    return response.data;
+  } catch (error) {
+    throw handleUserServiceError(error);
+  }
+};
+
+// ============================================================================
 // EXPORT ALL FUNCTIONS
 // ============================================================================
 
@@ -445,11 +501,21 @@ const userService = {
   searchUsers,
   exportUsers,
 
+  // Admin
+  getUserDetailsForAdmin,
+
   // Utilities
   validateUserData,
   formatUserForDisplay,
   buildUserQuery,
   handleUserServiceError,
+
+  // Profile management methods
+  getProfile,
+  updateProfile,
+  uploadProfileImage,
+  changePassword,
+  deleteProfileImage,
 };
 
 export default userService;
@@ -486,4 +552,11 @@ export {
   formatUserForDisplay,
   buildUserQuery,
   handleUserServiceError,
+
+  // Profile management
+  getProfile,
+  updateProfile,
+  uploadProfileImage,
+  changePassword,
+  deleteProfileImage,
 };

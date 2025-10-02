@@ -21,89 +21,297 @@ function SalesInvoicesFilter({
   };
 
   const isQuotations = mode === "quotations" || documentType === "quotation";
-  const theme = isQuotations ? "purple" : "blue";
+  
+  // Enhanced styling theme object
+  const modernTheme = {
+    colors: {
+      primary: '#6366f1',
+      primaryLight: '#8b5cf6',
+      primaryDark: '#4f46e5',
+      background: '#ffffff',
+      backgroundLight: '#f8fafc',
+      border: '#e2e8f0',
+      text: '#1e293b',
+      textLight: '#64748b',
+      shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+    },
+    borderRadius: {
+      sm: '0.375rem',
+      md: '0.5rem',
+      lg: '0.75rem',
+      xl: '1rem'
+    }
+  };
 
   return (
-    <Card
-      className={`border-0 shadow-sm mb-3 ${theme}-theme`}
-      style={{borderRadius: 0}}
+    <div 
+      style={{
+        background: modernTheme.colors.background,
+        borderRadius: modernTheme.borderRadius.xl,
+        boxShadow: modernTheme.colors.shadow,
+        border: `1px solid ${modernTheme.colors.border}`,
+        overflow: 'hidden',
+        position: 'relative'
+      }}
     >
-      <Card.Header className="bg-light border-0 py-2" style={{borderRadius: 0}}>
-        <FontAwesomeIcon icon={faFilter} className={`me-2 text-${theme}`} />
-        <span className="fw-semibold">
+      {/* Modern header with gradient */}
+      <div 
+        style={{
+          background: `linear-gradient(135deg, ${modernTheme.colors.primary} 0%, ${modernTheme.colors.primaryLight} 100%)`,
+          color: 'white',
+          padding: '1rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          position: 'relative'
+        }}
+      >
+        <div 
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: `${modernTheme.borderRadius.xl} ${modernTheme.borderRadius.xl} 0 0`
+          }}
+        />
+        <FontAwesomeIcon icon={faFilter} className="me-3" style={{ fontSize: '1.1rem', position: 'relative', zIndex: 1 }} />
+        <span style={{ fontWeight: '600', fontSize: '1rem', position: 'relative', zIndex: 1 }}>
           {isQuotations ? "Quotation" : "Invoice"} Filters
         </span>
-      </Card.Header>
+      </div>
 
-      <Card.Body className="py-3" style={{borderRadius: 0}}>
-        <Row className="g-3">
+      {/* Modern body */}
+      <div 
+        style={{
+          padding: '1.5rem',
+          background: `linear-gradient(135deg, ${modernTheme.colors.background} 0%, ${modernTheme.colors.backgroundLight} 100%)`
+        }}
+      >
+        <Row className="g-4">
+          {/* Date Range Select */}
           <Col md={4}>
-            <Form.Label className="small text-muted mb-1">
-              Date Range
-            </Form.Label>
-            <Form.Select
-              size="sm"
-              value={dateRange || "This Month"}
-              onChange={(e) => onDateRangeChange(e.target.value)}
-              style={{borderRadius: 0}}
-            >
-              {dateRangeOptions?.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Form.Select>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <Form.Label 
+                style={{ 
+                  fontSize: '0.875rem', 
+                  fontWeight: '500', 
+                  color: modernTheme.colors.text, 
+                  marginBottom: '0.5rem',
+                  display: 'block'
+                }}
+              >
+                Date Range
+              </Form.Label>
+              <div 
+                style={{
+                  position: 'relative',
+                  background: modernTheme.colors.background,
+                  borderRadius: modernTheme.borderRadius.lg,
+                  border: `2px solid ${modernTheme.colors.border}`,
+                  overflow: 'hidden',
+                  transition: 'all 0.3s ease'
+                }}
+                className="modern-select-wrapper"
+              >
+                <Form.Select
+                  value={dateRange || "This Month"}
+                  onChange={(e) => onDateRangeChange(e.target.value)}
+                  style={{
+                    border: 'none',
+                    borderRadius: modernTheme.borderRadius.lg,
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                    color: modernTheme.colors.text,
+                    background: 'transparent'
+                  }}
+                  className="modern-select"
+                >
+                  {dateRangeOptions?.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Form.Select>
+              </div>
+            </div>
           </Col>
 
+          {/* From Date */}
           <Col md={4}>
-            <Form.Label className="small text-muted mb-1">From Date</Form.Label>
-            <InputGroup size="sm">
-              <InputGroup.Text style={{borderRadius: 0}}>
-                <FontAwesomeIcon icon={faCalendarAlt} />
-              </InputGroup.Text>
-              <Form.Control
-                type="date"
-                value={formatDate(startDate)}
-                onChange={onStartDateChange}
-                style={{borderRadius: 0}}
-              />
-            </InputGroup>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <Form.Label 
+                style={{ 
+                  fontSize: '0.875rem', 
+                  fontWeight: '500', 
+                  color: modernTheme.colors.text, 
+                  marginBottom: '0.5rem',
+                  display: 'block'
+                }}
+              >
+                From Date
+              </Form.Label>
+              <div 
+                style={{
+                  display: 'flex',
+                  background: modernTheme.colors.background,
+                  borderRadius: modernTheme.borderRadius.lg,
+                  border: `2px solid ${modernTheme.colors.border}`,
+                  overflow: 'hidden',
+                  transition: 'all 0.3s ease'
+                }}
+                className="modern-input-group"
+              >
+                <div 
+                  style={{
+                    background: `linear-gradient(135deg, ${modernTheme.colors.primary}15, ${modernTheme.colors.primaryLight}10)`,
+                    padding: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: modernTheme.colors.primary
+                  }}
+                >
+                  <FontAwesomeIcon icon={faCalendarAlt} />
+                </div>
+                <Form.Control
+                  type="date"
+                  value={formatDate(startDate)}
+                  onChange={onStartDateChange}
+                  style={{
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.9rem',
+                    background: 'transparent'
+                  }}
+                  className="modern-date-input"
+                />
+              </div>
+            </div>
           </Col>
 
+          {/* To Date */}
           <Col md={4}>
-            <Form.Label className="small text-muted mb-1">To Date</Form.Label>
-            <InputGroup size="sm">
-              <InputGroup.Text style={{borderRadius: 0}}>
-                <FontAwesomeIcon icon={faCalendarAlt} />
-              </InputGroup.Text>
-              <Form.Control
-                type="date"
-                value={formatDate(endDate)}
-                onChange={onEndDateChange}
-                style={{borderRadius: 0}}
-              />
-            </InputGroup>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <Form.Label 
+                style={{ 
+                  fontSize: '0.875rem', 
+                  fontWeight: '500', 
+                  color: modernTheme.colors.text, 
+                  marginBottom: '0.5rem',
+                  display: 'block'
+                }}
+              >
+                To Date
+              </Form.Label>
+              <div 
+                style={{
+                  display: 'flex',
+                  background: modernTheme.colors.background,
+                  borderRadius: modernTheme.borderRadius.lg,
+                  border: `2px solid ${modernTheme.colors.border}`,
+                  overflow: 'hidden',
+                  transition: 'all 0.3s ease'
+                }}
+                className="modern-input-group"
+              >
+                <div 
+                  style={{
+                    background: `linear-gradient(135deg, ${modernTheme.colors.primary}15, ${modernTheme.colors.primaryLight}10)`,
+                    padding: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: modernTheme.colors.primary
+                  }}
+                >
+                  <FontAwesomeIcon icon={faCalendarAlt} />
+                </div>
+                <Form.Control
+                  type="date"
+                  value={formatDate(endDate)}
+                  onChange={onEndDateChange}
+                  style={{
+                    border: 'none',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.9rem',
+                    background: 'transparent'
+                  }}
+                  className="modern-date-input"
+                />
+              </div>
+            </div>
           </Col>
         </Row>
-      </Card.Body>
+      </div>
 
       <style>{`
-        .purple-theme {
-          border-left: 3px solid #8b5cf6;
-          background: rgba(139, 92, 246, 0.02);
+        /* Modern form controls styling */
+        .modern-select:focus,
+        .modern-date-input:focus {
+          outline: none;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
-        .blue-theme {
-          border-left: 3px solid #6366f1;
-          background: rgba(99, 102, 241, 0.02);
+
+        .modern-select-wrapper:focus-within,
+        .modern-input-group:focus-within {
+          border-color: ${modernTheme.colors.primary};
+          box-shadow: ${modernTheme.colors.shadow};
+          transform: translateY(-1px);
         }
-        .text-purple {
-          color: #8b5cf6;
+
+        .modern-select-wrapper:hover,
+        .modern-input-group:hover {
+          border-color: ${modernTheme.colors.primary};
+          box-shadow: ${modernTheme.colors.shadow};
         }
-        .text-blue {
-          color: #6366f1;
+
+        /* Custom select arrow styling */
+        .modern-select {
+          background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236366f1' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+          background-position: right 0.75rem center;
+          background-repeat: no-repeat;
+          background-size: 1.5em 1.5em;
+          padding-right: 3rem !important;
+        }
+
+        /* Date input styling */
+        .modern-date-input::-webkit-calendar-picker-indicator {
+          filter: invert(42%) sepia(93%) saturate(1352%) hue-rotate(223deg) brightness(99%) contrast(96%);
+          cursor: pointer;
+        }
+
+        /* Enhanced responsiveness */
+        @media (max-width: 767.98px) {
+          .g-4 > * {
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+          }
+
+          .modern-select,
+          .modern-date-input {
+            padding: 0.625rem 0.75rem !important;
+            font-size: 0.85rem !important;
+          }
+
+          .modern-select {
+            padding-right: 2.5rem !important;
+          }
+        }
+
+        /* Smooth animations */
+        .modern-select-wrapper,
+        .modern-input-group {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modern-select,
+        .modern-date-input {
+          transition: all 0.2s ease;
         }
       `}</style>
-    </Card>
+    </div>
   );
 }
 

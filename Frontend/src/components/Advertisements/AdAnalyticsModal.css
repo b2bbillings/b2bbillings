@@ -1,0 +1,43 @@
+/* Styles for the analytics modal */
+.analytics-top .analytics-title h5 {
+  font-weight: 600;
+}
+
+.period-buttons button {
+  min-width: 56px;
+}
+
+.chart-wrapper {
+  background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(250,250,250,0.9));
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+.summary-card {
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.04);
+}
+
+.summary-card .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.summary-card .stat-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.summary-card .stat-label {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+@media (max-width: 767px) {
+  .chart-wrapper {
+    padding: 8px;
+  }
+}

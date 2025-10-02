@@ -3,6 +3,42 @@ const {body, param, query} = require("express-validator");
 const partyController = require("../controllers/partyController");
 const validation = require("../middleware/validation");
 const {authenticate, optionalAuth} = require("../middleware/authMiddleware");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// ✅ NEW: Configure multer for party profile image uploads
+const uploadsDir = path.join(__dirname, "../../uploads/profiles");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `party-${req.params.id}-${uniqueSuffix}${ext}`);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
 
 const router = express.Router();
 
@@ -1051,5 +1087,33 @@ router.delete(
   validation.handleValidationErrors,
   partyController.deleteParty
 );
+
+// ✅ NEW: Upload profile image for party (Simplified for testing)
+router.post(
+  "/:id/profile-image",
+  param("id").isMongoId().withMessage("Invalid party ID format"),
+  validation.handleValidationErrors,
+  (req, res, next) => {
+    console.log("🔥 Profile image route hit!", req.params.id);
+    next();
+  },
+  partyController.uploadProfileImage
+);
+
+// ✅ TEMP: Simple test endpoint to verify route works
+router.get(
+  "/:id/profile-test",
+  param("id").isMongoId().withMessage("Invalid party ID format"),
+  (req, res) => {
+    console.log("🔥 Profile test route hit!", req.params.id);
+    res.json({ 
+      success: true, 
+      message: "Profile route is working!", 
+      partyId: req.params.id 
+    });
+  }
+);
+
+console.log("🔥 Party routes file loaded with profile image endpoints!");
 
 module.exports = router;

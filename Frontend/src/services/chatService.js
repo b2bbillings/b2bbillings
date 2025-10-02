@@ -1036,9 +1036,14 @@ class ChatService {
     try {
       this.performanceMetrics.messagesSent++;
 
-      if (!this.socket || !this.isConnected) {
-        throw new Error("Socket not connected");
-      }
+      // Try socket first, then HTTP fallback
+      const useSocket = this.socket && this.isConnected;
+      logDebug("Send message method", { 
+        useSocket, 
+        socketExists: !!this.socket, 
+        isConnected: this.isConnected,
+        messageData: messageData 
+      });
 
       const authenticatedCompany = this.getAuthenticatedCompany();
       if (!authenticatedCompany?.companyId) {
@@ -1052,6 +1057,15 @@ class ChatService {
       if (messageData && typeof messageData === "object" && messageData.party) {
         const {party, content, tempId} = messageData;
         const myCompanyId = authenticatedCompany.companyId;
+
+        // Validate content
+        if (!content || typeof content !== 'string') {
+          throw new Error("Message content is required and must be a string");
+        }
+
+        if (content.trim().length === 0) {
+          throw new Error("Message content cannot be empty");
+        }
 
         let targetCompanyId =
           party.linkedCompanyId ||
@@ -1089,6 +1103,11 @@ class ChatService {
         const content = arguments[1];
         const tempId = arguments[2];
         const myCompanyId = authenticatedCompany.companyId;
+
+        // Validate content
+        if (!content || typeof content !== 'string') {
+          throw new Error("Message content is required and must be a string");
+        }
 
         let targetCompanyId =
           partyData.linkedCompanyId ||
@@ -1128,57 +1147,24 @@ class ChatService {
 
       logDebug("Sending message", finalMessageData);
 
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error("Message send timeout after 10 seconds")),
-          isProduction ? 15000 : 10000
-        );
+      // Try socket first if connected
+      if (useSocket) {
+        try {
+          logDebug("Attempting socket send");
+          const socketResult = await this.sendMessageViaSocket(finalMessageData);
+          if (socketResult && socketResult.success) {
+            logDebug("Socket send successful");
+            return socketResult;
+          }
+        } catch (socketError) {
+          logError("Socket send failed, falling back to HTTP", socketError);
+        }
+      }
 
-        const handleSuccess = (response) => {
-          clearTimeout(timeout);
-          this.socket.off("message_sent", handleSuccess);
-          this.socket.off("message_error", handleError);
+      // HTTP fallback
+      logDebug("Using HTTP fallback for message sending");
+      return await this.sendMessageViaHTTP(finalMessageData);
 
-          logDebug("Message sent successfully", response);
-
-          this.clearHistoryCache(finalMessageData.receiverCompanyId);
-          this.clearConversationCache();
-          this.clearNotificationCache();
-
-          resolve({
-            success: true,
-            data: {
-              _id: response.messageId,
-              id: response.messageId,
-              tempId: finalMessageData.tempId,
-              status: "sent",
-              createdAt: new Date(),
-              messageType: "website",
-            },
-            message: "Message sent successfully",
-          });
-        };
-
-        const handleError = (error) => {
-          clearTimeout(timeout);
-          this.socket.off("message_sent", handleSuccess);
-          this.socket.off("message_error", handleError);
-
-          logError("Message send failed", {
-            error: error.error || error.message,
-            tempId: finalMessageData.tempId,
-          });
-
-          reject(
-            new Error(error.error || error.message || "Failed to send message")
-          );
-        };
-
-        this.socket.once("message_sent", handleSuccess);
-        this.socket.once("message_error", handleError);
-
-        this.socket.emit("send_message", finalMessageData);
-      });
     } catch (error) {
       logError("Send message error", error);
       return {
@@ -1189,11 +1175,109 @@ class ChatService {
     }
   }
 
+  async sendMessageViaSocket(finalMessageData) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Message send timeout after 10 seconds")),
+        isProduction ? 15000 : 10000
+      );
+
+      const handleSuccess = (response) => {
+        clearTimeout(timeout);
+        this.socket.off("message_sent", handleSuccess);
+        this.socket.off("message_error", handleError);
+
+        logDebug("Message sent successfully via socket", response);
+
+        this.clearHistoryCache(finalMessageData.receiverCompanyId);
+        this.clearConversationCache();
+        this.clearNotificationCache();
+
+        resolve({
+          success: true,
+          data: {
+            _id: response.messageId,
+            id: response.messageId,
+            tempId: finalMessageData.tempId,
+            status: "sent",
+            createdAt: new Date(),
+            messageType: "website",
+          },
+          message: "Message sent successfully",
+        });
+      };
+
+      const handleError = (error) => {
+        clearTimeout(timeout);
+        this.socket.off("message_sent", handleSuccess);
+        this.socket.off("message_error", handleError);
+
+        logError("Socket message send failed", {
+          error: error.error || error.message,
+          tempId: finalMessageData.tempId,
+        });
+
+        reject(
+          new Error(error.error || error.message || "Failed to send message")
+        );
+      };
+
+      this.socket.once("message_sent", handleSuccess);
+      this.socket.once("message_error", handleError);
+
+      this.socket.emit("send_message", finalMessageData);
+    });
+  }
+
+  async sendMessageViaHTTP(finalMessageData) {
+    try {
+      logDebug("Sending message via HTTP API", finalMessageData);
+      
+      // Fix: Use the correct route with partyId
+      const partyId = finalMessageData.receiverCompanyId || finalMessageData.partyId;
+      const response = await chatAPI.post(`/chat/send/${partyId}`, finalMessageData);
+      
+      if (response.data && response.data.success) {
+        logDebug("HTTP message send successful", response.data);
+        
+        this.clearHistoryCache(finalMessageData.receiverCompanyId);
+        this.clearConversationCache();
+        this.clearNotificationCache();
+        
+        return {
+          success: true,
+          data: {
+            _id: response.data.messageId || response.data.data?.messageId,
+            id: response.data.messageId || response.data.data?.messageId,
+            tempId: finalMessageData.tempId,
+            status: "sent",
+            createdAt: new Date(),
+            messageType: "website",
+          },
+          message: "Message sent successfully via HTTP",
+        };
+      } else {
+        throw new Error(response.data?.message || "HTTP send failed");
+      }
+    } catch (error) {
+      logError("HTTP message send failed", error);
+      throw new Error(
+        error.response?.data?.message || 
+        error.message || 
+        "Failed to send message via HTTP"
+      );
+    }
+  }
+
   async getChatHistory(partyData, options = {}) {
     try {
+      logDebug("getChatHistory called", { partyData, options });
+      
       const {page = 1, limit = 50, startDate, endDate} = options;
       const {myCompanyId, targetCompanyId, partyId, partyName} =
         this.validateAndExtractPartyCompanyData(partyData);
+
+      logDebug("Extracted company data", { myCompanyId, targetCompanyId, partyId, partyName });
 
       if (!targetCompanyId?.match(/^[0-9a-fA-F]{24}$/)) {
         throw new Error(`Invalid target company ID: ${targetCompanyId}`);
@@ -1203,7 +1287,23 @@ class ChatService {
         startDate || ""
       }_${endDate || ""}`;
       const cachedHistory = this.getFromCache(cacheKey, "message");
-      if (cachedHistory) return cachedHistory;
+      if (cachedHistory) {
+        logDebug("Returning cached history");
+        return cachedHistory;
+      }
+
+      logDebug("Fetching chat history from API", { 
+        targetCompanyId, 
+        page, 
+        limit,
+        messageType: "website",
+        startDate,
+        endDate,
+        type: "company",
+        partyId,
+        partyName,
+        myCompanyId
+      });
 
       const response = await chatAPI.get(`/chat/history/${targetCompanyId}`, {
         params: {
@@ -1218,6 +1318,8 @@ class ChatService {
           myCompanyId,
         },
       });
+
+      logDebug("Chat history API response", response.data);
 
       this.setCache(cacheKey, response.data, "message");
       this.clearNotificationCache();

@@ -125,6 +125,8 @@ function SalesFormHeader({
           textMuted: "#64748b",
           border: "#e2e8f0",
           borderDark: "#cbd5e1",
+          shadow: "0 4px 20px rgba(14, 165, 233, 0.08)",
+          shadowHover: "0 8px 30px rgba(14, 165, 233, 0.12)"
         }
       : {
           primary: "#6366f1",
@@ -142,6 +144,8 @@ function SalesFormHeader({
           textMuted: "#64748b",
           border: "#e2e8f0",
           borderDark: "#cbd5e1",
+          shadow: "0 4px 20px rgba(99, 102, 241, 0.08)",
+          shadowHover: "0 8px 30px rgba(99, 102, 241, 0.12)"
         };
   };
 
@@ -149,16 +153,34 @@ function SalesFormHeader({
 
   const getInputStyle = (fieldName) => ({
     borderColor: errors[fieldName] ? theme.error : theme.border,
-    fontSize: "14px",
-    padding: "10px 14px",
-    height: "42px",
-    borderWidth: "1px",
-    borderRadius: "0",
-    transition: "all 0.2s ease",
+    fontSize: "15px",
+    padding: "14px 18px",
+    height: "52px",
+    borderWidth: "2px",
+    borderRadius: "12px",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
     backgroundColor: theme.surface,
+    color: theme.text,
+    fontWeight: "500",
     boxShadow: errors[fieldName]
-      ? `0 0 0 2px rgba(239, 68, 68, 0.1)`
-      : `0 0 0 0px rgba(${theme.primaryRgb}, 0.1)`,
+      ? `0 0 0 3px rgba(239, 68, 68, 0.1), ${theme.shadow}`
+      : theme.shadow,
+  });
+
+  const getCardStyle = () => ({
+    borderRadius: "20px",
+    border: `2px solid ${theme.border}`,
+    backgroundColor: theme.surface,
+    boxShadow: theme.shadow,
+    overflow: "hidden",
+    transition: "all 0.3s ease"
+  });
+
+  const getHeaderStyle = () => ({
+    background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryLight} 100%)`,
+    color: "white",
+    padding: "24px 28px",
+    borderRadius: "20px 20px 0 0"
   });
 
   const updateDropdownPosition = useCallback(() => {
@@ -945,42 +967,73 @@ function SalesFormHeader({
         )}
 
         <Card
-          className="mb-2"
-          style={{
-            border: "none",
-            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
-            overflow: "hidden",
-          }}
+          className="mb-4"
+          style={getCardStyle()}
         >
-          <div
-            style={{
-              background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryLight} 100%)`,
-              color: "white",
-              padding: "16px 20px",
-            }}
-          >
-            <div className="d-flex align-items-center">
-              <FontAwesomeIcon
-                icon={documentLabels.documentIcon}
-                size="lg"
-                className="me-3"
-              />
-              <h5 className="mb-0 fw-bold">
-                {documentLabels.documentType} Details
-              </h5>
+          <div style={getHeaderStyle()}>
+            <div className="d-flex align-items-center justify-content-between">
+              <div className="d-flex align-items-center">
+                <div 
+                  className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    backgroundColor: "rgba(255, 255, 255, 0.2)",
+                    backdropFilter: "blur(10px)"
+                  }}
+                >
+                  <FontAwesomeIcon
+                    icon={documentLabels.documentIcon}
+                    size="lg"
+                  />
+                </div>
+                <div>
+                  <h5 className="mb-1 fw-bold" style={{ fontSize: "18px" }}>
+                    {documentLabels.documentType} Details
+                  </h5>
+                  <small style={{ opacity: 0.9, fontSize: "13px" }}>
+                    Configure your {documentLabels.documentType.toLowerCase()} information
+                  </small>
+                </div>
+              </div>
+              <div className="d-flex align-items-center">
+                <div 
+                  className="px-3 py-1 rounded-pill"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.2)",
+                    fontSize: "12px",
+                    fontWeight: "600"
+                  }}
+                >
+                  {formData.gstEnabled ? 'GST Invoice' : 'Regular Invoice'}
+                </div>
+              </div>
             </div>
           </div>
 
-          <Card.Body style={{padding: "16px"}}>
-            <Row className="g-2">
+          <Card.Body style={{padding: "28px"}}>
+            <Row className="g-4">
               <Col lg={6} md={6}>
                 <Form.Group>
-                  <Form.Label className="d-flex align-items-center fw-bold text-primary mb-2">
-                    <FontAwesomeIcon
-                      icon={faFileInvoice}
-                      className="me-2 text-info"
-                    />
-                    GST / Non GST *
+                  <Form.Label 
+                    className="d-flex align-items-center fw-bold mb-3"
+                    style={{ color: theme.text, fontSize: "15px" }}
+                  >
+                    <div 
+                      className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        backgroundColor: formData.gstEnabled ? theme.success : theme.primary,
+                        color: "white"
+                      }}
+                    >
+                      <FontAwesomeIcon
+                        icon={faFileInvoice}
+                        size="sm"
+                      />
+                    </div>
+                    Invoice Type *
                   </Form.Label>
                   <Form.Select
                     value={formData.gstEnabled ? "gst" : "non-gst"}
@@ -991,67 +1044,122 @@ function SalesFormHeader({
                     disabled={disabled}
                     ref={(el) => (fieldRefs.current.gstType = el)}
                   >
-                    <option value="gst">GST Applicable</option>
-                    <option value="non-gst">Non-GST</option>
+                    <option value="gst">🏢 GST Invoice (With Tax)</option>
+                    <option value="non-gst">📄 Regular Invoice (No Tax)</option>
                   </Form.Select>
-                  {formData.gstEnabled && (
-                    <div className="mt-1">
-                      <Badge bg="success" className="me-2">
-                        <FontAwesomeIcon icon={faCheck} className="me-1" />
-                        GST will be calculated on items
-                      </Badge>
+                  
+                  {/* Enhanced Status Badge */}
+                  <div className="mt-3">
+                    <div 
+                      className="px-4 py-3 rounded-3 d-flex align-items-center"
+                      style={{
+                        backgroundColor: formData.gstEnabled 
+                          ? "rgba(16, 185, 129, 0.1)" 
+                          : "rgba(99, 102, 241, 0.1)",
+                        border: `2px solid ${formData.gstEnabled ? theme.success : theme.primary}`,
+                        color: formData.gstEnabled ? theme.success : theme.primary
+                      }}
+                    >
+                      <FontAwesomeIcon 
+                        icon={formData.gstEnabled ? faCheck : faFileInvoice} 
+                        className="me-3" 
+                        size="lg"
+                      />
+                      <div>
+                        <div className="fw-bold mb-1" style={{ fontSize: "14px" }}>
+                          {formData.gstEnabled ? 'GST Calculations Enabled' : 'Simple Invoice Mode'}
+                        </div>
+                        <small style={{ opacity: 0.8, fontSize: "12px" }}>
+                          {formData.gstEnabled 
+                            ? 'Tax calculations will include CGST & SGST'
+                            : 'No tax calculations, ideal for small transactions'
+                          }
+                        </small>
+                      </div>
                     </div>
-                  )}
-                  <small className="text-muted mt-1 d-block">
-                    Select GST type for this{" "}
-                    {documentLabels.documentType.toLowerCase()}
-                  </small>
+                  </div>
                 </Form.Group>
               </Col>
 
               <Col lg={6} md={6}>
                 <Form.Group>
-                  <Form.Label className="d-flex align-items-center fw-bold text-danger mb-2">
-                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
-                    {documentLabels.documentDate} *
-                  </Form.Label>
-                  <InputGroup
-                    onClick={handleDateInputGroupClick}
-                    style={{cursor: "pointer"}}
+                  <Form.Label 
+                    className="d-flex align-items-center fw-bold mb-3"
+                    style={{ color: theme.text, fontSize: "15px" }}
                   >
-                    <Form.Control
-                      type="date"
-                      value={formData.invoiceDate || ""}
-                      onChange={(e) =>
-                        handleInputChange("invoiceDate", e.target.value)
-                      }
-                      style={getInputStyle("invoiceDate")}
-                      disabled={disabled}
-                      ref={(el) => {
-                        fieldRefs.current.invoiceDate = el;
-                        dateInputRef.current = el;
-                      }}
-                    />
-                    <InputGroup.Text
+                    <div 
+                      className="rounded-circle d-flex align-items-center justify-content-center me-3"
                       style={{
-                        backgroundColor: theme.surface,
-                        borderColor: errors.invoiceDate
-                          ? theme.error
-                          : theme.border,
-                        borderWidth: "1px",
-                        cursor: "pointer",
+                        width: "32px",
+                        height: "32px",
+                        backgroundColor: theme.warning,
+                        color: "white"
                       }}
                     >
-                      <FontAwesomeIcon
-                        icon={faCalendarAlt}
-                        className="text-muted"
+                      <FontAwesomeIcon icon={faCalendarAlt} size="sm" />
+                    </div>
+                    {documentLabels.documentDate} *
+                  </Form.Label>
+                  <div
+                    onClick={handleDateInputGroupClick}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <InputGroup>
+                      <InputGroup.Text
+                        style={{
+                          backgroundColor: theme.surface,
+                          borderColor: errors.invoiceDate ? theme.error : theme.border,
+                          borderWidth: "2px",
+                          borderRadius: "12px 0 0 12px",
+                          borderRight: "none",
+                          cursor: "pointer",
+                          padding: "14px 18px"
+                        }}
+                      >
+                        <FontAwesomeIcon
+                          icon={faCalendarAlt}
+                          style={{ color: theme.warning }}
+                        />
+                      </InputGroup.Text>
+                      <Form.Control
+                        type="date"
+                        value={formData.invoiceDate || ""}
+                        onChange={(e) =>
+                          handleInputChange("invoiceDate", e.target.value)
+                        }
+                        style={{
+                          ...getInputStyle("invoiceDate"),
+                          borderRadius: "0 12px 12px 0",
+                          borderLeft: "none"
+                        }}
+                        disabled={disabled}
+                        ref={(el) => {
+                          fieldRefs.current.invoiceDate = el;
+                          dateInputRef.current = el;
+                        }}
                       />
-                    </InputGroup.Text>
-                  </InputGroup>
-                  <small className="text-muted mt-1 d-block">
-                    📅 Date of {documentLabels.documentType.toLowerCase()}{" "}
-                    creation
-                  </small>
+                    </InputGroup>
+                  </div>
+                  
+                  {/* Enhanced Date Info */}
+                  <div className="mt-3">
+                    <div 
+                      className="px-4 py-2 rounded-pill d-inline-flex align-items-center"
+                      style={{
+                        backgroundColor: "rgba(245, 158, 11, 0.1)",
+                        border: `1px solid ${theme.warning}`,
+                        color: theme.warning,
+                        fontSize: "12px",
+                        fontWeight: "500"
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                      {formData.invoiceDate 
+                        ? `Selected: ${new Date(formData.invoiceDate).toLocaleDateString()}`
+                        : 'Click to select date'
+                      }
+                    </div>
+                  </div>
                 </Form.Group>
               </Col>
 

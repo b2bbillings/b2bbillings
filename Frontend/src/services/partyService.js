@@ -1042,6 +1042,7 @@ class PartyService {
       const backendData = {
         name: quickData.name.trim(),
         phone: quickData.phone.trim(),
+        phoneNumbers: quickData.phoneNumbers?.filter(p => p.number?.trim()) || [],
         type: quickData.type || "customer",
       };
 
@@ -2297,6 +2298,62 @@ class PartyService {
         linkedCount: 0, // ✅ NEW
         bidirectionalReadyCount: 0, // ✅ NEW
       };
+    }
+  }
+
+  /**
+   * ✅ NEW: Upload profile image for a party (Simplified version)
+   * @param {string} partyId - Party ID
+   * @param {File|string} imageData - Image file or base64 string
+   * @returns {Promise<Object>} Upload response with image URL
+   */
+  async uploadProfileImage(partyId, imageData) {
+    try {
+      if (!partyId) {
+        throw new Error("Party ID is required");
+      }
+
+      if (!imageData) {
+        throw new Error("Image data is required");
+      }
+
+      console.log("🔥 Uploading profile image for party:", partyId);
+
+      // For now, send as JSON instead of FormData to simplify testing
+      const payload = {
+        profileImage: typeof imageData === 'string' ? imageData : null
+      };
+
+      // If it's a File object, convert to base64
+      if (imageData instanceof File) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              payload.profileImage = reader.result;
+              const response = await apiClient.post(
+                `/api/parties/${partyId}/profile-image`,
+                payload
+              );
+              resolve(response.data);
+            } catch (error) {
+              reject(error);
+            }
+          };
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(imageData);
+        });
+      }
+
+      const response = await apiClient.post(
+        `/api/parties/${partyId}/profile-image`,
+        payload
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("❌ Error uploading profile image:", error);
+      this.handleError(error, "uploadProfileImage");
     }
   }
 }

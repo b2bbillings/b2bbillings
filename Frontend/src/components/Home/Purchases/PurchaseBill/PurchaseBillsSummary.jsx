@@ -112,146 +112,228 @@ function PurchaseBillsSummary({
         </Card.Header>
 
         <Card.Body className="p-2" style={{borderRadius: 0}}>
-          <Row className="g-1 mb-2">
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className="p-1 bg-purple"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={faChartLine}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg={isPositiveGrowth ? "success" : "danger"}
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      <FontAwesomeIcon
-                        icon={isPositiveGrowth ? faArrowUp : faArrowDown}
-                        className="me-1"
-                      />
-                      {Math.abs(displayData.growthPercentage).toFixed(0)}%
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.totalLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-dark"
-                    style={{fontSize: "0.8rem"}}
+          {/* Modern row layout for cards */}
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {/* Total Amount Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)`,
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                border: `1px solid #e2e8f0`,
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '200px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}
                   >
-                    {formatCurrency(displayData.totalAmount)}
-                  </h6>
-                </Card.Body>
-              </Card>
-            </Col>
+                    <FontAwesomeIcon
+                      icon={faChartLine}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: isPositiveGrowth ? '#10b981' : '#ef4444',
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <FontAwesomeIcon
+                      icon={isPositiveGrowth ? faArrowUp : faArrowDown}
+                      style={{ marginRight: '0.25rem', fontSize: '0.7rem' }}
+                    />
+                    {Math.abs(displayData.growthPercentage).toFixed(0)}%
+                  </div>
+                </div>
+                <p style={{ color: '#64748b', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.totalLabel}
+                </p>
+                <h5 style={{ color: '#1e293b', marginBottom: 0, fontWeight: '700', fontSize: '1.1rem' }}>
+                  {formatCurrency(displayData.totalAmount)}
+                </h5>
+              </div>
+            </div>
 
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className="bg-success p-1"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={faWallet}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg="success"
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      {labels.paidStatus}
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.paidLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-success"
-                    style={{fontSize: "0.8rem"}}
+            {/* Paid Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%)`,
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                border: `1px solid #10b98125`,
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '200px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}
                   >
-                    {formatCurrency(displayData.paid)}
-                  </h6>
-                  <small className="text-muted" style={{fontSize: "0.6rem"}}>
-                    {displayData.totalAmount > 0
-                      ? (
-                          (displayData.paid / displayData.totalAmount) *
-                          100
-                        ).toFixed(0)
-                      : 0}
-                    %
-                  </small>
-                </Card.Body>
-              </Card>
-            </Col>
+                    <FontAwesomeIcon
+                      icon={faWallet}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: '#10b981',
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.7rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {labels.paidStatus}
+                  </div>
+                </div>
+                <p style={{ color: '#64748b', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.paidLabel}
+                </p>
+                <h6 style={{ color: '#10b981', marginBottom: '0.25rem', fontWeight: '700', fontSize: '1rem' }}>
+                  {formatCurrency(displayData.paid)}
+                </h6>
+                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {displayData.totalAmount > 0
+                    ? ((displayData.paid / displayData.totalAmount) * 100).toFixed(0)
+                    : 0}% of total
+                </small>
+              </div>
+            </div>
 
-            <Col xs={12}>
-              <Card className="border-0 bg-light" style={{borderRadius: 0}}>
-                <Card.Body className="p-2" style={{borderRadius: 0}}>
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <div
-                      className="bg-warning p-1"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: 0,
-                      }}
-                    >
-                      <FontAwesomeIcon
-                        icon={faReceipt}
-                        className="text-white"
-                        style={{fontSize: "0.6rem"}}
-                      />
-                    </div>
-                    <Badge
-                      bg="warning"
-                      className="small"
-                      style={{borderRadius: 0}}
-                    >
-                      {labels.pendingStatus}
-                    </Badge>
-                  </div>
-                  <p className="text-muted mb-0" style={{fontSize: "0.65rem"}}>
-                    {labels.payableLabel}
-                  </p>
-                  <h6
-                    className="fw-bold mb-0 text-warning"
-                    style={{fontSize: "0.8rem"}}
+            {/* Payable Card */}
+            <div 
+              style={{
+                background: `linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)`,
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                border: `1px solid #f59e0b25`,
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                position: 'relative',
+                overflow: 'hidden',
+                flex: '1 1 calc(33.333% - 0.75rem)',
+                minWidth: '200px'
+              }}
+            >
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  borderRadius: '50%',
+                  transform: 'translate(30%, -30%)',
+                  opacity: 0.1
+                }}
+              />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div 
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}
                   >
-                    {formatCurrency(displayData.payable)}
-                  </h6>
-                  <small className="text-muted" style={{fontSize: "0.6rem"}}>
-                    {displayData.totalAmount > 0
-                      ? (
-                          (displayData.payable / displayData.totalAmount) *
-                          100
-                        ).toFixed(0)
-                      : 0}
-                    %
-                  </small>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+                    <FontAwesomeIcon
+                      icon={faReceipt}
+                      style={{ color: 'white', fontSize: '0.875rem' }}
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: '#f59e0b',
+                      color: 'white',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.7rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {labels.pendingStatus}
+                  </div>
+                </div>
+                <p style={{ color: '#64748b', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                  {labels.payableLabel}
+                </p>
+                <h6 style={{ color: '#f59e0b', marginBottom: '0.25rem', fontWeight: '700', fontSize: '1rem' }}>
+                  {formatCurrency(displayData.payable)}
+                </h6>
+                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {displayData.totalAmount > 0
+                    ? ((displayData.payable / displayData.totalAmount) * 100).toFixed(0)
+                    : 0}% of total
+                </small>
+              </div>
+            </div>
+          </div>
 
           <Card className="border-0 bg-light" style={{borderRadius: 0}}>
             <Card.Body className="p-2" style={{borderRadius: 0}}>

@@ -35,6 +35,7 @@ function Layout({
   const pathViewMap = {
     dashboard: "dailySummary",
     daybook: "dailySummary",
+    categories: "categories",
     transactions: "transactions",
     "cash-bank": "cashAndBank",
     parties: "parties",
@@ -64,6 +65,7 @@ function Layout({
   // ✅ SIMPLIFIED: View to path mapping
   const viewPathMap = {
     dailySummary: "dashboard",
+    categories: "categories",
     transactions: "transactions",
     cashAndBank: "cash-bank",
     parties: "parties",

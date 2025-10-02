@@ -25,6 +25,7 @@ import Parties from "../components/Home/Parties";
 import Sales from "../components/Home/Sales";
 import Quotations from "../components/Home/Quotations";
 import Inventory from "../components/Home/Inventory";
+import Items from "../components/Home/Items/SimpleItems";
 import StaffManagement from "../components/Home/StaffManagement";
 import PurchaseOrder from "../components/Home/Purchases/PurchaseOrder";
 import Bank from "../components/Home/Bank";
@@ -938,9 +939,18 @@ function HomePage({
             />
           );
 
+        // Items management
+        case "allProducts":
+        case "items":
+          return wrapWithErrorBoundary(
+            <Items
+              {...commonProps}
+              itemService={serviceProps.itemService}
+            />
+          );
+
         // Inventory management
         case "inventory":
-        case "allProducts":
         case "lowStock":
         case "stockMovement":
           return wrapWithErrorBoundary(

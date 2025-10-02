@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const Message = require("../models/Message");
+const TeamChat = require("../models/TeamChat"); // ✅ ADD: TeamChat model
+const ChatMessage = require("../models/ChatMessage"); // ✅ ADD: ChatMessage model
+const User = require("../models/User"); // ✅ ADD: User model
 const notificationService = require("../services/notificationService"); // ✅ ADD THIS IMPORT
 const Company = require("../models/Company");
 // ✅ UPDATED: Helper function to safely get models
@@ -2558,6 +2561,1115 @@ const getCompanyStatus = async (req, res) => {
 };
 
 // =============================================================================
+// ✅ NEW: TEAM CHAT CONTROLLERS FOR WHATSAPP-LIKE INTERFACE
+// =============================================================================
+
+/**
+ * Get all team chats for the authenticated user
+ */
+const getUserTeamChats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const companyId = req.user.company;
+    
+    const chats = await TeamChat.findUserChats(userId, companyId);
+    
+    // Add unread count for each chat
+    const chatsWithUnread = await Promise.all(
+      chats.map(async (chat) => {
+        const userParticipant = chat.participants.find(p => p.user._id.toString() === userId);
+        const unreadCount = await ChatMessage.getUnreadCountForUser(
+          chat._id, 
+          userId, 
+          userParticipant?.lastMessageRead
+        );
+        
+        const chatObj = chat.toObject();
+        chatObj.unreadCount = unreadCount;
+        
+        // Add user-specific data
+        chatObj.userParticipant = {
+          role: userParticipant?.role,
+          joinedAt: userParticipant?.joinedAt,
+          lastSeen: userParticipant?.lastSeen,
+          notifications: userParticipant?.notifications,
+          isHidden: userParticipant?.isHidden,
+          isChatDeleted: userParticipant?.isChatDeleted,
+        };
+        
+        return chatObj;
+      })
+    );
+
+    res.json({
+      success: true,
+      data: chatsWithUnread,
+      count: chatsWithUnread.length,
+    });
+  } catch (error) {
+    console.error("Error fetching user team chats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch team chats",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Create a new team chat
+ */
+const createTeamChat = async (req, res) => {
+  try {
+    const { name, description, type, participants, avatar } = req.body;
+    const userId = req.user.id;
+    const companyId = req.user.company;
+
+    // Validate participants
+    if (!participants || participants.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one participant is required",
+      });
+    }
+
+    // For direct chats, check if chat already exists
+    if (type === "direct" && participants.length === 1) {
+      const existingChat = await TeamChat.findOne({
+        type: "direct",
+        company: companyId,
+        $and: [
+          { "participants.user": userId },
+          { "participants.user": participants[0] },
+        ],
+        "metadata.totalParticipants": 2,
+        isActive: true,
+      });
+
+      if (existingChat) {
+        return res.json({
+          success: true,
+          data: existingChat,
+          message: "Direct chat already exists",
+        });
+      }
+    }
+
+    // Create chat
+    const chat = new TeamChat({
+      name: name || (type === "direct" ? "Direct Chat" : "Group Chat"),
+      description,
+      type,
+      company: companyId,
+      createdBy: userId,
+      avatar,
+    });
+
+    // Add creator as admin
+    chat.addParticipant(userId, "admin");
+
+    // Add other participants
+    participants.forEach(participantId => {
+      if (participantId !== userId) {
+        chat.addParticipant(participantId, "member");
+      }
+    });
+
+    await chat.save();
+
+    // Populate the created chat
+    const populatedChat = await TeamChat.findById(chat._id)
+      .populate("participants.user", "name email avatar chatProfile")
+      .populate("createdBy", "name email");
+
+    // Create system message
+    await ChatMessage.createSystemMessage(
+      chat._id,
+      userId,
+      "chat_created",
+      {
+        chatName: chat.name,
+        participants: participants.length + 1,
+      }
+    );
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        participants.forEach(participantId => {
+          socketManager.sendToUser(participantId, "new_team_chat", {
+            chat: populatedChat,
+            message: "You've been added to a new chat",
+          });
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: populatedChat,
+      message: "Team chat created successfully",
+    });
+  } catch (error) {
+    console.error("Error creating team chat:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create team chat",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get team chat details
+ */
+const getTeamChatDetails = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    })
+      .populate("participants.user", "name email avatar chatProfile")
+      .populate("lastMessage")
+      .populate("createdBy", "name email");
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: chat,
+    });
+  } catch (error) {
+    console.error("Error fetching team chat details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch team chat details",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Send a message to team chat
+ */
+const sendTeamChatMessage = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { content, type = "text", attachments = [], replyTo, mentions = [] } = req.body;
+    const userId = req.user.id;
+
+    // Validate chat access
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Message content is required",
+      });
+    }
+
+    // Create message
+    const messageData = {
+      chat: chatId,
+      sender: userId,
+      content: {
+        text: content.trim(),
+        type: type,
+        attachments: attachments,
+        metadata: {
+          replyTo: replyTo || null,
+          mentions: mentions.map(userId => ({ user: userId })),
+        },
+      },
+      status: "sent",
+    };
+
+    const message = await ChatMessage.create(messageData);
+
+    // Populate message for response
+    const populatedMessage = await ChatMessage.findById(message._id)
+      .populate("sender", "name email avatar")
+      .populate("content.metadata.replyTo")
+      .populate("content.metadata.mentions.user", "name");
+
+    // Update chat's last message
+    chat.lastMessage = message._id;
+    chat.lastMessageAt = new Date();
+    await chat.save();
+
+    // Mark as delivered to all participants except sender
+    const otherParticipants = chat.participants.filter(p => p.user.toString() !== userId);
+    for (const participant of otherParticipants) {
+      message.markAsDelivered(participant.user);
+    }
+    await message.save();
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(chatId, "new_chat_message", {
+          message: populatedMessage,
+          chatId: chatId,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: populatedMessage,
+      message: "Message sent successfully",
+    });
+  } catch (error) {
+    console.error("Error sending team chat message:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send message",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get team chat messages with pagination
+ */
+const getTeamChatMessages = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const userId = req.user.id;
+
+    // Validate chat access using new method
+    const chat = await TeamChat.findChatForUser(chatId, userId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    // Get messages using enhanced method that respects user-specific visibility
+    const messages = await ChatMessage.getChatMessages(chatId, userId, parseInt(page), parseInt(limit));
+    const totalMessages = await ChatMessage.countDocuments({
+      chat: chatId,
+      isDeleted: false,
+      deletedForUsers: { $not: { $elemMatch: { user: userId } } },
+      hiddenForUsers: { $not: { $elemMatch: { user: userId } } },
+    });
+
+    // Mark messages as read
+    const unreadMessages = messages.filter(msg => 
+      msg.sender._id.toString() !== userId && 
+      !msg.readBy.some(r => r.user._id.toString() === userId) &&
+      msg.isVisibleForUser(userId)
+    );
+    
+    for (const message of unreadMessages) {
+      message.markAsRead(userId);
+      await message.save();
+    }
+
+    // Update user's last seen and last read message
+    if (messages.length > 0) {
+      const lastMessage = messages[0]; // Most recent message
+      chat.updateParticipantStatus(userId, { lastSeen: new Date() });
+      chat.updateLastReadMessage(userId, lastMessage._id);
+      await chat.save();
+    }
+
+    // Filter messages for user visibility (double-check)
+    const visibleMessages = messages.filter(msg => msg.isVisibleForUser(userId));
+
+    res.json({
+      success: true,
+      data: {
+        messages: visibleMessages.reverse(), // Show oldest first
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalMessages / parseInt(limit)),
+          totalMessages,
+          hasMore: (parseInt(page) * parseInt(limit)) < totalMessages,
+          limit: parseInt(limit),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching team chat messages:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch messages",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Add participants to team chat
+ */
+const addTeamChatParticipants = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { participants } = req.body;
+    const userId = req.user.id;
+
+    if (!participants || participants.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one participant is required",
+      });
+    }
+
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    // Check if user is admin (for group chats)
+    if (chat.type === "group") {
+      const userParticipant = chat.participants.find(p => p.user.toString() === userId);
+      if (userParticipant.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          message: "Only chat admins can add participants",
+        });
+      }
+    }
+
+    // Add participants
+    const addedParticipants = [];
+    for (const participantId of participants) {
+      const existingParticipant = chat.participants.find(p => p.user.toString() === participantId);
+      if (!existingParticipant) {
+        chat.addParticipant(participantId, "member");
+        addedParticipants.push(participantId);
+      }
+    }
+
+    await chat.save();
+
+    // Create system messages for added participants
+    for (const participantId of addedParticipants) {
+      const user = await User.findById(participantId, "name");
+      await ChatMessage.createSystemMessage(
+        chatId,
+        userId,
+        "user_joined",
+        { userName: user.name, userId: participantId }
+      );
+    }
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(chatId, "participants_added", {
+          chatId: chatId,
+          addedParticipants,
+          addedBy: userId,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: chat,
+      message: `${addedParticipants.length} participant(s) added successfully`,
+    });
+  } catch (error) {
+    console.error("Error adding team chat participants:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add participants",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update user's online status and typing indicator
+ */
+const updateUserChatStatus = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { isOnline, isTyping, status } = req.body;
+    const userId = req.user.id;
+
+    // Update user's chat profile
+    const updateData = {};
+    if (isOnline !== undefined) updateData["chatProfile.isOnline"] = isOnline;
+    if (status !== undefined) updateData["chatProfile.status"] = status;
+    updateData["chatProfile.lastSeen"] = new Date();
+
+    await User.findByIdAndUpdate(userId, updateData);
+
+    // Update chat participant status
+    if (chatId) {
+      const chat = await TeamChat.findOne({
+        _id: chatId,
+        "participants.user": userId,
+        isActive: true,
+      });
+
+      if (chat) {
+        const participantStatus = {
+          lastSeen: new Date(),
+        };
+        
+        if (isOnline !== undefined) participantStatus.isOnline = isOnline;
+        if (isTyping !== undefined) participantStatus.isTyping = isTyping;
+
+        chat.updateParticipantStatus(userId, participantStatus);
+        await chat.save();
+
+        // Emit typing status to other participants
+        const socketManager = req.app.get("socketManager");
+        if (socketManager && isTyping !== undefined) {
+          try {
+            socketManager.sendToChat(chatId, "user_typing", {
+              userId: userId,
+              isTyping: isTyping,
+              chatId: chatId,
+            });
+          } catch (socketError) {
+            console.warn("Socket emission failed:", socketError.message);
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Status updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating user chat status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update status",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update user's chat profile (avatar, status message, etc.)
+ */
+const updateChatProfile = async (req, res) => {
+  try {
+    const { avatar, statusMessage, settings } = req.body;
+    const userId = req.user.id;
+
+    const updateData = {};
+    if (avatar !== undefined) updateData["chatProfile.avatar"] = avatar;
+    if (statusMessage !== undefined) updateData["chatProfile.statusMessage"] = statusMessage;
+    if (settings) {
+      Object.keys(settings).forEach(key => {
+        updateData[`chatProfile.chatSettings.${key}`] = settings[key];
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true, select: "name email chatProfile" }
+    );
+
+    res.json({
+      success: true,
+      data: updatedUser,
+      message: "Profile updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating chat profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Search users for team chat creation
+ */
+const searchUsersForChat = async (req, res) => {
+  try {
+    const { query, limit = 10 } = req.query;
+    const userId = req.user.id;
+    const companyId = req.user.company;
+
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 2 characters",
+      });
+    }
+
+    const users = await User.find({
+      $and: [
+        {
+          $or: [
+            { name: { $regex: query, $options: "i" } },
+            { email: { $regex: query, $options: "i" } },
+          ]
+        },
+        { _id: { $ne: userId } }, // Exclude current user
+        { isActive: true },
+        // Add company filter if needed
+        // { company: companyId }
+      ]
+    })
+    .select("name email avatar chatProfile.status chatProfile.isOnline")
+    .limit(parseInt(limit));
+
+    res.json({
+      success: true,
+      data: users,
+      count: users.length,
+    });
+  } catch (error) {
+    console.error("Error searching users for chat:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to search users",
+      error: error.message,
+    });
+  }
+};
+
+// =============================================================================
+// ✅ NEW: CHAT MANAGEMENT CONTROLLERS
+// =============================================================================
+
+/**
+ * Delete chat for current user (user-specific deletion)
+ */
+const deleteChatForUser = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    // Delete chat for this user only
+    chat.deleteChatForUser(userId);
+    await chat.save();
+
+    // Create system message for other participants
+    await ChatMessage.createSystemMessage(
+      chatId,
+      userId,
+      "user_left",
+      {
+        userName: req.user.name,
+        userId: userId,
+        action: "deleted_chat",
+      }
+    );
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(chatId, "chat_deleted_for_user", {
+          chatId: chatId,
+          userId: userId,
+          deletedBy: req.user.name,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Chat deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting chat for user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete chat",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Hide chat for current user
+ */
+const hideChatForUser = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    chat.hideChatForUser(userId);
+    await chat.save();
+
+    res.json({
+      success: true,
+      message: "Chat hidden successfully",
+    });
+  } catch (error) {
+    console.error("Error hiding chat for user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to hide chat",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Restore chat for current user
+ */
+const restoreChatForUser = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await TeamChat.findAllUserChats(userId, req.user.company, true)
+      .find(c => c._id.toString() === chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found",
+      });
+    }
+
+    chat.restoreChatForUser(userId);
+    await chat.save();
+
+    res.json({
+      success: true,
+      message: "Chat restored successfully",
+      data: chat,
+    });
+  } catch (error) {
+    console.error("Error restoring chat for user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to restore chat",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Leave chat (remove user from participants)
+ */
+const leaveChatAsUser = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await TeamChat.findOne({
+      _id: chatId,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    // Check if user is the only admin
+    const admins = chat.participants.filter(p => p.role === "admin");
+    const isOnlyAdmin = admins.length === 1 && admins[0].user.toString() === userId;
+    
+    if (isOnlyAdmin && chat.participants.length > 1) {
+      // Promote another member to admin
+      const nextAdmin = chat.participants.find(p => p.user.toString() !== userId && p.role === "member");
+      if (nextAdmin) {
+        nextAdmin.role = "admin";
+      }
+    }
+
+    // Remove user from participants
+    chat.removeParticipant(userId);
+    
+    // If no participants left, deactivate the chat
+    if (chat.participants.length === 0) {
+      chat.isActive = false;
+    }
+
+    await chat.save();
+
+    // Create system message
+    await ChatMessage.createSystemMessage(
+      chatId,
+      userId,
+      "user_left",
+      {
+        userName: req.user.name,
+        userId: userId,
+      }
+    );
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(chatId, "user_left_chat", {
+          chatId: chatId,
+          userId: userId,
+          userName: req.user.name,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Left chat successfully",
+    });
+  } catch (error) {
+    console.error("Error leaving chat:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to leave chat",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete message for current user only
+ */
+const deleteMessageForUser = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.id;
+
+    const message = await ChatMessage.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Message not found",
+      });
+    }
+
+    // Check if user has access to the chat
+    const chat = await TeamChat.findOne({
+      _id: message.chat,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    message.deleteForUser(userId);
+    await message.save();
+
+    res.json({
+      success: true,
+      message: "Message deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting message for user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete message",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete message for everyone (only sender or admin can do this)
+ */
+const deleteMessageForEveryone = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.id;
+
+    const message = await ChatMessage.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Message not found",
+      });
+    }
+
+    // Check if user has access to the chat
+    const chat = await TeamChat.findOne({
+      _id: message.chat,
+      "participants.user": userId,
+      isActive: true,
+    });
+
+    if (!chat) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    // Check if user can delete for everyone (sender or admin)
+    const userParticipant = chat.participants.find(p => p.user.toString() === userId);
+    const canDeleteForEveryone = message.sender.toString() === userId || userParticipant?.role === "admin";
+
+    if (!canDeleteForEveryone) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own messages for everyone",
+      });
+    }
+
+    // Delete message for everyone
+    message.isDeleted = true;
+    message.deletedAt = new Date();
+    message.deletedBy = userId;
+    await message.save();
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(message.chat, "message_deleted_for_everyone", {
+          messageId: messageId,
+          deletedBy: userId,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Message deleted for everyone",
+    });
+  } catch (error) {
+    console.error("Error deleting message for everyone:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete message",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Mark messages as read in chat
+ */
+const markChatMessagesAsRead = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { messageIds } = req.body;
+    const userId = req.user.id;
+
+    // Verify user has access to chat
+    const chat = await TeamChat.findChatForUser(chatId, userId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    let markedCount = 0;
+
+    if (messageIds && messageIds.length > 0) {
+      // Mark specific messages as read
+      const messages = await ChatMessage.find({
+        _id: { $in: messageIds },
+        chat: chatId,
+        sender: { $ne: userId },
+        isDeleted: false,
+      });
+
+      for (const message of messages) {
+        if (message.isVisibleForUser(userId)) {
+          message.markAsRead(userId);
+          await message.save();
+          markedCount++;
+        }
+      }
+    } else {
+      // Mark all unread messages as read
+      const unreadMessages = await ChatMessage.find({
+        chat: chatId,
+        sender: { $ne: userId },
+        readBy: { $not: { $elemMatch: { user: userId } } },
+        isDeleted: false,
+        deletedForUsers: { $not: { $elemMatch: { user: userId } } },
+      });
+
+      for (const message of unreadMessages) {
+        if (message.isVisibleForUser(userId)) {
+          message.markAsRead(userId);
+          await message.save();
+          markedCount++;
+        }
+      }
+
+      // Update last read message in chat
+      if (unreadMessages.length > 0) {
+        const lastMessage = unreadMessages[unreadMessages.length - 1];
+        chat.updateLastReadMessage(userId, lastMessage._id);
+        await chat.save();
+      }
+    }
+
+    // Emit to socket
+    const socketManager = req.app.get("socketManager");
+    if (socketManager) {
+      try {
+        socketManager.sendToChat(chatId, "messages_read", {
+          chatId: chatId,
+          userId: userId,
+          readCount: markedCount,
+        });
+      } catch (socketError) {
+        console.warn("Socket emission failed:", socketError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      markedCount: markedCount,
+      message: `${markedCount} message(s) marked as read`,
+    });
+  } catch (error) {
+    console.error("Error marking messages as read:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark messages as read",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get chat statistics for user
+ */
+const getChatStatsForUser = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user has access to chat
+    const chat = await TeamChat.findChatForUser(chatId, userId);
+    if (!chat) {
+      return res.status(404).json({
+        success: false,
+        message: "Chat not found or access denied",
+      });
+    }
+
+    const [totalMessages, unreadCount, userMessages] = await Promise.all([
+      ChatMessage.countDocuments({
+        chat: chatId,
+        isDeleted: false,
+        deletedForUsers: { $not: { $elemMatch: { user: userId } } },
+      }),
+      ChatMessage.getUnreadCountForUser(chatId, userId),
+      ChatMessage.countDocuments({
+        chat: chatId,
+        sender: userId,
+        isDeleted: false,
+      }),
+    ]);
+
+    const userParticipant = chat.participants.find(p => p.user.toString() === userId);
+
+    res.json({
+      success: true,
+      data: {
+        chatId: chatId,
+        totalMessages: totalMessages,
+        unreadCount: unreadCount,
+        userMessages: userMessages,
+        joinedAt: userParticipant?.joinedAt,
+        lastSeen: userParticipant?.lastSeen,
+        role: userParticipant?.role,
+        notifications: userParticipant?.notifications,
+        isHidden: userParticipant?.isHidden,
+        isChatDeleted: userParticipant?.isChatDeleted,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting chat stats for user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get chat statistics",
+      error: error.message,
+    });
+  }
+};
+
+// =============================================================================
 // EXPORT ALL CONTROLLER METHODS
 // =============================================================================
 
@@ -2593,4 +3705,25 @@ module.exports = {
   markConversationAsRead,
   getChatNotificationDetails,
   bulkMarkChatNotificationsAsRead,
+
+  // ✅ NEW: Team Chat Methods
+  getUserTeamChats,
+  createTeamChat,
+  getTeamChatDetails,
+  sendTeamChatMessage,
+  getTeamChatMessages,
+  addTeamChatParticipants,
+  updateUserChatStatus,
+  updateChatProfile,
+  searchUsersForChat,
+
+  // ✅ NEW: Chat Management Methods
+  deleteChatForUser,
+  hideChatForUser,
+  restoreChatForUser,
+  leaveChatAsUser,
+  deleteMessageForUser,
+  deleteMessageForEveryone,
+  markChatMessagesAsRead,
+  getChatStatsForUser,
 };

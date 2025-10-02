@@ -72,6 +72,43 @@ class SocketHandler {
         await this.handleGetChatHistory(socket, data);
       });
 
+      // ✅ NEW: Team Chat Events
+      socket.on("join_team_chat", async (data) => {
+        await this.handleJoinTeamChat(socket, data);
+      });
+
+      socket.on("leave_team_chat", async (data) => {
+        await this.handleLeaveTeamChat(socket, data);
+      });
+
+      socket.on("send_team_message", async (data) => {
+        await this.handleSendTeamMessage(socket, data);
+      });
+
+      socket.on("team_typing_start", (data) => {
+        this.handleTeamTypingStart(socket, data);
+      });
+
+      socket.on("team_typing_stop", (data) => {
+        this.handleTeamTypingStop(socket, data);
+      });
+
+      socket.on("mark_team_messages_read", async (data) => {
+        await this.handleMarkTeamMessagesRead(socket, data);
+      });
+
+      socket.on("get_team_chat_history", async (data) => {
+        await this.handleGetTeamChatHistory(socket, data);
+      });
+
+      socket.on("update_team_status", async (data) => {
+        await this.handleUpdateTeamStatus(socket, data);
+      });
+
+      socket.on("delete_team_message", async (data) => {
+        await this.handleDeleteTeamMessage(socket, data);
+      });
+
       socket.on("ping", () => {
         socket.emit("pong");
         if (this.connectionHandler) {
@@ -1280,6 +1317,583 @@ class SocketHandler {
         rooms: Array.from(socket.rooms),
       })),
     };
+  }
+
+  // =============================================================================
+  // ✅ NEW: TEAM CHAT HANDLERS
+  // =============================================================================
+
+  /**
+   * Handle joining a team chat room
+   */
+  async handleJoinTeamChat(socket, data) {
+    try {
+      const { chatId } = data;
+      const userId = socket.userId;
+
+      if (!chatId) {
+        socket.emit("error", { message: "Chat ID is required" });
+        return;
+      }
+
+      // Get team chat models
+      const TeamChat = getModel("TeamChat");
+      const ChatMessage = getModel("ChatMessage");
+
+      if (!TeamChat) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      // Verify user has access to this chat
+      const chat = await TeamChat.findChatForUser(chatId, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found or access denied" });
+        return;
+      }
+
+      // Join the room
+      const roomName = `team_chat_${chatId}`;
+      socket.join(roomName);
+      socket.activeTeamChatId = chatId;
+
+      // Update user's online status in chat
+      chat.updateParticipantStatus(userId, {
+        isOnline: true,
+        lastSeen: new Date(),
+      });
+      await chat.save();
+
+      // Notify other participants
+      socket.to(roomName).emit("user_joined_team_chat", {
+        chatId: chatId,
+        userId: userId,
+        userName: socket.user.name,
+        timestamp: new Date(),
+      });
+
+      // Send confirmation to user
+      socket.emit("team_chat_joined", {
+        chatId: chatId,
+        roomName: roomName,
+        message: "Successfully joined team chat",
+      });
+
+      console.log(`✅ User ${socket.user.name} joined team chat ${chatId}`);
+    } catch (error) {
+      console.error("❌ Handle join team chat error:", error);
+      socket.emit("error", { message: "Failed to join team chat" });
+    }
+  }
+
+  /**
+   * Handle leaving a team chat room
+   */
+  async handleLeaveTeamChat(socket, data) {
+    try {
+      const { chatId } = data;
+      const userId = socket.userId;
+
+      if (!chatId) {
+        socket.emit("error", { message: "Chat ID is required" });
+        return;
+      }
+
+      const TeamChat = getModel("TeamChat");
+      if (!TeamChat) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      const roomName = `team_chat_${chatId}`;
+      socket.leave(roomName);
+
+      // Update user's online status in chat
+      const chat = await TeamChat.findById(chatId);
+      if (chat) {
+        chat.updateParticipantStatus(userId, {
+          isOnline: false,
+          lastSeen: new Date(),
+          isTyping: false,
+        });
+        await chat.save();
+      }
+
+      // Notify other participants
+      socket.to(roomName).emit("user_left_team_chat", {
+        chatId: chatId,
+        userId: userId,
+        userName: socket.user.name,
+        timestamp: new Date(),
+      });
+
+      socket.activeTeamChatId = null;
+
+      console.log(`✅ User ${socket.user.name} left team chat ${chatId}`);
+    } catch (error) {
+      console.error("❌ Handle leave team chat error:", error);
+    }
+  }
+
+  /**
+   * Handle sending a team message
+   */
+  async handleSendTeamMessage(socket, data) {
+    try {
+      const { chatId, content, type = "text", tempId, attachments = [], replyTo } = data;
+      const userId = socket.userId;
+
+      if (!chatId || !content) {
+        socket.emit("error", { message: "Chat ID and content are required" });
+        return;
+      }
+
+      // Get models
+      const TeamChat = getModel("TeamChat");
+      const ChatMessage = getModel("ChatMessage");
+
+      if (!TeamChat || !ChatMessage) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      // Verify user has access to this chat
+      const chat = await TeamChat.findChatForUser(chatId, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found or access denied" });
+        return;
+      }
+
+      // Create message
+      const messageData = {
+        chat: chatId,
+        sender: userId,
+        content: {
+          text: content,
+          type: type,
+          attachments: attachments,
+          metadata: {
+            replyTo: replyTo,
+          },
+        },
+        tempId: tempId,
+      };
+
+      const message = new ChatMessage(messageData);
+      await message.save();
+
+      // Populate sender info
+      await message.populate("sender", "name email avatar");
+
+      // Update chat's last message
+      chat.lastMessage = message._id;
+      chat.lastMessageAt = message.createdAt;
+      await chat.save();
+
+      // Emit to all participants in the chat room
+      const roomName = `team_chat_${chatId}`;
+      this.io.to(roomName).emit("new_team_message", {
+        message: message,
+        chatId: chatId,
+        tempId: tempId,
+      });
+
+      // Send delivery confirmation to sender
+      socket.emit("team_message_sent", {
+        messageId: message._id,
+        tempId: tempId,
+        status: "sent",
+        timestamp: message.createdAt,
+      });
+
+      console.log(`✅ Team message sent in chat ${chatId} by ${socket.user.name}`);
+    } catch (error) {
+      console.error("❌ Handle send team message error:", error);
+      socket.emit("team_message_failed", {
+        tempId: data.tempId,
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * Handle team typing start
+   */
+  handleTeamTypingStart(socket, data) {
+    try {
+      const { chatId } = data;
+      const userId = socket.userId;
+
+      if (!chatId) return;
+
+      const roomName = `team_chat_${chatId}`;
+      
+      // Notify other participants (exclude sender)
+      socket.to(roomName).emit("team_user_typing", {
+        chatId: chatId,
+        userId: userId,
+        userName: socket.user.name,
+        isTyping: true,
+      });
+
+      // Update database
+      const TeamChat = getModel("TeamChat");
+      if (TeamChat) {
+        TeamChat.findById(chatId).then(chat => {
+          if (chat) {
+            chat.updateParticipantStatus(userId, { isTyping: true });
+            chat.save();
+          }
+        });
+      }
+    } catch (error) {
+      console.error("❌ Handle team typing start error:", error);
+    }
+  }
+
+  /**
+   * Handle team typing stop
+   */
+  handleTeamTypingStop(socket, data) {
+    try {
+      const { chatId } = data;
+      const userId = socket.userId;
+
+      if (!chatId) return;
+
+      const roomName = `team_chat_${chatId}`;
+      
+      // Notify other participants (exclude sender)
+      socket.to(roomName).emit("team_user_typing", {
+        chatId: chatId,
+        userId: userId,
+        userName: socket.user.name,
+        isTyping: false,
+      });
+
+      // Update database
+      const TeamChat = getModel("TeamChat");
+      if (TeamChat) {
+        TeamChat.findById(chatId).then(chat => {
+          if (chat) {
+            chat.updateParticipantStatus(userId, { isTyping: false });
+            chat.save();
+          }
+        });
+      }
+    } catch (error) {
+      console.error("❌ Handle team typing stop error:", error);
+    }
+  }
+
+  /**
+   * Handle marking team messages as read
+   */
+  async handleMarkTeamMessagesRead(socket, data) {
+    try {
+      const { chatId, messageIds = [] } = data;
+      const userId = socket.userId;
+
+      if (!chatId) {
+        socket.emit("error", { message: "Chat ID is required" });
+        return;
+      }
+
+      // Get models
+      const TeamChat = getModel("TeamChat");
+      const ChatMessage = getModel("ChatMessage");
+
+      if (!TeamChat || !ChatMessage) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      // Verify chat access
+      const chat = await TeamChat.findChatForUser(chatId, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found or access denied" });
+        return;
+      }
+
+      let markedCount = 0;
+
+      if (messageIds.length > 0) {
+        // Mark specific messages as read
+        const messages = await ChatMessage.find({
+          _id: { $in: messageIds },
+          chat: chatId,
+          sender: { $ne: userId },
+        });
+
+        for (const message of messages) {
+          if (message.isVisibleForUser(userId)) {
+            message.markAsRead(userId);
+            await message.save();
+            markedCount++;
+          }
+        }
+      } else {
+        // Mark all unread messages as read
+        const unreadMessages = await ChatMessage.find({
+          chat: chatId,
+          sender: { $ne: userId },
+          readBy: { $not: { $elemMatch: { user: userId } } },
+          isDeleted: false,
+          deletedForUsers: { $not: { $elemMatch: { user: userId } } },
+        });
+
+        for (const message of unreadMessages) {
+          if (message.isVisibleForUser(userId)) {
+            message.markAsRead(userId);
+            await message.save();
+            markedCount++;
+          }
+        }
+
+        // Update last read message in chat
+        if (unreadMessages.length > 0) {
+          const lastMessage = unreadMessages[unreadMessages.length - 1];
+          chat.updateLastReadMessage(userId, lastMessage._id);
+          await chat.save();
+        }
+      }
+
+      // Notify other participants
+      const roomName = `team_chat_${chatId}`;
+      socket.to(roomName).emit("team_messages_read", {
+        chatId: chatId,
+        userId: userId,
+        readCount: markedCount,
+      });
+
+      // Confirm to sender
+      socket.emit("team_messages_marked_read", {
+        chatId: chatId,
+        markedCount: markedCount,
+      });
+
+      console.log(`✅ Marked ${markedCount} team messages as read in chat ${chatId}`);
+    } catch (error) {
+      console.error("❌ Handle mark team messages read error:", error);
+      socket.emit("error", { message: "Failed to mark messages as read" });
+    }
+  }
+
+  /**
+   * Handle getting team chat history
+   */
+  async handleGetTeamChatHistory(socket, data) {
+    try {
+      const { chatId, page = 1, limit = 50 } = data;
+      const userId = socket.userId;
+
+      if (!chatId) {
+        socket.emit("error", { message: "Chat ID is required" });
+        return;
+      }
+
+      // Get models
+      const TeamChat = getModel("TeamChat");
+      const ChatMessage = getModel("ChatMessage");
+
+      if (!TeamChat || !ChatMessage) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      // Verify chat access
+      const chat = await TeamChat.findChatForUser(chatId, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found or access denied" });
+        return;
+      }
+
+      // Get messages
+      const messages = await ChatMessage.getChatMessages(chatId, userId, page, limit);
+      const totalMessages = await ChatMessage.countDocuments({
+        chat: chatId,
+        isDeleted: false,
+        deletedForUsers: { $not: { $elemMatch: { user: userId } } },
+      });
+
+      // Filter for user visibility
+      const visibleMessages = messages.filter(msg => msg.isVisibleForUser(userId));
+
+      socket.emit("team_chat_history", {
+        chatId: chatId,
+        messages: visibleMessages,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(totalMessages / limit),
+          totalMessages,
+          hasMore: (page * limit) < totalMessages,
+        },
+      });
+
+      console.log(`✅ Sent team chat history for chat ${chatId} to ${socket.user.name}`);
+    } catch (error) {
+      console.error("❌ Handle get team chat history error:", error);
+      socket.emit("error", { message: "Failed to get chat history" });
+    }
+  }
+
+  /**
+   * Handle updating team status (online/offline/typing)
+   */
+  async handleUpdateTeamStatus(socket, data) {
+    try {
+      const { chatId, status } = data;
+      const userId = socket.userId;
+
+      if (!chatId) {
+        socket.emit("error", { message: "Chat ID is required" });
+        return;
+      }
+
+      const TeamChat = getModel("TeamChat");
+      if (!TeamChat) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      const chat = await TeamChat.findChatForUser(chatId, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found or access denied" });
+        return;
+      }
+
+      // Update status
+      chat.updateParticipantStatus(userId, {
+        ...status,
+        lastSeen: new Date(),
+      });
+      await chat.save();
+
+      // Notify other participants
+      const roomName = `team_chat_${chatId}`;
+      socket.to(roomName).emit("team_user_status_updated", {
+        chatId: chatId,
+        userId: userId,
+        userName: socket.user.name,
+        status: status,
+      });
+
+      console.log(`✅ Updated team status for user ${socket.user.name} in chat ${chatId}`);
+    } catch (error) {
+      console.error("❌ Handle update team status error:", error);
+      socket.emit("error", { message: "Failed to update status" });
+    }
+  }
+
+  /**
+   * Handle deleting team message
+   */
+  async handleDeleteTeamMessage(socket, data) {
+    try {
+      const { messageId, deleteForEveryone = false } = data;
+      const userId = socket.userId;
+
+      if (!messageId) {
+        socket.emit("error", { message: "Message ID is required" });
+        return;
+      }
+
+      const ChatMessage = getModel("ChatMessage");
+      const TeamChat = getModel("TeamChat");
+
+      if (!ChatMessage || !TeamChat) {
+        socket.emit("error", { message: "Team chat not available" });
+        return;
+      }
+
+      const message = await ChatMessage.findById(messageId);
+      if (!message) {
+        socket.emit("error", { message: "Message not found" });
+        return;
+      }
+
+      // Verify chat access
+      const chat = await TeamChat.findChatForUser(message.chat, userId);
+      if (!chat) {
+        socket.emit("error", { message: "Access denied" });
+        return;
+      }
+
+      const roomName = `team_chat_${message.chat}`;
+
+      if (deleteForEveryone) {
+        // Check if user can delete for everyone (sender or admin)
+        const userParticipant = chat.participants.find(p => p.user.toString() === userId);
+        const canDeleteForEveryone = message.sender.toString() === userId || userParticipant?.role === "admin";
+
+        if (!canDeleteForEveryone) {
+          socket.emit("error", { message: "You can only delete your own messages for everyone" });
+          return;
+        }
+
+        // Delete for everyone
+        message.isDeleted = true;
+        message.deletedAt = new Date();
+        message.deletedBy = userId;
+        await message.save();
+
+        // Notify all participants
+        this.io.to(roomName).emit("team_message_deleted_for_everyone", {
+          messageId: messageId,
+          chatId: message.chat,
+          deletedBy: userId,
+        });
+      } else {
+        // Delete for user only
+        message.deleteForUser(userId);
+        await message.save();
+
+        // Notify only the user
+        socket.emit("team_message_deleted_for_me", {
+          messageId: messageId,
+          chatId: message.chat,
+        });
+      }
+
+      console.log(`✅ Team message ${messageId} deleted by ${socket.user.name}`);
+    } catch (error) {
+      console.error("❌ Handle delete team message error:", error);
+      socket.emit("error", { message: "Failed to delete message" });
+    }
+  }
+
+  // =============================================================================
+  // ✅ NEW: TEAM CHAT UTILITY METHODS
+  // =============================================================================
+
+  /**
+   * Send message to specific team chat
+   */
+  sendToTeamChat(chatId, event, data) {
+    try {
+      const roomName = `team_chat_${chatId}`;
+      this.io.to(roomName).emit(event, data);
+      console.log(`✅ Sent ${event} to team chat ${chatId}`);
+    } catch (error) {
+      console.error("❌ Send to team chat error:", error);
+    }
+  }
+
+  /**
+   * Send message to specific user in team chats
+   */
+  sendToUserInTeamChats(userId, event, data) {
+    try {
+      // Find all sockets for this user
+      for (const [socketId, socket] of this.io.sockets.sockets) {
+        if (socket.userId && socket.userId.toString() === userId.toString()) {
+          socket.emit(event, data);
+        }
+      }
+      console.log(`✅ Sent ${event} to user ${userId} in team chats`);
+    } catch (error) {
+      console.error("❌ Send to user in team chats error:", error);
+    }
   }
 }
 

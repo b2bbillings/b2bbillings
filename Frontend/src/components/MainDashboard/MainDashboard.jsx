@@ -5,6 +5,7 @@ import {
   faTachometerAlt,
   faExchangeAlt,
   faComments,
+  faAd,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 
@@ -12,7 +13,11 @@ import PropTypes from "prop-types";
 import MainNavbar from "./MainNavbar";
 import TeamChats from "./TeamChats";
 import DailyTransaction from "./DailyTransaction";
+import AdvertisementDisplay from "../Advertisements/AdvertisementDisplay";
+import AdManagement from "../Advertisements/AdManagement";
+import advertisementService from "../../services/advertisementService";
 import "./MainDashboard.css";
+import "./ads-layout.css";
 
 // ✅ FIXED: Using JavaScript default parameters instead of defaultProps
 function MainDashboard({
@@ -28,15 +33,30 @@ function MainDashboard({
   isLoadingCompanies = false, // ✅ Default parameter
   companyId,
 }) {
+  console.log('🏠 MainDashboard is rendering!');
+  
   // ✅ ADD: Chat popup state management
   const [isChatPopupOpen, setIsChatPopupOpen] = useState(false);
   const mainDashboardRef = useRef(null);
+
+  // ✅ ADD: Advertisement state management
+  const [bannerAds, setBannerAds] = useState([]);
+  const [sidebarAds, setSidebarAds] = useState([]);
+  const [whatsappAds, setWhatsappAds] = useState([]);
+  const [adsLoading, setAdsLoading] = useState(true);
+  
+  console.log('📊 Current ad states:', { 
+    bannerCount: bannerAds.length, 
+    sidebarCount: sidebarAds.length, 
+    whatsappCount: whatsappAds.length, 
+    adsLoading 
+  });
 
   // State management with localStorage persistence
   const [activeView, setActiveView] = useState(() => {
     const savedView = localStorage.getItem("dashboard-active-view");
     return savedView &&
-      ["dashboard", "transactions", "chats"].includes(savedView)
+      ["dashboard", "transactions", "chats", "ads"].includes(savedView)
       ? savedView
       : "dashboard";
   });
@@ -72,6 +92,86 @@ function MainDashboard({
     return () => {
       document.body.classList.remove("chat-popup-open");
     };
+  }, []);
+
+  // ✅ ADD: Load advertisements
+  const loadAdvertisements = useCallback(async () => {
+    try {
+      setAdsLoading(true);
+      
+      console.log('🚀 MainDashboard: Starting to load advertisements...');
+      console.log('🔧 Advertisement service:', advertisementService);
+      
+      const [bannerResponse, sidebarResponse, whatsappResponse] = await Promise.all([
+        advertisementService.getAdsBySection('banner', { limit: 5 }).catch(err => {
+          console.warn('Banner ads failed to load:', err.message);
+          return { data: [] };
+        }),
+        advertisementService.getAdsBySection('sidebar', { limit: 3 }).catch(err => {
+          console.warn('Sidebar ads failed to load:', err.message);
+          return { data: [] };
+        }),
+        advertisementService.getAdsBySection('whatsapp', { limit: 4 }).catch(err => {
+          console.warn('WhatsApp ads failed to load:', err.message);
+          return { data: [] };
+        })
+      ]);
+
+      setBannerAds(bannerResponse.data || []);
+      setSidebarAds(sidebarResponse.data || []);
+      setWhatsappAds(whatsappResponse.data || []);
+      
+      console.log('🎉 Successfully loaded ads:', {
+        banner: bannerResponse.data?.length || 0,
+        sidebar: sidebarResponse.data?.length || 0,
+        whatsapp: whatsappResponse.data?.length || 0
+      });
+      
+      console.log('📊 Banner ads:', bannerResponse.data);
+      console.log('📊 Sidebar ads:', sidebarResponse.data);
+      console.log('📊 WhatsApp ads:', whatsappResponse.data);
+    } catch (error) {
+      console.error('Error loading advertisements:', error);
+      // Silent fail - ads are not critical for core functionality
+      setBannerAds([]);
+      setSidebarAds([]);
+      setWhatsappAds([]);
+      
+      // Only show toast in development
+      if (process.env.NODE_ENV === 'development' && addToast) {
+        addToast('Advertisement service unavailable', 'warning');
+      }
+    } finally {
+      setAdsLoading(false);
+    }
+  }, [addToast]);
+
+  // Load ads on component mount
+  useEffect(() => {
+    loadAdvertisements();
+  }, [loadAdvertisements]);
+
+  // ✅ ADD: Handle ad interactions
+  const handleAdClick = useCallback(async (ad) => {
+    try {
+      // Track click
+      await advertisementService.trackClick(ad._id);
+      
+      // Open URL if provided
+      if (ad.ctaUrl) {
+        window.open(ad.ctaUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      console.error('Error tracking ad click:', error);
+    }
+  }, []);
+
+  const handleAdImpression = useCallback(async (ad) => {
+    try {
+      await advertisementService.trackImpression(ad._id);
+    } catch (error) {
+      console.error('Error tracking ad impression:', error);
+    }
   }, []);
 
   // ✅ ADD: Handle escape key for chat popup
@@ -176,6 +276,14 @@ function MainDashboard({
         shortcut: "Ctrl+3",
         description: "Communicate with your team members",
         mobileLabel: "Chats",
+      },
+      {
+        key: "ads",
+        label: screenSize.isMobile ? "Ads" : "Ad Management",
+        icon: faAd,
+        shortcut: "Ctrl+4",
+        description: "Manage and view your advertisements",
+        mobileLabel: "Ads",
       },
     ],
     [screenSize.isMobile]
@@ -322,7 +430,7 @@ function MainDashboard({
       const mappedRoute = routeMap[route] || route;
 
       // Handle dashboard view changes silently
-      const dashboardViews = ["dashboard", "transactions", "chats"];
+      const dashboardViews = ["dashboard", "transactions", "chats", "ads"];
       if (dashboardViews.includes(route)) {
         handleViewChange(route);
         return;
@@ -358,7 +466,7 @@ function MainDashboard({
     (tabKey) => {
       if (isChatPopupOpen) return; // ✅ ADD: Prevent tab clicks when popup is open
 
-      if (["dashboard", "transactions", "chats"].includes(tabKey)) {
+      if (["dashboard", "transactions", "chats", "ads"].includes(tabKey)) {
         if (screenSize.isMobile && tabKey === "dashboard") {
           handleViewChange("transactions");
         } else {
@@ -426,18 +534,18 @@ function MainDashboard({
     }
   }, [currentUser, addToast]);
 
-  // Memoized responsive column configuration
+  // Memoized responsive column configuration - ✅ INCREASED: Team chat widths
   const responsiveColumns = useMemo(() => {
     if (screenSize.isUltraWide) {
-      return {leftFlex: "0 0 320px", rightFlex: "1"};
+      return {leftFlex: "0 0 380px", rightFlex: "1"}; // Increased from 320px
     } else if (screenSize.isExtraLarge) {
-      return {leftFlex: "0 0 300px", rightFlex: "1"};
+      return {leftFlex: "0 0 360px", rightFlex: "1"}; // Increased from 300px
     } else if (screenSize.isLargeDesktop) {
-      return {leftFlex: "0 0 280px", rightFlex: "1"};
+      return {leftFlex: "0 0 340px", rightFlex: "1"}; // Increased from 280px
     } else if (screenSize.isDesktop) {
-      return {leftFlex: "0 0 260px", rightFlex: "1"};
+      return {leftFlex: "0 0 320px", rightFlex: "1"}; // Increased from 260px
     } else {
-      return {leftFlex: "0 0 240px", rightFlex: "1"};
+      return {leftFlex: "0 0 300px", rightFlex: "1"}; // Increased from 240px
     }
   }, [screenSize]);
 
@@ -564,6 +672,22 @@ function MainDashboard({
         </Container>
       </div>
 
+      {/* ✅ NEW: Banner Advertisement Section */}
+      {bannerAds.length > 0 && (
+        <div
+          className={`banner-ad-section ${
+            screenSize.isMobile ? "mobile-banner" : ""
+          } ${isChatPopupOpen ? "popup-active" : ""}`}
+          style={{
+            pointerEvents: isChatPopupOpen ? "none" : "all",
+            opacity: isChatPopupOpen ? 0.3 : 1,
+            transition: "opacity 0.3s ease",
+          }}
+        >
+          
+        </div>
+      )}
+
       {/* ✅ FIXED: Dashboard Content with proper overflow handling */}
       <div
         className={`dashboard-content ${
@@ -578,7 +702,7 @@ function MainDashboard({
           overflow: isChatPopupOpen ? "hidden" : "visible",
         }}
       >
-        {/* Desktop Dashboard View - Always 2 Column Layout */}
+        {/* Desktop Dashboard View - 3 Column Layout with Ads */}
         {activeView === "dashboard" && !screenSize.isMobile && (
           <Container fluid className="px-0 h-100">
             <div className="dashboard-layout">
@@ -592,7 +716,12 @@ function MainDashboard({
                 }}
               >
                 <div className="section-wrapper">
-                  <TeamChats {...commonChildProps} />
+                  <TeamChats 
+                    {...commonChildProps} 
+                    whatsappAds={whatsappAds}
+                    onAdClick={handleAdClick}
+                    onAdImpression={handleAdImpression}
+                  />
                 </div>
               </div>
 
@@ -602,19 +731,115 @@ function MainDashboard({
                 style={{flex: responsiveColumns.rightFlex}}
               >
                 <div className="section-wrapper">
-                  <DailyTransaction {...commonChildProps} />
+                  <DailyTransaction 
+                    {...commonChildProps} 
+                    bannerAds={bannerAds}
+                    onAdClick={handleAdClick}
+                    onAdImpression={handleAdImpression}
+                  />
+                </div>
+              </div>
+
+              {/* Right Sidebar Ads Column - Fixed Width */}
+              <div
+                className="right-column"
+                style={{
+                  flex: "0 0 300px",
+                  minWidth: "300px",
+                  maxWidth: "300px",
+                }}
+              >
+                <div className="section-wrapper">
+                  <div className="sidebar-ads-section">
+                    {sidebarAds.length > 0 ? (
+                      <AdvertisementDisplay
+                        ads={sidebarAds}
+                        section="sidebar"
+                        autoScrollInterval={10000}
+                        showControls={true}
+                        onAdClick={handleAdClick}
+                        onAdImpression={handleAdImpression}
+                        className="sidebar-ad"
+                      />
+                    ) : (
+                      <div className="ad-placeholder">
+                        <h4>📱 WhatsApp-like Ads</h4>
+                        <p>Sidebar advertisements will appear in this space</p>
+                      </div>
+                    )}
+                  </div>
+
+                    {/* <div className="sidebar-ads-section">
+                    {sidebarAds.length > 0 ? (
+                      <AdvertisementDisplay
+                        ads={sidebarAds}
+                        section="sidebar"
+                        autoScrollInterval={10000}
+                        showControls={true}
+                        onAdClick={handleAdClick}
+                        onAdImpression={handleAdImpression}
+                        className="sidebar-ad"
+                      />
+                    ) : (
+                      <div className="ad-placeholder">
+                        <h4>📱 WhatsApp-like Ads</h4>
+                        <p>Sidebar advertisements will appear in this space</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="sidebar-ads-section">
+                    {sidebarAds.length > 0 ? (
+                      <AdvertisementDisplay
+                        ads={sidebarAds}
+                        section="sidebar"
+                        autoScrollInterval={10000}
+                        showControls={true}
+                        onAdClick={handleAdClick}
+                        onAdImpression={handleAdImpression}
+                        className="sidebar-ad"
+                      />
+                    ) : (
+                      <div className="ad-placeholder">
+                        <h4>📱 WhatsApp-like Ads</h4>
+                        <p>Sidebar advertisements will appear in this space</p>
+                      </div>
+                    )}
+                  </div> */}
+
                 </div>
               </div>
             </div>
           </Container>
         )}
 
-        {/* Mobile Dashboard View - Shows transactions with quick chat access */}
+        {/* Mobile Dashboard View - Shows transactions with quick chat access and ads */}
         {activeView === "dashboard" && screenSize.isMobile && (
           <div className="mobile-dashboard-view">
             <div className="section-wrapper mobile-section">
-              <DailyTransaction {...commonChildProps} />
+              <DailyTransaction 
+                {...commonChildProps} 
+                bannerAds={bannerAds}
+                onAdClick={handleAdClick}
+                onAdImpression={handleAdImpression}
+              />
             </div>
+
+            {/* Sidebar Ads on Mobile */}
+            {sidebarAds.length > 0 && (
+              <div className="mobile-sidebar-ads mt-3 mb-3">
+                <AdvertisementDisplay
+                  ads={sidebarAds}
+                  section="sidebar"
+                  autoScrollInterval={10000}
+                  showControls={false}
+                  muted={true}
+                  onAdClick={handleAdClick}
+                  onAdImpression={handleAdImpression}
+                  className="mobile-sidebar-ad"
+                />
+              </div>
+            )}
 
             <div className="mobile-quick-chat">
               <button
@@ -641,13 +866,52 @@ function MainDashboard({
               screenSize.isMobile ? "mobile-single-view" : ""
             }`}
           >
-            <div
-              className={`section-wrapper ${
-                screenSize.isMobile ? "mobile-section" : ""
-              }`}
-            >
-              <DailyTransaction {...commonChildProps} />
-            </div>
+            {/* Sidebar ads for transactions view */}
+            {!screenSize.isMobile && sidebarAds.length > 0 && (
+              <div className="single-view-layout">
+                <div className="main-content">
+                  <div
+                    className={`section-wrapper ${
+                      screenSize.isMobile ? "mobile-section" : ""
+                    }`}
+                  >
+                    <DailyTransaction 
+                      {...commonChildProps} 
+                      bannerAds={bannerAds}
+                      onAdClick={handleAdClick}
+                      onAdImpression={handleAdImpression}
+                    />
+                  </div>
+                </div>
+                <div className="sidebar-ads">
+                  <AdvertisementDisplay
+                    ads={sidebarAds}
+                    section="sidebar"
+                    autoScrollInterval={10000}
+                    showControls={true}
+                    onAdClick={handleAdClick}
+                    onAdImpression={handleAdImpression}
+                    className="single-view-sidebar-ad"
+                  />
+                </div>
+              </div>
+            )}
+            
+            {/* Mobile or no sidebar ads */}
+            {(screenSize.isMobile || sidebarAds.length === 0) && (
+              <div
+                className={`section-wrapper ${
+                  screenSize.isMobile ? "mobile-section" : ""
+                }`}
+              >
+                <DailyTransaction 
+                  {...commonChildProps} 
+                  bannerAds={bannerAds}
+                  onAdClick={handleAdClick}
+                  onAdImpression={handleAdImpression}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -662,7 +926,28 @@ function MainDashboard({
                 screenSize.isMobile ? "mobile-section" : ""
               }`}
             >
-              <TeamChats {...commonChildProps} />
+              <TeamChats 
+                {...commonChildProps} 
+                whatsappAds={whatsappAds}
+                onAdClick={handleAdClick}
+                onAdImpression={handleAdImpression}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === "ads" && (
+          <div
+            className={`single-view ${
+              screenSize.isMobile ? "mobile-single-view" : ""
+            }`}
+          >
+            <div
+              className={`section-wrapper ${
+                screenSize.isMobile ? "mobile-section" : ""
+              }`}
+            >
+              <AdManagement {...commonChildProps} />
             </div>
           </div>
         )}
