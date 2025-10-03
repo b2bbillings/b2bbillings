@@ -98,6 +98,12 @@ class ItemService {
    */
   async getItems(companyId, params = {}) {
     try {
+      console.log('📋 ItemService.getItems called with:', {
+        companyId,
+        params,
+        apiUrl: `/api/companies/${companyId}/items`
+      });
+
       if (!companyId) {
         throw new Error("Company ID is required");
       }
@@ -118,6 +124,13 @@ class ItemService {
         }
       );
 
+      console.log('📋 Get items API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data,
+        itemsCount: response.data?.data?.items?.length || 0
+      });
+
       return response.data;
     } catch (error) {
       throw error;
@@ -132,6 +145,12 @@ class ItemService {
    */
   async createItem(companyId, itemData) {
     try {
+      console.log('🔧 ItemService.createItem called with:', {
+        companyId,
+        itemData,
+        apiUrl: `/api/companies/${companyId}/items`
+      });
+
       if (!companyId) {
         throw new Error("Company ID is required");
       }
@@ -175,10 +194,23 @@ class ItemService {
         }
       });
 
+      console.log('📡 Making API call to create item:', {
+        url: `/api/companies/${companyId}/items`,
+        method: 'POST',
+        payload: cleanedData,
+        companyId: companyId
+      });
+
       const response = await apiClient.post(
         `/api/companies/${companyId}/items`,
         cleanedData
       );
+
+      console.log('📡 Item creation API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
 
       return response.data;
     } catch (error) {

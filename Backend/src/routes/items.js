@@ -34,6 +34,9 @@ router.get("/", itemController.getItems);
 
 // ===== SPECIAL ROUTES (must be before /:itemId) =====
 
+// 🔍 DEBUG ROUTE - Get all items for debugging
+router.get("/debug/all", itemController.getAllItemsDebug);
+
 // GET /api/companies/:companyId/items/search - Search items (autocomplete)
 router.get("/search", itemController.searchItems);
 

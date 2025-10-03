@@ -31,6 +31,10 @@ import PurchaseOrder from "../components/Home/Purchases/PurchaseOrder";
 import Bank from "../components/Home/Bank";
 import PurchaseBills from "../components/Home/Purchases/PurchaseBills";
 
+// Import Info components
+import GSTInfo from "../components/Info/GSTInfo";
+import CompanyBrandInfo from "../components/Info/CompanyBrandInfo";
+
 // Import utility components
 import ErrorBoundary from "../components/ErrorBoundary";
 import Loading from "../components/Loading";
@@ -107,6 +111,27 @@ function HomePage({
       return editRouteMap[editType] || "dailySummary";
     }
 
+    // Handle info routes (like /info/gst, /info/company-brand)
+    if (secondLastPart === "info" && lastPart) {
+      const infoRouteMap = {
+        "gst": "gstInfo",
+        "company-brand": "companyBrandInfo",
+      };
+
+      return infoRouteMap[lastPart] || "dailySummary";
+    }
+
+    // Handle company-specific info routes (like /companies/{id}/info/gst)
+    if (pathParts.length >= 4 && pathParts[pathParts.length - 2] === "info") {
+      const infoType = pathParts[pathParts.length - 1];
+      const infoRouteMap = {
+        "gst": "gstInfo",
+        "company-brand": "companyBrandInfo",
+      };
+
+      return infoRouteMap[infoType] || "dailySummary";
+    }
+
     // Handle view/detail routes
     if (pathParts.length >= 4 && pathParts[pathParts.length - 2] !== "add") {
       const viewType = pathParts[pathParts.length - 2];
@@ -118,6 +143,7 @@ function HomePage({
         products: "viewProduct",
         parties: "viewParty",
         items: "viewItem",
+        gst: "gstInfo",
       };
 
       return detailRouteMap[viewType] || "dailySummary";
@@ -151,6 +177,7 @@ function HomePage({
       insights: "insights",
       reports: "reports",
       settings: "settings",
+      gst: "gstInfo",
     };
 
     return pathViewMap[lastPart] || "dailySummary";
@@ -1047,6 +1074,17 @@ function HomePage({
                 </button>
               </Container>
             </div>
+          );
+
+        // Info components
+        case "gstInfo":
+          return wrapWithErrorBoundary(
+            <GSTInfo />
+          );
+
+        case "companyBrandInfo":
+          return wrapWithErrorBoundary(
+            <CompanyBrandInfo />
           );
 
         // Default fallback

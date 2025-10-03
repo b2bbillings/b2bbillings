@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Container,
@@ -193,31 +193,174 @@ const Category = () => {
     }
   }, [subCategorySearchTerm, subCategories]);
 
-  // ESC key handler
+  // Modal functions
+  const openCategoryModal = useCallback(() => {
+    setCategoryName('');
+    setCategoryDescription('');
+    setEditingCategory(null);
+    setShowCategoryModal(true);
+    setTimeout(() => {
+      if (categoryNameInputRef.current) {
+        categoryNameInputRef.current.focus();
+      }
+    }, 100);
+  }, []);
+
+  const closeCategoryModal = useCallback(() => {
+    setShowCategoryModal(false);
+    setCategoryName('');
+    setCategoryDescription('');
+    setEditingCategory(null);
+  }, []);
+
+  const openSubCategoryModal = useCallback(() => {
+    setSubCategoryName('');
+    setSubCategoryDescription('');
+    setModalCategoryId(selectedCategory);
+    setEditingSubCategory(null);
+    setShowSubCategoryModal(true);
+    setTimeout(() => {
+      if (modalCategorySelectRef.current) {
+        modalCategorySelectRef.current.focus();
+      }
+    }, 100);
+  }, [selectedCategory]);
+
+  const closeSubCategoryModal = useCallback(() => {
+    setShowSubCategoryModal(false);
+    setSubCategoryName('');
+    setSubCategoryDescription('');
+    setModalCategoryId('');
+    setEditingSubCategory(null);
+  }, []);
+
+  // Reset form
+  const resetForm = useCallback(() => {
+    setSelectedCategory('');
+    setSelectedSubCategory('');
+    setError('');
+    setSuccess('');
+    setCategorySearchTerm('');
+    setSubCategorySearchTerm('');
+    setShowCategoryDropdown(false);
+    setShowSubCategoryDropdown(false);
+  }, []);
+
+  // Handle ESC key press
+  const handleEscPress = useCallback(() => {
+    // If modal is open, close it first
+    if (showCategoryModal || showSubCategoryModal) {
+      closeCategoryModal();
+      closeSubCategoryModal();
+      return;
+    }
+
+    setEscPressCount(prev => prev + 1);
+
+    if (escPressCount === 0) {
+      setShowExitAlert(true);
+      
+      // Reset ESC count after 3 seconds
+      escTimeoutRef.current = setTimeout(() => {
+        setEscPressCount(0);
+        setShowExitAlert(false);
+      }, 3000);
+    } else if (escPressCount === 1) {
+      // Second ESC press - exit form
+      resetForm();
+      setShowExitAlert(false);
+      if (escTimeoutRef.current) {
+        clearTimeout(escTimeoutRef.current);
+      }
+      setEscPressCount(0);
+    }
+  }, [showCategoryModal, showSubCategoryModal, escPressCount, closeCategoryModal, closeSubCategoryModal, resetForm]);
+
+  // Handle Enter key press
+  const handleEnterPress = useCallback((event) => {
+    // Don't handle Enter if in a modal
+    if (showCategoryModal || showSubCategoryModal) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    
+    if (activeElement === categorySelectRef.current) {
+      // Move to sub-category select
+      if (subCategorySelectRef.current) {
+        subCategorySelectRef.current.focus();
+      }
+    } else if (activeElement === subCategorySelectRef.current) {
+      // Move to first input if available
+      if (categorySelectRef.current) {
+        categorySelectRef.current.focus();
+      }
+    }
+  }, [showCategoryModal, showSubCategoryModal]);
+
+  // Keyboard handler for ESC, Enter, F2, F3
   useEffect(() => {
-    const handleEscKey = (event) => {
+    const handleKeyDown = (event) => {
+      // Only handle global shortcuts when no input is focused
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement && (
+        activeElement.tagName === 'INPUT' || 
+        activeElement.tagName === 'TEXTAREA' || 
+        activeElement.tagName === 'SELECT' ||
+        activeElement.contentEditable === 'true'
+      );
+      
+      // Handle ESC key
       if (event.key === 'Escape') {
         handleEscPress();
+        return;
       }
-    };
-
-    const handleEnterKey = (event) => {
+      
+      // Handle Enter key
       if (event.key === 'Enter') {
         handleEnterPress(event);
+        return;
+      }
+      
+      // Only handle F2/F3 if no input is focused
+      if (!isInputFocused) {
+        // Handle F2 key - Create New Category
+        if (event.key === 'F2') {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!showCategoryModal && !showSubCategoryModal) {
+            openCategoryModal();
+          }
+          return;
+        }
+        
+        // Handle F3 key - Create New Sub-Category (only if category is selected)
+        if (event.key === 'F3') {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!showCategoryModal && !showSubCategoryModal) {
+            if (selectedCategory) {
+              openSubCategoryModal();
+            } else {
+              setError('Please select a category first to create a sub-category');
+              setTimeout(() => setError(''), 2000);
+            }
+          }
+          return;
+        }
       }
     };
 
-    document.addEventListener('keydown', handleEscKey);
-    document.addEventListener('keydown', handleEnterKey);
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.removeEventListener('keydown', handleEscKey);
-      document.removeEventListener('keydown', handleEnterKey);
+      document.removeEventListener('keydown', handleKeyDown);
       if (escTimeoutRef.current) {
         clearTimeout(escTimeoutRef.current);
       }
     };
-  }, [escPressCount, showCategoryModal, showSubCategoryModal]);
+  }, [showCategoryModal, showSubCategoryModal, selectedCategory, escPressCount, openCategoryModal, openSubCategoryModal, handleEscPress, handleEnterPress]);
 
   // API Functions
   const loadCategories = async () => {
@@ -259,69 +402,9 @@ const Category = () => {
     }
   };
 
-  // Handle ESC key press
-  const handleEscPress = () => {
-    // If modal is open, close it first
-    if (showCategoryModal || showSubCategoryModal) {
-      closeCategoryModal();
-      closeSubCategoryModal();
-      return;
-    }
 
-    setEscPressCount(prev => prev + 1);
 
-    if (escPressCount === 0) {
-      setShowExitAlert(true);
-      
-      // Reset ESC count after 3 seconds
-      escTimeoutRef.current = setTimeout(() => {
-        setEscPressCount(0);
-        setShowExitAlert(false);
-      }, 3000);
-    } else if (escPressCount === 1) {
-      // Second ESC press - exit form
-      resetForm();
-      setShowExitAlert(false);
-      if (escTimeoutRef.current) {
-        clearTimeout(escTimeoutRef.current);
-      }
-      setEscPressCount(0);
-    }
-  };
 
-  // Handle Enter key press
-  const handleEnterPress = (event) => {
-    // Don't handle Enter if in a modal
-    if (showCategoryModal || showSubCategoryModal) {
-      return;
-    }
-
-    const activeElement = document.activeElement;
-    
-    if (activeElement === categorySelectRef.current) {
-      // Move to sub-category select
-      if (subCategorySelectRef.current) {
-        subCategorySelectRef.current.focus();
-      }
-    } else if (activeElement === subCategorySelectRef.current) {
-      // Move to first input if available
-      if (categorySelectRef.current) {
-        categorySelectRef.current.focus();
-      }
-    }
-  };
-
-  // Reset form
-  const resetForm = () => {
-    setSelectedCategory('');
-    setSelectedSubCategory('');
-    setError('');
-    setSuccess('');
-    setCategorySearchTerm('');
-    setSubCategorySearchTerm('');
-    setShowCategoryDropdown(false);
-    setShowSubCategoryDropdown(false);
-  };
 
   // Handle category search and selection
   const handleCategorySearch = (value) => {
@@ -621,46 +704,7 @@ const Category = () => {
     }
   };
 
-  // Modal functions
-  const openCategoryModal = () => {
-    setCategoryName('');
-    setCategoryDescription('');
-    setEditingCategory(null);
-    setShowCategoryModal(true);
-    setTimeout(() => {
-      if (categoryNameInputRef.current) {
-        categoryNameInputRef.current.focus();
-      }
-    }, 100);
-  };
 
-  const closeCategoryModal = () => {
-    setShowCategoryModal(false);
-    setCategoryName('');
-    setCategoryDescription('');
-    setEditingCategory(null);
-  };
-
-  const openSubCategoryModal = () => {
-    setSubCategoryName('');
-    setSubCategoryDescription('');
-    setModalCategoryId(selectedCategory);
-    setEditingSubCategory(null);
-    setShowSubCategoryModal(true);
-    setTimeout(() => {
-      if (modalCategorySelectRef.current) {
-        modalCategorySelectRef.current.focus();
-      }
-    }, 100);
-  };
-
-  const closeSubCategoryModal = () => {
-    setShowSubCategoryModal(false);
-    setSubCategoryName('');
-    setSubCategoryDescription('');
-    setModalCategoryId('');
-    setEditingSubCategory(null);
-  };
 
   // Handle category creation
   const handleCreateCategory = async (e) => {
@@ -838,6 +882,10 @@ const Category = () => {
             <Card.Body className="py-2">
               <div className="d-flex justify-content-center align-items-center gap-4 small">
                 <span><FontAwesomeIcon icon={faKeyboard} className="me-1 text-primary" /> <strong>Shortcuts:</strong></span>
+                <span><kbd>F2</kbd> New Category</span>
+                <span className={selectedCategory ? 'text-success' : 'text-muted'}>
+                  <kbd>F3</kbd> New Sub-Category {!selectedCategory && <small>(select category first)</small>}
+                </span>
                 <span><kbd>↑</kbd> Up</span>
                 <span><kbd>↓</kbd> Down</span>
                <span><kbd>Enter</kbd> Select</span>
@@ -1140,7 +1188,7 @@ const Category = () => {
       )}
 
       {/* Category Modal */}
-      <Modal show={showCategoryModal} onHide={closeCategoryModal} size="lg">
+      <Modal show={showCategoryModal} onHide={closeCategoryModal} size="md">
         <Modal.Header closeButton className="bg-primary text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faPlus} className="me-2" />
@@ -1150,7 +1198,7 @@ const Category = () => {
         <Form onSubmit={handleCreateCategory}>
           <Modal.Body className="p-4">
             <Row>
-              <Col md={6}>
+              <Col>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-semibold">
                     Category Name <span className="text-danger">*</span>
@@ -1163,20 +1211,6 @@ const Category = () => {
                     placeholder="Enter category name"
                     maxLength={100}
                     required
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-semibold">Description</Form.Label>
-                  <Form.Control
-                    ref={categoryDescInputRef}
-                    as="textarea"
-                    rows={3}
-                    value={categoryDescription}
-                    onChange={(e) => setCategoryDescription(e.target.value)}
-                    placeholder="Enter category description"
-                    maxLength={255}
                   />
                 </Form.Group>
               </Col>
@@ -1209,7 +1243,7 @@ const Category = () => {
       </Modal>
 
       {/* Sub-Category Modal */}
-      <Modal show={showSubCategoryModal} onHide={closeSubCategoryModal} size="lg">
+      <Modal show={showSubCategoryModal} onHide={closeSubCategoryModal} size="md">
         <Modal.Header closeButton className="bg-success text-white">
           <Modal.Title>
             <FontAwesomeIcon icon={faPlus} className="me-2" />
@@ -1252,22 +1286,6 @@ const Category = () => {
                     placeholder="Enter sub-category name"
                     maxLength={100}
                     required
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-            <Row>
-              <Col>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-semibold">Description</Form.Label>
-                  <Form.Control
-                    ref={subCategoryDescInputRef}
-                    as="textarea"
-                    rows={3}
-                    value={subCategoryDescription}
-                    onChange={(e) => setSubCategoryDescription(e.target.value)}
-                    placeholder="Enter sub-category description"
-                    maxLength={255}
                   />
                 </Form.Group>
               </Col>

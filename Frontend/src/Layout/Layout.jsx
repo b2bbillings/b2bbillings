@@ -8,9 +8,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useLocation, useNavigate} from "react-router-dom";
 import Navbar from "./Navbar";
-import Sidebar from "./Sidebar";
+// import Sidebar from "./Sidebar"; // OLD SIDEBAR - Comment out to use old sidebar
+import { NewSidebar } from "../components/New_Dashboard";
 import Footer from "./Footer";
 import "../App.css";
+import "./ModernLayout.css";
 
 function Layout({
   children,
@@ -36,6 +38,8 @@ function Layout({
     dashboard: "dailySummary",
     daybook: "dailySummary",
     categories: "categories",
+    items: "items", // Add items mapping
+    products: "allProducts", // Map products to allProducts
     transactions: "transactions",
     "cash-bank": "cashAndBank",
     parties: "parties",
@@ -48,7 +52,6 @@ function Layout({
     "purchase-bills": "purchaseBills",
     "purchase-orders": "purchaseOrder",
     inventory: "inventory",
-    products: "allProducts",
     "low-stock": "lowStock",
     "stock-movement": "stockMovement",
     "bank-accounts": "bankAccounts",
@@ -60,12 +63,16 @@ function Layout({
     insights: "insights",
     reports: "reports",
     settings: "settings",
+    // Info pages
+    gst: "gstInfo",
+    "company-brand": "companyBrandInfo",
   };
 
   // ✅ SIMPLIFIED: View to path mapping
   const viewPathMap = {
     dailySummary: "dashboard",
     categories: "categories",
+    items: "products", // Map items to products path
     transactions: "transactions",
     cashAndBank: "cash-bank",
     parties: "parties",
@@ -103,6 +110,27 @@ function Layout({
   // ✅ SIMPLIFIED: Get current view from path
   const getCurrentViewFromPath = () => {
     const pathParts = location.pathname.split("/").filter((part) => part);
+
+    // Handle info routes (like /companies/{id}/info/gst or /info/gst)
+    if (pathParts.includes("info")) {
+      const infoIndex = pathParts.indexOf("info");
+      if (infoIndex < pathParts.length - 1) {
+        const infoType = pathParts[infoIndex + 1];
+        const infoRouteMap = {
+          "gst": "gstInfo",
+          "company-brand": "companyBrandInfo",
+        };
+        const resolvedView = infoRouteMap[infoType] || "dailySummary";
+        console.log("🎯 Layout Info Route Debug:", {
+          pathParts,
+          infoIndex,
+          infoType,
+          resolvedView,
+          currentPath: location.pathname
+        });
+        return resolvedView;
+      }
+    }
 
     // Handle edit routes
     if (pathParts.includes("edit")) {
@@ -288,7 +316,7 @@ function Layout({
   });
 
   return (
-    <div className="layout-container">
+    <div className="modern-layout-container">
       {/* Network Status Alert */}
       {!isOnline && (
         <Alert variant="warning" className="m-0 rounded-0 text-center">
@@ -328,8 +356,14 @@ function Layout({
         isAddMode={isAddMode}
       />
 
-      {/* Main content section */}
-      <div className="d-flex">
+      {/* Main content section - Positioned below navbar */}
+      <div className="modern-content-wrapper">
+        {/* 
+        ==========================================
+        OLD SIDEBAR CODE (COMMENTED FOR EASY SWITCHING)
+        ==========================================
+        To use old sidebar, uncomment below and comment out NewSidebar
+        
         <Sidebar
           isOpen={sidebarOpen}
           toggleSidebar={toggleSidebar}
@@ -342,9 +376,22 @@ function Layout({
           isEditMode={isEditMode}
           isAddMode={isAddMode}
         />
+        */}
+        
+        {/* ✅ NEW MODERN SIDEBAR - Positioned below navbar */}
+        <NewSidebar
+          isOpen={sidebarOpen}
+          toggleSidebar={toggleSidebar}
+          onNavigate={handleNavigation}
+          activePage={currentPage}
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          isOnline={isOnline}
+          companyId={companyId}
+        />
 
-        <div className={`content-wrapper ${sidebarOpen ? "" : "expanded"}`}>
-          <main className="main-content">
+        <div className="modern-main-content">
+          <main className="modern-content-section">
             {/* Loading Companies State */}
             {isLoadingCompanies && (
               <div
