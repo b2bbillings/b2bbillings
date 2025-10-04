@@ -18,11 +18,17 @@ import {
   faSearch,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
+import New_parties from "./New_parties/New_parties";
+import Customers from "./New_parties/Customers/Customers";
+import Vendors from "./New_parties/Vendors/Vendors";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
 const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUser, isLoading }) => {
   const [localLoading, setLocalLoading] = useState(false);
+
+  // Debug logging
+  console.log("ContentDisplay props:", { activeContent, contentType, isLoading });
 
   useEffect(() => {
     if (activeContent && contentType) {
@@ -230,6 +236,41 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Parties Content - New Parties Component
+  const renderPartiesContent = () => (
+    <div className="content-parties">
+      <New_parties />
+    </div>
+  );
+
+  // Customers Content
+  const renderCustomersContent = () => (
+    <div className="content-customers">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>Customer Management</h2>
+        </div>
+        <p className="content-description">Manage your customers efficiently</p>
+      </div>
+      <Customers />
+    </div>
+  );
+
+  // Vendors Content
+  const renderVendorsContent = () => (
+    <div className="content-vendors">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>Vendor Management</h2>
+        </div>
+        <p className="content-description">Manage your vendors efficiently</p>
+      </div>
+      <Vendors />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -282,6 +323,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
 
   // Main render logic
   const renderContent = () => {
+    console.log("🎯 ContentDisplay renderContent - contentType:", contentType, "activeContent:", activeContent);
+    
     if (isLoading || localLoading) {
       return renderLoadingContent();
     }
@@ -295,6 +338,12 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderCategoryContent();
       case "items":
         return renderItemContent();
+      case "parties":
+        return renderPartiesContent();
+      case "customers":
+        return renderCustomersContent();
+      case "vendors":
+        return renderVendorsContent();
       default:
         return renderComingSoonContent();
     }

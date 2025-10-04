@@ -19,7 +19,6 @@ import {
   faUniversity,
   faUsers,
   faTasks,
-  faWifi,
   faCircle,
   faDotCircle,
   faTimes,
@@ -31,6 +30,7 @@ import {
   faInfoCircle,
   faPercent,
   faBuilding,
+  faTachometerAlt,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import "./NewSidebar.css";
@@ -38,25 +38,26 @@ import "./NewSidebar.css";
 // Navigation constants
 const NAVIGATION_CONSTANTS = Object.freeze({
   ACCORDION_SECTIONS: {
-    DAY_BOOK: "dayBook",
+    PARTIES: "parties",
     SALES: "sales",
     PURCHASE_EXPENSE: "purchaseExpense",
     STAFF_MANAGEMENT: "staffManagement",
     INFO: "info",
   },
-  DEFAULT_ACTIVE_SECTIONS: ["dayBook"],
+  // Only one accordion section open at a time (null = none)
+  DEFAULT_ACTIVE_SECTIONS: null,
   CACHE_KEY: "new_sidebar_accordion_state",
 });
 
 // Navigation items configuration - all items from original sidebar
 const NAVIGATION_ITEMS = [
   {
-    id: "dailySummary",
-    label: "Day Book",
-    icon: faBook,
+    id: "dashboard",
+    label: "Dashboard",
+    icon: faTachometerAlt,
     type: "single",
     requiresCompany: false,
-    isActive: false, // Will be redesigned later
+    isActive: true, // ✅ ACTIVE - Dashboard overview
   },
   {
     id: "categories",
@@ -78,9 +79,26 @@ const NAVIGATION_ITEMS = [
     id: "parties",
     label: "Parties",
     icon: faUserFriends,
-    type: "single",
+    type: "accordion",
+    section: "parties",
     requiresCompany: true,
-    isActive: false, // Will be redesigned later
+    isActive: true, // ✅ ACTIVE - New Parties component
+    children: [
+      {
+        id: "customers",
+        label: "Customers",
+        icon: faUsers,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "vendors",
+        label: "Vendors",
+        icon: faBuilding,
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
   },
   {
     id: "sales",
@@ -261,24 +279,11 @@ const NavigationLink = React.memo(
 NavigationLink.displayName = "NavigationLink";
 
 const AccordionItem = React.memo(({ item, isExpanded, onToggle, children, onContentChange, isOpen }) => {
-  const handleHeaderClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Don't allow accordion toggle when sidebar is closed or item is inactive
-    if (!item.isActive || !isOpen) {
-      return;
-    }
-    
-    onToggle(item.section);
-  };
-
   return (
     <div className="new-sidebar-item">
       <Accordion.Item eventKey={item.section} className="new-sidebar-accordion-item">
         <Accordion.Header
           className={`new-sidebar-header ${!item.isActive ? "inactive" : ""}`}
-          onClick={handleHeaderClick}
         >
           <div className="new-sidebar-link-content">
             <FontAwesomeIcon icon={item.icon} className="new-sidebar-icon" />
@@ -315,19 +320,33 @@ const SubMenuItem = React.memo(
         return;
       }
       
-      console.log("🚀 Calling onClick for:", child.id);
-      
-      // Only call onClick for navigation
-      onClick(child.id);
-      
-      // Only call onContentChange for items that should display content in sidebar
-      // GST and company info should navigate, not show content in sidebar
+      // Handle navigation for customers and vendors through routes
+      const routeNavigationItems = ['customers', 'vendors'];
+      const contentDisplayItems = [];
       const navigationItems = ['gst', 'companyBrand'];
-      if (onContentChange && !navigationItems.includes(child.id)) {
-        console.log("📋 Calling onContentChange for:", child.id);
-        onContentChange(child.id, child.label);
+      
+      if (routeNavigationItems.includes(child.id)) {
+        // For customers and vendors, navigate to the specific route
+        console.log("🚀 Route navigation item - navigating to:", child.id);
+        onClick(child.id);
+      } else if (contentDisplayItems.includes(child.id)) {
+        // For pure content display items, only call onContentChange
+        console.log("📋 Content display item - calling onContentChange for:", child.id, child.label);
+        if (onContentChange) {
+          onContentChange(child.id, child.label);
+        }
       } else {
-        console.log("🚫 Skipping onContentChange for navigation item:", child.id);
+        // For other items, call onClick (navigation handler)
+        console.log("🚀 Calling onClick for:", child.id);
+        onClick(child.id);
+        
+        // Also call onContentChange for non-navigation items
+        if (onContentChange && !navigationItems.includes(child.id)) {
+          console.log("📋 Calling onContentChange for:", child.id, child.label);
+          onContentChange(child.id, child.label);
+        } else {
+          console.log("🚫 Skipping onContentChange for navigation item:", child.id);
+        }
       }
       
       // Close sidebar on mobile after navigation
@@ -366,7 +385,6 @@ const NewSidebar = React.memo(
     activePage = "",
     currentCompany = null,
     currentUser = null,
-    isOnline = true,
     companyId = null,
     onContentChange = () => {},
   }) => {
@@ -375,12 +393,17 @@ const NewSidebar = React.memo(
     const sidebarRef = useRef(null);
 
     // State management
-    const [activeKey, setActiveKey] = useState(() =>
-      storage.get(
+    const [activeKey, setActiveKey] = useState(() => {
+      const stored = storage.get(
         NAVIGATION_CONSTANTS.CACHE_KEY,
         NAVIGATION_CONSTANTS.DEFAULT_ACTIVE_SECTIONS
-      )
-    );
+      );
+      // Backwards compatibility: older version stored an array
+      if (Array.isArray(stored)) {
+        return stored[0] || null;
+      }
+      return stored || null;
+    });
     const [navigatingItemId, setNavigatingItemId] = useState(null);
     const [selectedItem, setSelectedItem] = useState(null);
 
@@ -397,13 +420,13 @@ const NewSidebar = React.memo(
     // Toggle handler for accordion
     const handleToggle = useCallback(
       (eventKey) => {
-        const newActiveKey = activeKey.includes(eventKey)
-          ? activeKey.filter((key) => key !== eventKey)
-          : [...activeKey, eventKey];
+        if (eventKey == null) return;
+        // Toggle same section to close, otherwise open the clicked one exclusively
+        const newActiveKey = activeKey === eventKey ? null : eventKey;
         setActiveKey(newActiveKey);
         storage.set(NAVIGATION_CONSTANTS.CACHE_KEY, newActiveKey);
       },
-      []
+      [activeKey]
     );
 
     // Navigation handler - only works for active items
@@ -427,6 +450,13 @@ const NewSidebar = React.memo(
 
         // Handle navigation based on page type
         switch (pageId) {
+          case "dashboard":
+            if (effectiveCompanyId) {
+              navigate(`/companies/${effectiveCompanyId}/dashboard`);
+            } else {
+              navigate("/dashboard");
+            }
+            break;
           case "categories":
             if (effectiveCompanyId) {
               navigate(`/companies/${effectiveCompanyId}/categories`);
@@ -523,6 +553,42 @@ const NewSidebar = React.memo(
               console.error("❌ Navigation error:", error);
             }
             break;
+          case "parties":
+            // Navigate to dedicated parties route
+            console.log(`🎯 Navigating to parties route, effectiveCompanyId:`, effectiveCompanyId);
+            if (effectiveCompanyId) {
+              const fullUrl = `/companies/${effectiveCompanyId}/parties`;
+              console.log(`🎯 Navigating to URL:`, fullUrl);
+              navigate(fullUrl);
+            } else {
+              console.log(`🎯 Navigating to global parties route`);
+              navigate("/parties");
+            }
+            break;
+          case "customers":
+            // Navigate to dedicated customers route
+            console.log(`🎯 Navigating to customers route, effectiveCompanyId:`, effectiveCompanyId);
+            if (effectiveCompanyId) {
+              const fullUrl = `/companies/${effectiveCompanyId}/customers`;
+              console.log(`🎯 Navigating to URL:`, fullUrl);
+              navigate(fullUrl);
+            } else {
+              console.log(`🎯 Navigating to global customers route`);
+              navigate("/customers");
+            }
+            break;
+          case "vendors":
+            // Navigate to dedicated vendors route
+            console.log(`🎯 Navigating to vendors route, effectiveCompanyId:`, effectiveCompanyId);
+            if (effectiveCompanyId) {
+              const fullUrl = `/companies/${effectiveCompanyId}/vendors`;
+              console.log(`🎯 Navigating to URL:`, fullUrl);
+              navigate(fullUrl);
+            } else {
+              console.log(`🎯 Navigating to global vendors route`);
+              navigate("/vendors");
+            }
+            break;
           default:
             // Handle other navigation if needed
             break;
@@ -602,7 +668,7 @@ const NewSidebar = React.memo(
           }
 
           if (item.type === "accordion") {
-            const isExpanded = activeKey.includes(item.section);
+            const isExpanded = activeKey === item.section;
             return (
               <AccordionItem
                 key={item.id}
@@ -682,21 +748,21 @@ const NewSidebar = React.memo(
             <div className="new-sidebar-title">
               <FontAwesomeIcon icon={faHome} className="me-2" />
               <span className="new-sidebar-text">{companyDisplayName}</span>
-              <FontAwesomeIcon
-                icon={isOnline ? faWifi : faExclamationTriangle}
-                className={`status-icon ${isOnline ? "online" : "offline"} ms-auto`}
-              />
             </div>
           </div>
 
           {/* Navigation Items */}
           <Accordion
-            activeKey={activeKey}
+            activeKey={activeKey || undefined}
+            onSelect={handleToggle}
             className="new-sidebar-accordion"
             flush
           >
             {renderedItems}
           </Accordion>
+          
+          {/* Bottom Spacer */}
+          <div className="new-sidebar-spacer"></div>
         </Nav>
       </div>
       </>
@@ -721,7 +787,6 @@ NewSidebar.propTypes = {
     name: PropTypes.string,
     role: PropTypes.string,
   }),
-  isOnline: PropTypes.bool,
   companyId: PropTypes.string,
   onContentChange: PropTypes.func,
 };

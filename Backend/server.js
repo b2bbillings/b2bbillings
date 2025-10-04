@@ -77,6 +77,8 @@ const routeFiles = [
   "contactRoutes", // ✅ NEW: Contact routes for contact management
   "billRoutes", // ✅ NEW: Bill routes for bill management
   "categoryRoutes", // ✅ NEW: Category routes for category management
+  "customerRoutes", // ✅ NEW: Customer routes for customer management
+  "vendorRoutes", // ✅ NEW: Vendor routes for vendor management
 ];
 
 console.log("📂 Loading route files...");
@@ -751,6 +753,20 @@ try {
   console.log("   ✅ /api/categories");
 } catch (error) {
   console.error("   ❌ /api/categories failed:", error.message);
+}
+
+try {
+  app.use("/api/customers", routes.customerRoutes);
+  console.log("   ✅ /api/customers");
+} catch (error) {
+  console.error("   ❌ /api/customers failed:", error.message);
+}
+
+try {
+  app.use("/api/vendors", routes.vendorRoutes);
+  console.log("   ✅ /api/vendors");
+} catch (error) {
+  console.error("   ❌ /api/vendors failed:", error.message);
 }
 
 try {

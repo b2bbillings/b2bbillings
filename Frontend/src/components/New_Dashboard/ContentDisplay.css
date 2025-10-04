@@ -638,3 +638,20 @@
 .content-display::-webkit-scrollbar-thumb:hover {
   background: rgba(102, 126, 234, 0.5);
 }
+
+/* ===== PARTIES CONTENT ===== */
+.content-parties {
+  padding: 0;
+  background: transparent;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure parties component integrates well with dashboard */
+.content-parties > div {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+}

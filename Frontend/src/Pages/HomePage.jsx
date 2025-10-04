@@ -22,6 +22,7 @@ import PropTypes from "prop-types";
 // Import components
 import DayBook from "../components/Home/DayBook";
 import Parties from "../components/Home/Parties";
+import New_parties from "../components/New_Dashboard/New_parties/New_parties";
 import Sales from "../components/Home/Sales";
 import Quotations from "../components/Home/Quotations";
 import Inventory from "../components/Home/Inventory";
@@ -34,6 +35,9 @@ import PurchaseBills from "../components/Home/Purchases/PurchaseBills";
 // Import Info components
 import GSTInfo from "../components/Info/GSTInfo";
 import CompanyBrandInfo from "../components/Info/CompanyBrandInfo";
+
+// Import Category component
+import Category from "../components/Home/Category/Category";
 
 // Import utility components
 import ErrorBoundary from "../components/ErrorBoundary";
@@ -68,7 +72,7 @@ function HomePage({
   const {isOnline, lastChecked} = useOnlineStatus();
 
   // State management
-  const [currentView, setCurrentView] = useState("dailySummary");
+  const [currentView, setCurrentView] = useState("categories");
   const [currentCompany, setCurrentCompany] = useState(null);
   const [isLoadingCompany, setIsLoadingCompany] = useState(false);
   const [companyError, setCompanyError] = useState(null);
@@ -76,6 +80,14 @@ function HomePage({
 
   // Enhanced path to view mapping with production URLs
   const getViewFromPath = useCallback(() => {
+    // Check for query parameter first
+    const urlParams = new URLSearchParams(location.search);
+    const viewParam = urlParams.get('view');
+    if (viewParam) {
+      console.log('🎯 HomePage found view parameter:', viewParam);
+      return viewParam;
+    }
+
     const pathParts = location.pathname.split("/").filter((part) => part);
     const lastPart = pathParts[pathParts.length - 1];
     const secondLastPart = pathParts[pathParts.length - 2];
@@ -92,7 +104,7 @@ function HomePage({
         items: "createItem",
       };
 
-      return addRouteMap[secondLastPart] || "dailySummary";
+      return addRouteMap[secondLastPart] || "categories";
     }
 
     // Handle /edit routes
@@ -108,7 +120,7 @@ function HomePage({
         items: "editItem",
       };
 
-      return editRouteMap[editType] || "dailySummary";
+      return editRouteMap[editType] || "categories";
     }
 
     // Handle info routes (like /info/gst, /info/company-brand)
@@ -118,7 +130,7 @@ function HomePage({
         "company-brand": "companyBrandInfo",
       };
 
-      return infoRouteMap[lastPart] || "dailySummary";
+      return infoRouteMap[lastPart] || "categories";
     }
 
     // Handle company-specific info routes (like /companies/{id}/info/gst)
@@ -129,7 +141,7 @@ function HomePage({
         "company-brand": "companyBrandInfo",
       };
 
-      return infoRouteMap[infoType] || "dailySummary";
+      return infoRouteMap[infoType] || "categories";
     }
 
     // Handle view/detail routes
@@ -146,16 +158,16 @@ function HomePage({
         gst: "gstInfo",
       };
 
-      return detailRouteMap[viewType] || "dailySummary";
+      return detailRouteMap[viewType] || "categories";
     }
 
     // Standard path mapping
     const pathViewMap = {
-      dashboard: "dailySummary",
-      daybook: "dailySummary",
+      dashboard: "categories",
+      daybook: "categories",
       transactions: "transactions",
       "cash-bank": "cashAndBank",
-      parties: "parties",
+      // Removed parties, customers, vendors - they now have dedicated routes
       sales: "invoices",
       quotations: "quotations",
       "sales-orders": "salesOrders",
@@ -180,8 +192,8 @@ function HomePage({
       gst: "gstInfo",
     };
 
-    return pathViewMap[lastPart] || "dailySummary";
-  }, [location.pathname]);
+    return pathViewMap[lastPart] || "categories";
+  }, [location.pathname, location.search]);
 
   // Update view when URL changes
   useEffect(() => {
@@ -189,7 +201,7 @@ function HomePage({
     if (newView !== currentView) {
       setCurrentView(newView);
     }
-  }, [getViewFromPath, currentView]);
+  }, [getViewFromPath, currentView, location]);
 
   // Enhanced company state management
   useEffect(() => {
@@ -261,7 +273,7 @@ function HomePage({
         // Production URL mapping
         const viewPathMap = {
           // Dashboard and core views
-          dailySummary: "dashboard",
+          categories: "categories",
           transactions: "transactions",
           cashAndBank: "cash-bank",
 
@@ -505,10 +517,10 @@ function HomePage({
           </p>
           <button
             className="btn btn-primary"
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/categories")}
           >
             <FontAwesomeIcon icon={faBuilding} className="me-2" />
-            Go to Dashboard
+            Go to Categories
           </button>
         </Container>
       </div>
@@ -605,6 +617,8 @@ function HomePage({
         bankReconciliation: "Bank Reconciliation",
         cashFlow: "Cash Flow",
         parties: "Parties Management",
+        customers: "Customer Management",
+        vendors: "Vendor Management",
       };
 
       return renderNoCompanyState(
@@ -649,16 +663,6 @@ function HomePage({
               transactionService={serviceProps.transactionService}
               bankAccountService={serviceProps.bankAccountService}
               paymentService={serviceProps.paymentService}
-            />
-          );
-
-        // Parties management
-        case "parties":
-          return wrapWithErrorBoundary(
-            <Parties
-              {...commonProps}
-              partyService={serviceProps.partyService}
-              partiesService={serviceProps.partiesService}
             />
           );
 
@@ -1076,6 +1080,15 @@ function HomePage({
             </div>
           );
 
+        // Category Management
+        case "categories":
+          return wrapWithErrorBoundary(
+            <Category
+              {...commonProps}
+              companyService={serviceProps.companyService}
+            />
+          );
+
         // Info components
         case "gstInfo":
           return wrapWithErrorBoundary(
@@ -1090,12 +1103,9 @@ function HomePage({
         // Default fallback
         default:
           return wrapWithErrorBoundary(
-            <DayBook
-              view="dailySummary"
+            <Category
               {...commonProps}
-              transactionService={serviceProps.transactionService}
-              bankAccountService={serviceProps.bankAccountService}
-              paymentService={serviceProps.paymentService}
+              companyService={serviceProps.companyService}
             />
           );
       }

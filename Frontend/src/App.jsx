@@ -35,6 +35,7 @@ import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 import ShopForm from "./components/ShopForm";
 import ProfilePage from "./Pages/ProfilePage";
+import New_parties from "./components/New_Dashboard/New_parties/New_parties";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
@@ -1557,6 +1558,60 @@ function App() {
     );
   };
 
+  // Parties Management Wrappers
+  const PartiesWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 PartiesWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <New_parties
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const CustomersWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 CustomersWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <New_parties
+          initialTab="customers"
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const VendorsWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 VendorsWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <New_parties
+          initialTab="vendors"
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -1996,6 +2051,61 @@ function App() {
               element={
                 <ProtectedRoute>
                   <SalesOrderFormWrapper isEdit={true} />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Parties Management Routes - Must be before catch-all route */}
+            <Route
+              path="/companies/:companyId/parties"
+              element={
+                <ProtectedRoute>
+                  <PartiesWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/customers"
+              element={
+                <ProtectedRoute>
+                  <CustomersWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/vendors"
+              element={
+                <ProtectedRoute>
+                  <VendorsWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/parties"
+              element={
+                <ProtectedRoute>
+                  <PartiesWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/customers"
+              element={
+                <ProtectedRoute>
+                  <CustomersWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/vendors"
+              element={
+                <ProtectedRoute>
+                  <VendorsWrapper />
                 </ProtectedRoute>
               }
             />

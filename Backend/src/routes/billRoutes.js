@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const billController = require('../controllers/billController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { authenticate } = require('../middleware/authMiddleware');
 const { body, param, query } = require('express-validator');
 const validation = require('../middleware/validation');
 
 // Apply auth middleware to all routes
-router.use(authMiddleware);
+router.use(authenticate);
 
 // Validation middleware
 const createBillValidation = [

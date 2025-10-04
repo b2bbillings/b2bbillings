@@ -35,8 +35,8 @@ function Layout({
 
   // ✅ SIMPLIFIED: Path to view mapping
   const pathViewMap = {
-    dashboard: "dailySummary",
-    daybook: "dailySummary",
+    dashboard: "categories",
+    daybook: "categories",
     categories: "categories",
     items: "items", // Add items mapping
     products: "allProducts", // Map products to allProducts
@@ -70,7 +70,7 @@ function Layout({
 
   // ✅ SIMPLIFIED: View to path mapping
   const viewPathMap = {
-    dailySummary: "dashboard",
+    categories: "categories",
     categories: "categories",
     items: "products", // Map items to products path
     transactions: "transactions",
@@ -120,7 +120,7 @@ function Layout({
           "gst": "gstInfo",
           "company-brand": "companyBrandInfo",
         };
-        const resolvedView = infoRouteMap[infoType] || "dailySummary";
+        const resolvedView = infoRouteMap[infoType] || "categories";
         console.log("🎯 Layout Info Route Debug:", {
           pathParts,
           infoIndex,
@@ -167,7 +167,7 @@ function Layout({
     }
 
     const lastPart = pathParts[pathParts.length - 1];
-    return pathViewMap[lastPart] || "dailySummary";
+    return pathViewMap[lastPart] || "categories";
   };
 
   const currentPage = getCurrentViewFromPath();
@@ -246,7 +246,7 @@ function Layout({
             salesOrders: "salesOrders",
             purchaseOrder: "purchaseOrder",
           };
-          targetView = editToListMap[currentView] || "dailySummary";
+          targetView = editToListMap[currentView] || "categories";
         }
 
         const urlPath = viewPathMap[targetView] || "dashboard";
