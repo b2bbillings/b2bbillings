@@ -66,6 +66,7 @@ const NewDashboard = ({
 
   // Content change handler - called when sidebar items are clicked
   const handleContentChange = useCallback((contentId, contentLabel) => {
+    console.log("🎯 NewDashboard handleContentChange called:", { contentId, contentLabel });
     setIsLoading(true);
     setActiveContent(contentLabel);
     setContentType(contentId);

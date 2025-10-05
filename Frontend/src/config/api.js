@@ -11,4 +11,8 @@ const getApiConfig = () => {
   };
 };
 
-export default getApiConfig();
+const apiConfig = getApiConfig();
+
+// Export both the config object and the base URL
+export const API_BASE_URL = apiConfig.baseURL;
+export default apiConfig;

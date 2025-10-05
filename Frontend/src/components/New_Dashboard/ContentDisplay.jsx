@@ -21,6 +21,8 @@ import PropTypes from "prop-types";
 import New_parties from "./New_parties/New_parties";
 import Customers from "./New_parties/Customers/Customers";
 import Vendors from "./New_parties/Vendors/Vendors";
+import Expense from "./Expenses+/Expense";
+import IndirectIncome from "./Expenses+/Indirect_Income/indirectIncome";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -29,6 +31,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
 
   // Debug logging
   console.log("ContentDisplay props:", { activeContent, contentType, isLoading });
+  console.log("🎯 ContentDisplay Debug - contentType:", contentType, "activeContent:", activeContent);
 
   useEffect(() => {
     if (activeContent && contentType) {
@@ -271,6 +274,34 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Expenses Content
+  const renderExpensesContent = () => (
+    <div className="content-expenses">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>Expense Management</h2>
+        </div>
+        <p className="content-description">Manage your business expenses efficiently</p>
+      </div>
+      <Expense />
+    </div>
+  );
+
+  // Indirect Income Content
+  const renderIndirectIncomeContent = () => (
+    <div className="content-indirect-income">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>Indirect Income Management</h2>
+        </div>
+        <p className="content-description">Manage your indirect income sources efficiently</p>
+      </div>
+      <IndirectIncome />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -324,27 +355,49 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
   // Main render logic
   const renderContent = () => {
     console.log("🎯 ContentDisplay renderContent - contentType:", contentType, "activeContent:", activeContent);
+    console.log("🎯 ContentDisplay renderContent - full debug:", { 
+      contentType, 
+      activeContent, 
+      isLoading, 
+      localLoading,
+      hasContent: !!(activeContent && contentType)
+    });
     
     if (isLoading || localLoading) {
+      console.log("🎯 ContentDisplay - showing loading content");
       return renderLoadingContent();
     }
 
     if (!activeContent || !contentType) {
+      console.log("🎯 ContentDisplay - no content, showing welcome");
       return renderWelcomeContent();
     }
 
+    console.log("🎯 ContentDisplay - switching on contentType:", contentType);
     switch (contentType) {
       case "categories":
+        console.log("🎯 ContentDisplay - rendering category content");
         return renderCategoryContent();
       case "items":
+        console.log("🎯 ContentDisplay - rendering items content");
         return renderItemContent();
       case "parties":
+        console.log("🎯 ContentDisplay - rendering parties content");
         return renderPartiesContent();
       case "customers":
+        console.log("🎯 ContentDisplay - rendering customers content");
         return renderCustomersContent();
       case "vendors":
+        console.log("🎯 ContentDisplay - rendering vendors content");
         return renderVendorsContent();
+      case "expenseManagement":
+        console.log("🎯 ContentDisplay - rendering expenses content");
+        return renderExpensesContent();
+      case "indirectIncome":
+        console.log("🎯 ContentDisplay - rendering indirect income content");
+        return renderIndirectIncomeContent();
       default:
+        console.log("🎯 ContentDisplay - rendering coming soon content for:", contentType);
         return renderComingSoonContent();
     }
   };

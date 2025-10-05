@@ -31,6 +31,8 @@ import {
   faPercent,
   faBuilding,
   faTachometerAlt,
+  faReceipt,
+  faMoneyBillWave,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import "./NewSidebar.css";
@@ -41,6 +43,7 @@ const NAVIGATION_CONSTANTS = Object.freeze({
     PARTIES: "parties",
     SALES: "sales",
     PURCHASE_EXPENSE: "purchaseExpense",
+    EXPENSES: "expenses",
     STAFF_MANAGEMENT: "staffManagement",
     INFO: "info",
   },
@@ -126,7 +129,7 @@ const NAVIGATION_ITEMS = [
   },
   {
     id: "purchaseExpense",
-    label: "Purchase & Expense",
+    label: "Purchase",
     icon: faShoppingBag,
     type: "accordion",
     section: "purchaseExpense",
@@ -145,6 +148,30 @@ const NAVIGATION_ITEMS = [
         icon: faClipboardList,
         requiresCompany: true,
         isActive: false,
+      },
+    ],
+  },
+  {
+    id: "expenses",
+    label: "Expenses",
+    icon: faReceipt,
+    type: "accordion",
+    section: "expenses",
+    isActive: true, // ✅ ACTIVE - New Expenses management
+    children: [
+      {
+        id: "expenseManagement",
+        label: "Expenses",
+        icon: faMoneyBillWave,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "indirectIncome",
+        label: "Indirect Income",
+        icon: faChartLine,
+        requiresCompany: true,
+        isActive: true,
       },
     ],
   },
@@ -320,10 +347,10 @@ const SubMenuItem = React.memo(
         return;
       }
       
-      // Handle navigation for customers and vendors through routes
-      const routeNavigationItems = ['customers', 'vendors'];
-      const contentDisplayItems = [];
-      const navigationItems = ['gst', 'companyBrand'];
+      // Handle navigation for info items through routes
+      const routeNavigationItems = ['gst', 'companyBrand'];
+      const contentDisplayItems = ['parties', 'customers', 'vendors', 'expenseManagement', 'indirectIncome'];
+      const navigationItems = [];
       
       if (routeNavigationItems.includes(child.id)) {
         // For customers and vendors, navigate to the specific route
@@ -335,17 +362,17 @@ const SubMenuItem = React.memo(
         if (onContentChange) {
           onContentChange(child.id, child.label);
         }
+        // Explicitly return to avoid any further processing
+        return;
       } else {
-        // For other items, call onClick (navigation handler)
+        // For all other items, call both onClick and onContentChange
         console.log("🚀 Calling onClick for:", child.id);
         onClick(child.id);
         
-        // Also call onContentChange for non-navigation items
-        if (onContentChange && !navigationItems.includes(child.id)) {
+        // Also call onContentChange
+        if (onContentChange) {
           console.log("📋 Calling onContentChange for:", child.id, child.label);
           onContentChange(child.id, child.label);
-        } else {
-          console.log("🚫 Skipping onContentChange for navigation item:", child.id);
         }
       }
       
@@ -553,42 +580,10 @@ const NewSidebar = React.memo(
               console.error("❌ Navigation error:", error);
             }
             break;
-          case "parties":
-            // Navigate to dedicated parties route
-            console.log(`🎯 Navigating to parties route, effectiveCompanyId:`, effectiveCompanyId);
-            if (effectiveCompanyId) {
-              const fullUrl = `/companies/${effectiveCompanyId}/parties`;
-              console.log(`🎯 Navigating to URL:`, fullUrl);
-              navigate(fullUrl);
-            } else {
-              console.log(`🎯 Navigating to global parties route`);
-              navigate("/parties");
-            }
-            break;
-          case "customers":
-            // Navigate to dedicated customers route
-            console.log(`🎯 Navigating to customers route, effectiveCompanyId:`, effectiveCompanyId);
-            if (effectiveCompanyId) {
-              const fullUrl = `/companies/${effectiveCompanyId}/customers`;
-              console.log(`🎯 Navigating to URL:`, fullUrl);
-              navigate(fullUrl);
-            } else {
-              console.log(`🎯 Navigating to global customers route`);
-              navigate("/customers");
-            }
-            break;
-          case "vendors":
-            // Navigate to dedicated vendors route
-            console.log(`🎯 Navigating to vendors route, effectiveCompanyId:`, effectiveCompanyId);
-            if (effectiveCompanyId) {
-              const fullUrl = `/companies/${effectiveCompanyId}/vendors`;
-              console.log(`🎯 Navigating to URL:`, fullUrl);
-              navigate(fullUrl);
-            } else {
-              console.log(`🎯 Navigating to global vendors route`);
-              navigate("/vendors");
-            }
-            break;
+
+
+
+
           default:
             // Handle other navigation if needed
             break;

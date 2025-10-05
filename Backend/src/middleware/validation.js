@@ -325,6 +325,151 @@ const validateLogin = [
     handleValidationErrors
 ];
 
+// ✅ NEW: Expense validation rules
+const validateExpense = [
+    body('billName')
+        .trim()
+        .notEmpty()
+        .withMessage('Bill name is required')
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Bill name must be between 1 and 100 characters'),
+    
+    body('amount')
+        .isFloat({ min: 0.01 })
+        .withMessage('Amount must be a positive number greater than 0'),
+    
+    body('category')
+        .trim()
+        .notEmpty()
+        .withMessage('Category is required')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Category must be between 1 and 50 characters'),
+    
+    body('paymentMethod')
+        .trim()
+        .notEmpty()
+        .withMessage('Payment method is required')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Payment method must be between 1 and 50 characters'),
+    
+    body('customPaymentMethod')
+        .optional()
+        .trim()
+        .isLength({ max: 50 })
+        .withMessage('Custom payment method must not exceed 50 characters'),
+    
+    body('expenseDate')
+        .isISO8601()
+        .withMessage('Invalid expense date format (use ISO 8601)')
+        .custom((value) => {
+            const date = new Date(value);
+            const now = new Date();
+            const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+            const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            
+            if (date > oneYearFromNow || date < oneYearAgo) {
+                throw new Error('Expense date must be within one year from today');
+            }
+            return true;
+        }),
+    
+    body('notes')
+        .optional()
+        .trim()
+        .isLength({ max: 500 })
+        .withMessage('Notes must not exceed 500 characters'),
+
+    handleValidationErrors
+];
+
+// ✅ NEW: Indirect Income validation rules
+const validateIndirectIncome = [
+    body('billName')
+        .trim()
+        .notEmpty()
+        .withMessage('Bill name is required')
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Bill name must be between 1 and 100 characters'),
+    
+    body('amount')
+        .isFloat({ min: 0.01 })
+        .withMessage('Amount must be a positive number greater than 0'),
+    
+    body('category')
+        .trim()
+        .notEmpty()
+        .withMessage('Category is required')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Category must be between 1 and 50 characters'),
+    
+    body('paymentMethod')
+        .trim()
+        .notEmpty()
+        .withMessage('Payment method is required')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Payment method must be between 1 and 50 characters'),
+    
+    body('customPaymentMethod')
+        .optional()
+        .trim()
+        .isLength({ max: 50 })
+        .withMessage('Custom payment method must not exceed 50 characters'),
+    
+    body('incomeDate')
+        .isISO8601()
+        .withMessage('Invalid income date format (use ISO 8601)')
+        .custom((value) => {
+            const date = new Date(value);
+            const now = new Date();
+            const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+            const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            
+            if (date > oneYearFromNow || date < oneYearAgo) {
+                throw new Error('Income date must be within one year from today');
+            }
+            return true;
+        }),
+    
+    body('notes')
+        .optional()
+        .trim()
+        .isLength({ max: 500 })
+        .withMessage('Notes must not exceed 500 characters'),
+
+    handleValidationErrors
+];
+
+// ✅ NEW: Category validation rules
+const validateCategory = [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage('Category name is required')
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Category name must be between 1 and 50 characters')
+        .matches(/^[a-zA-Z0-9\s&\-_.]+$/)
+        .withMessage('Category name can only contain letters, numbers, spaces, and basic punctuation'),
+    
+    body('description')
+        .optional()
+        .trim()
+        .isLength({ max: 200 })
+        .withMessage('Description must not exceed 200 characters'),
+    
+    body('color')
+        .optional()
+        .matches(/^#[0-9A-F]{6}$/i)
+        .withMessage('Color must be a valid hex color code (e.g., #FF5733)'),
+    
+    body('icon')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 10 })
+        .withMessage('Icon must be between 1 and 10 characters'),
+
+    handleValidationErrors
+];
+
 module.exports = {
     validateBankAccount,
     validateAccountUpdate,
@@ -332,5 +477,8 @@ module.exports = {
     validateLogin,
     validateCompanyParam, // ✅ NEW: Export company parameter validation
     validateTransactionData, // ✅ NEW: Export transaction validation
+    validateExpense, // ✅ NEW: Export expense validation
+    validateIndirectIncome, // ✅ NEW: Export income validation
+    validateCategory, // ✅ NEW: Export category validation
     handleValidationErrors
 };

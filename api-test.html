@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Category and Income APIs</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        button { margin: 5px; padding: 10px 15px; }
+        input { margin: 5px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>API Test Suite</h1>
+    
+    <div class="test-section">
+        <h2>1. Test Category Creation</h2>
+        <button onclick="testCreateCategory()">Create Test Category</button>
+        <div id="createResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Test Category Fetching</h2>
+        <button onclick="testFetchCategories()">Fetch Categories</button>
+        <div id="fetchResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Test Category Deletion</h2>
+        <input type="text" id="categoryId" placeholder="Enter category ID to delete">
+        <button onclick="testDeleteCategory()">Delete Category</button>
+        <div id="deleteResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Test Indirect Income Fetching</h2>
+        <button onclick="testFetchIndirectIncome()">Fetch Indirect Income</button>
+        <div id="incomeResult" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000';
+        let authToken = '';
+        let companyId = '';
+
+        // Get auth details from user
+        function getAuthDetails() {
+            if (!authToken) {
+                authToken = prompt('Enter your auth token:');
+            }
+            if (!companyId) {
+                companyId = prompt('Enter your company ID:');
+            }
+        }
+
+        function getHeaders() {
+            getAuthDetails();
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`,
+                'x-auth-token': authToken,
+                'x-company-id': companyId
+            };
+        }
+
+        async function testCreateCategory() {
+            try {
+                const response = await fetch(`${API_BASE}/api/expense-income-categories/expenses`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        name: 'Test Category ' + Date.now(),
+                        description: 'Test category created from API test',
+                        color: '#dc3545',
+                        icon: '💸'
+                    })
+                });
+
+                const data = await response.json();
+                document.getElementById('createResult').innerHTML = `
+                    <h4>Response (${response.status}):</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('createResult').innerHTML = `
+                    <h4>Error:</h4>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        async function testFetchCategories() {
+            try {
+                const response = await fetch(`${API_BASE}/api/expense-income-categories/expenses`, {
+                    method: 'GET',
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+                document.getElementById('fetchResult').innerHTML = `
+                    <h4>Response (${response.status}):</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('fetchResult').innerHTML = `
+                    <h4>Error:</h4>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        async function testDeleteCategory() {
+            try {
+                const categoryId = document.getElementById('categoryId').value;
+                if (!categoryId) {
+                    alert('Please enter a category ID');
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE}/api/expense-income-categories/expenses/${categoryId}`, {
+                    method: 'DELETE',
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+                document.getElementById('deleteResult').innerHTML = `
+                    <h4>Response (${response.status}):</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('deleteResult').innerHTML = `
+                    <h4>Error:</h4>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        async function testFetchIndirectIncome() {
+            try {
+                const response = await fetch(`${API_BASE}/api/indirect-income`, {
+                    method: 'GET',
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+                document.getElementById('incomeResult').innerHTML = `
+                    <h4>Response (${response.status}):</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('incomeResult').innerHTML = `
+                    <h4>Error:</h4>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

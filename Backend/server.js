@@ -79,6 +79,9 @@ const routeFiles = [
   "categoryRoutes", // ✅ NEW: Category routes for category management
   "customerRoutes", // ✅ NEW: Customer routes for customer management
   "vendorRoutes", // ✅ NEW: Vendor routes for vendor management
+  "expenseRoutes", // ✅ NEW: Expense routes for expense management
+  "indirectIncomeRoutes", // ✅ NEW: Indirect income routes for income management
+  "expenseIncomeCategoryRoutes", // ✅ NEW: Category routes for expense/income categories
 ];
 
 console.log("📂 Loading route files...");
@@ -767,6 +770,27 @@ try {
   console.log("   ✅ /api/vendors");
 } catch (error) {
   console.error("   ❌ /api/vendors failed:", error.message);
+}
+
+try {
+  app.use("/api/expenses", routes.expenseRoutes);
+  console.log("   ✅ /api/expenses");
+} catch (error) {
+  console.error("   ❌ /api/expenses failed:", error.message);
+}
+
+try {
+  app.use("/api/indirect-income", routes.indirectIncomeRoutes);
+  console.log("   ✅ /api/indirect-income");
+} catch (error) {
+  console.error("   ❌ /api/indirect-income failed:", error.message);
+}
+
+try {
+  app.use("/api/expense-income-categories", routes.expenseIncomeCategoryRoutes);
+  console.log("   ✅ /api/expense-income-categories");
+} catch (error) {
+  console.error("   ❌ /api/expense-income-categories failed:", error.message);
 }
 
 try {

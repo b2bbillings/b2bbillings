@@ -36,6 +36,8 @@ import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 import ShopForm from "./components/ShopForm";
 import ProfilePage from "./Pages/ProfilePage";
 import New_parties from "./components/New_Dashboard/New_parties/New_parties";
+import Expense from "./components/New_Dashboard/Expenses+/Expense";
+import IndirectIncome from "./components/New_Dashboard/Expenses+/Indirect_Income/indirectIncome";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
@@ -1612,6 +1614,40 @@ function App() {
     );
   };
 
+  const ExpenseWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 ExpenseWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <Expense
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const IndirectIncomeWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 IndirectIncomeWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <IndirectIncome
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -2084,6 +2120,24 @@ function App() {
             />
 
             <Route
+              path="/companies/:companyId/expenses"
+              element={
+                <ProtectedRoute>
+                  <ExpenseWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/indirect-income"
+              element={
+                <ProtectedRoute>
+                  <IndirectIncomeWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/parties"
               element={
                 <ProtectedRoute>
@@ -2106,6 +2160,24 @@ function App() {
               element={
                 <ProtectedRoute>
                   <VendorsWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/expenses"
+              element={
+                <ProtectedRoute>
+                  <ExpenseWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/indirect-income"
+              element={
+                <ProtectedRoute>
+                  <IndirectIncomeWrapper />
                 </ProtectedRoute>
               }
             />
