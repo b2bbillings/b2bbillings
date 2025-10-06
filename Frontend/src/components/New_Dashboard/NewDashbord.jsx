@@ -12,15 +12,6 @@ import NewSidebar from "./NewSidebar";
 import ContentDisplay from "./ContentDisplay";
 import "./NewDashboard.css";
 
-/**
- * NewDashboard - Main dashboard component with sidebar and content area
- * Features:
- * - Responsive design
- * - Sidebar toggle
- * - Content display based on sidebar selection
- * - Modern gradient background
- * - Full screen mode
- */
 const NewDashboard = ({
   currentCompany = null,
   currentUser = null,
@@ -212,6 +203,7 @@ const NewDashboard = ({
             currentCompany={currentCompany}
             currentUser={currentUser}
             isLoading={isLoading}
+            addToast={addToast}
           />
         </div>
       </div>

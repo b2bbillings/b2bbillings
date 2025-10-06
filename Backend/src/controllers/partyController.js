@@ -2286,6 +2286,381 @@ const partyController = {
       });
     }
   },
+  // Get parties for payment forms (customers and vendors)
+  async getPartiesForPayment(req, res) {
+    try {
+      const { companyId } = req.params;
+      const { search = '', type = 'all', limit = 100 } = req.query;
+
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid company ID is required'
+        });
+      }
+
+      let parties = [];
+      const searchQuery = {
+        companyId: new mongoose.Types.ObjectId(companyId),
+        ...(search && {
+          $or: [
+            { name: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { phoneNumber: { $regex: search, $options: 'i' } },
+            { companyName: { $regex: search, $options: 'i' } }
+          ]
+        })
+      };
+
+      // Get parties based on type filter
+      if (type === 'all' || type === 'customer') {
+        const customers = await Party.find({
+          ...searchQuery,
+          partyType: 'customer'
+        })
+        .select('name email phoneNumber companyName gstNumber partyType openingBalance')
+        .limit(parseInt(limit) / (type === 'all' ? 2 : 1))
+        .lean();
+
+        parties = parties.concat(
+          customers.map(customer => ({
+            ...customer,
+            label: customer.name,
+            value: customer._id,
+            type: 'customer',
+            partyType: 'customer',
+            displayName: customer.companyName || customer.name,
+            contactInfo: customer.email || customer.phoneNumber
+          }))
+        );
+      }
+
+      if (type === 'all' || type === 'vendor') {
+        const vendors = await Party.find({
+          ...searchQuery,
+          partyType: 'vendor'
+        })
+        .select('name email phoneNumber companyName gstNumber partyType openingBalance')
+        .limit(parseInt(limit) / (type === 'all' ? 2 : 1))
+        .lean();
+
+        parties = parties.concat(
+          vendors.map(vendor => ({
+            ...vendor,
+            label: vendor.name,
+            value: vendor._id,
+            type: 'vendor',
+            partyType: 'vendor',
+            displayName: vendor.companyName || vendor.name,
+            contactInfo: vendor.email || vendor.phoneNumber
+          }))
+        );
+      }
+
+      // Also check Customer and Vendor collections for compatibility
+      try {
+        const Customer = require('../models/Customer');
+        const Vendor = require('../models/Vendor');
+
+        if (type === 'all' || type === 'customer') {
+          const customers = await Customer.find({
+            companyId: new mongoose.Types.ObjectId(companyId),
+            ...(search && {
+              $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } }
+              ]
+            })
+          })
+          .select('name email phone address gstNumber')
+          .limit(25)
+          .lean();
+
+          parties = parties.concat(
+            customers.map(customer => ({
+              ...customer,
+              label: customer.name,
+              value: customer._id,
+              type: 'customer',
+              partyType: 'customer',
+              displayName: customer.name,
+              contactInfo: customer.email || customer.phone,
+              phoneNumber: customer.phone
+            }))
+          );
+        }
+
+        if (type === 'all' || type === 'vendor') {
+          const vendors = await Vendor.find({
+            companyId: new mongoose.Types.ObjectId(companyId),
+            ...(search && {
+              $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } }
+              ]
+            })
+          })
+          .select('name email phone address gstNumber')
+          .limit(25)
+          .lean();
+
+          parties = parties.concat(
+            vendors.map(vendor => ({
+              ...vendor,
+              label: vendor.name,
+              value: vendor._id,
+              type: 'vendor',
+              partyType: 'vendor',
+              displayName: vendor.name,
+              contactInfo: vendor.email || vendor.phone,
+              phoneNumber: vendor.phone
+            }))
+          );
+        }
+      } catch (error) {
+        // Customer/Vendor models might not exist, continue with Party model only
+        logger.warn('Customer/Vendor models not available, using Party model only');
+      }
+
+      // Remove duplicates based on _id
+      const uniqueParties = parties.filter((party, index, self) => 
+        index === self.findIndex(p => p._id.toString() === party._id.toString())
+      );
+
+      // Sort by name
+      uniqueParties.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Limit results
+      const limitedParties = uniqueParties.slice(0, parseInt(limit));
+
+      logger.info(`Fetched ${limitedParties.length} parties for payment forms for company ${companyId}`);
+
+      res.json({
+        success: true,
+        data: limitedParties,
+        count: limitedParties.length,
+        total: uniqueParties.length,
+        filters: { search, type, limit }
+      });
+
+    } catch (error) {
+      logger.error('Error fetching parties for payment:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch parties for payment',
+        error: error.message
+      });
+    }
+  },
+
+  // Search parties with enhanced filtering for payment forms
+  async searchPartiesForPayment(req, res) {
+    try {
+      const { companyId } = req.params;
+      const { q: searchTerm, type, excludeIds } = req.query;
+
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid company ID is required'
+        });
+      }
+
+      let searchQuery = {
+        companyId: new mongoose.Types.ObjectId(companyId)
+      };
+
+      // Add search term
+      if (searchTerm && searchTerm.trim()) {
+        searchQuery.$or = [
+          { name: { $regex: searchTerm.trim(), $options: 'i' } },
+          { email: { $regex: searchTerm.trim(), $options: 'i' } },
+          { phoneNumber: { $regex: searchTerm.trim(), $options: 'i' } },
+          { companyName: { $regex: searchTerm.trim(), $options: 'i' } },
+          { gstNumber: { $regex: searchTerm.trim(), $options: 'i' } }
+        ];
+      }
+
+      // Add type filter
+      if (type && ['customer', 'vendor'].includes(type)) {
+        searchQuery.partyType = type;
+      }
+
+      // Exclude specific IDs
+      if (excludeIds) {
+        const idsToExclude = excludeIds.split(',').filter(id => mongoose.Types.ObjectId.isValid(id));
+        if (idsToExclude.length > 0) {
+          searchQuery._id = { $nin: idsToExclude.map(id => new mongoose.Types.ObjectId(id)) };
+        }
+      }
+
+      const parties = await Party.find(searchQuery)
+        .select('name email phoneNumber companyName gstNumber partyType openingBalance')
+        .limit(50)
+        .sort({ name: 1 })
+        .lean();
+
+      const formattedParties = parties.map(party => ({
+        ...party,
+        label: party.name,
+        value: party._id,
+        displayName: party.companyName || party.name,
+        contactInfo: party.email || party.phoneNumber,
+        subtitle: `${party.partyType.charAt(0).toUpperCase() + party.partyType.slice(1)} • ${party.contactInfo || 'No contact'}`
+      }));
+
+      res.json({
+        success: true,
+        data: formattedParties,
+        count: formattedParties.length,
+        searchTerm,
+        type
+      });
+
+    } catch (error) {
+      logger.error('Error searching parties for payment:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to search parties',
+        error: error.message
+      });
+    }
+  },
+
+  // Get party details for payment forms
+  async getPartyDetailsForPayment(req, res) {
+    try {
+      const { companyId, partyId } = req.params;
+
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid company ID is required'
+        });
+      }
+
+      if (!partyId || !mongoose.Types.ObjectId.isValid(partyId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid party ID is required'
+        });
+      }
+
+      let party = await Party.findOne({
+        _id: new mongoose.Types.ObjectId(partyId),
+        companyId: new mongoose.Types.ObjectId(companyId)
+      })
+      .select('name email phoneNumber companyName gstNumber partyType openingBalance creditLimit')
+      .lean();
+
+      // If not found in Party collection, try Customer/Vendor collections
+      if (!party) {
+        try {
+          const Customer = require('../models/Customer');
+          const Vendor = require('../models/Vendor');
+
+          party = await Customer.findOne({
+            _id: new mongoose.Types.ObjectId(partyId),
+            companyId: new mongoose.Types.ObjectId(companyId)
+          })
+          .select('name email phone address gstNumber')
+          .lean();
+
+          if (party) {
+            party.partyType = 'customer';
+            party.phoneNumber = party.phone;
+          } else {
+            party = await Vendor.findOne({
+              _id: new mongoose.Types.ObjectId(partyId),
+              companyId: new mongoose.Types.ObjectId(companyId)
+            })
+            .select('name email phone address gstNumber')
+            .lean();
+
+            if (party) {
+              party.partyType = 'vendor';
+              party.phoneNumber = party.phone;
+            }
+          }
+        } catch (error) {
+          // Customer/Vendor models might not exist
+        }
+      }
+
+      if (!party) {
+        return res.status(404).json({
+          success: false,
+          message: 'Party not found'
+        });
+      }
+
+      // Get payment history summary for this party
+      const Payment = require('../models/Payment');
+      const paymentSummary = await Payment.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            partyId: partyId,
+            status: { $ne: 'cancelled' }
+          }
+        },
+        {
+          $group: {
+            _id: '$type',
+            totalAmount: { $sum: '$amount' },
+            count: { $sum: 1 },
+            lastPaymentDate: { $max: '$paymentDate' }
+          }
+        }
+      ]);
+
+      const summary = {
+        totalPaymentIn: 0,
+        totalPaymentOut: 0,
+        countPaymentIn: 0,
+        countPaymentOut: 0,
+        lastPaymentInDate: null,
+        lastPaymentOutDate: null,
+        netAmount: 0
+      };
+
+      paymentSummary.forEach(item => {
+        if (item._id === 'payment_in') {
+          summary.totalPaymentIn = item.totalAmount;
+          summary.countPaymentIn = item.count;
+          summary.lastPaymentInDate = item.lastPaymentDate;
+        } else if (item._id === 'payment_out') {
+          summary.totalPaymentOut = item.totalAmount;
+          summary.countPaymentOut = item.count;
+          summary.lastPaymentOutDate = item.lastPaymentDate;
+        }
+      });
+
+      summary.netAmount = summary.totalPaymentIn - summary.totalPaymentOut;
+
+      res.json({
+        success: true,
+        data: {
+          ...party,
+          label: party.name,
+          value: party._id,
+          displayName: party.companyName || party.name,
+          contactInfo: party.email || party.phoneNumber,
+          paymentSummary: summary
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error fetching party details for payment:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch party details',
+        error: error.message
+      });
+    }
+  }
 };
 
 module.exports = partyController;

@@ -1,7 +1,7 @@
 const express = require("express");
 const {body, param, query} = require("express-validator");
 const partyController = require("../controllers/partyController");
-const validation = require("../middleware/validation");
+const {handleValidationErrors} = require("../middleware/validation");
 const {authenticate, optionalAuth} = require("../middleware/authMiddleware");
 const multer = require("multer");
 const path = require("path");
@@ -1115,5 +1115,80 @@ router.get(
 );
 
 console.log("🔥 Party routes file loaded with profile image endpoints!");
+
+// Payment-related party routes
+router.get(
+  "/companies/:companyId/parties/for-payment",
+  [
+    param("companyId").isMongoId().withMessage("Invalid company ID"),
+    query("search").optional().isString().withMessage("Search must be a string"),
+    query("type").optional().isIn(['customer', 'vendor', 'all']).withMessage("Type must be customer, vendor, or all"),
+    query("limit").optional().isInt({ min: 1, max: 200 }).withMessage("Limit must be between 1 and 200")
+  ],
+  handleValidationErrors,
+  partyController.getPartiesForPayment
+);
+
+router.get(
+  "/companies/:companyId/parties/search-for-payment",
+  [
+    param("companyId").isMongoId().withMessage("Invalid company ID"),
+    query("q").optional().isString().withMessage("Search query must be a string"),
+    query("type").optional().isIn(['customer', 'vendor']).withMessage("Type must be customer or vendor"),
+    query("excludeIds").optional().isString().withMessage("Exclude IDs must be a string")
+  ],
+  handleValidationErrors,
+  partyController.searchPartiesForPayment
+);
+
+router.get(
+  "/companies/:companyId/parties/:partyId/payment-details",
+  [
+    param("companyId").isMongoId().withMessage("Invalid company ID"),
+    param("partyId").isMongoId().withMessage("Invalid party ID")
+  ],
+  handleValidationErrors,
+  partyController.getPartyDetailsForPayment
+);
+
+// Simple party search without company context (fallback to user's first company)
+router.get(
+  "/parties/for-payment",
+  [
+    query("search").optional().isString().withMessage("Search must be a string"),
+    query("type").optional().isIn(['customer', 'vendor', 'all']).withMessage("Type must be customer, vendor, or all"),
+    query("limit").optional().isInt({ min: 1, max: 200 }).withMessage("Limit must be between 1 and 200")
+  ],
+  handleValidationErrors,
+  async (req, res) => {
+    try {
+      // Get user's first company as fallback
+      const Company = require('../models/Company');
+      const userCompany = await Company.findOne({ 
+        $or: [
+          { createdBy: req.user?.id },
+          { userId: req.user?.id },
+          { 'users': req.user?.id }
+        ]
+      });
+      
+      if (!userCompany) {
+        return res.status(400).json({
+          success: false,
+          message: 'No company found for user. Please select a company first.'
+        });
+      }
+      
+      req.params.companyId = userCompany._id;
+      return partyController.getPartiesForPayment(req, res);
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch parties',
+        error: error.message
+      });
+    }
+  }
+);
 
 module.exports = router;

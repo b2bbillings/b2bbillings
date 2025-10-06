@@ -35,6 +35,8 @@ import EditPurchaseBill from "./components/Home/Purchases/EditPurchaseBill";
 import PurchaseOrderForm from "./components/Home/Purchases/PurchaseOrderForm";
 import ShopForm from "./components/ShopForm";
 import ProfilePage from "./Pages/ProfilePage";
+import PaymentInPage from "./Pages/PaymentInPage";
+import PaymentOutPage from "./Pages/PaymentOutPage";
 import New_parties from "./components/New_Dashboard/New_parties/New_parties";
 import Expense from "./components/New_Dashboard/Expenses+/Expense";
 import IndirectIncome from "./components/New_Dashboard/Expenses+/Indirect_Income/indirectIncome";
@@ -746,8 +748,8 @@ function App() {
     const routeMap = {
       dailySummary: `/companies/${companyId}/daybook`,
       transactions: `/companies/${companyId}/transactions`,
-      paymentIn: `/companies/${companyId}/daybook`,
-      paymentOut: `/companies/${companyId}/daybook`,
+      paymentIn: `/companies/${companyId}/payment-in`,
+      paymentOut: `/companies/${companyId}/payment-out`,
       createInvoice: `/companies/${companyId}/sales/add`,
       createPurchaseOrder: `/companies/${companyId}/purchase-orders/add`,
       createQuotation: `/companies/${companyId}/quotations/add`,
@@ -769,6 +771,21 @@ function App() {
     };
 
     const targetRoute = routeMap[page];
+    if (targetRoute) {
+      window.location.href = targetRoute;
+    } else {
+      showToast("Feature coming soon!", "info");
+    }
+  };
+
+  // Simple navigation for routes without company context
+  const handleSimpleNavigation = (page) => {
+    const simpleRouteMap = {
+      paymentIn: '/payment-in',
+      paymentOut: '/payment-out',
+    };
+
+    const targetRoute = simpleRouteMap[page];
     if (targetRoute) {
       window.location.href = targetRoute;
     } else {
@@ -1648,6 +1665,77 @@ function App() {
     );
   };
 
+  const PaymentInWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 PaymentInWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <PaymentInPage
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const PaymentOutWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 PaymentOutWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <PaymentOutPage
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  // Simple Payment Wrappers without company requirements
+  const SimplePaymentInWrapper = () => {
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    return (
+      <ProtectedRoute>
+        <PaymentInPage
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={null}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </ProtectedRoute>
+    );
+  };
+
+  const SimplePaymentOutWrapper = () => {
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    return (
+      <ProtectedRoute>
+        <PaymentOutPage
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={null}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </ProtectedRoute>
+    );
+  };
+
   const CommunityPageWrapper = () => {
     const {companyId} = useParams();
 
@@ -2138,6 +2226,24 @@ function App() {
             />
 
             <Route
+              path="/companies/:companyId/payment-in"
+              element={
+                <ProtectedRoute>
+                  <PaymentInWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/payment-out"
+              element={
+                <ProtectedRoute>
+                  <PaymentOutWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/parties"
               element={
                 <ProtectedRoute>
@@ -2180,6 +2286,17 @@ function App() {
                   <IndirectIncomeWrapper />
                 </ProtectedRoute>
               }
+            />
+
+            {/* Simple Payment Routes without company context */}
+            <Route
+              path="/payment-in"
+              element={<SimplePaymentInWrapper />}
+            />
+
+            <Route
+              path="/payment-out"
+              element={<SimplePaymentOutWrapper />}
             />
 
             <Route

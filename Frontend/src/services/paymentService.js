@@ -1748,6 +1748,366 @@ class PaymentService {
         return permissions;
     }
 
+    // Get parties for payment forms (customers and vendors)
+    async getPartiesForPayment(companyId = null, searchTerm = '', type = 'all') {
+        try {
+            const queryParams = new URLSearchParams();
+            if (searchTerm) queryParams.append('search', searchTerm);
+            if (type && type !== 'all') queryParams.append('type', type);
+            queryParams.append('limit', '100');
+
+            let endpoint;
+            if (companyId) {
+                endpoint = `/companies/${companyId}/parties/for-payment?${queryParams}`;
+            } else {
+                endpoint = `/parties/for-payment?${queryParams}`;
+            }
+
+            const response = await this.apiCall(endpoint);
+            
+            return {
+                success: true,
+                data: response.data || []
+            };
+        } catch (error) {
+            console.error('Error fetching parties for payment:', error);
+            
+            // Fallback to customers and vendors endpoints
+            try {
+                const customers = await this.apiCall(companyId ? `/companies/${companyId}/customers` : '/customers');
+                const vendors = await this.apiCall(companyId ? `/companies/${companyId}/vendors` : '/vendors');
+                
+                let parties = [];
+                if (customers.data) {
+                    parties = parties.concat(customers.data.map(c => ({
+                        ...c,
+                        type: 'customer',
+                        displayName: c.name || c.companyName,
+                        balance: c.balance || 0
+                    })));
+                }
+                if (vendors.data) {
+                    parties = parties.concat(vendors.data.map(v => ({
+                        ...v,
+                        type: 'vendor',
+                        displayName: v.name || v.companyName,
+                        balance: v.balance || 0
+                    })));
+                }
+
+                // Filter by search term
+                if (searchTerm) {
+                    parties = parties.filter(p => 
+                        p.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        p.phone?.includes(searchTerm)
+                    );
+                }
+
+                // Filter by type
+                if (type && type !== 'all') {
+                    parties = parties.filter(p => p.type === type);
+                }
+
+                return {
+                    success: true,
+                    data: parties.slice(0, 100)
+                };
+            } catch (fallbackError) {
+                return {
+                    success: false,
+                    message: 'Failed to fetch parties for payment',
+                    data: [],
+                    error: error.message
+                };
+            }
+        }
+    }
+
+    // Search parties for payment with enhanced filtering
+    async searchPartiesForPayment(companyId, searchTerm, type = null) {
+        try {
+            const queryParams = new URLSearchParams();
+            if (searchTerm) queryParams.append('q', searchTerm);
+            if (type) queryParams.append('type', type);
+
+            const response = await this.apiCall(`/companies/${companyId}/parties/search-for-payment?${queryParams}`);
+            return {
+                success: true,
+                data: response.data || []
+            };
+        } catch (error) {
+            console.error('Error searching parties:', error);
+            
+            // Fallback to general party search
+            return await this.getPartiesForPayment(companyId, searchTerm, type);
+        }
+    }
+
+    // Get party details for payment with payment history
+    async getPartyDetailsForPayment(companyId, partyId) {
+        try {
+            const response = await this.apiCall(`/companies/${companyId}/parties/${partyId}/payment-details`);
+            return {
+                success: true,
+                data: response.data
+            };
+        } catch (error) {
+            console.error('Error fetching party details:', error);
+            return {
+                success: false,
+                message: 'Failed to fetch party details',
+                error: error.message
+            };
+        }
+    }
+
+    // Get bank accounts for payment forms
+    async getBankAccountsForPayment(companyId) {
+        try {
+            const response = await this.apiCall(`/companies/${companyId}/bank-accounts-for-payment`);
+            return {
+                success: true,
+                data: response.data || []
+            };
+        } catch (error) {
+            console.error('Error fetching bank accounts:', error);
+            
+            // Fallback to regular bank accounts endpoint
+            try {
+                const bankAccounts = await this.apiCall(`/companies/${companyId}/bank-accounts`);
+                return {
+                    success: true,
+                    data: bankAccounts.data || []
+                };
+            } catch (fallbackError) {
+                return {
+                    success: false,
+                    message: 'Failed to fetch bank accounts',
+                    data: [],
+                    error: error.message
+                };
+            }
+        }
+    }
+
+    // Get available payment methods
+    async getPaymentMethods() {
+        try {
+            const response = await this.apiCall('/payment-methods');
+            return {
+                success: true,
+                data: response.data || this.getDefaultPaymentMethods()
+            };
+        } catch (error) {
+            console.error('Error fetching payment methods:', error);
+            return {
+                success: true,
+                data: this.getDefaultPaymentMethods()
+            };
+        }
+    }
+
+    // Get default payment methods (fallback)
+    getDefaultPaymentMethods() {
+        return [
+            { value: 'cash', label: 'Cash', icon: 'fas fa-money-bill-wave' },
+            { value: 'upi', label: 'UPI', icon: 'fas fa-mobile-alt' },
+            { value: 'bank_transfer', label: 'Bank Transfer', icon: 'fas fa-university' },
+            { value: 'credit_card', label: 'Credit Card', icon: 'fas fa-credit-card' },
+            { value: 'debit_card', label: 'Debit Card', icon: 'fas fa-credit-card' },
+            { value: 'cheque', label: 'Cheque', icon: 'fas fa-file-invoice' },
+            { value: 'online_banking', label: 'Online Banking', icon: 'fas fa-laptop' },
+            { value: 'wallet', label: 'Digital Wallet', icon: 'fas fa-wallet' },
+            { value: 'other', label: 'Other', icon: 'fas fa-ellipsis-h' }
+        ];
+    }
+
+    // Create payment with company context (enhanced)
+    async createPaymentWithCompany(companyId, paymentData) {
+        try {
+            // Validate payment data
+            const validation = this.validatePaymentData(paymentData);
+            if (!validation.isValid) {
+                return {
+                    success: false,
+                    message: 'Validation failed: ' + validation.errors.join(', '),
+                    errors: validation.errors
+                };
+            }
+
+            const endpoint = paymentData.paymentType === 'payment_in' 
+                ? `/companies/${companyId}/payment-in`
+                : `/companies/${companyId}/payment-out`;
+                
+            const response = await this.apiCall(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(paymentData)
+            });
+
+            return {
+                success: true,
+                data: response.data,
+                message: response.message || 'Payment created successfully'
+            };
+        } catch (error) {
+            console.error('Error creating payment:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to create payment',
+                error: error.message
+            };
+        }
+    }
+
+    // Create simple payment without company context
+    async createSimplePayment(paymentData) {
+        try {
+            // Validate payment data
+            const validation = this.validatePaymentData(paymentData);
+            if (!validation.isValid) {
+                return {
+                    success: false,
+                    message: 'Validation failed: ' + validation.errors.join(', '),
+                    errors: validation.errors
+                };
+            }
+
+            const endpoint = paymentData.paymentType === 'payment_in' 
+                ? '/payment-in'
+                : '/payment-out';
+                
+            const response = await this.apiCall(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(paymentData)
+            });
+
+            return {
+                success: true,
+                data: response.data,
+                message: response.message || 'Payment created successfully'
+            };
+        } catch (error) {
+            console.error('Error creating simple payment:', error);
+            return {
+                success: false,
+                message: error.message || 'Failed to create payment',
+                error: error.message
+            };
+        }
+    }
+
+    // Enhanced payment data validation
+    validatePaymentData(paymentData) {
+        const errors = [];
+
+        if (!paymentData.partyId) {
+            errors.push('Party selection is required');
+        }
+
+        if (!paymentData.partyName) {
+            errors.push('Party name is required');
+        }
+
+        if (!paymentData.amount || isNaN(paymentData.amount) || paymentData.amount <= 0) {
+            errors.push('Valid amount greater than 0 is required');
+        }
+
+        if (!paymentData.paymentMethod) {
+            errors.push('Payment method is required');
+        }
+
+        if (!paymentData.paymentDate) {
+            errors.push('Payment date is required');
+        }
+
+        if (!paymentData.paymentType || !['payment_in', 'payment_out'].includes(paymentData.paymentType)) {
+            errors.push('Valid payment type is required');
+        }
+
+        // Validate payment method specific fields
+        if (paymentData.paymentMethod === 'bank_transfer' && !paymentData.bankAccountId) {
+            errors.push('Bank account is required for bank transfers');
+        }
+
+        if (paymentData.paymentMethod === 'cheque') {
+            if (!paymentData.paymentDetails?.chequeNumber) {
+                errors.push('Cheque number is required for cheque payments');
+            }
+            if (!paymentData.paymentDetails?.chequeDate) {
+                errors.push('Cheque date is required for cheque payments');
+            }
+        }
+
+        if (paymentData.paymentMethod === 'upi' && !paymentData.paymentDetails?.upiId) {
+            errors.push('UPI ID is required for UPI payments');
+        }
+
+        return {
+            isValid: errors.length === 0,
+            errors
+        };
+    }
+
+    // Enhanced amount formatting
+    formatAmount(amount, currency = 'INR') {
+        if (!amount || isNaN(amount)) return '₹0.00';
+        
+        return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: currency,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
+
+    // Enhanced date formatting
+    formatDate(date) {
+        if (!date) return '';
+        
+        return new Date(date).toLocaleDateString('en-IN', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    // Format datetime for display
+    formatDateTime(date) {
+        if (!date) return '';
+        
+        return new Date(date).toLocaleString('en-IN', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+
+    // Get payment method display info
+    getPaymentMethodInfo(method) {
+        const methods = this.getDefaultPaymentMethods();
+        return methods.find(m => m.value === method) || { 
+            value: method, 
+            label: method.charAt(0).toUpperCase() + method.slice(1), 
+            icon: 'fas fa-ellipsis-h' 
+        };
+    }
+
+    // Generate payment summary text
+    generatePaymentSummary(payment) {
+        if (!payment) return '';
+        
+        const amount = this.formatAmount(payment.amount);
+        const date = this.formatDate(payment.paymentDate);
+        const method = this.getPaymentMethodInfo(payment.paymentMethod).label;
+        const type = payment.type === 'payment_in' ? 'Payment In' : 'Payment Out';
+        
+        return `${type} of ${amount} via ${method} on ${date} for ${payment.partyName}`;
+    }
+
 }
 
 const paymentService = new PaymentService();

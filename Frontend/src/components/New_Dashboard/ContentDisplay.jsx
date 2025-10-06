@@ -16,6 +16,9 @@ import {
   faEdit,
   faTrash,
   faSearch,
+  faMoneyBillWave,
+  faArrowDown,
+  faArrowUp,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import New_parties from "./New_parties/New_parties";
@@ -23,10 +26,12 @@ import Customers from "./New_parties/Customers/Customers";
 import Vendors from "./New_parties/Vendors/Vendors";
 import Expense from "./Expenses+/Expense";
 import IndirectIncome from "./Expenses+/Indirect_Income/indirectIncome";
+import PaymentIn from "./Transactions/PaymentIn";
+import PaymentOut from "./Transactions/PaymentOut";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
-const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUser, isLoading }) => {
+const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUser, isLoading, addToast }) => {
   const [localLoading, setLocalLoading] = useState(false);
 
   // Debug logging
@@ -302,6 +307,42 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Payment In Content
+  const renderPaymentInContent = () => (
+    <div className="content-payment-in">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowDown} className="me-2" />
+          <h2>Payment In</h2>
+        </div>
+        <p className="content-description">Record incoming payments from customers and vendors</p>
+      </div>
+      <PaymentIn 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
+    </div>
+  );
+
+  // Payment Out Content
+  const renderPaymentOutContent = () => (
+    <div className="content-payment-out">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowUp} className="me-2" />
+          <h2>Payment Out</h2>
+        </div>
+        <p className="content-description">Record outgoing payments to customers and vendors</p>
+      </div>
+      <PaymentOut 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -396,6 +437,12 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       case "indirectIncome":
         console.log("🎯 ContentDisplay - rendering indirect income content");
         return renderIndirectIncomeContent();
+      case "paymentIn":
+        console.log("🎯 ContentDisplay - rendering payment in content");
+        return renderPaymentInContent();
+      case "paymentOut":
+        console.log("🎯 ContentDisplay - rendering payment out content");
+        return renderPaymentOutContent();
       default:
         console.log("🎯 ContentDisplay - rendering coming soon content for:", contentType);
         return renderComingSoonContent();
@@ -426,6 +473,7 @@ ContentDisplay.propTypes = {
     role: PropTypes.string,
   }),
   isLoading: PropTypes.bool,
+  addToast: PropTypes.func,
 };
 
 ContentDisplay.defaultProps = {
@@ -434,6 +482,7 @@ ContentDisplay.defaultProps = {
   currentCompany: null,
   currentUser: null,
   isLoading: false,
+  addToast: () => {},
 };
 
 ContentDisplay.displayName = "ContentDisplay";

@@ -33,6 +33,9 @@ import {
   faTachometerAlt,
   faReceipt,
   faMoneyBillWave,
+  faArrowDown,
+  faArrowUp,
+  faExchangeAlt,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import "./NewSidebar.css";
@@ -44,6 +47,7 @@ const NAVIGATION_CONSTANTS = Object.freeze({
     SALES: "sales",
     PURCHASE_EXPENSE: "purchaseExpense",
     EXPENSES: "expenses",
+    TRANSACTIONS: "transactions",
     STAFF_MANAGEMENT: "staffManagement",
     INFO: "info",
   },
@@ -170,6 +174,31 @@ const NAVIGATION_ITEMS = [
         id: "indirectIncome",
         label: "Indirect Income",
         icon: faChartLine,
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: "transactions",
+    label: "Transactions",
+    icon: faExchangeAlt,
+    type: "accordion",
+    section: "transactions",
+    requiresCompany: true,
+    isActive: true, // ✅ ACTIVE - New Transactions management
+    children: [
+      {
+        id: "paymentIn",
+        label: "Payment In",
+        icon: faArrowDown,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "paymentOut",
+        label: "Payment Out",
+        icon: faArrowUp,
         requiresCompany: true,
         isActive: true,
       },
@@ -349,7 +378,7 @@ const SubMenuItem = React.memo(
       
       // Handle navigation for info items through routes
       const routeNavigationItems = ['gst', 'companyBrand'];
-      const contentDisplayItems = ['parties', 'customers', 'vendors', 'expenseManagement', 'indirectIncome'];
+      const contentDisplayItems = ['parties', 'customers', 'vendors', 'expenseManagement', 'indirectIncome', 'paymentIn', 'paymentOut'];
       const navigationItems = [];
       
       if (routeNavigationItems.includes(child.id)) {

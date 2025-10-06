@@ -71,7 +71,6 @@ function Layout({
   // ✅ SIMPLIFIED: View to path mapping
   const viewPathMap = {
     categories: "categories",
-    categories: "categories",
     items: "products", // Map items to products path
     transactions: "transactions",
     cashAndBank: "cash-bank",
