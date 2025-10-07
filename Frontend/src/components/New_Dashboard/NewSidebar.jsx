@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Accordion, Nav } from "react-bootstrap";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, NavLink } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faShoppingCart,
@@ -443,6 +443,7 @@ const NewSidebar = React.memo(
     currentUser = null,
     companyId = null,
     onContentChange = () => {},
+    onSelect, // Add onSelect prop for compatibility
   }) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -466,12 +467,12 @@ const NewSidebar = React.memo(
     // Memoized computations
     const effectiveCompanyId = useMemo(
       () => companyId || currentCompany?.id || currentCompany?._id || null,
-      [companyId, currentCompany?.id, currentCompany?._id]
+      [companyId, currentCompany]
     );
 
     const companyDisplayName = useMemo(() => {
       return currentCompany?.businessName || currentCompany?.name || "No Company";
-    }, [currentCompany?.businessName, currentCompany?.name]);
+    }, [currentCompany]);
 
     // Toggle handler for accordion
     const handleToggle = useCallback(
@@ -732,6 +733,62 @@ const NewSidebar = React.memo(
       ]
     );
 
+    const getPath = (type) => {
+      const infoMap = {
+        gst: '/info/gst',
+        companyBrand: '/info/company-brand',
+      };
+
+      let path = `/${type}`;
+
+      switch (type) {
+        case 'expenseManagement':
+          path = '/expenses';
+          break;
+        case 'indirectIncome':
+          path = '/indirect-income';
+          break;
+        case 'paymentIn':
+          path = '/payment-in';
+          break;
+        case 'paymentOut':
+          path = '/payment-out';
+          break;
+        case 'gst':
+          path = '/gst';
+          break;
+        case 'companyBrand':
+          path = '/company-brand';
+          break;
+        // Add more mappings if needed
+        default:
+          break;
+      }
+
+      if (effectiveCompanyId) {
+        if (infoMap[type]) {
+          path = `/companies/${effectiveCompanyId}${infoMap[type]}`;
+        } else {
+          path = `/companies/${effectiveCompanyId}${path}`;
+        }
+      } else if (infoMap[type]) {
+        path = infoMap[type];
+      }
+
+      return path;
+    };
+
+    // Navigation handler for simple routes
+    const handleSimpleNavigation = (title, type) => {
+      const path = getPath(type);
+      if (onSelect) onSelect(title, type);
+      if (onContentChange) onContentChange(type, title);
+      navigate(path);
+      if (isMobileDevice() && toggleSidebar) {
+        toggleSidebar();
+      }
+    };
+
     return (
       <>
         {/* Mobile Backdrop - Only show on mobile when sidebar is open */}
@@ -765,30 +822,215 @@ const NewSidebar = React.memo(
             <FontAwesomeIcon icon={isOpen ? faAngleLeft : faAngleRight} />
           </button>
 
-        {/* Sidebar Menu */}
-        <Nav className="new-sidebar-menu">
-          {/* Header Section */}
+          {/* Sidebar Header */}
           <div className="new-sidebar-header-section">
             <div className="new-sidebar-title">
-              <FontAwesomeIcon icon={faHome} className="me-2" />
+              <FontAwesomeIcon icon={faBuilding} className="me-2" />
               <span className="new-sidebar-text">{companyDisplayName}</span>
             </div>
           </div>
 
-          {/* Navigation Items */}
-          <Accordion
-            activeKey={activeKey || undefined}
-            onSelect={handleToggle}
-            className="new-sidebar-accordion"
-            flush
-          >
-            {renderedItems}
-          </Accordion>
+          {/* Navigation Menu */}
+          <div className="new-sidebar-menu">
+            {/* Single Links for Dashboard, Categories, Items */}
+            <div className="new-sidebar-item">
+              <NavLink
+                to={getPath('dashboard')}
+                className={({ isActive }) => `new-sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleSimpleNavigation("Dashboard", "dashboard")}
+              >
+                <div className="new-sidebar-link-content">
+                  <FontAwesomeIcon icon={faTachometerAlt} className="new-sidebar-icon" />
+                  <span className="new-sidebar-text">Dashboard</span>
+                </div>
+              </NavLink>
+            </div>
+
+            <div className="new-sidebar-item">
+              <NavLink
+                to={getPath('categories')}
+                className={({ isActive }) => `new-sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleSimpleNavigation("Category Management", "categories")}
+              >
+                <div className="new-sidebar-link-content">
+                  <FontAwesomeIcon icon={faClipboardList} className="new-sidebar-icon" />
+                  <span className="new-sidebar-text">Categories</span>
+                </div>
+              </NavLink>
+            </div>
+
+            <div className="new-sidebar-item">
+              <NavLink
+                to={getPath('items')}
+                className={({ isActive }) => `new-sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleSimpleNavigation("Item Management", "items")}
+              >
+                <div className="new-sidebar-link-content">
+                  <FontAwesomeIcon icon={faBox} className="new-sidebar-icon" />
+                  <span className="new-sidebar-text">Items</span>
+                </div>
+              </NavLink>
+            </div>
+
+            {/* Accordion Navigation */}
+            <Accordion className="new-sidebar-accordion" activeKey={activeKey}>
+              {/* Parties Section */}
+              <Accordion.Item eventKey="parties" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("parties")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faUsers} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Parties</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "parties" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="parties">
+                  <div className="new-sidebar-submenu">
+                    {/* <NavLink
+                      to={getPath('parties')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Parties", "parties")}
+                    >
+                      <FontAwesomeIcon icon={faUsers} className="me-2" />
+                      All Parties
+                    </NavLink> */}
+                    <NavLink
+                      to={getPath('customers')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Customers", "customers")}
+                    >
+                      <FontAwesomeIcon icon={faUserFriends} className="me-2" />
+                      Customers
+                    </NavLink>
+                    <NavLink
+                      to={getPath('vendors')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Vendors", "vendors")}
+                    >
+                      <FontAwesomeIcon icon={faUserTie} className="me-2" />
+                      Vendors
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+
+              {/* Expenses Section */}
+              <Accordion.Item eventKey="expenses" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("expenses")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faMoneyBillWave} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Expenses</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "expenses" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="expenses">
+                  <div className="new-sidebar-submenu">
+                    <NavLink
+                      to={getPath('expenseManagement')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Expenses", "expenseManagement")}
+                    >
+                      <FontAwesomeIcon icon={faReceipt} className="me-2" />
+                      Expenses
+                    </NavLink>
+                    <NavLink
+                      to={getPath('indirectIncome')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Indirect Income", "indirectIncome")}
+                    >
+                      <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                      Indirect Income
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+
+              {/* Transactions Section */}
+              <Accordion.Item eventKey="transactions" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("transactions")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faExchangeAlt} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Transactions</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "transactions" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="transactions">
+                  <div className="new-sidebar-submenu">
+                    <NavLink
+                      to={getPath('paymentIn')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Payment In", "paymentIn")}
+                    >
+                      <FontAwesomeIcon icon={faArrowDown} className="me-2" />
+                      Payment In
+                    </NavLink>
+                    <NavLink
+                      to={getPath('paymentOut')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Payment Out", "paymentOut")}
+                    >
+                      <FontAwesomeIcon icon={faArrowUp} className="me-2" />
+                      Payment Out
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+
+              {/* Info Section */}
+              <Accordion.Item eventKey="info" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("info")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faInfoCircle} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Info</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "info" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="info">
+                  <div className="new-sidebar-submenu">
+                    <NavLink
+                      to={getPath('gst')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("GST", "gst")}
+                    >
+                      <FontAwesomeIcon icon={faPercent} className="me-2" />
+                      GST
+                    </NavLink>
+                    <NavLink
+                      to={getPath('companyBrand')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Company/Brand", "companyBrand")}
+                    >
+                      <FontAwesomeIcon icon={faBuilding} className="me-2" />
+                      Company/Brand
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+            </Accordion>
+          </div>
           
           {/* Bottom Spacer */}
           <div className="new-sidebar-spacer"></div>
-        </Nav>
-      </div>
+        </div>
       </>
     );
   }
@@ -813,6 +1055,7 @@ NewSidebar.propTypes = {
   }),
   companyId: PropTypes.string,
   onContentChange: PropTypes.func,
+  onSelect: PropTypes.func, // Add onSelect to PropTypes
 };
 
 NewSidebar.displayName = "NewSidebar";

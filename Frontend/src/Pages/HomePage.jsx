@@ -26,15 +26,15 @@ import New_parties from "../components/New_Dashboard/New_parties/New_parties";
 import Sales from "../components/Home/Sales";
 import Quotations from "../components/Home/Quotations";
 import Inventory from "../components/Home/Inventory";
-import Items from "../components/Home/Items/SimpleItems";
+import Items from "../components/New_Dashboard/Items/SimpleItems";
 import StaffManagement from "../components/Home/StaffManagement";
 import PurchaseOrder from "../components/Home/Purchases/PurchaseOrder";
 import Bank from "../components/Home/Bank";
 import PurchaseBills from "../components/Home/Purchases/PurchaseBills";
 
 // Import Info components
-import GSTInfo from "../components/Info/GSTInfo";
-import CompanyBrandInfo from "../components/Info/CompanyBrandInfo";
+import GSTInfo from "../components/New_Dashboard/Info/GSTInfo";
+import CompanyBrandInfo from "../components/New_Dashboard/Info/CompanyBrandInfo";
 
 // Import Category component
 import Category from "../components/Home/Category/Category";

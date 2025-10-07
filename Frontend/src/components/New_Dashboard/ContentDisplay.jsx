@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faClipboardList,
@@ -28,27 +29,48 @@ import Expense from "./Expenses+/Expense";
 import IndirectIncome from "./Expenses+/Indirect_Income/indirectIncome";
 import PaymentIn from "./Transactions/PaymentIn";
 import PaymentOut from "./Transactions/PaymentOut";
+import SimpleItems from "./Items/SimpleItems";
+import GSTInfo from "./Info/GSTInfo";
+import CompanyBrandInfo from "./Info/CompanyBrandInfo";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
 const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUser, isLoading, addToast }) => {
+  const location = useLocation();
   const [localLoading, setLocalLoading] = useState(false);
+  const [routeContent, setRouteContent] = useState({
+    title: activeContent,
+    type: contentType,
+  });
 
-  // Debug logging
-  console.log("ContentDisplay props:", { activeContent, contentType, isLoading });
-  console.log("🎯 ContentDisplay Debug - contentType:", contentType, "activeContent:", activeContent);
+  // Map path to content type
+  const routeMap = {
+    "/": { title: "Home", type: "welcome" },
+    "/categories": { title: "Category Management", type: "categories" },
+    "/items": { title: "Item Management", type: "items" },
+    "/parties": { title: "Parties", type: "parties" },
+    "/customers": { title: "Customers", type: "customers" },
+    "/vendors": { title: "Vendors", type: "vendors" },
+    "/expenses": { title: "Expenses", type: "expenseManagement" },
+    "/indirect-income": { title: "Indirect Income", type: "indirectIncome" },
+    "/payment-in": { title: "Payment In", type: "paymentIn" },
+    "/payment-out": { title: "Payment Out", type: "paymentOut" },
+    "/gst": { title: "GST", type: "gst" },
+    "/company-brand": { title: "Company/Brand", type: "companyBrand" },
+  };
 
   useEffect(() => {
-    if (activeContent && contentType) {
-      setLocalLoading(true);
-      // Simulate loading delay
-      const timer = setTimeout(() => {
-        setLocalLoading(false);
-      }, 800);
-
-      return () => clearTimeout(timer);
+    const path = location.pathname;
+    if (routeMap[path]) {
+      setRouteContent(routeMap[path]);
     }
-  }, [activeContent, contentType]);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setLocalLoading(true);
+    const timer = setTimeout(() => setLocalLoading(false), 400);
+    return () => clearTimeout(timer);
+  }, [routeContent]);
 
   // Default/Welcome Content
   const renderWelcomeContent = () => (
@@ -108,68 +130,34 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
 
   // Category Management Content
   const renderCategoryContent = () => (
-    <div className="content-section">
+    <div className="content-categories">
       <div className="content-header">
         <div className="content-title">
-          <FontAwesomeIcon icon={faClipboardList} className="content-icon" />
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
           <h2>Category Management</h2>
         </div>
-        <div className="content-actions">
-          <button className="btn btn-primary">
-            <FontAwesomeIcon icon={faPlus} className="me-2" />
-            Add Category
-          </button>
-        </div>
+        <p className="content-description">Manage your product categories efficiently</p>
       </div>
-
-      <div className="content-body">
-        <div className="info-banner">
-          <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-          This section will redirect to the existing Category Management page
+      <div className="coming-soon-container">
+        <div className="coming-soon-icon">
+          <FontAwesomeIcon icon={faExclamationCircle} />
+        </div>
+        <h3>Coming Soon!</h3>
+        <p>This feature is currently being redesigned and will be available soon.</p>
+        
+        <div className="development-status">
+          <h4>What's being worked on:</h4>
+          <ul>
+            <li><FontAwesomeIcon icon={faCheck} className="text-success me-2" />Modern UI/UX Design</li>
+            <li><FontAwesomeIcon icon={faCheck} className="text-success me-2" />Enhanced Performance</li>
+            <li><FontAwesomeIcon icon={faSpinner} className="text-warning me-2" />Feature Integration</li>
+            <li><FontAwesomeIcon icon={faSpinner} className="text-warning me-2" />Testing & Quality Assurance</li>
+          </ul>
         </div>
 
-        <div className="feature-overview">
-          <h3>Category Management Features</h3>
-          <div className="feature-grid">
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faPlus} className="feature-item-icon" />
-              <div>
-                <h4>Create Categories</h4>
-                <p>Add new product categories</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faEdit} className="feature-item-icon" />
-              <div>
-                <h4>Edit Categories</h4>
-                <p>Modify existing categories</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faTrash} className="feature-item-icon" />
-              <div>
-                <h4>Delete Categories</h4>
-                <p>Remove unused categories</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faLayerGroup} className="feature-item-icon" />
-              <div>
-                <h4>Organize Hierarchy</h4>
-                <p>Structure category relationships</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="redirect-info">
-          <div className="redirect-card">
-            <FontAwesomeIcon icon={faArrowRight} className="redirect-icon" />
-            <div>
-              <h4>Ready to manage categories?</h4>
-              <p>Click the Category Management link in the sidebar to access the full category management interface.</p>
-            </div>
-          </div>
+        <div className="timeline-info">
+          <p><strong>Expected Release:</strong> Next Update</p>
+          <p><strong>Status:</strong> In Development</p>
         </div>
       </div>
     </div>
@@ -177,70 +165,19 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
 
   // Item Management Content
   const renderItemContent = () => (
-    <div className="content-section">
+    <div className="content-items">
       <div className="content-header">
         <div className="content-title">
-          <FontAwesomeIcon icon={faBox} className="content-icon" />
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
           <h2>Item Management</h2>
         </div>
-        <div className="content-actions">
-          <button className="btn btn-primary">
-            <FontAwesomeIcon icon={faPlus} className="me-2" />
-            Add Item
-          </button>
-        </div>
+        <p className="content-description">Manage your inventory items efficiently</p>
       </div>
-
-      <div className="content-body">
-        <div className="info-banner">
-          <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-          This section will redirect to the existing Item Management page
-        </div>
-
-        <div className="feature-overview">
-          <h3>Item Management Features</h3>
-          <div className="feature-grid">
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faBox} className="feature-item-icon" />
-              <div>
-                <h4>Create Items</h4>
-                <p>Add new inventory items</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faBarcode} className="feature-item-icon" />
-              <div>
-                <h4>Track Inventory</h4>
-                <p>Monitor stock levels</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faTags} className="feature-item-icon" />
-              <div>
-                <h4>Price Management</h4>
-                <p>Set and update pricing</p>
-              </div>
-            </div>
-            <div className="feature-item">
-              <FontAwesomeIcon icon={faSearch} className="feature-item-icon" />
-              <div>
-                <h4>Search & Filter</h4>
-                <p>Find items quickly</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="redirect-info">
-          <div className="redirect-card">
-            <FontAwesomeIcon icon={faArrowRight} className="redirect-icon" />
-            <div>
-              <h4>Ready to manage items?</h4>
-              <p>Click the Item Management link in the sidebar to access the full item management interface.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SimpleItems 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
     </div>
   );
 
@@ -343,6 +280,42 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // GST Content
+  const renderGSTContent = () => (
+    <div className="content-gst">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>GST Management</h2>
+        </div>
+        <p className="content-description">Manage your GST settings and configurations</p>
+      </div>
+      <GSTInfo 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
+    </div>
+  );
+
+  // Company/Brand Content
+  const renderCompanyBrandContent = () => (
+    <div className="content-company-brand">
+      <div className="content-header">
+        <div className="content-title">
+          <FontAwesomeIcon icon={faArrowRight} className="me-2" />
+          <h2>Company/Brand Management</h2>
+        </div>
+        <p className="content-description">Manage your company and brand information</p>
+      </div>
+      <CompanyBrandInfo 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -380,72 +353,49 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
-  // Loading Content
-  const renderLoadingContent = () => (
-    <div className="content-loading">
-      <div className="loading-container">
-        <div className="loading-spinner">
-          <FontAwesomeIcon icon={faSpinner} spin />
-        </div>
-        <h3>Loading {activeContent}...</h3>
-        <p>Please wait while we prepare the content for you.</p>
-      </div>
-    </div>
-  );
-
-  // Main render logic
+  // Main render logic - updated to use route-based content
   const renderContent = () => {
-    console.log("🎯 ContentDisplay renderContent - contentType:", contentType, "activeContent:", activeContent);
-    console.log("🎯 ContentDisplay renderContent - full debug:", { 
-      contentType, 
-      activeContent, 
-      isLoading, 
-      localLoading,
-      hasContent: !!(activeContent && contentType)
-    });
+    console.log("🎯 ContentDisplay renderContent - routeContent:", routeContent);
     
     if (isLoading || localLoading) {
-      console.log("🎯 ContentDisplay - showing loading content");
-      return renderLoadingContent();
+      return (
+        <div className="content-loading">
+          <div className="loading-container">
+            <div className="loading-spinner">
+              <FontAwesomeIcon icon={faSpinner} spin />
+            </div>
+            <h3>Loading {routeContent.title}...</h3>
+            <p>Please wait while we prepare the content for you.</p>
+          </div>
+        </div>
+      );
     }
 
-    if (!activeContent || !contentType) {
-      console.log("🎯 ContentDisplay - no content, showing welcome");
-      return renderWelcomeContent();
-    }
-
-    console.log("🎯 ContentDisplay - switching on contentType:", contentType);
-    switch (contentType) {
+    switch (routeContent.type) {
       case "categories":
-        console.log("🎯 ContentDisplay - rendering category content");
         return renderCategoryContent();
       case "items":
-        console.log("🎯 ContentDisplay - rendering items content");
         return renderItemContent();
       case "parties":
-        console.log("🎯 ContentDisplay - rendering parties content");
         return renderPartiesContent();
       case "customers":
-        console.log("🎯 ContentDisplay - rendering customers content");
         return renderCustomersContent();
       case "vendors":
-        console.log("🎯 ContentDisplay - rendering vendors content");
         return renderVendorsContent();
       case "expenseManagement":
-        console.log("🎯 ContentDisplay - rendering expenses content");
         return renderExpensesContent();
       case "indirectIncome":
-        console.log("🎯 ContentDisplay - rendering indirect income content");
         return renderIndirectIncomeContent();
       case "paymentIn":
-        console.log("🎯 ContentDisplay - rendering payment in content");
         return renderPaymentInContent();
       case "paymentOut":
-        console.log("🎯 ContentDisplay - rendering payment out content");
         return renderPaymentOutContent();
+      case "gst":
+        return renderGSTContent();
+      case "companyBrand":
+        return renderCompanyBrandContent();
       default:
-        console.log("🎯 ContentDisplay - rendering coming soon content for:", contentType);
-        return renderComingSoonContent();
+        return renderWelcomeContent();
     }
   };
 
@@ -487,4 +437,4 @@ ContentDisplay.defaultProps = {
 
 ContentDisplay.displayName = "ContentDisplay";
 
-export default ContentDisplay;
+export default ContentDisplay;  
