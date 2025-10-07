@@ -11,16 +11,43 @@ const itemController = {
       const allItems = await Item.find({}).lean();
       console.log('🔍 DEBUG: Found', allItems.length, 'total items in database');
       
+      const { companyId } = req.params;
+      console.log('🔍 DEBUG: Requested companyId:', companyId);
+      
+      // Show items by company
+      const itemsByCompany = {};
+      allItems.forEach(item => {
+        const compId = item.companyId?.toString();
+        if (!itemsByCompany[compId]) {
+          itemsByCompany[compId] = [];
+        }
+        itemsByCompany[compId].push({
+          id: item._id,
+          name: item.name,
+          category: item.category,
+          companyId: item.companyId,
+          companyIdString: compId,
+          matchesRequestedCompany: compId === companyId
+        });
+      });
+      
+      console.log('🔍 DEBUG: Items by company:', itemsByCompany);
+      
       res.json({
         success: true,
         totalItems: allItems.length,
+        requestedCompanyId: companyId,
+        itemsByCompany: itemsByCompany,
+        matchingItems: itemsByCompany[companyId] || [],
         items: allItems.map(item => ({
           id: item._id,
           name: item.name,
           companyId: item.companyId,
+          companyIdString: item.companyId?.toString(),
           category: item.category,
           createdAt: item.createdAt,
-          nameVerification: item.nameVerification
+          nameVerification: item.nameVerification,
+          matchesRequestedCompany: item.companyId?.toString() === companyId
         }))
       });
     } catch (error) {
@@ -32,119 +59,59 @@ const itemController = {
     }
   },
 
-  // ✅ Existing functions (keep as they are)
+  // ✅ SIMPLIFIED VERSION: Temporary simple getItems for debugging
   getItems: async (req, res) => {
     try {
       const {companyId} = req.params;
+      console.log('🔍 SIMPLE: GetItems called with companyId:', companyId);
 
       if (!mongoose.Types.ObjectId.isValid(companyId)) {
+        console.log('🔍 SIMPLE: Invalid company ID format');
         return res.status(400).json({
           success: false,
           message: "Invalid company ID format",
         });
       }
 
-      const {
-        type,
-        category,
-        isActive,
-        search,
-        page = 1,
-        limit = 50,
-        sortBy = "name",
-        sortOrder = "asc",
-      } = req.query;
-
-      // ✅ IMPROVED: More robust company ID matching
-      let companyObjectId;
-      try {
-        companyObjectId = new mongoose.Types.ObjectId(companyId);
-      } catch (err) {
-        console.error('❌ Invalid company ID format:', companyId);
-        return res.status(400).json({
-          success: false,
-          message: "Invalid company ID format"
-        });
-      }
-
-      const filter = {companyId: companyObjectId};
-
-      if (type) filter.type = type;
-      if (category) filter.category = category;
-      if (isActive !== undefined) filter.isActive = isActive === "true";
+      // ✅ ULTRA SIMPLE: Just get all items for this company, no filters
+      const companyObjectId = new mongoose.Types.ObjectId(companyId);
+      const items = await Item.find({ companyId: companyObjectId }).lean();
       
-      // ✅ FIXED: Include items with pending verification status for demo purposes
-      // In production, you might want to show only approved items
-      // For now, let's show all items regardless of verification status
-
-      if (search) {
-        filter.$or = [
-          {name: {$regex: search, $options: "i"}},
-          {itemCode: {$regex: search, $options: "i"}},
-          {description: {$regex: search, $options: "i"}},
-          {category: {$regex: search, $options: "i"}},
-        ];
-      }
-
-      const sort = {};
-      sort[sortBy] = sortOrder === "desc" ? -1 : 1;
-
-      const skip = (page - 1) * limit;
-      
-      // ✅ DEBUG: Log the filter being used
-      console.log('🔍 Item query filter:', {
-        filter,
+      console.log('🔍 SIMPLE: Direct query result:', {
         companyId,
-        companyIdType: typeof companyId,
-        companyIdAsObjectId: new mongoose.Types.ObjectId(companyId),
-        skip,
-        limit,
-        sort
-      });
-
-      // ✅ DEBUG: Also check what's actually in the database
-      const allItemsInDb = await Item.find({}).select('name companyId').lean();
-      console.log('🔍 All items in database for comparison:', 
-        allItemsInDb.map(item => ({
-          name: item.name,
-          companyId: item.companyId,
-          companyIdString: item.companyId?.toString(),
-          matchesQuery: item.companyId?.toString() === companyId
-        }))
-      );
-      
-      const items = await Item.find(filter)
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-        
-      // ✅ DEBUG: Log the results
-      console.log('🔍 Item query results:', {
+        companyObjectId: companyObjectId.toString(),
         itemsFound: items.length,
-        sampleItems: items.slice(0, 2).map(item => ({
-          id: item._id,
+        items: items.map(item => ({
+          id: item._id?.toString(),
           name: item.name,
-          companyId: item.companyId,
-          nameVerification: item.nameVerification
+          companyId: item.companyId?.toString(),
+          isActive: item.isActive,
+          type: item.type
         }))
       });
 
-      const total = await Item.countDocuments(filter);
-
-      res.json({
+      const responseData = {
         success: true,
         data: {
           items,
           pagination: {
-            current: parseInt(page),
-            total: Math.ceil(total / limit),
+            current: 1,
+            total: 1,
             count: items.length,
-            totalItems: total,
+            totalItems: items.length,
           },
         },
+      };
+
+      console.log('🔍 SIMPLE: Sending response:', {
+        success: responseData.success,
+        itemCount: responseData.data.items.length,
+        totalItems: responseData.data.pagination.totalItems
       });
+
+      res.json(responseData);
     } catch (error) {
+      console.error('🔍 SIMPLE: Error in getItems:', error);
       res.status(500).json({
         success: false,
         message: "Error fetching items",
@@ -260,33 +227,51 @@ const itemController = {
         companyId: companyId
       });
 
+      // ✅ FIXED: Properly handle all stock fields
+      const openingStock = Number(itemData.openingStock) || 0;
+      const minStockLevel = Number(itemData.minStockLevel) || 0;
+      const currentStock = Number(itemData.currentStock) || openingStock;
+      
       const newItem = new Item({
         name: itemData.name,
         category: itemData.category,
         unit: itemData.unit || "PCS",
         type: itemData.type || "product",
         gstRate: itemData.gstRate || 0,
+        buyPrice: Number(itemData.buyPrice) || 0,
+        salePrice: Number(itemData.salePrice) || 0,
+        description: itemData.description || "",
+        hsnNumber: itemData.hsnNumber || "",
+        itemCode: itemData.itemCode || "",
+        asOfDate: itemData.asOfDate ? new Date(itemData.asOfDate) : new Date(),
+        isActive: itemData.isActive !== undefined ? itemData.isActive : true,
         companyId: new mongoose.Types.ObjectId(companyId),
         createdBy: req.user?.id || "system",
-        // Remove nameVerification for now to avoid validation issues
       });
 
       // Handle stock for products vs services
       if (newItem.type === "service") {
         newItem.currentStock = 0;
         newItem.openingStock = 0;
+        newItem.openingQuantity = 0;
         newItem.minStockLevel = 0;
+        newItem.minStockToMaintain = 0;
       } else {
-        newItem.currentStock = newItem.openingStock || 0;
+        // ✅ FIXED: Set stock values properly
+        newItem.openingStock = openingStock;
+        newItem.openingQuantity = openingStock; // Alternative field
+        newItem.currentStock = currentStock;
+        newItem.minStockLevel = minStockLevel;
+        newItem.minStockToMaintain = minStockLevel; // Alternative field
 
         // ✅ Add opening stock to history if > 0
-        if (newItem.currentStock > 0) {
+        if (openingStock > 0) {
           newItem.stockHistory = [
             {
               date: newItem.asOfDate || new Date(),
               previousStock: 0,
-              newStock: newItem.currentStock,
-              quantity: newItem.currentStock,
+              newStock: openingStock,
+              quantity: openingStock,
               adjustmentType: "set",
               reason: "Opening stock",
               adjustedBy: req.user?.id || "system",
@@ -307,7 +292,7 @@ const itemController = {
         savedCompanyIdString: newItem.companyId.toString()
       });
 
-      // ✅ SIMPLIFIED: Basic success response
+      // ✅ ENHANCED: Complete success response with stock info
       res.status(201).json({
         success: true,
         message: "Item created successfully.",
@@ -319,6 +304,16 @@ const itemController = {
             type: newItem.type,
             unit: newItem.unit,
             gstRate: newItem.gstRate,
+            buyPrice: newItem.buyPrice,
+            salePrice: newItem.salePrice,
+            description: newItem.description,
+            hsnNumber: newItem.hsnNumber,
+            itemCode: newItem.itemCode,
+            currentStock: newItem.currentStock,
+            openingStock: newItem.openingStock,
+            minStockLevel: newItem.minStockLevel,
+            asOfDate: newItem.asOfDate,
+            isActive: newItem.isActive,
             companyId: newItem.companyId,
             createdAt: newItem.createdAt
           }
@@ -329,8 +324,8 @@ const itemController = {
         error: error,
         message: error.message,
         stack: error.stack,
-        companyId: companyId,
-        itemData: itemData
+        companyId: req.params?.companyId,
+        itemData: req.body
       });
 
       if (error.code === 11000) {

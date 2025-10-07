@@ -1,0 +1,585 @@
+/* All Bills List Styles */
+.all-bills-list {
+  min-height: 100vh;
+  background: #f8f9fa;
+  margin-left: 560px;
+  width: calc(100vw - 560px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Hide scrollbars for all bills list */
+.all-bills-list::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+.all-bills-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.bills-header {
+  background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);
+  color: white;
+  padding: 25px 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-icon {
+  font-size: 2rem;
+  opacity: 0.9;
+}
+
+.header-content h2 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+.header-content p {
+  margin: 5px 0 0 0;
+  opacity: 0.9;
+  font-size: 1rem;
+}
+
+.header-stats {
+  display: flex;
+  gap: 20px;
+}
+
+.stat-card {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 15px 20px;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 120px;
+}
+
+.stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  color: white;
+}
+
+/* Controls Section */
+.bills-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 30px;
+  background: white;
+  border-bottom: 1px solid #e9ecef;
+  gap: 20px;
+}
+
+.search-filter-section {
+  display: flex;
+  gap: 15px;
+  flex: 1;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6c757d;
+}
+
+/* Date Filter Controls */
+.date-filter-section {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 12px 18px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.date-filter-section:hover {
+  border-color: #6f42c1;
+  box-shadow: 0 4px 12px rgba(111, 66, 193, 0.08);
+  transform: translateY(-1px);
+}
+
+.date-filter-label {
+  color: #495057;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-filter-label i {
+  color: #6f42c1;
+  font-size: 1.1rem;
+}
+
+.date-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.date-filter-controls select {
+  padding: 10px 14px;
+  border: 2px solid #ced4da;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 130px;
+  font-weight: 500;
+}
+
+.date-filter-controls select:focus {
+  outline: none;
+  border-color: #6f42c1;
+  box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.1);
+}
+
+.date-filter-controls select:hover {
+  border-color: #6f42c1;
+  background: #f8f9fa;
+}
+
+.date-filter-controls select option {
+  padding: 8px;
+  background: white;
+  color: #495057;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 15px 10px 35px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #6f42c1;
+  box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.1);
+}
+
+.filter-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filter-icon {
+  position: absolute;
+  left: 12px;
+  color: #6c757d;
+  z-index: 1;
+}
+
+.filter-box select {
+  padding: 10px 15px 10px 35px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 1rem;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.filter-box select:focus {
+  outline: none;
+  border-color: #6f42c1;
+  box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.1);
+}
+
+.sort-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #495057;
+  font-weight: 500;
+}
+
+.sort-section select {
+  padding: 8px 12px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+}
+
+.sort-order-btn {
+  background: #6f42c1;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.sort-order-btn:hover {
+  background: #5a2d91;
+}
+
+/* No Bills State */
+.no-bills {
+  text-align: center;
+  padding: 60px 30px;
+  color: #6c757d;
+}
+
+.no-bills-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.no-bills h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.5rem;
+  color: #495057;
+}
+
+.no-bills p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Bills Table */
+.bills-table-container {
+  background: white;
+  margin: 20px 30px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.bills-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.bills-table th {
+  background: #495057;
+  color: white;
+  padding: 15px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-right: 1px solid #6c757d;
+  cursor: default;
+}
+
+.bills-table th:last-child {
+  border-right: none;
+}
+
+.bills-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background-color 0.3s ease;
+}
+
+.bills-table th.sortable:hover {
+  background: #3d4449;
+}
+
+.sort-indicator {
+  margin-left: 8px;
+  font-size: 0.8rem;
+}
+
+.bills-table td {
+  padding: 15px 12px;
+  border-right: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+  vertical-align: middle;
+}
+
+.bills-table td:last-child {
+  border-right: none;
+}
+
+.bills-table tbody tr:nth-child(even) {
+  background: #f8f9fa;
+}
+
+.bills-table tbody tr:hover {
+  background: #e9ecef;
+}
+
+/* Table Content Styling */
+.invoice-number {
+  font-weight: 600;
+  color: #495057;
+  font-family: monospace;
+}
+
+.client-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.client-name {
+  font-weight: 500;
+  color: #212529;
+}
+
+.client-gst {
+  font-size: 0.8rem;
+  color: #6c757d;
+  font-family: monospace;
+}
+
+.bill-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.bill-type.gst {
+  background: #d4edda;
+  color: #155724;
+}
+
+.bill-type.non_gst {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.amount {
+  font-weight: 600;
+  color: #28a745;
+  text-align: right;
+  font-family: monospace;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.view-btn,
+.delete-btn {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.view-btn {
+  background: #007bff;
+  color: white;
+}
+
+.view-btn:hover {
+  background: #0056b3;
+}
+
+.delete-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.delete-btn:hover {
+  background: #c82333;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  padding: 30px;
+}
+
+.page-btn {
+  padding: 8px 12px;
+  border: 1px solid #dee2e6;
+  background: white;
+  color: #495057;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.page-btn:disabled {
+  background: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.page-btn.active {
+  background: #6f42c1;
+  color: white;
+  border-color: #6f42c1;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .bills-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+  
+  .search-filter-section {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  
+  .date-filter-section {
+    min-width: 100%;
+    justify-content: center;
+  }
+  
+  .date-filter-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .sort-section {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .bills-header {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+  
+  .header-stats {
+    justify-content: center;
+  }
+  
+  .bills-controls {
+    padding: 15px;
+  }
+  
+  .search-filter-section {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .date-filter-section {
+    padding: 10px 15px;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  .date-filter-controls {
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  .date-filter-controls select {
+    min-width: 110px;
+    font-size: 0.85rem;
+  }
+  
+  .bills-table-container {
+    margin: 0 15px;
+    overflow-x: auto;
+  }
+  
+  .bills-table {
+    min-width: 800px;
+  }
+  
+  .bills-table th,
+  .bills-table td {
+    padding: 10px 8px;
+    font-size: 0.8rem;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .view-btn,
+  .delete-btn {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-stats {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .stat-card {
+    min-width: auto;
+  }
+  
+  .pagination {
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  
+  .page-btn {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+  }
+}

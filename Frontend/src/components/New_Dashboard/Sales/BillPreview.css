@@ -1,0 +1,653 @@
+/* Bill Preview Styles */
+.bill-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.bill-preview-modal {
+  width: 95%;
+  max-width: 1200px;
+  max-height: 95vh;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-nav-header {
+  background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%);
+  color: white;
+  padding: 15px 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bill-actions-section {
+  background: linear-gradient(135deg, #ffffff 0%, #f1f3f4 100%);
+  padding: 30px;
+  border-bottom: 3px solid #dee2e6;
+  text-align: center;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.actions-header h3 {
+  margin: 0 0 25px 0;
+  color: #212529;
+  font-size: 1.6rem;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  letter-spacing: 1px;
+}
+
+.action-buttons-row {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.back-btn {
+  background: linear-gradient(135deg, #343a40 0%, #495057 100%);
+  color: white;
+  border: 2px solid #495057;
+  padding: 14px 20px;
+  border-radius: 8px;
+  width: auto;
+  min-width: 120px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  text-shadow: none;
+}
+
+.back-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.back-btn:hover {
+  background: linear-gradient(135deg, #212529 0%, #343a40 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  border-color: #212529;
+}
+
+.action-btn {
+  background: linear-gradient(135deg, #ffffff 0%, #f1f3f4 100%);
+  border: 3px solid #495057;
+  color: #212529;
+  padding: 18px 30px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  min-width: 180px;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
+  letter-spacing: 0.5px;
+}
+
+.action-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.action-btn.print-btn {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-color: #1976d2;
+  color: #0d47a1;
+  font-weight: 900;
+}
+
+.action-btn.print-btn:hover {
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  border-color: #1976d2;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.action-btn.advanced-pdf-btn {
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  border-color: #d32f2f;
+  color: #b71c1c;
+  width: auto;
+  font-weight: 900;
+}
+
+.action-btn.advanced-pdf-btn:hover {
+  background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+  border-color: #d32f2f;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.action-btn.simple-pdf-btn {
+  background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+  border-color: #388e3c;
+  color: #1b5e20;
+  width: auto;
+  font-weight: 900;
+}
+
+.action-btn.simple-pdf-btn:hover {
+  background: linear-gradient(135deg, #388e3c 0%, #2e7d32 100%);
+  border-color: #388e3c;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.edit-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.edit-btn,
+.print-btn,
+.download-btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.edit-btn {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+  color: #856404;
+  border: 3px solid #f57c00;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  text-shadow: none;
+  letter-spacing: 0.5px;
+}
+
+.edit-btn:hover {
+  background: linear-gradient(135deg, #f57c00 0%, #ef6c00 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.print-btn {
+  background: #17a2b8;
+  color: white;
+}
+
+.print-btn:hover {
+  background: #138496;
+}
+
+.download-btn {
+  background: #28a745;
+  color: white;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.download-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.simple-pdf-btn {
+  background: #fd7e14;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.simple-pdf-btn:hover {
+  background: #e8690b;
+}
+
+/* Bill Container */
+.bill-container {
+  flex: 1;
+  overflow-y: auto;
+  background: white;
+}
+
+.bill-content {
+  background: white;
+  min-height: 600px;
+  padding: 40px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  border-radius: 0 0 12px 12px;
+  font-family: 'Arial', sans-serif;
+}
+
+/* Bill Header */
+.bill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.company-details h1 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.company-address {
+  margin: 0 0 15px 0;
+  color: #6c757d;
+  line-height: 1.5;
+  max-width: 300px;
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.contact-item svg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.gst-info {
+  color: #495057;
+  font-size: 0.95rem;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border-left: 4px solid #007bff;
+}
+
+.bill-meta {
+  text-align: right;
+}
+
+.bill-type h2 {
+  margin: 0 0 15px 0;
+  color: #dc3545;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.bill-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  min-width: 200px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.detail-row span:first-child {
+  font-weight: 600;
+  color: #495057;
+}
+
+.detail-row span:last-child {
+  color: #212529;
+}
+
+/* Client Section */
+.client-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+}
+
+.client-section h3 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.client-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 8px;
+}
+
+.client-address {
+  color: #6c757d;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.client-gst {
+  color: #495057;
+  font-weight: 500;
+  background: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Items Table */
+.items-section {
+  margin-bottom: 30px;
+}
+
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.items-table th {
+  background: #495057;
+  color: white;
+  padding: 12px 8px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-right: 1px solid #6c757d;
+}
+
+.items-table th:last-child {
+  border-right: none;
+}
+
+.items-table td {
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #dee2e6;
+  border-bottom: 1px solid #dee2e6;
+  vertical-align: middle;
+}
+
+.items-table td:last-child {
+  border-right: none;
+}
+
+.items-table td:nth-child(2) {
+  text-align: left;
+  font-weight: 500;
+}
+
+.items-table tbody tr:nth-child(even) {
+  background: #f8f9fa;
+}
+
+.items-table tbody tr:hover {
+  background: #e9ecef;
+}
+
+/* Totals Section */
+.totals-section {
+  margin-bottom: 30px;
+}
+
+.totals-table {
+  margin-left: auto;
+  width: 300px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 15px;
+  border-bottom: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+
+.total-row:last-child {
+  border-bottom: none;
+}
+
+.total-row span:first-child {
+  font-weight: 500;
+  color: #495057;
+}
+
+.total-row span:last-child {
+  font-weight: 600;
+  color: #212529;
+}
+
+.grand-total {
+  background: #28a745 !important;
+  color: white !important;
+  font-size: 1.1rem;
+}
+
+.grand-total span {
+  color: white !important;
+  font-weight: 700 !important;
+}
+
+/* Amount in Words */
+.amount-words {
+  margin-bottom: 30px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #28a745;
+  font-size: 1rem;
+}
+
+/* Terms Section */
+.terms-section {
+  margin-bottom: 30px;
+}
+
+.terms-section h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.terms-section ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #6c757d;
+}
+
+.terms-section li {
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+/* Footer */
+.bill-footer {
+  margin-bottom: 20px;
+}
+
+.signature-section {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 50px;
+}
+
+.customer-signature,
+.company-signature {
+  text-align: center;
+  width: 200px;
+}
+
+.signature-line {
+  height: 1px;
+  background: #495057;
+  margin-bottom: 10px;
+}
+
+.customer-signature p,
+.company-signature p {
+  margin: 5px 0;
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+/* Thank You */
+.thank-you {
+  text-align: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.thank-you p {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Print Styles */
+@media print {
+  .bill-preview {
+    background: white;
+  }
+  
+  .preview-header {
+    display: none;
+  }
+  
+  .bill-container {
+    padding: 0;
+  }
+  
+  .bill-content {
+    box-shadow: none;
+    border-radius: 0;
+    max-width: none;
+    padding: 20px;
+  }
+  
+  .items-table {
+    font-size: 0.8rem;
+  }
+  
+  .items-table th,
+  .items-table td {
+    padding: 6px 4px;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .preview-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .header-actions {
+    justify-content: center;
+  }
+  
+  .bill-container {
+    padding: 15px;
+  }
+  
+  .bill-content {
+    padding: 20px;
+  }
+  
+  .bill-header {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .bill-meta {
+    text-align: left;
+  }
+  
+  .items-table {
+    font-size: 0.8rem;
+  }
+  
+  .items-table th,
+  .items-table td {
+    padding: 6px 4px;
+  }
+  
+  .signature-section {
+    flex-direction: column;
+    gap: 30px;
+    align-items: center;
+  }
+  
+  .totals-table {
+    width: 100%;
+  }
+}

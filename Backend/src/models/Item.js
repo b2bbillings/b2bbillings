@@ -191,7 +191,7 @@ const itemSchema = new mongoose.Schema(
 
     gstRate: {
       type: Number,
-      enum: [0, 0.25, 3, 5, 12, 18, 28],
+      enum: [0, 0.25, 3, 5, 9, 12, 18, 28],
       default: 0,
     },
 

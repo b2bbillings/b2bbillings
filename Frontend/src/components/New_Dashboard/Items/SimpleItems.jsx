@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Container, Row, Col, Card, Button, Form, Modal, Alert, Table } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faEdit, faTrash, faBuilding, faSearch, faChevronDown, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faEdit, faTrash, faBuilding, faSearch, faChevronDown, faExclamationTriangle, faBoxes } from '@fortawesome/free-solid-svg-icons';
 import { categoryService, subCategoryService } from '../../../services/categoryService';
 import itemService from '../../../services/itemService';
 import companyService from '../../../services/companyService';
@@ -163,6 +163,15 @@ const SimpleItems = () => {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [gstRate, setGstRate] = useState('');
   
+  // ✅ NEW: Stock-related states
+  const [itemType, setItemType] = useState('product');
+  const [unit, setUnit] = useState('PCS');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [salePrice, setSalePrice] = useState('');
+  const [openingStock, setOpeningStock] = useState('');
+  const [minStockLevel, setMinStockLevel] = useState('');
+  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+  
   // Searchable dropdown states
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -216,47 +225,62 @@ const SimpleItems = () => {
 
   // Load data from database and fetch categories
   useEffect(() => {
-    // Remove any previously stored custom GST rates to ensure fresh start each session
     localStorage.removeItem('customGstRates');
     
-    console.log('🚀 Component mounted, loading initial data...');
-    
-    // Load initial data from backend
     loadCategories();
     loadCompanies();
   }, []);
 
-  // Load items when a company is selected
+  // Set selected company based on user or first available
   useEffect(() => {
-    console.log('🏢 Company selection changed:', selectedCompany);
-    if (selectedCompany) {
-      console.log('🏢 Loading items for selected company:', selectedCompany);
-      loadItems();
-    } else {
-      console.log('🏢 No company selected, clearing items');
-      setItems([]);
-    }
-  }, [selectedCompany]);
-
-  // Auto-select first company if available and none selected
-  useEffect(() => {
+    console.log('🔍 Company selection useEffect:', {
+      companiesLength: companies.length,
+      selectedCompany,
+      companies: companies.map(c => ({id: c._id || c.id, name: c.name || c.businessName}))
+    });
+    
     if (companies.length > 0 && !selectedCompany) {
-      const firstCompany = companies[0];
-      const companyId = firstCompany._id || firstCompany.id;
-      const companyName = firstCompany.name || firstCompany.businessName;
+      const user = authService.getCurrentUser();
+      let companyId;
+      let companyName;
       
-      console.log('🏢 Auto-selecting first available company:', {
-        id: companyId,
-        name: companyName,
-        totalCompanies: companies.length
-      });
+      if (user) {
+        const userCompanyId = user.companyId || user.company?._id || user.company;
+        console.log('🔍 User company ID from auth:', userCompanyId);
+        const userCompany = companies.find(c => (c._id || c.id).toString() === userCompanyId?.toString());
+        if (userCompany) {
+          companyId = userCompany._id || userCompany.id;
+          companyName = userCompany.name || userCompany.businessName;
+          console.log('🔍 Found user company:', {companyId, companyName});
+        }
+      }
+      
+      if (!companyId) {
+        const firstCompany = companies[0];
+        companyId = firstCompany._id || firstCompany.id;
+        companyName = firstCompany.name || firstCompany.businessName;
+        console.log('🔍 Using first company:', {companyId, companyName});
+      }
       
       if (companyId && companyName) {
+        console.log('🔍 Setting selected company:', companyId.toString());
         setSelectedCompany(companyId.toString());
         setCompanySearch(companyName);
       }
     }
   }, [companies, selectedCompany]);
+
+  // Load items when a company is selected
+  useEffect(() => {
+    console.log('🔍 useEffect selectedCompany changed:', selectedCompany);
+    if (selectedCompany) {
+      console.log('🔍 Selected company exists, loading items...');
+      loadItems();
+    } else {
+      console.log('🔍 No selected company, clearing items');
+      setItems([]);
+    }
+  }, [selectedCompany]);
 
   // Load categories from backend
   const loadCategories = async () => {
@@ -266,8 +290,6 @@ const SimpleItems = () => {
       if (response.success) {
         setCategories(response.data || []);
       } else {
-        console.error('Failed to load categories:', response.message);
-        // Fallback to default categories if backend fails
         setCategories([
           { _id: '1', name: 'General' },
           { _id: '2', name: 'Office Supplies' },
@@ -275,8 +297,6 @@ const SimpleItems = () => {
         ]);
       }
     } catch (error) {
-      console.error('Error loading categories:', error);
-      // Fallback to default categories
       setCategories([
         { _id: '1', name: 'General' },
         { _id: '2', name: 'Office Supplies' },
@@ -295,37 +315,20 @@ const SimpleItems = () => {
         setSubcategories(response.data || []);
       }
     } catch (error) {
-      console.error('Error loading subcategories:', error);
       setSubcategories([]);
     }
   };
 
-  // 🔍 DEBUG: Function to check what's actually in the database
-  const debugDatabase = async () => {
+  // ✅ DEBUG: Function to call debug endpoint
+  const debugAllItems = async () => {
     try {
-      console.log('🔍 DEBUG: Checking database directly...');
-      const response = await fetch(`http://localhost:5000/api/companies/${selectedCompany}/items/debug/all`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await response.json();
-      console.log('🔍 DEBUG: Database contents:', data);
-      const itemCompanyIds = data.items?.map(item => item.companyId);
-      const matches = data.items?.filter(item => item.companyId === selectedCompany);
-      
-      console.log('🔍 DEBUG: Selected Company ID:', selectedCompany, typeof selectedCompany);
-      console.log('🔍 DEBUG: Items in database:');
-      data.items?.forEach((item, index) => {
-        console.log(`  Item ${index + 1}: "${item.name}" - Company ID: ${item.companyId} (${typeof item.companyId})`);
-        console.log(`    - Exact match: ${item.companyId === selectedCompany}`);
-        console.log(`    - String match: ${item.companyId?.toString() === selectedCompany}`);
-      });
-      console.log('🔍 DEBUG: Total matches found:', matches.length);
-      alert(`Database has ${data.totalItems} total items. Selected company: ${selectedCompany}. Check console for company ID comparison.`);
+      const response = await fetch(`http://localhost:5000/api/companies/${selectedCompany || '68e4f4f21883bf1db6dc2c9f'}/items/debug/all`);
+      const result = await response.json();
+      console.log('🔍 DEBUG API Response:', result);
+      alert(`Debug Info:\nTotal Items: ${result.totalItems}\nMatching Items: ${result.matchingItems?.length || 0}\nCheck console for details`);
     } catch (error) {
-      console.error('🔍 DEBUG: Error checking database:', error);
+      console.error('🔍 Debug API Error:', error);
+      alert('Debug API Error - check console');
     }
   };
 
@@ -340,79 +343,61 @@ const SimpleItems = () => {
         return;
       }
 
-      // 🔍 DEBUG: First check what's in the database
-      if (selectedCompany) {
-        console.log('🔍 About to debug database for company:', selectedCompany);
-        await debugDatabase();
-      }
+      // ✅ DEBUG: Log the current state
+      console.log('🔍 LoadItems Debug:', {
+        selectedCompany,
+        user,
+        companies: companies.length,
+      });
 
-      // If user has selected a company, load items for that company
       if (selectedCompany) {
-        console.log('📦 Loading items for company:', {
-          companyId: selectedCompany,
-          companyName: companies.find(c => (c._id || c.id) === selectedCompany)?.name || companies.find(c => (c._id || c.id) === selectedCompany)?.businessName,
-          apiUrl: `/api/companies/${selectedCompany}/items`
+        console.log('🔍 Calling itemService.getItems with company:', selectedCompany);
+        const result = await itemService.getItems(selectedCompany);
+        
+        // ✅ DEBUG: Log the API response
+        console.log('🔍 API Response:', {
+          result,
+          resultType: typeof result,
+          isArray: Array.isArray(result),
+          hasSuccess: result?.success,
+          hasData: result?.data,
+          dataItems: result?.data?.items,
+          dataItemsLength: result?.data?.items?.length
         });
         
-        const result = await itemService.getItems(selectedCompany);
-        console.log('📦 API Response Details:');
-        console.log('  - Success:', result?.success);
-        console.log('  - Has Data:', !!result?.data);
-        console.log('  - Data Structure:', result?.data ? Object.keys(result.data) : []);
-        console.log('  - Items Count:', result?.data?.items?.length || 0);
-        console.log('  - Full Response:', result);
-        
-        // ✅ FIXED: Proper handling of backend response format
         let itemsArray = [];
         
         if (result && result.success && result.data) {
           if (Array.isArray(result.data.items)) {
-            // Standard format: { success: true, data: { items: [...], pagination: {...} } }
             itemsArray = result.data.items;
-            console.log('✅ Using result.data.items (standard format):', itemsArray.length, 'items');
           } else if (Array.isArray(result.data)) {
-            // Direct array format: { success: true, data: [...] }
             itemsArray = result.data;
-            console.log('✅ Using result.data (direct array):', itemsArray.length, 'items');
           }
         } else if (result && Array.isArray(result.items)) {
-          // Fallback: { items: [...] }
           itemsArray = result.items;
-          console.log('✅ Using result.items:', itemsArray.length, 'items');
         } else if (Array.isArray(result)) {
-          // Direct array response
           itemsArray = result;
-          console.log('✅ Using direct array result:', itemsArray.length, 'items');
         }
         
-        console.log('📦 Final items array:', itemsArray);
+        console.log('🔍 Final items array:', {
+          itemsArray,
+          length: itemsArray.length,
+          firstItem: itemsArray[0]
+        });
+        
         setItems(itemsArray);
         
-        if (itemsArray.length > 0) {
-          console.log('✅ Successfully loaded', itemsArray.length, 'items');
-          setSuccess(`Successfully loaded ${itemsArray.length} items`);
-        } else {
-          console.log('ℹ️ No items found for company:', selectedCompany);
-        }
-        
-        // Clear any previous errors if successful
         if (result?.success) {
           setError('');
         } else if (result?.message) {
           setError(result.message);
         }
       } else {
-        // No company selected, clear items
-        console.log('ℹ️ No company selected, clearing items');
+        console.log('🔍 No selected company, clearing items');
         setItems([]);
       }
     } catch (err) {
-      console.error('❌ Error loading items:', {
-        error: err,
-        message: err.message,
-        selectedCompany,
-        stack: err.stack
-      });
+      console.error('🔍 LoadItems Error:', err);
       setError(`Failed to load items: ${err.message || 'Unknown error'}`);
       setItems([]);
     } finally {
@@ -423,59 +408,24 @@ const SimpleItems = () => {
   // Load companies from database
   const loadCompanies = async () => {
     try {
-      console.log('🏢 Loading companies...');
       const result = await companyService.getCompanies({ limit: 100 });
-      console.log('🏢 Companies API response:', {
-        hasResult: !!result,
-        success: result?.success,
-        hasData: !!result?.data,
-        dataType: typeof result?.data,
-        dataLength: Array.isArray(result?.data) ? result.data.length : 'not array',
-        fullResponse: result
-      });
       
       let companiesArray = [];
       
       if (result && result.success && result.data) {
         if (Array.isArray(result.data.companies)) {
-          // Format: { success: true, data: { companies: [...] } }
           companiesArray = result.data.companies;
-          console.log('✅ Using result.data.companies format');
         } else if (Array.isArray(result.data)) {
-          // Format: { success: true, data: [...] }
           companiesArray = result.data;
-          console.log('✅ Using result.data format');
         }
       } else if (result && Array.isArray(result)) {
-        // Direct array format
         companiesArray = result;
-        console.log('✅ Using direct array format');
       } else if (result && result.data && Array.isArray(result.data)) {
         companiesArray = result.data;
-        console.log('✅ Using result.data fallback format');
       }
-      
-      console.log('🏢 Final companies array:', {
-        length: companiesArray.length,
-        companies: companiesArray.map(c => ({
-          id: c._id || c.id,
-          name: c.name || c.businessName,
-          hasId: !!(c._id || c.id),
-          hasName: !!(c.name || c.businessName)
-        }))
-      });
       
       setCompanies(companiesArray);
-      
-      if (companiesArray.length === 0) {
-        console.warn('⚠️ No companies loaded - user may need to create a company first');
-      }
     } catch (err) {
-      console.error('❌ Error loading companies:', {
-        error: err,
-        message: err.message,
-        stack: err.stack
-      });
       setError(`Failed to load companies: ${err.message}`);
       setCompanies([]);
     }
@@ -549,7 +499,6 @@ const SimpleItems = () => {
     setShowCategoryDropdown(true);
     setHighlightedIndex(-1);
     
-    // If input is cleared, clear selection
     if (!value) {
       setSelectedCategory('');
       setSubcategories([]);
@@ -669,7 +618,6 @@ const SimpleItems = () => {
       setSelectedCompany('');
       setBrandNotFound(false);
     } else {
-      // Check if brand exists
       const brandExists = companies.some(company => {
         const companyName = company.name || company.businessName || '';
         return companyName.toLowerCase() === value.toLowerCase();
@@ -682,7 +630,6 @@ const SimpleItems = () => {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Category dropdown
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target) &&
@@ -693,7 +640,6 @@ const SimpleItems = () => {
         setHighlightedIndex(-1);
       }
       
-      // Subcategory dropdown
       if (
         subcategoryDropdownRef.current &&
         !subcategoryDropdownRef.current.contains(event.target) &&
@@ -704,7 +650,6 @@ const SimpleItems = () => {
         setSubcategoryHighlightedIndex(-1);
       }
       
-      // Company dropdown
       if (
         companyDropdownRef.current &&
         !companyDropdownRef.current.contains(event.target) &&
@@ -740,79 +685,60 @@ const SimpleItems = () => {
         return;
       }
       
-      console.log('Creating item for selectedCompany:', selectedCompany);
-      console.log('Current companies list:', companies);
-
-      const company = companies.find(c => c._id === selectedCompany || c.id === selectedCompany);
-      const category = categories.find(c => c._id === selectedCategory);
-      const subcategory = selectedSubcategory ? subcategories.find(s => s._id === selectedSubcategory) : null;
-      
-      // ✅ FIXED: Don't include company in itemData - it's passed via URL parameter
       const itemData = {
         name: itemName.trim(),
         category: selectedCategory,
         subcategory: selectedSubcategory || undefined,
-        unit: "PCS", // Default unit
-        type: "product", // Default type
+        unit: unit || "PCS",
+        type: itemType || "product",
         gstRate: parseFloat(gstRate) || 0,
+        buyPrice: parseFloat(buyPrice) || 0,
+        salePrice: parseFloat(salePrice) || 0,
+        openingStock: parseFloat(openingStock) || 0,
+        minStockLevel: parseFloat(minStockLevel) || 0,
+        asOfDate: asOfDate || new Date().toISOString().split('T')[0],
+        isActive: true,
         createdBy: currentUser.id
       };
-      
-      console.log('🚀 Creating item with details:', {
-        itemData,
-        companyId: selectedCompany,
-        companyObject: company,
-        categoryObject: category,
-        subcategoryObject: subcategory,
-        apiUrl: `/api/companies/${selectedCompany}/items`
-      });
 
       if (editingItem) {
-        // Update existing item
         const result = await itemService.updateItem(editingItem._id, itemData);
         if (result.success) {
           setSuccess('Item updated successfully!');
-          loadItems(); // Reload items from database
+          loadItems();
           closeItemModal();
         } else {
           setError(result.message || 'Failed to update item');
         }
       } else {
-        // Create new item
+        console.log('🔍 Creating item with data:', itemData);
         const result = await itemService.createItem(selectedCompany, itemData);
-        console.log('� Item creation result:', {
-          success: result?.success,
-          message: result?.message,
-          hasData: !!result?.data,
-          createdItem: result?.data?.item
-        });
+        
+        console.log('🔍 Create item result:', result);
         
         if (result && result.success) {
           setSuccess(result.message || 'Item created successfully!');
-          console.log('✅ Item created successfully, immediately reloading items');
           
-          // ✅ Small delay to ensure backend processes the creation
-          console.log('⏳ Waiting briefly for backend to process item creation...');
+          console.log('🔍 Item created successfully, reloading items in 500ms...');
           setTimeout(async () => {
             try {
-              console.log('🔄 Reloading items after creation for company:', selectedCompany);
+              console.log('🔍 Calling loadItems after item creation...');
               await loadItems();
-              console.log('✅ Items reloaded successfully after creation');
+              console.log('🔍 LoadItems completed after item creation');
             } catch (reloadError) {
-              console.error('❌ Error reloading items after creation:', reloadError);
+              console.error('🔍 Error reloading items:', reloadError);
               setError('Item created but failed to refresh list. Please refresh the page.');
             }
-          }, 500); // Short 500ms delay
+          }, 500);
           
           closeItemModal();
         } else {
           const errorMsg = result?.message || 'Failed to create item';
-          console.error('❌ Item creation failed:', errorMsg);
+          console.error('🔍 Item creation failed:', errorMsg);
           setError(errorMsg);
         }
       }
     } catch (err) {
-      console.error('Error saving item:', err);
       setError('Failed to save item');
     } finally {
       setLoading(false);
@@ -839,13 +765,12 @@ const SimpleItems = () => {
         return;
       }
       
-      // Generate a unique phone number to avoid duplicates
       const uniquePhoneNumber = '9' + Date.now().toString().slice(-9);
       
       const companyData = {
         businessName: companyName.trim(),
         name: companyName.trim(),
-        phoneNumber: uniquePhoneNumber, // Unique phone number to satisfy backend validation
+        phoneNumber: uniquePhoneNumber,
         owner: currentUser.id
       };
 
@@ -856,14 +781,13 @@ const SimpleItems = () => {
         setCompanyName('');
         setShowCompanyModal(false);
         setBrandNotFound(false);
-        loadCompanies(); // Reload companies from database
+        loadCompanies();
         setSelectedCompany(result.data._id);
         setCompanySearch(result.data.name || result.data.businessName);
       } else {
         setError(result.message || 'Failed to create brand');
       }
     } catch (err) {
-      console.error('Error creating company:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to create brand';
       setError(errorMessage);
     } finally {
@@ -882,12 +806,11 @@ const SimpleItems = () => {
       const result = await itemService.deleteItem(itemId);
       if (result.success) {
         setSuccess('Item deleted successfully!');
-        loadItems(); // Reload items from database
+        loadItems();
       } else {
         setError(result.message || 'Failed to delete item');
       }
     } catch (err) {
-      console.error('Error deleting item:', err);
       setError('Failed to delete item');
     } finally {
       setLoading(false);
@@ -899,20 +822,16 @@ const SimpleItems = () => {
     setEditingItem(item);
     if (item) {
       setItemName(item.name);
-      
-      // Handle category - might be populated object or ID
       const categoryId = typeof item.category === 'object' ? item.category._id : item.category;
       const categoryName = typeof item.category === 'object' ? item.category.name : '';
       setSelectedCategory(categoryId);
       setCategorySearch(categoryName);
       
-      // Handle subcategory - might be populated object or ID
       const subcategoryId = item.subcategory ? (typeof item.subcategory === 'object' ? item.subcategory._id : item.subcategory) : '';
       const subcategoryName = item.subcategory ? (typeof item.subcategory === 'object' ? item.subcategory.name : '') : '';
       setSelectedSubcategory(subcategoryId);
       setSubcategorySearch(subcategoryName);
       
-      // Handle company - might be populated object or ID
       const companyId = typeof item.company === 'object' ? (item.company._id || item.company.id) : item.company;
       const companyName = typeof item.company === 'object' ? (item.company.name || item.company.businessName) : '';
       setSelectedCompany(companyId?.toString() || '');
@@ -920,7 +839,6 @@ const SimpleItems = () => {
       
       setGstRate(item.gstRate?.toString() || '');
       
-      // Load subcategories for editing
       if (categoryId) {
         loadSubcategories(categoryId);
       }
@@ -930,8 +848,6 @@ const SimpleItems = () => {
       setCategorySearch('');
       setSelectedSubcategory('');
       setSubcategorySearch('');
-      setSelectedCompany('');
-      setCompanySearch('');
       setGstRate('');
       setSubcategories([]);
     }
@@ -951,8 +867,17 @@ const SimpleItems = () => {
     setItemName('');
     setSelectedCategory('');
     setSelectedSubcategory('');
-    setSelectedCompany('');
     setGstRate('');
+    
+    // ✅ NEW: Reset stock-related states
+    setItemType('product');
+    setUnit('PCS');
+    setBuyPrice('');
+    setSalePrice('');
+    setOpeningStock('');
+    setMinStockLevel('');
+    setAsOfDate(new Date().toISOString().split('T')[0]);
+    
     setCategorySearch('');
     setSubcategorySearch('');
     setCompanySearch('');
@@ -1032,7 +957,6 @@ const SimpleItems = () => {
       return;
     }
 
-    // Validate that parent category exists
     const parentCategory = categories.find(c => c._id === parentCategoryForSub);
     if (!parentCategory) {
       setError('Selected parent category not found');
@@ -1049,7 +973,6 @@ const SimpleItems = () => {
         parentCategory: parentCategoryForSub
       };
 
-      console.log('Creating subcategory with data:', subcategoryData);
       const result = await subCategoryService.createSubCategory(subcategoryData);
 
       if (result.success) {
@@ -1064,7 +987,6 @@ const SimpleItems = () => {
         setError(result.message || 'Failed to create subcategory');
       }
     } catch (err) {
-      console.error('Error creating subcategory:', err);
       setError(err.response?.data?.message || err.message || 'Failed to create subcategory');
     } finally {
       setLoading(false);
@@ -1086,7 +1008,6 @@ const SimpleItems = () => {
       return;
     }
 
-    // Check if GST rate already exists
     if (gstOptions.some(option => option.value === rate)) {
       setError('This GST rate already exists');
       return;
@@ -1096,8 +1017,6 @@ const SimpleItems = () => {
     setError('');
 
     try {
-      // This would need to be implemented as a service call to save custom GST rates
-      // For now, we'll add it to the local gstOptions array
       const newGstOption = {
         value: rate,
         label: `${rate}%`,
@@ -1105,7 +1024,6 @@ const SimpleItems = () => {
         isCustom: true
       };
 
-      // Add to gstOptions state (temporary for current session only)
       setGstOptions(prevOptions => [...prevOptions, newGstOption]);
       
       setSuccess('Custom GST rate added successfully!');
@@ -1151,24 +1069,6 @@ const SimpleItems = () => {
     }
   }, [success]);
 
-  // Dropdown styles
-  const dropdownStyles = `
-    .category-dropdown-item {
-      transition: all 0.2s ease;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    .category-dropdown-item:hover {
-      background-color: #f8f9fa !important;
-    }
-    .category-dropdown-item.highlighted {
-      background-color: #007bff !important;
-      color: white !important;
-    }
-    .category-dropdown-item:last-child {
-      border-bottom: none;
-    }
-  `;
-
   return (
     <>
       <style>{dropdownStyles}</style>
@@ -1192,14 +1092,6 @@ const SimpleItems = () => {
                   </Button>
                 )}
                 <Button 
-                  variant="outline-info"
-                  className="px-3 py-2 me-2"
-                  onClick={debugDatabase}
-                  style={{ borderRadius: '8px' }}
-                >
-                  🔍 Debug DB
-                </Button>
-                <Button 
                   className="btn-gradient px-4 py-2"
                   onClick={() => openItemModal()}
                   style={{ borderRadius: '8px' }}
@@ -1207,12 +1099,41 @@ const SimpleItems = () => {
                   <FontAwesomeIcon icon={faPlus} className="me-2" />
                   Add Item
                 </Button>
+                {process.env.NODE_ENV === 'development' && (
+                  <Button 
+                    variant="warning"
+                    onClick={debugAllItems}
+                    className="px-3 py-2 ms-2"
+                    style={{ borderRadius: '8px' }}
+                  >
+                    🔍 Debug DB
+                  </Button>
+                )}
               </div>
             </Card.Header>
             
             <Card.Body>
               {error && <Alert variant="danger">{error}</Alert>}
               {success && <Alert variant="success">{success}</Alert>}
+              
+              {/* ✅ DEBUG: Show raw data */}
+              {process.env.NODE_ENV === 'development' && (
+                <Alert variant="info" className="mb-3">
+                  <small>
+                    <strong>Debug Info:</strong><br/>
+                    Selected Company: {selectedCompany || 'None'}<br/>
+                    Items Count: {items.length}<br/>
+                    Companies Count: {companies.length}<br/>
+                    {items.length > 0 && (
+                      <>First Item: {JSON.stringify({
+                        id: items[0]._id || items[0].id,
+                        name: items[0].name,
+                        companyId: items[0].companyId
+                      }, null, 2)}</>
+                    )}
+                  </small>
+                </Alert>
+              )}
               
               {companies.length > 0 && !selectedCompany && (
                 <Alert variant="info" className="mb-4">
@@ -1225,18 +1146,6 @@ const SimpleItems = () => {
                 <Alert variant="warning" className="mb-4">
                   <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
                   <strong>No Companies Found:</strong> You need to create a company/brand first before adding items. Click the "+" button next to the brand selection to create one.
-                </Alert>
-              )}
-
-              {/* Debug: Log items length on render */}
-              {console.log('🎨 Rendering items, length:', items.length, 'items:', items)}
-              
-              {/* Debug panel for development */}
-              {process.env.NODE_ENV === 'development' && (
-                <Alert variant="secondary" className="mb-4 small">
-                  <strong>Debug Info:</strong><br/>
-                  Companies: {companies.length} | Selected: {selectedCompany || 'none'} | Items: {items.length} | Loading: {loading ? 'yes' : 'no'}
-                  <br/>Company Names: {companies.map(c => c.name || c.businessName).join(', ') || 'none'}
                 </Alert>
               )}
               
@@ -1271,10 +1180,10 @@ const SimpleItems = () => {
                       <tr key={item._id || item.id}>
                         <td>{index + 1}</td>
                         <td>{item.name}</td>
-                        <td>{typeof item.category === 'object' ? item.category?.name : 'N/A'}</td>
-                        <td>{typeof item.subcategory === 'object' ? item.subcategory?.name : '-'}</td>
+                        <td>{typeof item.category === 'object' ? item.category?.name : item.category || 'N/A'}</td>
+                        <td>{typeof item.subcategory === 'object' ? item.subcategory?.name : item.subcategory || '-'}</td>
                         <td>
-                          <strong>{typeof item.company === 'object' ? (item.company?.name || item.company?.businessName) : 'N/A'}</strong>
+                          <strong>{typeof item.company === 'object' ? (item.company?.name || item.company?.businessName) : item.company || 'N/A'}</strong>
                         </td>
                         <td>{item.gstRate || 0}%</td>
                         <td>
@@ -1547,6 +1456,129 @@ const SimpleItems = () => {
                   </div>
                 </Form.Group>
               </Col>
+
+              {/* ✅ NEW: Stock and Pricing Fields */}
+              <Col xs={12}>
+                <h6 className="text-muted mb-3 mt-2">
+                  <FontAwesomeIcon icon={faBoxes} className="me-2" />
+                  Item Details & Stock Information
+                </h6>
+              </Col>
+
+              {/* Item Type & Unit */}
+              <Col lg={6} md={6} className="mb-3">
+                <Form.Group>
+                  <Form.Label className="form-label-professional">Item Type</Form.Label>
+                  <Form.Select
+                    value={itemType}
+                    onChange={(e) => setItemType(e.target.value)}
+                    className="professional-dropdown"
+                  >
+                    <option value="product">Product</option>
+                    <option value="service">Service</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+
+              <Col lg={6} md={6} className="mb-3">
+                <Form.Group>
+                  <Form.Label className="form-label-professional">Unit</Form.Label>
+                  <Form.Select
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    className="professional-dropdown"
+                  >
+                    <option value="PCS">PCS - Pieces</option>
+                    <option value="KGS">KGS - Kilograms</option>
+                    <option value="LTR">LTR - Litres</option>
+                    <option value="MTR">MTR - Metres</option>
+                    <option value="BOX">BOX - Boxes</option>
+                    <option value="DOZ">DOZ - Dozen</option>
+                    <option value="SET">SET - Sets</option>
+                    <option value="BAG">BAG - Bags</option>
+                    <option value="BTL">BTL - Bottles</option>
+                    <option value="CAN">CAN - Cans</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+
+              {/* Pricing */}
+              <Col lg={6} md={6} className="mb-3">
+                <Form.Group>
+                  <Form.Label className="form-label-professional">Buy Price (₹)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={buyPrice}
+                    onChange={(e) => setBuyPrice(e.target.value)}
+                    placeholder="Enter buy price"
+                    className="professional-dropdown"
+                    min="0"
+                    step="0.01"
+                  />
+                </Form.Group>
+              </Col>
+
+              <Col lg={6} md={6} className="mb-3">
+                <Form.Group>
+                  <Form.Label className="form-label-professional">Sale Price (₹)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={salePrice}
+                    onChange={(e) => setSalePrice(e.target.value)}
+                    placeholder="Enter sale price"
+                    className="professional-dropdown"
+                    min="0"
+                    step="0.01"
+                  />
+                </Form.Group>
+              </Col>
+
+              {/* Stock Fields - Only show for products */}
+              {itemType === 'product' && (
+                <>
+                  <Col lg={4} md={6} className="mb-3">
+                    <Form.Group>
+                      <Form.Label className="form-label-professional">Opening Stock</Form.Label>
+                      <Form.Control
+                        type="number"
+                        value={openingStock}
+                        onChange={(e) => setOpeningStock(e.target.value)}
+                        placeholder="Enter opening stock"
+                        className="professional-dropdown"
+                        min="0"
+                        step="1"
+                      />
+                    </Form.Group>
+                  </Col>
+
+                  <Col lg={4} md={6} className="mb-3">
+                    <Form.Group>
+                      <Form.Label className="form-label-professional">Min Stock Level</Form.Label>
+                      <Form.Control
+                        type="number"
+                        value={minStockLevel}
+                        onChange={(e) => setMinStockLevel(e.target.value)}
+                        placeholder="Enter minimum stock"
+                        className="professional-dropdown"
+                        min="0"
+                        step="1"
+                      />
+                    </Form.Group>
+                  </Col>
+
+                  <Col lg={4} md={6} className="mb-3">
+                    <Form.Group>
+                      <Form.Label className="form-label-professional">As of Date</Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={asOfDate}
+                        onChange={(e) => setAsOfDate(e.target.value)}
+                        className="professional-dropdown"
+                      />
+                    </Form.Group>
+                  </Col>
+                </>
+              )}
             </Row>
           </Modal.Body>
           <Modal.Footer className="p-3">

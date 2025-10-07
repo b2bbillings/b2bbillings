@@ -890,14 +890,6 @@ const NewSidebar = React.memo(
                 </div>
                 <Accordion.Collapse eventKey="parties">
                   <div className="new-sidebar-submenu">
-                    {/* <NavLink
-                      to={getPath('parties')}
-                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
-                      onClick={() => handleSimpleNavigation("Parties", "parties")}
-                    >
-                      <FontAwesomeIcon icon={faUsers} className="me-2" />
-                      All Parties
-                    </NavLink> */}
                     <NavLink
                       to={getPath('customers')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}

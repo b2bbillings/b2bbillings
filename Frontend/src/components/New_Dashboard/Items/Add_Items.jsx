@@ -37,6 +37,15 @@ const Items = () => {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('');
   const [gstRate, setGstRate] = useState('');
+  
+  // ✅ NEW: Stock-related states
+  const [itemType, setItemType] = useState('product');
+  const [unit, setUnit] = useState('PCS');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [salePrice, setSalePrice] = useState('');
+  const [openingStock, setOpeningStock] = useState('');
+  const [minStockLevel, setMinStockLevel] = useState('');
+  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Modal states
   const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
@@ -140,6 +149,16 @@ const Items = () => {
     setSelectedCategory('');
     setSelectedCompany('');
     setGstRate('');
+    
+    // ✅ NEW: Reset stock-related states
+    setItemType('product');
+    setUnit('PCS');
+    setBuyPrice('');
+    setSalePrice('');
+    setOpeningStock('');
+    setMinStockLevel('');
+    setAsOfDate(new Date().toISOString().split('T')[0]);
+    
     setError('');
     setSuccess('');
   };
@@ -180,9 +199,15 @@ const Items = () => {
       const itemData = {
         name: itemName.trim(),
         category: selectedCategory,
-        unit: "PCS", // Default unit - can be made configurable later
-        type: "product", // Default type
+        unit: unit || "PCS",
+        type: itemType || "product",
         gstRate: parseFloat(gstRate) || 0,
+        buyPrice: parseFloat(buyPrice) || 0,
+        salePrice: parseFloat(salePrice) || 0,
+        openingStock: parseFloat(openingStock) || 0,
+        minStockLevel: parseFloat(minStockLevel) || 0,
+        asOfDate: asOfDate || new Date().toISOString().split('T')[0],
+        isActive: true,
         createdBy: currentUser.id
       };
 
@@ -441,6 +466,120 @@ const Items = () => {
                           </Form.Select>
                         </Form.Group>
                       </Col>
+
+                      {/* ✅ NEW: Stock and Pricing Fields */}
+                      <Col xs={12}>
+                        <hr className="my-3" />
+                        <h6 className="text-muted mb-3">
+                          Stock & Pricing Information
+                        </h6>
+                      </Col>
+
+                      {/* Item Type & Unit */}
+                      <Col md={6} className="mb-3">
+                        <Form.Group>
+                          <Form.Label>Item Type</Form.Label>
+                          <Form.Select
+                            value={itemType}
+                            onChange={(e) => setItemType(e.target.value)}
+                          >
+                            <option value="product">Product</option>
+                            <option value="service">Service</option>
+                          </Form.Select>
+                        </Form.Group>
+                      </Col>
+
+                      <Col md={6} className="mb-3">
+                        <Form.Group>
+                          <Form.Label>Unit</Form.Label>
+                          <Form.Select
+                            value={unit}
+                            onChange={(e) => setUnit(e.target.value)}
+                          >
+                            <option value="PCS">PCS - Pieces</option>
+                            <option value="KGS">KGS - Kilograms</option>
+                            <option value="LTR">LTR - Litres</option>
+                            <option value="MTR">MTR - Metres</option>
+                            <option value="BOX">BOX - Boxes</option>
+                            <option value="DOZ">DOZ - Dozen</option>
+                            <option value="SET">SET - Sets</option>
+                            <option value="BAG">BAG - Bags</option>
+                          </Form.Select>
+                        </Form.Group>
+                      </Col>
+
+                      {/* Pricing */}
+                      <Col md={6} className="mb-3">
+                        <Form.Group>
+                          <Form.Label>Buy Price (₹)</Form.Label>
+                          <Form.Control
+                            type="number"
+                            value={buyPrice}
+                            onChange={(e) => setBuyPrice(e.target.value)}
+                            placeholder="Enter buy price"
+                            min="0"
+                            step="0.01"
+                          />
+                        </Form.Group>
+                      </Col>
+
+                      <Col md={6} className="mb-3">
+                        <Form.Group>
+                          <Form.Label>Sale Price (₹)</Form.Label>
+                          <Form.Control
+                            type="number"
+                            value={salePrice}
+                            onChange={(e) => setSalePrice(e.target.value)}
+                            placeholder="Enter sale price"
+                            min="0"
+                            step="0.01"
+                          />
+                        </Form.Group>
+                      </Col>
+
+                      {/* Stock Fields - Only show for products */}
+                      {itemType === 'product' && (
+                        <>
+                          <Col md={4} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>Opening Stock</Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={openingStock}
+                                onChange={(e) => setOpeningStock(e.target.value)}
+                                placeholder="Enter opening stock"
+                                min="0"
+                                step="1"
+                              />
+                            </Form.Group>
+                          </Col>
+
+                          <Col md={4} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>Min Stock Level</Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={minStockLevel}
+                                onChange={(e) => setMinStockLevel(e.target.value)}
+                                placeholder="Enter minimum stock"
+                                min="0"
+                                step="1"
+                              />
+                            </Form.Group>
+                          </Col>
+
+                          <Col md={4} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>As of Date</Form.Label>
+                              <Form.Control
+                                type="date"
+                                value={asOfDate}
+                                onChange={(e) => setAsOfDate(e.target.value)}
+                              />
+                            </Form.Group>
+                          </Col>
+                        </>
+                      )}
                     </Row>
                   </Modal.Body>
                   <Modal.Footer>
