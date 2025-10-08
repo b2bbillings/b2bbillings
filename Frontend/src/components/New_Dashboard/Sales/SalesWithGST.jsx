@@ -19,15 +19,15 @@ const SalesWithGST = () => {
     clientName: '',
     clientAddress: '',
     clientGST: '',
-    date: new Date().toISOString().split('T')[0],
+    date: '',
     invoiceNo: '',
     items: [
       {
         id: 1,
         name: '',
-        quantity: 1,
-        rate: 0,
-        gstRate: 18,
+        quantity: '',
+        rate: '',
+        gstRate: '',
         amount: 0,
         gstAmount: 0,
         totalAmount: 0
@@ -40,11 +40,6 @@ const SalesWithGST = () => {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    // Generate automatic invoice number
-    const today = new Date();
-    const invoiceNo = `INV-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
-    setBillData(prev => ({ ...prev, invoiceNo }));
-
     // Load clients and items from localStorage or API
     loadClientsAndItems();
   }, []);

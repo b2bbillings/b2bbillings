@@ -40,6 +40,10 @@ import PaymentOutPage from "./Pages/PaymentOutPage";
 import New_parties from "./components/New_Dashboard/New_parties/New_parties";
 import Expense from "./components/New_Dashboard/Expenses+/Expense";
 import IndirectIncome from "./components/New_Dashboard/Expenses+/Indirect_Income/indirectIncome";
+import Sales from "./components/New_Dashboard/Sales/Sales";
+import SalesWithGST from "./components/New_Dashboard/Sales/SalesWithGST";
+import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
+import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
@@ -1699,6 +1703,75 @@ function App() {
     );
   };
 
+  // Sales Management Wrappers
+  const SalesWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 SalesWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <Sales
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const SalesWithGSTWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 SalesWithGSTWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <SalesWithGST
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const SalesWithoutGSTWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 SalesWithoutGSTWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <SalesWithoutGST
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const AllBillsWrapper = () => {
+    const {companyId} = useParams();
+    console.log('🎯 AllBillsWrapper rendering with companyId:', companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <AllBillsList
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
   // Simple Payment Wrappers without company requirements
   const SimplePaymentInWrapper = () => {
     if (!isLoggedIn) {
@@ -2239,6 +2312,43 @@ function App() {
               element={
                 <ProtectedRoute>
                   <PaymentOutWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Sales Management Routes */}
+            <Route
+              path="/companies/:companyId/sales"
+              element={
+                <ProtectedRoute>
+                  <SalesWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/salesWithGST"
+              element={
+                <ProtectedRoute>
+                  <SalesWithGSTWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/salesWithoutGST"
+              element={
+                <ProtectedRoute>
+                  <SalesWithoutGSTWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/companies/:companyId/allBills"
+              element={
+                <ProtectedRoute>
+                  <AllBillsWrapper />
                 </ProtectedRoute>
               }
             />

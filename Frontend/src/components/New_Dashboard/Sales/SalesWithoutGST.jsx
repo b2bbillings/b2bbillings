@@ -24,9 +24,9 @@ const SalesWithoutGST = () => {
       {
         id: 1,
         name: '',
-        quantity: 1,
-        rate: 0,
-        taxRate: 0,
+        quantity: '',
+        rate: '',
+        taxRate: '',
         amount: 0,
         taxAmount: 0,
         totalAmount: 0

@@ -108,30 +108,6 @@ const NAVIGATION_ITEMS = [
     ],
   },
   {
-    id: "sales",
-    label: "Sales",
-    icon: faShoppingCart,
-    type: "accordion",
-    section: "sales",
-    isActive: false, // Will be redesigned later
-    children: [
-      {
-        id: "quotations",
-        label: "Quotations",
-        icon: faFileContract,
-        requiresCompany: true,
-        isActive: false,
-      },
-      {
-        id: "invoices",
-        label: "Invoices",
-        icon: faFileInvoice,
-        requiresCompany: true,
-        isActive: false,
-      },
-    ],
-  },
-  {
     id: "purchaseExpense",
     label: "Purchase",
     icon: faShoppingBag,
@@ -174,6 +150,38 @@ const NAVIGATION_ITEMS = [
         id: "indirectIncome",
         label: "Indirect Income",
         icon: faChartLine,
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    icon: faShoppingCart,
+    type: "accordion",
+    section: "sales",
+    requiresCompany: true,
+    isActive: true, // ✅ ACTIVE - Sales management with billing
+    children: [
+      {
+        id: "sales-with-gst",
+        label: "Sales with GST",
+        icon: faFileInvoiceDollar,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "sales-without-gst",
+        label: "Sales without GST",
+        icon: faFileInvoice,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "all-bills",
+        label: "All Bills",
+        icon: faClipboardList,
         requiresCompany: true,
         isActive: true,
       },
@@ -754,6 +762,15 @@ const NewSidebar = React.memo(
         case 'paymentOut':
           path = '/payment-out';
           break;
+        case 'salesWithGST':
+          path = '/salesWithGST';
+          break;
+        case 'salesWithoutGST':
+          path = '/salesWithoutGST';
+          break;
+        case 'allBills':
+          path = '/allBills';
+          break;
         case 'gst':
           path = '/gst';
           break;
@@ -941,6 +958,50 @@ const NewSidebar = React.memo(
                     >
                       <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
                       Indirect Income
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+
+              {/* Sales Section */}
+              <Accordion.Item eventKey="sales" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("sales")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faShoppingCart} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Sales</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "sales" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="sales">
+                  <div className="new-sidebar-submenu">
+                    <NavLink
+                      to={getPath('salesWithGST')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Sales with GST", "salesWithGST")}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoiceDollar} className="me-2" />
+                      Sales with GST
+                    </NavLink>
+                    <NavLink
+                      to={getPath('salesWithoutGST')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Sales without GST", "salesWithoutGST")}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
+                      Sales without GST
+                    </NavLink>
+                    <NavLink
+                      to={getPath('allBills')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("All Bills", "allBills")}
+                    >
+                      <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+                      All Bills
                     </NavLink>
                   </div>
                 </Accordion.Collapse>

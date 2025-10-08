@@ -660,41 +660,41 @@ function Navbar({
 
   useEffect(() => {
     function handleClickOutside(event) {
-      console.log('🔧 Click outside detected:', event.target);
+    //   console.log('🔧 Click outside detected:', event.target);
       
-      if (
-        showNotifications &&
-        notificationRef.current &&
-        !notificationRef.current.contains(event.target)
-      ) {
-        console.log('🔧 Closing notifications dropdown');
-        setShowNotifications(false);
-      }
+    //   if (
+    //     showNotifications &&
+    //     notificationRef.current &&
+    //     !notificationRef.current.contains(event.target)
+    //   ) {
+    //     console.log('🔧 Closing notifications dropdown');
+    //     setShowNotifications(false);
+    //   }
 
-      if (
-        showUserDropdown &&
-        userDropdownRef.current &&
-        !userDropdownRef.current.contains(event.target)
-      ) {
-        console.log('🔧 Closing user dropdown');
-        setShowUserDropdown(false);
-      }
+    //   if (
+    //     showUserDropdown &&
+    //     userDropdownRef.current &&
+    //     !userDropdownRef.current.contains(event.target)
+    //   ) {
+    //     console.log('🔧 Closing user dropdown');
+    //     setShowUserDropdown(false);
+    //   }
 
-      if (
-        showBusinessDropdown &&
-        businessDropdownRef.current &&
-        !businessDropdownRef.current.contains(event.target)
-      ) {
-        console.log('🔧 Closing business dropdown');
-        setShowBusinessDropdown(false);
-      }
+    //   if (
+    //     showBusinessDropdown &&
+    //     businessDropdownRef.current &&
+    //     !businessDropdownRef.current.contains(event.target)
+    //   ) {
+    //     console.log('🔧 Closing business dropdown');
+    //     setShowBusinessDropdown(false);
+    //   }
 
 
-    }
+    // }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+    // document.addEventListener("mousedown", handleClickOutside);
+    // return () => {
+    //   document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showNotifications, showUserDropdown, showBusinessDropdown]);
 

@@ -32,6 +32,7 @@ import PaymentOut from "./Transactions/PaymentOut";
 import SimpleItems from "./Items/SimpleItems";
 import GSTInfo from "./Info/GSTInfo";
 import CompanyBrandInfo from "./Info/CompanyBrandInfo";
+import Sales from "./Sales/Sales";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -55,14 +56,52 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/indirect-income": { title: "Indirect Income", type: "indirectIncome" },
     "/payment-in": { title: "Payment In", type: "paymentIn" },
     "/payment-out": { title: "Payment Out", type: "paymentOut" },
+    "/sales-with-gst": { title: "Sales with GST", type: "salesWithGST" },
+    "/sales-without-gst": { title: "Sales without GST", type: "salesWithoutGST" },
+    "/all-bills": { title: "All Bills", type: "allBills" },
     "/gst": { title: "GST", type: "gst" },
     "/company-brand": { title: "Company/Brand", type: "companyBrand" },
   };
 
   useEffect(() => {
     const path = location.pathname;
-    if (routeMap[path]) {
-      setRouteContent(routeMap[path]);
+    
+    // Extract the content type from company-specific URLs
+    // URL format: /companies/{companyId}/{contentType}
+    const pathParts = path.split('/');
+    let contentPath = path;
+    
+    if (pathParts.length >= 4 && pathParts[1] === 'companies') {
+      // Extract the content type from company URL
+      contentPath = '/' + pathParts.slice(3).join('/');
+    }
+    
+    // Check if we have a direct match in routeMap
+    if (routeMap[contentPath]) {
+      setRouteContent(routeMap[contentPath]);
+    } else {
+      // Try to match the last part of the path for content types
+      const lastPart = pathParts[pathParts.length - 1];
+      const contentTypeMap = {
+        'salesWithGST': { title: "Sales with GST", type: "salesWithGST" },
+        'salesWithoutGST': { title: "Sales without GST", type: "salesWithoutGST" },
+        'allBills': { title: "All Bills", type: "allBills" },
+        'categories': { title: "Category Management", type: "categories" },
+        'items': { title: "Item Management", type: "items" },
+        'parties': { title: "Parties", type: "parties" },
+        'customers': { title: "Customers", type: "customers" },
+        'vendors': { title: "Vendors", type: "vendors" },
+        'expenseManagement': { title: "Expenses", type: "expenseManagement" },
+        'indirectIncome': { title: "Indirect Income", type: "indirectIncome" },
+        'paymentIn': { title: "Payment In", type: "paymentIn" },
+        'paymentOut': { title: "Payment Out", type: "paymentOut" },
+        'gst': { title: "GST", type: "gst" },
+        'companyBrand': { title: "Company/Brand", type: "companyBrand" },
+      };
+      
+      if (contentTypeMap[lastPart]) {
+        setRouteContent(contentTypeMap[lastPart]);
+      }
     }
   }, [location.pathname]);
 
@@ -71,6 +110,16 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     const timer = setTimeout(() => setLocalLoading(false), 400);
     return () => clearTimeout(timer);
   }, [routeContent]);
+
+  // Handle direct prop changes from sidebar navigation
+  useEffect(() => {
+    if (activeContent && contentType) {
+      setRouteContent({
+        title: activeContent,
+        type: contentType,
+      });
+    }
+  }, [activeContent, contentType]);
 
   // Default/Welcome Content
   const renderWelcomeContent = () => (
@@ -280,6 +329,17 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Sales Content - All sales management in one component
+  const renderSalesContent = () => (
+    <div className="content-sales">
+      <Sales 
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={addToast}
+      />
+    </div>
+  );
+
   // GST Content
   const renderGSTContent = () => (
     <div className="content-gst">
@@ -390,6 +450,10 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderPaymentInContent();
       case "paymentOut":
         return renderPaymentOutContent();
+      case "salesWithGST":
+      case "salesWithoutGST":
+      case "allBills":
+        return renderSalesContent();
       case "gst":
         return renderGSTContent();
       case "companyBrand":

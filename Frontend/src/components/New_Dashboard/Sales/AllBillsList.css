@@ -1,113 +1,158 @@
 /* All Bills List Styles */
 .all-bills-list {
   min-height: 100vh;
-  background: #f8f9fa;
-  margin-left: 560px;
-  width: calc(100vw - 560px);
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  width: 100vw;
   overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
   position: relative;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Hide scrollbars for all bills list */
 .all-bills-list::-webkit-scrollbar {
-  width: 0px;
+  width: 6px;
   background: transparent;
 }
 
-.all-bills-list {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+.all-bills-list::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
 }
 
+.all-bills-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* Modern Header */
 .bills-header {
-  background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 25px 30px;
+  padding: 2rem 2.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 10;
+}
+
+.bills-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #ec4899 100%);
+  opacity: 0.8;
 }
 
 .header-content {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 1rem;
+  position: relative;
+  z-index: 11;
 }
 
 .header-icon {
-  font-size: 2rem;
-  opacity: 0.9;
+  font-size: 2.5rem;
+  opacity: 0.95;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .header-content h2 {
   margin: 0;
-  font-size: 1.8rem;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  letter-spacing: -0.5px;
 }
 
 .header-content p {
-  margin: 5px 0 0 0;
-  opacity: 0.9;
-  font-size: 1rem;
+  margin: 8px 0 0 0;
+  opacity: 0.92;
+  font-size: 1.1rem;
+  font-weight: 400;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .header-stats {
   display: flex;
-  gap: 20px;
+  gap: 1.5rem;
+  position: relative;
+  z-index: 11;
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.15);
-  padding: 15px 20px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
   text-align: center;
-  min-width: 120px;
+  min-width: 140px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .stat-number {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: 5px;
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .stat-label {
-  font-size: 0.9rem;
-  opacity: 0.9;
+  font-size: 0.95rem;
+  opacity: 0.95;
   color: white;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Controls Section */
+/* Enhanced Controls Section */
 .bills-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 30px;
-  background: white;
-  border-bottom: 1px solid #e9ecef;
-  gap: 20px;
+  padding: 2rem 2.5rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-bottom: 2px solid #f1f5f9;
+  gap: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .search-filter-section {
   display: flex;
-  gap: 15px;
+  gap: 1.5rem;
   flex: 1;
+  align-items: center;
 }
 
 .search-box {
   position: relative;
   flex: 1;
-  max-width: 400px;
+  max-width: 450px;
 }
 
 .search-icon {
   position: absolute;
-  left: 12px;
+  left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  color: #6c757d;
+  color: #667eea;
+  font-size: 1.1rem;
+  z-index: 1;
 }
 
 /* Date Filter Controls */
@@ -182,17 +227,27 @@
 
 .search-box input {
   width: 100%;
-  padding: 10px 15px 10px 35px;
-  border: 2px solid #e9ecef;
-  border-radius: 6px;
+  padding: 14px 20px 14px 45px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
   font-size: 1rem;
   transition: all 0.3s ease;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  font-family: inherit;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .search-box input:focus {
   outline: none;
-  border-color: #6f42c1;
-  box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.1);
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+
+.search-box input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
 }
 
 .filter-box {
@@ -282,15 +337,17 @@
   margin: 0 auto;
 }
 
-/* Bills Table */
+/* Enhanced Bills Table */
 .bills-table-container {
   background: white;
-  margin: 20px 30px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  margin: 1.5rem 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   position: relative;
   z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(20px);
 }
 
 .bills-table {
@@ -299,14 +356,16 @@
 }
 
 .bills-table th {
-  background: #495057;
+  background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
   color: white;
-  padding: 15px 12px;
+  padding: 18px 16px;
   text-align: left;
-  font-weight: 600;
-  font-size: 0.9rem;
-  border-right: 1px solid #6c757d;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-right: 1px solid #718096;
   cursor: default;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .bills-table th:last-child {
@@ -317,11 +376,12 @@
   cursor: pointer;
   user-select: none;
   position: relative;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .bills-table th.sortable:hover {
-  background: #3d4449;
+  background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+  transform: translateY(-1px);
 }
 
 .sort-indicator {
@@ -330,10 +390,11 @@
 }
 
 .bills-table td {
-  padding: 15px 12px;
-  border-right: 1px solid #e9ecef;
-  border-bottom: 1px solid #e9ecef;
+  padding: 16px;
+  border-right: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
+  font-size: 0.95rem;
 }
 
 .bills-table td:last-child {
@@ -341,11 +402,14 @@
 }
 
 .bills-table tbody tr:nth-child(even) {
-  background: #f8f9fa;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 .bills-table tbody tr:hover {
-  background: #e9ecef;
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
 }
 
 /* Table Content Styling */
@@ -399,38 +463,48 @@
   font-family: monospace;
 }
 
-/* Action Buttons */
+/* Enhanced Action Buttons */
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .view-btn,
 .delete-btn {
-  padding: 8px 10px;
+  padding: 10px 14px;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .view-btn {
-  background: #007bff;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   color: white;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
 }
 
 .view-btn:hover {
-  background: #0056b3;
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
 }
 
 .delete-btn {
-  background: #dc3545;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
 }
 
 .delete-btn:hover {
-  background: #c82333;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 /* Pagination */
