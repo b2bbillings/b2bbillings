@@ -14,13 +14,24 @@ import BillPreview from './BillPreview';
 import './SalesWithGST.css';
 
 const SalesWithGST = () => {
+  // Get current date in YYYY-MM-DD format
+  const getCurrentDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  // Generate serial number
+  const generateSerialNo = () => {
+    const timestamp = Date.now().toString().slice(-6);
+    return `GST-${timestamp}`;
+  };
+
   const [billData, setBillData] = useState({
-    serialNo: '',
-    clientName: '',
-    clientAddress: '',
-    clientGST: '',
-    date: '',
+    serialNo: generateSerialNo(),
+    date: getCurrentDate(),
     invoiceNo: '',
+    partyId: '',
+    partyName: '',
     items: [
       {
         id: 1,
@@ -36,27 +47,55 @@ const SalesWithGST = () => {
   });
 
   const [showPreview, setShowPreview] = useState(false);
-  const [clients, setClients] = useState([]);
+  const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Load clients and items from localStorage or API
-    loadClientsAndItems();
+    // Load parties and items from API
+    loadPartiesAndItems();
   }, []);
 
-  const loadClientsAndItems = () => {
-    // Placeholder for loading clients and items
-    // In real implementation, this would come from your API
-    setClients([
-      { id: 1, name: 'ABC Company', address: '123 Business St, City', gst: '27ABCDE1234F1Z5' },
-      { id: 2, name: 'XYZ Enterprises', address: '456 Commerce Ave, Town', gst: '29XYZAB5678G2A3' }
-    ]);
-    
-    setItems([
-      { id: 1, name: 'Product A', rate: 100 },
-      { id: 2, name: 'Product B', rate: 200 },
-      { id: 3, name: 'Service C', rate: 500 }
-    ]);
+  const loadPartiesAndItems = async () => {
+    setLoading(true);
+    try {
+      // Load parties from API
+      const partiesResponse = await fetch('/api/parties');
+      if (partiesResponse.ok) {
+        const partiesData = await partiesResponse.json();
+        setParties(partiesData);
+      } else {
+        console.error('Failed to load parties');
+        // Fallback data for development
+        setParties([
+          { _id: '1', name: 'ABC Company', partyType: 'customer' },
+          { _id: '2', name: 'XYZ Enterprises', partyType: 'customer' },
+          { _id: '3', name: 'DEF Vendor', partyType: 'vendor' }
+        ]);
+      }
+      
+      // Load items - keep existing placeholder
+      setItems([
+        { id: 1, name: 'Product A', rate: 100 },
+        { id: 2, name: 'Product B', rate: 200 },
+        { id: 3, name: 'Service C', rate: 500 }
+      ]);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      // Fallback data for development
+      setParties([
+        { _id: '1', name: 'ABC Company', partyType: 'customer' },
+        { _id: '2', name: 'XYZ Enterprises', partyType: 'customer' },
+        { _id: '3', name: 'DEF Vendor', partyType: 'vendor' }
+      ]);
+      setItems([
+        { id: 1, name: 'Product A', rate: 100 },
+        { id: 2, name: 'Product B', rate: 200 },
+        { id: 3, name: 'Service C', rate: 500 }
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleInputChange = (field, value) => {
@@ -66,14 +105,13 @@ const SalesWithGST = () => {
     }));
   };
 
-  const handleClientSelect = (clientId) => {
-    const client = clients.find(c => c.id === parseInt(clientId));
-    if (client) {
+  const handlePartySelect = (partyId) => {
+    const party = parties.find(p => p._id === partyId);
+    if (party) {
       setBillData(prev => ({
         ...prev,
-        clientName: client.name,
-        clientAddress: client.address,
-        clientGST: client.gst
+        partyId: party._id,
+        partyName: party.name
       }));
     }
   };
@@ -147,15 +185,14 @@ const SalesWithGST = () => {
     return { subtotal, totalGST, grandTotal };
   };
 
-  const handleSaveBill = () => {
+  const handleSaveBill = async () => {
     // Comprehensive validation
     const missingFields = [];
     
     if (!billData.serialNo?.trim()) missingFields.push('Serial No');
-    if (!billData.clientName?.trim()) missingFields.push('Client Name');
-    if (!billData.clientAddress?.trim()) missingFields.push('Client Address');
-    if (!billData.clientGST?.trim()) missingFields.push('GST No');
     if (!billData.invoiceNo?.trim()) missingFields.push('Invoice No');
+    if (!billData.partyId?.trim()) missingFields.push('Party Name');
+    if (!billData.date?.trim()) missingFields.push('Date');
     
     // Check items
     const invalidItems = billData.items.filter(item => 
@@ -183,13 +220,34 @@ const SalesWithGST = () => {
       createdAt: new Date().toISOString()
     };
 
-    // Save to localStorage (in real app, save to database)
-    const existingBills = JSON.parse(localStorage.getItem('salesBills') || '[]');
-    existingBills.push(completeBillData);
-    localStorage.setItem('salesBills', JSON.stringify(existingBills));
+    try {
+      setLoading(true);
+      // Save to backend API
+      const response = await fetch('/api/sales/bills', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(completeBillData)
+      });
 
-    alert('Bill saved successfully!');
-    setShowPreview(true);
+      if (response.ok) {
+        alert('Bill saved successfully!');
+        setShowPreview(true);
+      } else {
+        throw new Error('Failed to save bill');
+      }
+    } catch (error) {
+      console.error('Error saving bill:', error);
+      // Fallback to localStorage for development
+      const existingBills = JSON.parse(localStorage.getItem('salesBills') || '[]');
+      existingBills.push(completeBillData);
+      localStorage.setItem('salesBills', JSON.stringify(existingBills));
+      alert('Bill saved successfully (locally)!');
+      setShowPreview(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const { subtotal, totalGST, grandTotal } = calculateTotals();
@@ -220,7 +278,6 @@ const SalesWithGST = () => {
           <FontAwesomeIcon icon={faFileInvoiceDollar} className="header-icon" />
           <div>
             <h2>Sales with GST</h2>
-            <p>Create GST compliant invoices and bills</p>
           </div>
         </div>
       </div>
@@ -231,19 +288,6 @@ const SalesWithGST = () => {
           <div className="form-section">
             <h3>Basic Details</h3>
             <div className="form-row">
-              <div className="form-group">
-                <label>
-                  <FontAwesomeIcon icon={faHashtag} />
-                  Serial No *
-                </label>
-                <input
-                  type="text"
-                  value={billData.serialNo}
-                  onChange={(e) => handleInputChange('serialNo', e.target.value)}
-                  placeholder="e.g., GST-001, GST-002..."
-                  required
-                />
-              </div>
               <div className="form-group">
                 <label>
                   <FontAwesomeIcon icon={faCalendarAlt} />
@@ -261,80 +305,36 @@ const SalesWithGST = () => {
                   <FontAwesomeIcon icon={faFileInvoiceDollar} />
                   Invoice No *
                 </label>
+
                 <input
                   type="text"
                   value={billData.invoiceNo}
                   onChange={(e) => handleInputChange('invoiceNo', e.target.value)}
-                  placeholder="Auto-generated"
+                  placeholder="Enter invoice number"
                   required
                 />
               </div>
             </div>
-          </div>
-
-          {/* Client Details Section */}
-          <div className="form-section">
-            <h3>Client Details</h3>
             <div className="form-row">
               <div className="form-group">
                 <label>
                   <FontAwesomeIcon icon={faUser} />
-                  Select Client
+                  Party Name *
                 </label>
-                <select onChange={(e) => handleClientSelect(e.target.value)}>
-                  <option value="">Select existing client</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
+                <select 
+                  value={billData.partyId}
+                  onChange={(e) => handlePartySelect(e.target.value)}
+                  required
+                >
+                  <option value="">Select party (customer/vendor)</option>
+                  {parties.map(party => (
+                    <option key={party._id} value={party._id}>
+                      {party.name} ({party.partyType})
                     </option>
                   ))}
                 </select>
               </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>
-                  <FontAwesomeIcon icon={faUser} />
-                  Client Name *
-                </label>
-                <input
-                  type="text"
-                  value={billData.clientName}
-                  onChange={(e) => handleInputChange('clientName', e.target.value)}
-                  placeholder="Enter client name"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  <FontAwesomeIcon icon={faBuilding} />
-                  GST No *
-                </label>
-                <input
-                  type="text"
-                  value={billData.clientGST}
-                  onChange={(e) => handleInputChange('clientGST', e.target.value)}
-                  placeholder="e.g., 27ABCDE1234F1Z5"
-                  pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}"
-                  title="Enter 15-digit GST number (e.g., 27ABCDE1234F1Z5)"
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group full-width">
-                <label>
-                  <FontAwesomeIcon icon={faBuilding} />
-                  Address *
-                </label>
-                <textarea
-                  value={billData.clientAddress}
-                  onChange={(e) => handleInputChange('clientAddress', e.target.value)}
-                  placeholder="Enter client address"
-                  rows="3"
-                  required
-                />
-              </div>
+              
             </div>
           </div>
 
@@ -367,7 +367,7 @@ const SalesWithGST = () => {
                   <div className="item-card-content">
                     {/* Item Selection Row */}
                     <div className="item-row">
-                      <div className="item-field">
+                      {/* <div className="item-field">
                         <label>Select from List</label>
                         <select onChange={(e) => handleItemSelect(index, e.target.value)}>
                           <option value="">Choose existing item</option>
@@ -377,7 +377,7 @@ const SalesWithGST = () => {
                             </option>
                           ))}
                         </select>
-                      </div>
+                      </div> */}
                       <div className="item-field">
                         <label>Item Name *</label>
                         <input
@@ -452,29 +452,16 @@ const SalesWithGST = () => {
             </div>
           </div>
 
-          {/* Totals Section */}
-          <div className="form-section totals-section">
-            <div className="totals-container">
-              <div className="total-row">
-                <span>Subtotal:</span>
-                <span>₹{subtotal.toFixed(2)}</span>
-              </div>
-              <div className="total-row">
-                <span>Total GST:</span>
-                <span>₹{totalGST.toFixed(2)}</span>
-              </div>
-              <div className="total-row grand-total">
-                <span>Grand Total:</span>
-                <span>₹{grandTotal.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
           {/* Action Buttons */}
           <div className="form-actions">
-            <button type="button" className="save-btn" onClick={handleSaveBill}>
+            <button 
+              type="button" 
+              className="save-btn" 
+              onClick={handleSaveBill}
+              disabled={loading}
+            >
               <FontAwesomeIcon icon={faSave} />
-              Save & Preview Bill
+              {loading ? 'Saving...' : 'Save & Preview Bill'}
             </button>
           </div>
         </form>

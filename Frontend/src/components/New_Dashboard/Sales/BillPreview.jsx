@@ -366,8 +366,10 @@ This will work in all modern browsers!`;
           <div className="client-section">
             <h3>Bill To:</h3>
             <div className="client-details">
-              <div className="client-name">{billData.clientName}</div>
-              <div className="client-address">{billData.clientAddress}</div>
+              <div className="client-name">{billData.partyName || billData.clientName}</div>
+              {billData.clientAddress && (
+                <div className="client-address">{billData.clientAddress}</div>
+              )}
               {billData.clientGST && (
                 <div className="client-gst">GST No: {billData.clientGST}</div>
               )}

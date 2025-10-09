@@ -852,6 +852,13 @@ router.get(
 router.post("/", authenticate, validateRequest, saleController.createSale);
 
 /**
+ * @route   POST /api/sales/bills
+ * @desc    Create a new sales bill (GST/Non-GST)
+ * @access  Private
+ */
+router.post("/bills", authenticate, validateRequest, saleController.createSalesBill);
+
+/**
  * @route   GET /api/sales
  * @desc    Get all sales with pagination and filters (enhanced with source tracking)
  * @access  Private

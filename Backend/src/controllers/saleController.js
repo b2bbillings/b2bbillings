@@ -7004,6 +7004,87 @@ const saleController = {
       });
     }
   },
+
+  // ✅ NEW: Create sales bill for new sales components
+  createSalesBill: async (req, res) => {
+    try {
+      const {
+        serialNo,
+        date,
+        invoiceNo,
+        partyId,
+        partyName,
+        items,
+        type, // 'GST' or 'NON_GST'
+        subtotal,
+        totalGST,
+        totalTax,
+        grandTotal,
+        companyId
+      } = req.body;
+
+      // Validation
+      if (!serialNo || !date || !invoiceNo || !partyId || !items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields: serialNo, date, invoiceNo, partyId, and items are required"
+        });
+      }
+
+      // Verify party exists
+      const party = await Party.findById(partyId);
+      if (!party) {
+        return res.status(404).json({
+          success: false,
+          message: "Party not found"
+        });
+      }
+
+      // Create sale record using existing Sale model structure
+      const saleData = {
+        serialNumber: serialNo,
+        invoiceNumber: invoiceNo,
+        invoiceDate: new Date(date),
+        customerId: partyId,
+        customerName: partyName || party.name,
+        companyId: companyId || req.user?.companyId,
+        userId: req.user?.id,
+        items: items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          pricePerUnit: item.rate,
+          amount: item.amount,
+          gstRate: item.gstRate || item.taxRate || 0,
+          gstAmount: item.gstAmount || item.taxAmount || 0,
+          totalAmount: item.totalAmount
+        })),
+        billType: type,
+        subtotal: subtotal,
+        totalGST: totalGST || totalTax || 0,
+        grandTotal: grandTotal,
+        paymentStatus: "pending",
+        status: "active",
+        source: "sales_component"
+      };
+
+      const newSale = new Sale(saleData);
+      const savedSale = await newSale.save();
+
+      res.status(201).json({
+        success: true,
+        message: "Sales bill created successfully",
+        data: savedSale
+      });
+
+    } catch (error) {
+      console.error("Error creating sales bill:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to create sales bill",
+        error: error.message
+      });
+    }
+  },
 };
 
 module.exports = saleController;

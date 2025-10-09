@@ -5,12 +5,10 @@ import {
   faSearch,
   faFilter,
   faEye,
-  faDownload,
   faTrash,
   faFileInvoiceDollar,
   faReceipt,
   faCalendarAlt,
-  faUser,
   faSortAmountUp,
   faSortAmountDown
 } from '@fortawesome/free-solid-svg-icons';
@@ -22,15 +20,12 @@ const AllBillsList = () => {
   const [filteredBills, setFilteredBills] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
-  const [selectedMonth, setSelectedMonth] = useState('');
-  const [selectedYear, setSelectedYear] = useState('');
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedBill, setSelectedBill] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const billsPerPage = 10;
+  const billsPerPage = 15; // Increased for compact view
 
   useEffect(() => {
     loadBills();
@@ -38,10 +33,9 @@ const AllBillsList = () => {
 
   useEffect(() => {
     filterAndSortBills();
-  }, [bills, searchTerm, filterType, dateFilter, selectedMonth, selectedYear, sortBy, sortOrder]);
+  }, [bills, searchTerm, filterType, sortBy, sortOrder]);
 
   const loadBills = () => {
-    // Load bills from localStorage (in real app, this would be an API call)
     const savedBills = JSON.parse(localStorage.getItem('salesBills') || '[]');
     setBills(savedBills);
   };
@@ -49,35 +43,17 @@ const AllBillsList = () => {
   const filterAndSortBills = () => {
     let filtered = [...bills];
 
-    // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(bill => 
-        bill.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         bill.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
         bill.serialNo.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Apply type filter
     if (filterType !== 'all') {
       filtered = filtered.filter(bill => bill.type === filterType);
     }
 
-    // Apply date filters
-    if (dateFilter === 'month' && selectedMonth) {
-      filtered = filtered.filter(bill => {
-        const billDate = new Date(bill.date);
-        const [year, month] = selectedMonth.split('-');
-        return billDate.getFullYear() == year && billDate.getMonth() == (month - 1);
-      });
-    } else if (dateFilter === 'year' && selectedYear) {
-      filtered = filtered.filter(bill => {
-        const billDate = new Date(bill.date);
-        return billDate.getFullYear() == selectedYear;
-      });
-    }
-
-    // Apply sorting
     filtered.sort((a, b) => {
       let aValue, bValue;
       
@@ -89,10 +65,6 @@ const AllBillsList = () => {
         case 'amount':
           aValue = a.grandTotal;
           bValue = b.grandTotal;
-          break;
-        case 'client':
-          aValue = a.clientName.toLowerCase();
-          bValue = b.clientName.toLowerCase();
           break;
         case 'invoice':
           aValue = a.invoiceNo.toLowerCase();
@@ -124,7 +96,6 @@ const AllBillsList = () => {
   };
 
   const handleViewBill = (bill) => {
-    // Ensure the bill has all required fields for preview
     const completeBillData = {
       ...bill,
       subtotal: Number(bill.subtotal) || 0,
@@ -141,8 +112,7 @@ const AllBillsList = () => {
         taxAmount: Number(item.taxAmount) || 0,
         totalAmount: Number(item.totalAmount) || 0
       })),
-      // Add missing fields if they don't exist
-      clientName: bill.clientName || 'N/A',
+      clientName: bill.partyName || bill.clientName || 'N/A',
       clientAddress: bill.clientAddress || 'N/A',
       clientGST: bill.clientGST || '',
       date: bill.date || new Date().toISOString().split('T')[0],
@@ -151,7 +121,6 @@ const AllBillsList = () => {
       type: bill.type || 'GST'
     };
     
-    console.log('Viewing bill:', completeBillData); // Debug log
     setSelectedBill(completeBillData);
     setShowPreview(true);
   };
@@ -179,25 +148,6 @@ const AllBillsList = () => {
     }).format(amount);
   };
 
-  const getAvailableYears = () => {
-    const years = [...new Set(bills.map(bill => new Date(bill.date).getFullYear()))];
-    return years.sort((a, b) => b - a);
-  };
-
-  const getAvailableMonths = () => {
-    const months = [...new Set(bills.map(bill => {
-      const date = new Date(bill.date);
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    }))];
-    return months.sort().reverse();
-  };
-
-  const getMonthName = (monthValue) => {
-    const [year, month] = monthValue.split('-');
-    const date = new Date(year, month - 1);
-    return date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  };
-
   // Pagination
   const indexOfLastBill = currentPage * billsPerPage;
   const indexOfFirstBill = indexOfLastBill - billsPerPage;
@@ -221,20 +171,20 @@ const AllBillsList = () => {
         <div className="header-content">
           <FontAwesomeIcon icon={faList} className="header-icon" />
           <div>
-            <h2>All Bills</h2>
-            <p>View and manage all generated bills and invoices</p>
+            <h2>Bills</h2>
+            <p>Manage invoices</p>
           </div>
         </div>
         <div className="header-stats">
           <div className="stat-card">
             <div className="stat-number">{bills.length}</div>
-            <div className="stat-label">Total Bills</div>
+            <div className="stat-label">Total</div>
           </div>
           <div className="stat-card">
             <div className="stat-number">
               {formatCurrency(bills.reduce((sum, bill) => sum + bill.grandTotal, 0))}
             </div>
-            <div className="stat-label">Total Amount</div>
+            <div className="stat-label">Amount</div>
           </div>
         </div>
       </div>
@@ -245,7 +195,7 @@ const AllBillsList = () => {
             <FontAwesomeIcon icon={faSearch} className="search-icon" />
             <input
               type="text"
-              placeholder="Search by client name, invoice no, or serial no..."
+              placeholder="Search by invoice or serial number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -262,65 +212,16 @@ const AllBillsList = () => {
               <option value="NON_GST">Non-GST Bills</option>
             </select>
           </div>
-
-          <div className="date-filter-box">
-            <FontAwesomeIcon icon={faCalendarAlt} className="filter-icon" />
-            <select
-              value={dateFilter}
-              onChange={(e) => {
-                setDateFilter(e.target.value);
-                setSelectedMonth('');
-                setSelectedYear('');
-              }}
-            >
-              <option value="all">All Time</option>
-              <option value="month">By Month</option>
-              <option value="year">By Year</option>
-            </select>
-          </div>
-
-          {dateFilter === 'month' && (
-            <div className="month-filter-box">
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-              >
-                <option value="">Select Month</option>
-                {getAvailableMonths().map(month => (
-                  <option key={month} value={month}>
-                    {getMonthName(month)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {dateFilter === 'year' && (
-            <div className="year-filter-box">
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-              >
-                <option value="">Select Year</option>
-                {getAvailableYears().map(year => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
         <div className="sort-section">
-          <label>Sort by:</label>
+          <label>Sort:</label>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
           >
             <option value="date">Date</option>
             <option value="amount">Amount</option>
-            <option value="client">Client Name</option>
             <option value="invoice">Invoice No</option>
           </select>
           <button
@@ -340,8 +241,8 @@ const AllBillsList = () => {
           <h3>No Bills Found</h3>
           <p>
             {bills.length === 0 
-              ? "No bills have been created yet. Start by creating your first bill!"
-              : "No bills match your current search and filter criteria."
+              ? "No bills created yet."
+              : "No bills match your search."
             }
           </p>
         </div>
@@ -362,7 +263,7 @@ const AllBillsList = () => {
                     )}
                   </th>
                   <th onClick={() => handleSort('invoice')} className="sortable">
-                    Invoice/Bill No
+                    Invoice No
                     {sortBy === 'invoice' && (
                       <FontAwesomeIcon 
                         icon={sortOrder === 'asc' ? faSortAmountUp : faSortAmountDown}
@@ -371,16 +272,6 @@ const AllBillsList = () => {
                     )}
                   </th>
                   <th>Serial No</th>
-                  <th onClick={() => handleSort('client')} className="sortable">
-                    <FontAwesomeIcon icon={faUser} />
-                    Client Name
-                    {sortBy === 'client' && (
-                      <FontAwesomeIcon 
-                        icon={sortOrder === 'asc' ? faSortAmountUp : faSortAmountDown}
-                        className="sort-indicator"
-                      />
-                    )}
-                  </th>
                   <th>Type</th>
                   <th onClick={() => handleSort('amount')} className="sortable">
                     Amount
@@ -403,25 +294,16 @@ const AllBillsList = () => {
                     </td>
                     <td>{bill.serialNo}</td>
                     <td>
-                      <div className="client-info">
-                        <span className="client-name">{bill.clientName}</span>
-                        {bill.clientGST && (
-                          <span className="client-gst">GST: {bill.clientGST}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
                       <span className={`bill-type ${bill.type.toLowerCase()}`}>
                         <FontAwesomeIcon 
                           icon={bill.type === 'GST' ? faFileInvoiceDollar : faReceipt} 
                         />
-                        {bill.type === 'GST' ? 'GST Invoice' : 'Non-GST Bill'}
+                        {bill.type === 'GST' ? 'GST' : 'Non-GST'}
                       </span>
                     </td>
                     <td className="amount">{formatCurrency(bill.grandTotal)}</td>
                     <td>
-                      <div className="action-buttons">
-                        <button
+                      <button
                           className="view-btn"
                           onClick={() => handleViewBill(bill)}
                           title="View Bill"
@@ -435,7 +317,6 @@ const AllBillsList = () => {
                         >
                           <FontAwesomeIcon icon={faTrash} />
                         </button>
-                      </div>
                     </td>
                   </tr>
                 ))}
@@ -443,7 +324,6 @@ const AllBillsList = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="pagination">
               <button
