@@ -33,6 +33,7 @@ import SimpleItems from "./Items/SimpleItems";
 import GSTInfo from "./Info/GSTInfo";
 import CompanyBrandInfo from "./Info/CompanyBrandInfo";
 import Sales from "./Sales/Sales";
+import NewSalesInvoice from "./Sales/invoice/NewSalesInvoice"; // Add this import
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -59,12 +60,14 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/sales-with-gst": { title: "Sales with GST", type: "salesWithGST" },
     "/sales-without-gst": { title: "Sales without GST", type: "salesWithoutGST" },
     "/all-bills": { title: "All Bills", type: "allBills" },
+    "/sales-invoice": { title: "Sales Invoice", type: "salesInvoice" }, // Make sure this is here
     "/gst": { title: "GST", type: "gst" },
     "/company-brand": { title: "Company/Brand", type: "companyBrand" },
   };
 
   useEffect(() => {
     const path = location.pathname;
+    console.log("🔍 Current path:", path); // Debug log
     
     // Extract the content type from company-specific URLs
     // URL format: /companies/{companyId}/{contentType}
@@ -74,18 +77,24 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     if (pathParts.length >= 4 && pathParts[1] === 'companies') {
       // Extract the content type from company URL
       contentPath = '/' + pathParts.slice(3).join('/');
+      console.log("🔍 Extracted content path:", contentPath); // Debug log
     }
     
     // Check if we have a direct match in routeMap
     if (routeMap[contentPath]) {
+      console.log("✅ Found direct match:", routeMap[contentPath]); // Debug log
       setRouteContent(routeMap[contentPath]);
     } else {
       // Try to match the last part of the path for content types
       const lastPart = pathParts[pathParts.length - 1];
+      console.log("🔍 Checking last part:", lastPart); // Debug log
+      
       const contentTypeMap = {
         'salesWithGST': { title: "Sales with GST", type: "salesWithGST" },
         'salesWithoutGST': { title: "Sales without GST", type: "salesWithoutGST" },
         'allBills': { title: "All Bills", type: "allBills" },
+        'sales-invoice': { title: "Sales Invoice", type: "salesInvoice" }, // Add this key
+        'salesInvoice': { title: "Sales Invoice", type: "salesInvoice" }, // Keep this too
         'categories': { title: "Category Management", type: "categories" },
         'items': { title: "Item Management", type: "items" },
         'parties': { title: "Parties", type: "parties" },
@@ -100,7 +109,11 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       };
       
       if (contentTypeMap[lastPart]) {
+        console.log("✅ Found content type match:", contentTypeMap[lastPart]); // Debug log
         setRouteContent(contentTypeMap[lastPart]);
+      } else {
+        console.log("❌ No match found, defaulting to welcome"); // Debug log
+        setRouteContent({ title: "Home", type: "welcome" });
       }
     }
   }, [location.pathname]);
@@ -114,6 +127,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
   // Handle direct prop changes from sidebar navigation
   useEffect(() => {
     if (activeContent && contentType) {
+      console.log("🎯 Setting from props:", { activeContent, contentType }); // Debug log
       setRouteContent({
         title: activeContent,
         type: contentType,
@@ -340,6 +354,20 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Sales Invoice Content - Make sure this function exists
+  const renderSalesInvoiceContent = () => {
+    console.log("🎯 Rendering NewSalesInvoice component"); // Debug log
+    return (
+      <div className="content-sales-invoice">
+        <NewSalesInvoice 
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          addToast={addToast}
+        />
+      </div>
+    );
+  };
+
   // GST Content
   const renderGSTContent = () => (
     <div className="content-gst">
@@ -454,10 +482,14 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       case "salesWithoutGST":
       case "allBills":
         return renderSalesContent();
+      case "salesInvoice": // Make sure this case exists
+        console.log("🎯 Rendering Sales Invoice Content"); // Debug log
+        return renderSalesInvoiceContent();
       case "gst":
         return renderGSTContent();
       case "companyBrand":
         return renderCompanyBrandContent();
+      case "welcome":
       default:
         return renderWelcomeContent();
     }
@@ -501,4 +533,4 @@ ContentDisplay.defaultProps = {
 
 ContentDisplay.displayName = "ContentDisplay";
 
-export default ContentDisplay;  
+export default ContentDisplay;

@@ -30,7 +30,6 @@
   font-size: 20px;
   opacity: 0.9;
   color: #fbbf24;
-  flex-shrink: 0;
 }
 
 .header-content h2 {
@@ -38,7 +37,6 @@
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.025em;
-  line-height: 1.2;
 }
 
 .header-content p {
@@ -65,7 +63,7 @@
 
 /* Ultra Compact Form Sections */
 .form-section {
-  padding: 16px 20px; /* Increased from 12px 16px */
+  padding: 12px 16px;
   border-bottom: 1px solid #f3f4f6;
   position: relative;
 }
@@ -75,22 +73,22 @@
 }
 
 .form-section h3 {
-  margin: 0 0 14px 0; /* Increased from 10px */
+  margin: 0 0 10px 0;
   color: #1f2937;
-  font-size: 18px; /* Increased from 16px */
+  font-size: 16px; /* Increased from 14px */
   font-weight: 700; /* Increased from 600 */
   display: flex;
   align-items: center;
-  gap: 10px; /* Increased from 8px */
-  padding-bottom: 10px; /* Increased from 8px */
-  border-bottom: 2px solid #e5e7eb; /* Increased border width */
+  gap: 8px; /* Increased from 6px */
+  padding-bottom: 8px; /* Increased from 6px */
+  border-bottom: 1px solid #e5e7eb;
   letter-spacing: 0.025em;
 }
 
 .form-section h3::before {
   content: '';
-  width: 5px; /* Increased from 4px */
-  height: 20px; /* Increased from 16px */
+  width: 4px; /* Increased from 3px */
+  height: 16px; /* Increased from 14px */
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   border-radius: 2px;
 }
@@ -99,92 +97,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px; /* Increased from 10px */
+  margin-bottom: 10px; /* Increased from 8px */
 }
 
 .section-header h3 {
   margin: 0;
   color: #1f2937;
-  font-size: 18px; /* Increased from 16px */
+  font-size: 16px; /* Increased from 14px */
   font-weight: 700; /* Increased from 600 */
   display: flex;
   align-items: center;
-  gap: 10px; /* Increased from 8px */
+  gap: 8px;
   letter-spacing: 0.025em;
-}
-
-/* Enhanced Form Layout - 3 Fields per Row */
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3 columns per row */
-  gap: 16px; /* Increased from 10px */
-  margin-bottom: 16px; /* Increased from 10px */
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px; /* Increased from 2px */
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-/* Enhanced Form Labels */
-.form-group label {
-  font-weight: 600;
-  color: #374151;
-  font-size: 14px; /* Increased from 12px */
-  display: flex;
-  align-items: center;
-  gap: 6px; /* Increased from 4px */
-  margin-bottom: 6px; /* Increased from 3px */
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.form-group label svg {
-  color: #6b7280;
-  font-size: 14px; /* Increased from 12px */
-}
-
-/* Enhanced Form Inputs */
-.form-group input,
-.form-group select,
-.form-group textarea {
-  width: 100%;
-  padding: 10px 12px; /* Increased from 6px 8px */
-  border: 1px solid #e5e7eb;
-  border-radius: 6px; /* Increased from 4px */
-  font-size: 14px; /* Increased from 12px */
-  font-weight: 400;
-  color: #1f2937;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  transition: all 0.3s ease;
-  box-sizing: border-box;
-  min-height: 20px; /* Added minimum height */
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #4f46e5;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); /* Enhanced shadow */
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 80px; /* Increased from 60px */
 }
 
 /* Enhanced Item Card Header */
 .item-card-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 12px 18px; /* Increased from 8px 14px */
+  padding: 8px 14px; /* Increased from 6px 12px */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -192,114 +123,94 @@
 
 .item-card-header h4 {
   margin: 0;
-  font-size: 16px; /* Increased from 14px */
+  font-size: 14px; /* Increased from 12px */
   font-weight: 700; /* Increased from 600 */
   letter-spacing: 0.025em;
 }
 
-/* Enhanced Add Item Button */
-.add-item-btn {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border: none;
-  padding: 10px 16px; /* Increased from 8px 12px */
-  border-radius: 6px; /* Increased from 4px */
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px; /* Increased from 6px */
-  font-weight: 600;
-  font-size: 14px; /* Increased from 12px */
-  transition: all 0.3s ease;
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2);
-}
-
-.add-item-btn:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
-}
-
 /* Ultra Compact Item Card Content */
 .item-card-content {
-  padding: 16px; /* Increased from 10px */
+  padding: 10px;
 }
 
-/* Enhanced Item Rows - 3 Fields per Row */
+/* Ultra Compact Item Rows */
 .item-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3 columns per row */
-  gap: 16px; /* Increased from 8px */
-  margin-bottom: 16px; /* Increased from 8px */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .item-row:last-child {
   margin-bottom: 0;
 }
 
-/* Enhanced Item Fields */
+/* Ultra Compact Item Fields */
 .item-field {
   display: flex;
   flex-direction: column;
-  gap: 6px; /* Increased from 2px */
+  gap: 2px;
 }
 
 .item-field label {
   font-weight: 600;
   color: #495057;
-  margin-bottom: 6px; /* Increased from 3px */
-  font-size: 12px; /* Increased from 11px */
+  margin-bottom: 3px; /* Increased from 2px */
+  font-size: 11px; /* Increased from 10px */
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
-.item-field input,
-.item-field select {
-  padding: 8px 10px; /* Increased from 4px 6px */
-  border: 1px solid #e9ecef;
-  border-radius: 6px; /* Increased from 4px */
-  font-size: 13px; /* Increased from 11px */
-  transition: all 0.3s ease;
-  background: #f8f9fa;
-  min-height: 18px; /* Added minimum height */
+/* Ultra Compact Input Styles */
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #1f2937;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
-.item-field input:focus,
-.item-field select:focus {
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: #4f46e5;
-  background: white;
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1); /* Enhanced shadow */
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
 }
 
 /* Ultra Compact Item Cards */
 .item-card {
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 8px; /* Increased from 6px */
-  margin-bottom: 12px; /* Increased from 8px */
+  border-radius: 6px;
+  margin-bottom: 8px;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   overflow: hidden;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); /* Enhanced shadow */
 }
 
 .item-card:hover {
   border-color: #4f46e5;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15); /* Enhanced shadow */
-  transform: translateY(-1px);
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.1);
 }
 
 /* Ultra Compact Calculations Section */
 .item-calculations {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px; /* Increased from 6px */
+  gap: 6px;
   background: #f8f9fa;
-  padding: 12px; /* Increased from 8px */
-  border-radius: 6px; /* Increased from 4px */
+  padding: 8px;
+  border-radius: 4px;
   border: 1px solid #e9ecef;
-  margin-top: 10px; /* Increased from 6px */
+  margin-top: 6px;
 }
 
 .calc-item {
@@ -310,65 +221,62 @@
 }
 
 .calc-item label {
-  font-size: 11px; /* Increased from 10px */
+  font-size: 10px; /* Increased from 9px */
   font-weight: 600;
   color: #6c757d;
-  margin-bottom: 6px; /* Increased from 3px */
+  margin-bottom: 3px; /* Increased from 2px */
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .calc-item .amount {
-  font-size: 14px; /* Increased from 12px */
+  font-size: 12px; /* Increased from 11px */
   font-weight: 700;
   color: #495057;
   background: white;
-  padding: 8px 12px; /* Increased from 4px 8px */
-  border-radius: 6px; /* Increased from 4px */
+  padding: 4px 8px; /* Increased from 3px 6px */
+  border-radius: 4px;
   border: 1px solid #dee2e6;
   font-family: 'Courier New', monospace;
-  min-width: 80px; /* Added minimum width */
 }
 
 .total-calc {
   border: 1px solid #28a745;
   background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-  border-radius: 8px; /* Increased from 6px */
-  padding: 12px; /* Increased from 8px */
+  border-radius: 6px;
+  padding: 8px;
 }
 
 .total-calc label {
   color: white;
   font-weight: 700;
-  font-size: 11px; /* Increased from 10px */
+  font-size: 10px; /* Added explicit size */
 }
 
 .total-calc .amount {
   background: rgba(255, 255, 255, 0.95);
   color: #28a745;
   font-weight: 800;
-  font-size: 16px; /* Increased from 13px */
+  font-size: 13px; /* Increased from 12px */
   border: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Enhanced shadow */
-  padding: 8px 12px;
-  min-width: 100px; /* Added minimum width */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 4px 8px;
 }
 
-/* Enhanced Remove Item Button */
+/* Ultra Compact Remove Button */
 .item-card-header .remove-item-btn {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 8px 12px; /* Increased from 5px 8px */
-  border-radius: 6px; /* Increased from 4px */
+  padding: 5px 8px; /* Increased from 4px 6px */
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 12px; /* Increased from 11px */
-  min-width: 36px; /* Added minimum width */
+  font-size: 11px; /* Increased from 10px */
 }
 
 .item-card-header .remove-item-btn:hover:not(:disabled) {
@@ -386,93 +294,52 @@
 /* Ultra Compact Action Buttons */
 .form-actions {
   display: flex;
-  gap: 12px; /* Increased from 8px */
+  gap: 8px;
   justify-content: center;
-  padding: 16px; /* Increased from 12px */
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  border-radius: 8px;
-  margin-top: 12px; /* Increased from 8px */
+  padding: 12px;
+  background: #f9fafb;
 }
 
 .save-btn {
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   color: white;
   border: none;
-  padding: 12px 20px; /* Increased from 8px 16px */
+  padding: 8px 16px;
   border-radius: 6px;
-  font-size: 14px; /* Increased from 12px */
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px; /* Increased from 6px */
-  transition: all 0.3s ease;
-  min-width: 140px; /* Increased from 120px */
+  gap: 6px;
+  transition: all 0.2s ease;
+  min-width: 120px;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
 }
 
 .save-btn:hover {
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
 }
 
-/* Enhanced Responsive Design */
-@media (max-width: 1024px) {
-  .form-row {
-    grid-template-columns: repeat(3, 1fr); /* Keep 3 columns on tablets */
-    gap: 12px;
-  }
-  
-  .item-row {
-    grid-template-columns: repeat(3, 1fr); /* Keep 3 columns on tablets */
-    gap: 12px;
-  }
-}
-
+/* Responsive Design */
 @media (max-width: 768px) {
   .form-row {
-    grid-template-columns: repeat(2, 1fr); /* 2 columns on mobile */
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr);
   }
   
   .item-row {
-    grid-template-columns: repeat(2, 1fr); /* 2 columns on mobile */
-    gap: 12px;
+    grid-template-columns: 1fr;
   }
   
   .item-calculations {
     grid-template-columns: repeat(2, 1fr);
   }
-  
-  .sales-form-container {
-    padding: 8px;
-  }
-  
-  .form-section {
-    padding: 12px 16px;
-  }
 }
 
 @media (max-width: 480px) {
   .form-row {
-    grid-template-columns: 1fr; /* Single column on small mobile */
-  }
-  
-  .item-row {
-    grid-template-columns: 1fr; /* Single column on small mobile */
-  }
-  
-  .header-content {
-    flex-direction: column;
-    text-align: center;
-    gap: 6px;
-  }
-  
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
-    font-size: 16px; /* Prevent zoom on iOS */
+    grid-template-columns: 1fr;
   }
 }

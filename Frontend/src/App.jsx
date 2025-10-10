@@ -44,6 +44,7 @@ import Sales from "./components/New_Dashboard/Sales/Sales";
 import SalesWithGST from "./components/New_Dashboard/Sales/SalesWithGST";
 import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
+import NewSalesInvoice from "./components/New_Dashboard/Sales/invoice/NewSalesInvoice";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
@@ -2354,6 +2355,15 @@ function App() {
             />
 
             <Route
+              path="/companies/:companyId/allBills"
+              element={
+                <ProtectedRoute>
+                  <AllBillsWrapper />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/parties"
               element={
                 <ProtectedRoute>
@@ -2422,6 +2432,9 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            <Route path="/companies/:companyId/sales-invoice" element={<SalesFormWrapper />} />
+            <Route path="/sales-invoice" element={<SalesFormWrapper />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

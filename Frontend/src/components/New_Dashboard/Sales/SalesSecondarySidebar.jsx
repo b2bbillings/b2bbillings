@@ -23,6 +23,12 @@ const SalesSecondarySidebar = ({ onMenuSelect, activeMenu }) => {
       type: 'section',
       children: [
         {
+          id: 'sales-invoice',
+          label: 'Sales Invoice',
+          icon: faFileInvoice,
+          description: 'Create professional invoices'
+        },
+        {
           id: 'sales-with-gst',
           label: 'Sales with GST',
           icon: faFileInvoiceDollar,

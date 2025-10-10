@@ -1,0 +1,83 @@
+/* File: D:\b2b Main web\b2bbillings\Frontend\src\components\New_Dashboard\Sales\PaymentSection.css */
+.payment-section {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.payment-checkbox {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.payment-checkbox input {
+  margin-right: 8px;
+}
+
+.payment-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.payment-fields select,
+.payment-fields input {
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+}
+
+.btn-add-service-charge {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 15px;
+}
+
+.summary-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.summary-row label {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.summary-row input,
+.summary-row select {
+  width: 80px;
+  padding: 4px;
+  border: 1px solid #ced4da;
+  border-radius: 3px;
+}
+
+.auto-round {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.total {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #28a745;
+}
+
+@media (max-width: 768px) {
+  .payment-fields {
+    grid-template-columns: 1fr;
+  }
+}

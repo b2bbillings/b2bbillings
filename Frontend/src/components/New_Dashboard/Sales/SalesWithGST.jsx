@@ -305,7 +305,6 @@ const SalesWithGST = () => {
                   <FontAwesomeIcon icon={faFileInvoiceDollar} />
                   Invoice No *
                 </label>
-
                 <input
                   type="text"
                   value={billData.invoiceNo}
@@ -433,14 +432,6 @@ const SalesWithGST = () => {
                     
                     {/* Calculation Results Row */}
                     <div className="item-calculations">
-                      <div className="calc-item">
-                        <label>Amount</label>
-                        <span className="amount">₹{item.amount.toFixed(2)}</span>
-                      </div>
-                      <div className="calc-item">
-                        <label>GST Amount</label>
-                        <span className="amount">₹{item.gstAmount.toFixed(2)}</span>
-                      </div>
                       <div className="calc-item total-calc">
                         <label>Total Amount</label>
                         <span className="amount total">₹{item.totalAmount.toFixed(2)}</span>

@@ -179,6 +179,13 @@ const NAVIGATION_ITEMS = [
         isActive: true,
       },
       {
+        id: "sales-invoice", // Add this new item
+        label: "Sales Invoice",
+        icon: faFileContract,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
         id: "all-bills",
         label: "All Bills",
         icon: faClipboardList,
@@ -768,6 +775,9 @@ const NewSidebar = React.memo(
         case 'salesWithoutGST':
           path = '/salesWithoutGST';
           break;
+        case 'salesInvoice': // Make sure this case exists
+          path = '/sales-invoice';
+          break;
         case 'allBills':
           path = '/allBills';
           break;
@@ -792,6 +802,7 @@ const NewSidebar = React.memo(
         path = infoMap[type];
       }
 
+      console.log("🔗 Generated path for", type, ":", path); // Debug log
       return path;
     };
 
@@ -982,7 +993,10 @@ const NewSidebar = React.memo(
                     <NavLink
                       to={getPath('salesWithGST')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
-                      onClick={() => handleSimpleNavigation("Sales with GST", "salesWithGST")}
+                      onClick={() => {
+                        console.log("🖱️ Clicked Sales with GST"); // Debug log
+                        handleSimpleNavigation("Sales with GST", "salesWithGST");
+                      }}
                     >
                       <FontAwesomeIcon icon={faFileInvoiceDollar} className="me-2" />
                       Sales with GST
@@ -990,15 +1004,32 @@ const NewSidebar = React.memo(
                     <NavLink
                       to={getPath('salesWithoutGST')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
-                      onClick={() => handleSimpleNavigation("Sales without GST", "salesWithoutGST")}
+                      onClick={() => {
+                        console.log("🖱️ Clicked Sales without GST"); // Debug log
+                        handleSimpleNavigation("Sales without GST", "salesWithoutGST");
+                      }}
                     >
                       <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
                       Sales without GST
                     </NavLink>
                     <NavLink
+                      to={getPath('salesInvoice')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => {
+                        console.log("🖱️ Clicked Sales Invoice"); // Debug log
+                        handleSimpleNavigation("Sales Invoice", "salesInvoice");
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faFileContract} className="me-2" />
+                      Sales Invoice
+                    </NavLink>
+                    <NavLink
                       to={getPath('allBills')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
-                      onClick={() => handleSimpleNavigation("All Bills", "allBills")}
+                      onClick={() => {
+                        console.log("🖱️ Clicked All Bills"); // Debug log
+                        handleSimpleNavigation("All Bills", "allBills");
+                      }}
                     >
                       <FontAwesomeIcon icon={faClipboardList} className="me-2" />
                       All Bills
