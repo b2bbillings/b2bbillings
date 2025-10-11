@@ -1,4 +1,10 @@
-import React, {useState, useEffect, useCallback, useRef, useMemo} from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -20,7 +26,7 @@ import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
 import StaffManagement from "./components/Home/StaffManagement";
 import Category from "./components/Home/Category/Category";
 import NewUserWelcome from "./components/NewUserWelcome";
-import {ChatProvider} from "./context/chatContext";
+import { ChatProvider } from "./context/chatContext";
 import companyService from "./services/companyService";
 import authService from "./services/authService";
 import purchaseService from "./services/purchaseService";
@@ -44,10 +50,11 @@ import Sales from "./components/New_Dashboard/Sales/Sales";
 import SalesWithGST from "./components/New_Dashboard/Sales/SalesWithGST";
 import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
-import NewSalesInvoice from "./components/New_Dashboard/Sales/invoice/NewSalesInvoice";
+import NewSalesInvoice from "./components/New_Dashboard/Sales/NewSalesInvoice";
+import EndCustomers from "./components/New_Dashboard/New_parties/End_Customer/EndCustomers";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
-const WelcomeAnimation = ({onComplete, userFirstName = "User"}) => {
+const WelcomeAnimation = ({ onComplete, userFirstName = "User" }) => {
   const [animationPhase, setAnimationPhase] = useState(0);
 
   useEffect(() => {
@@ -538,13 +545,15 @@ function App() {
         setCurrentUser(userData);
         setIsLoggedIn(true);
         setIsAppInitialized(true);
-        
+
         // Optional: Verify token in background without affecting UI state
-        authService.verifyToken().catch(error => {
-          console.log("⚠️ Background token verification failed:", error.message);
+        authService.verifyToken().catch((error) => {
+          console.log(
+            "⚠️ Background token verification failed:",
+            error.message
+          );
           // Don't clear auth data here - let it happen naturally when user makes requests
         });
-
       } catch (parseError) {
         authService.clearAuthData();
         if (mountedRef.current) {
@@ -556,8 +565,11 @@ function App() {
       }
     } catch (error) {
       // ✅ FIX: Don't clear auth data on network errors during page load
-      console.log("⚠️ Auth check error (keeping existing session):", error.message);
-      
+      console.log(
+        "⚠️ Auth check error (keeping existing session):",
+        error.message
+      );
+
       // Try to restore from localStorage as fallback
       try {
         const token = localStorage.getItem("token");
@@ -570,7 +582,7 @@ function App() {
       } catch (fallbackError) {
         console.log("❌ Fallback auth restore failed:", fallbackError.message);
       }
-      
+
       if (mountedRef.current) {
         setIsAppInitialized(true);
       }
@@ -786,8 +798,8 @@ function App() {
   // Simple navigation for routes without company context
   const handleSimpleNavigation = (page) => {
     const simpleRouteMap = {
-      paymentIn: '/payment-in',
-      paymentOut: '/payment-out',
+      paymentIn: "/payment-in",
+      paymentOut: "/payment-out",
     };
 
     const targetRoute = simpleRouteMap[page];
@@ -866,7 +878,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving sales invoice: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -897,7 +909,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error updating sales invoice: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -929,7 +941,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving quotation: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -964,7 +976,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error updating quotation: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -995,7 +1007,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving purchase bill: " + error.message, "error");
-      return {success: false, error: error.message, message: error.message};
+      return { success: false, error: error.message, message: error.message };
     }
   };
 
@@ -1026,7 +1038,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error updating purchase bill: " + error.message, "error");
-      return {success: false, error: error.message, message: error.message};
+      return { success: false, error: error.message, message: error.message };
     }
   };
 
@@ -1075,7 +1087,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving purchase order: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -1126,7 +1138,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error updating purchase order: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -1158,7 +1170,7 @@ function App() {
       }
     } catch (error) {
       showToast("Error saving sales order: " + error.message, "error");
-      return {success: false, error: error.message};
+      return { success: false, error: error.message };
     }
   };
 
@@ -1258,20 +1270,20 @@ function App() {
   // Standalone Profile Page Component - Completely independent
   const StandaloneProfilePage = () => {
     const navigate = useNavigate();
-    
+
     // Use effect to hide body overflow when component mounts
     useEffect(() => {
-      document.body.style.overflow = 'hidden';
-      document.body.style.margin = '0';
-      document.body.style.padding = '0';
-      
+      document.body.style.overflow = "hidden";
+      document.body.style.margin = "0";
+      document.body.style.padding = "0";
+
       return () => {
-        document.body.style.overflow = '';
-        document.body.style.margin = '';
-        document.body.style.padding = '';
+        document.body.style.overflow = "";
+        document.body.style.margin = "";
+        document.body.style.padding = "";
       };
     }, []);
-    
+
     // Simple auth check for standalone page
     if (!stableIsLoggedIn) {
       return <Navigate to="/auth" replace />;
@@ -1280,13 +1292,15 @@ function App() {
     if (isLoggingOut) {
       return (
         <div className="standalone-profile-container">
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '100vh',
-            width: '100vw'
-          }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "100vh",
+              width: "100vw",
+            }}
+          >
             <div className="text-center text-white">
               <div className="spinner-border text-light mb-3" role="status">
                 <span className="visually-hidden">Loading...</span>
@@ -1301,13 +1315,15 @@ function App() {
     if (stableIsCheckingAuth || !isAppInitialized) {
       return (
         <div className="standalone-profile-container">
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '100vh',
-            width: '100vw'
-          }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "100vh",
+              width: "100vw",
+            }}
+          >
             <div className="text-center text-white">
               <div className="spinner-border text-light mb-3" role="status">
                 <span className="visually-hidden">Loading...</span>
@@ -1322,20 +1338,20 @@ function App() {
     // Render profile in a completely isolated container
     return (
       <div className="standalone-profile-container">
-        <ProfilePage 
+        <ProfilePage
           addToast={showToast}
           currentUser={currentUser}
           onLogout={handleLogout}
           isFullscreen={true}
-          onClose={() => navigate('/')}
+          onClose={() => navigate("/")}
         />
       </div>
     );
   };
 
   // Company Route Wrapper
-  const CompanyRouteWrapper = ({children}) => {
-    const {companyId} = useParams();
+  const CompanyRouteWrapper = ({ children }) => {
+    const { companyId } = useParams();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -1346,7 +1362,7 @@ function App() {
         if (foundCompany) {
           setCompanyAsActive(foundCompany);
         } else if (companiesLoadedRef.current) {
-          navigate("/dashboard", {replace: true});
+          navigate("/dashboard", { replace: true });
         }
       }
     }, [companyId, companies, currentCompany, navigate]);
@@ -1415,7 +1431,7 @@ function App() {
   };
 
   // ✅ ADMIN ROUTE PROTECTION COMPONENT
-  const AdminRouteWrapper = ({children}) => {
+  const AdminRouteWrapper = ({ children }) => {
     // Check if user is logged in
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
@@ -1510,7 +1526,7 @@ function App() {
 
   // Component Wrappers
   const StaffManagementWrapper = () => {
-    const {companyId} = useParams();
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1538,7 +1554,7 @@ function App() {
   };
 
   const DailyTaskAssignmentWrapper = () => {
-    const {companyId} = useParams();
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1567,7 +1583,7 @@ function App() {
   };
 
   const CategoryWrapper = () => {
-    const {companyId} = useParams();
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1584,8 +1600,8 @@ function App() {
 
   // Parties Management Wrappers
   const PartiesWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 PartiesWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 PartiesWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1601,8 +1617,8 @@ function App() {
   };
 
   const CustomersWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 CustomersWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 CustomersWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1619,8 +1635,8 @@ function App() {
   };
 
   const VendorsWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 VendorsWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 VendorsWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1637,8 +1653,8 @@ function App() {
   };
 
   const ExpenseWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 ExpenseWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 ExpenseWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1654,8 +1670,11 @@ function App() {
   };
 
   const IndirectIncomeWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 IndirectIncomeWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log(
+      "🎯 IndirectIncomeWrapper rendering with companyId:",
+      companyId
+    );
 
     return (
       <CompanyRouteWrapper>
@@ -1671,8 +1690,8 @@ function App() {
   };
 
   const PaymentInWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 PaymentInWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 PaymentInWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1688,8 +1707,8 @@ function App() {
   };
 
   const PaymentOutWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 PaymentOutWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 PaymentOutWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1704,10 +1723,49 @@ function App() {
     );
   };
 
+  // Add these wrapper components near other wrappers (e.g. alongside SalesWrapper)
+  const NewSalesInvoiceWrapper = () => {
+    const { companyId } = useParams();
+    console.log(
+      "🎯 NewSalesInvoiceWrapper rendering with companyId:",
+      companyId
+    );
+
+    return (
+      <CompanyRouteWrapper>
+        <NewSalesInvoice
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const SimpleNewSalesInvoiceWrapper = () => {
+    if (!isLoggedIn) {
+      return <Navigate to="/auth" replace />;
+    }
+
+    return (
+      <ProtectedRoute>
+        <NewSalesInvoice
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={null}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </ProtectedRoute>
+    );
+  };
+
   // Sales Management Wrappers
   const SalesWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 SalesWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 SalesWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1723,8 +1781,8 @@ function App() {
   };
 
   const SalesWithGSTWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 SalesWithGSTWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 SalesWithGSTWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1740,8 +1798,11 @@ function App() {
   };
 
   const SalesWithoutGSTWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 SalesWithoutGSTWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log(
+      "🎯 SalesWithoutGSTWrapper rendering with companyId:",
+      companyId
+    );
 
     return (
       <CompanyRouteWrapper>
@@ -1757,8 +1818,8 @@ function App() {
   };
 
   const AllBillsWrapper = () => {
-    const {companyId} = useParams();
-    console.log('🎯 AllBillsWrapper rendering with companyId:', companyId);
+    const { companyId } = useParams();
+    console.log("🎯 AllBillsWrapper rendering with companyId:", companyId);
 
     return (
       <CompanyRouteWrapper>
@@ -1811,7 +1872,7 @@ function App() {
   };
 
   const CommunityPageWrapper = () => {
-    const {companyId} = useParams();
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1843,8 +1904,8 @@ function App() {
     );
   };
 
-  const SalesFormWrapper = ({isEdit = false}) => {
-    const {companyId} = useParams();
+  const SalesFormWrapper = ({ isEdit = false }) => {
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1871,8 +1932,8 @@ function App() {
     );
   };
 
-  const QuotationFormWrapper = ({isEdit = false}) => {
-    const {companyId, quotationId} = useParams();
+  const QuotationFormWrapper = ({ isEdit = false }) => {
+    const { companyId, quotationId } = useParams();
     const navigate = useNavigate();
 
     return (
@@ -1901,8 +1962,8 @@ function App() {
     );
   };
 
-  const PurchaseFormWrapper = ({isEdit = false}) => {
-    const {companyId} = useParams();
+  const PurchaseFormWrapper = ({ isEdit = false }) => {
+    const { companyId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1929,8 +1990,8 @@ function App() {
     );
   };
 
-  const PurchaseOrderFormWrapper = ({isEdit = false}) => {
-    const {companyId, id} = useParams();
+  const PurchaseOrderFormWrapper = ({ isEdit = false }) => {
+    const { companyId, id } = useParams();
     const navigate = useNavigate();
 
     return (
@@ -1938,7 +1999,7 @@ function App() {
         <PurchaseOrderForm
           onSave={isEdit ? handlePurchaseOrderUpdate : handlePurchaseOrderSave}
           onCancel={() => navigate(`/companies/${companyId}/purchase-orders`)}
-          editingOrder={isEdit && id ? {id} : null}
+          editingOrder={isEdit && id ? { id } : null}
           currentCompany={currentCompany}
           currentUser={currentUser}
           companyId={companyId}
@@ -1955,8 +2016,8 @@ function App() {
     );
   };
 
-  const EditSalesInvoiceWrapper = ({mode, documentType}) => {
-    const {companyId, transactionId} = useParams();
+  const EditSalesInvoiceWrapper = ({ mode, documentType }) => {
+    const { companyId, transactionId } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -1984,8 +2045,8 @@ function App() {
     );
   };
 
-  const SalesOrderFormWrapper = ({isEdit = false}) => {
-    const {companyId, id} = useParams();
+  const SalesOrderFormWrapper = ({ isEdit = false }) => {
+    const { companyId, id } = useParams();
 
     return (
       <CompanyRouteWrapper>
@@ -2010,7 +2071,7 @@ function App() {
     );
   };
 
-  const ProtectedRoute = ({children}) => {
+  const ProtectedRoute = ({ children }) => {
     if (!isLoggedIn) {
       return <Navigate to="/auth" replace />;
     }
@@ -2064,7 +2125,7 @@ function App() {
 
   // Main App Routes
   return (
-    <Router future={{v7_startTransition: true, v7_relativeSplatPath: true}}>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ChatProvider>
         <div className="App">
           <Routes>
@@ -2084,10 +2145,7 @@ function App() {
             <Route path="/login" element={<Navigate to="/auth" replace />} />
 
             {/* Profile Page Route - Completely standalone fullscreen page */}
-            <Route 
-              path="/profile" 
-              element={<StandaloneProfilePage />} 
-            />
+            <Route path="/profile" element={<StandaloneProfilePage />} />
 
             {/* Root redirect */}
             <Route
@@ -2108,7 +2166,14 @@ function App() {
             <Route path="/dashboard" element={<MainDashboardWrapper />} />
             <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
 
-            <Route path="/shops" element={<ProtectedRoute><ShopForm /></ProtectedRoute>} />
+            <Route
+              path="/shops"
+              element={
+                <ProtectedRoute>
+                  <ShopForm />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="/companies/:companyId/community"
@@ -2194,12 +2259,16 @@ function App() {
             />
 
             <Route
-              path="/companies/:companyId/sales/add"
+              path="/companies/:companyId/sales-invoice"
               element={
                 <ProtectedRoute>
-                  <SalesFormWrapper isEdit={false} />
+                  <NewSalesInvoiceWrapper />
                 </ProtectedRoute>
               }
+            />
+            <Route
+              path="/sales-invoice"
+              element={<SimpleNewSalesInvoiceWrapper />}
             />
 
             <Route
@@ -2408,16 +2477,30 @@ function App() {
               }
             />
 
-            {/* Simple Payment Routes without company context */}
             <Route
-              path="/payment-in"
-              element={<SimplePaymentInWrapper />}
+              path="/companies/:companyId/newsales-invoice"
+              element={
+                <ProtectedRoute>
+                  <NewSalesInvoice />
+                </ProtectedRoute>
+              }
             />
 
             <Route
-              path="/payment-out"
-              element={<SimplePaymentOutWrapper />}
+              path="/newsales-invoice"
+              element={
+                <ProtectedRoute>
+                  <NewSalesInvoice />
+                </ProtectedRoute>
+              }
             />
+
+            {/* Simple Payment Routes without company context */}
+            <Route path="/payment-in" element={<SimplePaymentInWrapper />} />
+
+            <Route path="/payment-out" element={<SimplePaymentOutWrapper />} />
+
+              <Route path="/end-customers" element={<EndCustomers />} />
 
             <Route
               path="/companies/:companyId/*"
@@ -2433,7 +2516,10 @@ function App() {
               }
             />
 
-            <Route path="/companies/:companyId/sales-invoice" element={<SalesFormWrapper />} />
+            <Route
+              path="/companies/:companyId/sales-invoice"
+              element={<SalesFormWrapper />}
+            />
             <Route path="/sales-invoice" element={<SalesFormWrapper />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

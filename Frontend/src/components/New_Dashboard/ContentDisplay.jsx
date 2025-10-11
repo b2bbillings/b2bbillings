@@ -34,6 +34,7 @@ import GSTInfo from "./Info/GSTInfo";
 import CompanyBrandInfo from "./Info/CompanyBrandInfo";
 import Sales from "./Sales/Sales";
 import NewSalesInvoice from "./Sales/invoice/NewSalesInvoice"; // Add this import
+import EndCustomers from "./New_parties/End_Customer/EndCustomers";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -63,6 +64,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/sales-invoice": { title: "Sales Invoice", type: "salesInvoice" }, // Make sure this is here
     "/gst": { title: "GST", type: "gst" },
     "/company-brand": { title: "Company/Brand", type: "companyBrand" },
+    "/end-customers": { title: "End Customers", type: "endCustomers" },
   };
 
   useEffect(() => {
@@ -106,6 +108,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         'paymentOut': { title: "Payment Out", type: "paymentOut" },
         'gst': { title: "GST", type: "gst" },
         'companyBrand': { title: "Company/Brand", type: "companyBrand" },
+        'end-customers': { title: "End Customers", type: "endCustomers" },
+        'endCustomers': { title: "End Customers", type: "endCustomers" },
       };
       
       if (contentTypeMap[lastPart]) {
@@ -404,6 +408,19 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // End Customers Content
+  const renderEndCustomersContent = () => (
+    <div className="content-end-customers">
+      <div className="content-header">
+        <div className="content-title">
+          <h2>End Customers</h2>
+        </div>
+        <p className="content-description">Add End Customers (only Name and WhatsApp required)</p>
+      </div>
+      <EndCustomers />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -489,6 +506,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderGSTContent();
       case "companyBrand":
         return renderCompanyBrandContent();
+      case "endCustomers":
+        return renderEndCustomersContent();
       case "welcome":
       default:
         return renderWelcomeContent();

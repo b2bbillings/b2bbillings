@@ -92,6 +92,14 @@ const NAVIGATION_ITEMS = [
     isActive: true, // ✅ ACTIVE - New Parties component
     children: [
       {
+        id: "endCustomers",
+        label: "End Customers",
+        icon: faUserFriends,
+        path: "/end-customers", // This must match your routeMap key!
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
         id: "customers",
         label: "Customers",
         icon: faUsers,
@@ -787,6 +795,9 @@ const NewSidebar = React.memo(
         case 'companyBrand':
           path = '/company-brand';
           break;
+        case 'endCustomers':
+          path = '/end-customers';
+          break;
         // Add more mappings if needed
         default:
           break;
@@ -933,6 +944,14 @@ const NewSidebar = React.memo(
                     >
                       <FontAwesomeIcon icon={faUserTie} className="me-2" />
                       Vendors
+                    </NavLink>
+                    <NavLink
+                      to={getPath('endCustomers')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("End Customers", "endCustomers")}
+                    >
+                      <FontAwesomeIcon icon={faUserFriends} className="me-2" />
+                      End Customers
                     </NavLink>
                   </div>
                 </Accordion.Collapse>
