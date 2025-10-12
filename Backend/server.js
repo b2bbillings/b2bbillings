@@ -82,6 +82,7 @@ const routeFiles = [
   "expenseRoutes", // ✅ NEW: Expense routes for expense management
   "indirectIncomeRoutes", // ✅ NEW: Indirect income routes for income management
   "expenseIncomeCategoryRoutes", // ✅ NEW: Category routes for expense/income categories
+  "endCustomerRoutes", // ✅ NEW: End customer routes
 ];
 
 console.log("📂 Loading route files...");
@@ -953,6 +954,13 @@ try {
   console.log("   ✅ /api/bills");
 } catch (error) {
   console.error("   ❌ /api/bills failed:", error.message);
+}
+
+try {
+  app.use("/api/end-customers", routes.endCustomerRoutes);
+  console.log("   ✅ /api/end-customers");
+} catch (error) {
+  console.error("   ❌ /api/end-customers failed:", error.message);
 }
 
 console.log("🔄 Registering legacy routes...");

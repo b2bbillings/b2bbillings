@@ -1,7 +1,14 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import styles from "./NewSalesInvoice.module.css";
 import ShowHideColumns from "./ShowHideColumns";
-import ItemCreateDrawer from "./ItemCreateDrawer";
+import AddItemModal from "../Items/Add_Items"; // adjust path as needed
+import CustomersForm from "../New_parties/Customers/Customers";
+import VendorsForm from "../New_parties/Vendors/Vendors";
+import EndCustomers from "../New_parties/End_Customer/EndCustomers";
+import {
+  customerService,
+  vendorService,
+} from "../../../services/customerVendorService";
 
 const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
@@ -44,8 +51,8 @@ export default function NewSalesInvoice() {
     },
   ]);
   const [showColumnsModal, setShowColumnsModal] = useState(false);
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [drawerFieldIndex, setDrawerFieldIndex] = useState(null);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [addItemRowIndex, setAddItemRowIndex] = useState(null);
   const [customer, setCustomer] = useState("");
   const [invoicePrefix, setInvoicePrefix] = useState("INV");
   const [invoiceNumber, setInvoiceNumber] = useState("0001");
@@ -61,6 +68,12 @@ export default function NewSalesInvoice() {
   const [goodsFocusIndex, setGoodsFocusIndex] = useState(null);
   const [gstType, setGstType] = useState(rows.map(() => "GST")); // Track GST/Without GST per row
   const [gstValues, setGstValues] = useState(rows.map(() => "")); // Track GST % per row
+  const [allParties, setAllParties] = useState([]);
+  const [partySearch, setPartySearch] = useState("");
+  const [showPartyDropdown, setShowPartyDropdown] = useState(false);
+  const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
+  const [selectedParty, setSelectedParty] = useState("");
+  const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
 
   // Compose columns for table: always visible + toggled (after Goods/Service)
   const visibleColumns = [
@@ -120,26 +133,26 @@ export default function NewSalesInvoice() {
   // Goods/Service select
   const handleGoodsChange = (rowIdx, value) => {
     if (value === "__create__") {
-      setDrawerFieldIndex(rowIdx);
-      setShowDrawer(true);
+      setAddItemRowIndex(rowIdx);
+      setShowAddItemModal(true);
     } else {
       setRows((r) =>
-        r.map((row, idx) =>
-          idx === rowIdx ? { ...row, goods: value } : row
-        )
+        r.map((row, idx) => (idx === rowIdx ? { ...row, goods: value } : row))
       );
     }
   };
 
-  // Drawer save
-  const handleDrawerSave = (itemName) => {
-    setRows((r) =>
-      r.map((row, idx) =>
-        idx === drawerFieldIndex ? { ...row, goods: itemName } : row
-      )
-    );
-    setShowDrawer(false);
-    setDrawerFieldIndex(null);
+  // When item is created in modal
+  const handleItemCreated = (item) => {
+    if (addItemRowIndex !== null) {
+      setRows((r) =>
+        r.map((row, idx) =>
+          idx === addItemRowIndex ? { ...row, goods: item.name } : row
+        )
+      );
+    }
+    setShowAddItemModal(false);
+    setAddItemRowIndex(null);
   };
 
   // Calculate totals
@@ -148,6 +161,55 @@ export default function NewSalesInvoice() {
     0
   );
   const total = autoRoundOff ? Math.round(subtotal) : subtotal;
+
+  // Fetch customers and vendors
+  useEffect(() => {
+    const fetchParties = async () => {
+      const customers = await customerService.getAllCustomers();
+      const vendors = await vendorService.getAllVendors();
+
+      // Handle both {data: [...]} and [...] responses
+      const customerList = Array.isArray(customers)
+        ? customers
+        : Array.isArray(customers.data)
+        ? customers.data
+        : [];
+      const vendorList = Array.isArray(vendors)
+        ? vendors
+        : Array.isArray(vendors.data)
+        ? vendors.data
+        : [];
+
+      setAllParties([
+        ...customerList.map((c) => ({ ...c, type: "Customer" })),
+        ...vendorList.map((v) => ({ ...v, type: "Vendor" })),
+      ]);
+    };
+    fetchParties();
+  }, []);
+
+  // Filtered parties for dropdown
+  const filteredParties = allParties.filter(
+    (p) =>
+      p.name?.toLowerCase().includes(partySearch.toLowerCase()) ||
+      p.company?.toLowerCase().includes(partySearch.toLowerCase()) ||
+      p.phone?.includes(partySearch)
+  );
+
+  // Dropdown close on outside click
+  const partyDropdownRef = useRef();
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (
+        partyDropdownRef.current &&
+        !partyDropdownRef.current.contains(e.target)
+      ) {
+        setShowPartyDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   return (
     <div className={styles.fullPageWrapper}>
@@ -158,17 +220,71 @@ export default function NewSalesInvoice() {
       {/* Customer Info Section */}
       <div className={styles.section + " " + styles.customerInfo}>
         <div className={styles.customerInfoGrid}>
-          {/* Left: Customer */}
-          <div>
+          {/* Select Customer */}
+          <div style={{ position: "relative" }}>
             <label>
               Select Customer<span className={styles.required}>*</span>
             </label>
             <input
               className={styles.input}
-              placeholder="Please select customer"
-              value={customer}
-              onChange={(e) => setCustomer(e.target.value)}
+              placeholder="Search customer or vendor"
+              value={selectedParty}
+              onChange={(e) => {
+                setPartySearch(e.target.value);
+                setSelectedParty(e.target.value);
+                setShowPartyDropdown(true);
+              }}
+              onFocus={() => setShowPartyDropdown(true)}
+              autoComplete="off"
             />
+            {showPartyDropdown && (
+              <div className={styles.dropdownMenu} ref={partyDropdownRef}>
+                <input
+                  type="text"
+                  className={styles.input}
+                  placeholder="Search..."
+                  value={partySearch}
+                  onChange={(e) => setPartySearch(e.target.value)}
+                  autoFocus
+                />
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {filteredParties.length === 0 && (
+                    <div className={styles.dropdownItem}>No results</div>
+                  )}
+                  {filteredParties.map((party) => (
+                    <div
+                      key={party._id}
+                      className={styles.dropdownItem}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedParty(
+                          party.name +
+                            (party.company ? ` (${party.company})` : "")
+                        );
+                        setShowPartyDropdown(false);
+                      }}
+                    >
+                      <span>{party.name}</span>
+                      {party.company && (
+                        <span style={{ color: "#888" }}>
+                          {" "}
+                          ({party.company})
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          float: "right",
+                          fontSize: 12,
+                          color: "#007bff",
+                        }}
+                      >
+                        {party.type}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           {/* Center: Empty */}
           <div />
@@ -218,9 +334,11 @@ export default function NewSalesInvoice() {
               <tr>
                 <th className={styles.thSr}>SR.NO.</th>
                 <th>Goods/Service</th>
-                {columns.filter((c) => c.visible).map((col) => (
-                  <th key={col.key}>{col.label}</th>
-                ))}
+                {columns
+                  .filter((c) => c.visible)
+                  .map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
                 <th>Qty</th>
                 <th>Rate (₹)</th>
                 <th>GST</th>
@@ -248,12 +366,12 @@ export default function NewSalesInvoice() {
                         className={styles.input}
                         placeholder="Please select goods/service"
                         value={row.goods}
-                        onChange={(e) =>
-                          handleGoodsChange(idx, e.target.value)
-                        }
+                        onChange={(e) => handleGoodsChange(idx, e.target.value)}
                         style={{ width: "100%" }}
                         onFocus={() => setGoodsFocusIndex(idx)}
-                        onBlur={() => setTimeout(() => setGoodsFocusIndex(null), 200)}
+                        onBlur={() =>
+                          setTimeout(() => setGoodsFocusIndex(null), 200)
+                        }
                       />
                     </div>
                     {goodsFocusIndex === idx && (
@@ -261,11 +379,8 @@ export default function NewSalesInvoice() {
                         <button
                           type="button"
                           className={styles.createNewItemBtn}
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => {
-                            setDrawerFieldIndex(idx);
-                            setShowDrawer(true);
-                          }}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleGoodsChange(idx, "__create__")}
                         >
                           + Create new item
                         </button>
@@ -273,24 +388,26 @@ export default function NewSalesInvoice() {
                     )}
                   </td>
                   {/* Toggleable columns */}
-                  {columns.filter((c) => c.visible).map((col) => (
-                    <td key={col.key}>
-                      <input
-                        className={styles.input}
-                        type="text"
-                        value={row[col.key]}
-                        onChange={(e) =>
-                          setRows((r) =>
-                            r.map((row2, i) =>
-                              i === idx
-                                ? { ...row2, [col.key]: e.target.value }
-                                : row2
+                  {columns
+                    .filter((c) => c.visible)
+                    .map((col) => (
+                      <td key={col.key}>
+                        <input
+                          className={styles.input}
+                          type="text"
+                          value={row[col.key]}
+                          onChange={(e) =>
+                            setRows((r) =>
+                              r.map((row2, i) =>
+                                i === idx
+                                  ? { ...row2, [col.key]: e.target.value }
+                                  : row2
+                              )
                             )
-                          )
-                        }
-                      />
-                    </td>
-                  ))}
+                          }
+                        />
+                      </td>
+                    ))}
                   {/* Qty */}
                   <td>
                     <input
@@ -300,9 +417,7 @@ export default function NewSalesInvoice() {
                       onChange={(e) =>
                         setRows((r) =>
                           r.map((row2, i) =>
-                            i === idx
-                              ? { ...row2, qty: e.target.value }
-                              : row2
+                            i === idx ? { ...row2, qty: e.target.value } : row2
                           )
                         )
                       }
@@ -317,9 +432,7 @@ export default function NewSalesInvoice() {
                       onChange={(e) =>
                         setRows((r) =>
                           r.map((row2, i) =>
-                            i === idx
-                              ? { ...row2, rate: e.target.value }
-                              : row2
+                            i === idx ? { ...row2, rate: e.target.value } : row2
                           )
                         )
                       }
@@ -331,7 +444,7 @@ export default function NewSalesInvoice() {
                       className={styles.input}
                       style={{ width: 90, marginBottom: 4 }}
                       value={gstType[idx] || "GST"}
-                      onChange={e => handleGstTypeChange(idx, e.target.value)}
+                      onChange={(e) => handleGstTypeChange(idx, e.target.value)}
                     >
                       <option value="GST">GST</option>
                       <option value="Without GST">Without GST</option>
@@ -343,7 +456,9 @@ export default function NewSalesInvoice() {
                         placeholder="GST %"
                         style={{ width: 60, marginTop: 2 }}
                         value={gstValues[idx] || ""}
-                        onChange={e => handleGstValueChange(idx, e.target.value)}
+                        onChange={(e) =>
+                          handleGstValueChange(idx, e.target.value)
+                        }
                       />
                     )}
                   </td>
@@ -502,13 +617,49 @@ export default function NewSalesInvoice() {
         </div>
       </div>
 
-      {/* Drawer for create new item */}
-      {showDrawer && (
-        <ItemCreateDrawer
-          open={showDrawer}
-          onClose={() => setShowDrawer(false)}
-          onSave={handleDrawerSave}
-        />
+      {/* Modal for create new item */}
+      {/* Modal for create new item */}
+      {showAddItemModal && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowAddItemModal(false)}
+        >
+          <div
+            className={styles.modalContent}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className={styles.modalClose}
+              onClick={() => setShowAddItemModal(false)}
+            >
+              ×
+            </button>
+            <AddItemModal
+              show={showAddItemModal}
+              onHide={() => setShowAddItemModal(false)}
+              onItemCreated={handleItemCreated}
+            />
+          </div>
+        </div>
+      )}
+      {/* End Customer Modal */}
+      {showEndCustomerModal && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <button
+              className={styles.modalClose}
+              onClick={() => setShowEndCustomerModal(false)}
+            >
+              ×
+            </button>
+            <EndCustomers
+              onSelect={(customer) => {
+                setSelectedEndCustomer(customer.customerName);
+                setShowEndCustomerModal(false);
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
