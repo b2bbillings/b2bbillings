@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./NewSalesInvoice.module.css";
 import ShowHideColumns from "./ShowHideColumns";
-import AddItemModal from "../Items/Add_Items";
+import AddItemModal from "../Items/Add_Items"; // adjust path as needed
+import CustomersForm from "../New_parties/Customers/Customers";
+import VendorsForm from "../New_parties/Vendors/Vendors";
 import EndCustomers from "../New_parties/End_Customer/EndCustomers";
 import {
   customerService,
   vendorService,
 } from "../../../services/customerVendorService";
-import itemService from "../../../services/itemService";
-import authService from "../../../services/authService";
 
 const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
@@ -29,7 +29,7 @@ const TOGGLE_COLUMNS = [
   { key: "cess", label: "CESS(%)", visible: false },
 ];
 
-export default function NewSalesInvoice() {
+export default function NewSalesInvoiceWithoutGST() {
   const [columns, setColumns] = useState(TOGGLE_COLUMNS);
   const [rows, setRows] = useState([
     {
@@ -45,6 +45,7 @@ export default function NewSalesInvoice() {
       taxable: "",
       cess: "",
       rate: "",
+      gst: "",
       amount: "",
     },
   ]);
@@ -64,19 +65,37 @@ export default function NewSalesInvoice() {
   const [payFull, setPayFull] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const [goodsFocusIndex, setGoodsFocusIndex] = useState(null);
+  const [gstType, setGstType] = useState(rows.map(() => "GST")); // Track GST/Without GST per row
+  const [gstValues, setGstValues] = useState(rows.map(() => "")); // Track GST % per row
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
   const [selectedParty, setSelectedParty] = useState("");
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
-  const [allItems, setAllItems] = useState([]);
-  const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
-  const [showItemDropdown, setShowItemDropdown] = useState(null);
 
-  const partyDropdownRef = useRef();
+  // Compose columns for table: always visible + toggled (after Goods/Service)
+  const visibleColumns = [
+    ALWAYS_VISIBLE[0], // Goods/Service
+    ...columns.filter((c) => c.visible),
+    ...ALWAYS_VISIBLE.slice(1), // Qty, Rate, Amount
+  ];
 
-  // Add row
+  // Update GST type per row
+  const handleGstTypeChange = (rowIdx, value) => {
+    setGstType((prev) => prev.map((v, i) => (i === rowIdx ? value : v)));
+    // Optionally reset GST % if switching to Without GST
+    if (value === "Without GST") {
+      setGstValues((prev) => prev.map((v, i) => (i === rowIdx ? "" : v)));
+    }
+  };
+
+  // Update GST % per row
+  const handleGstValueChange = (rowIdx, value) => {
+    setGstValues((prev) => prev.map((v, i) => (i === rowIdx ? value : v)));
+  };
+
+  // Add row: also update gstType and gstValues
   const handleAddRow = () => {
     setRows([
       ...rows,
@@ -93,10 +112,12 @@ export default function NewSalesInvoice() {
         taxable: "",
         cess: "",
         rate: "",
+        gst: "",
         amount: "",
       },
     ]);
-    setItemSearch((prev) => [...prev, ""]);
+    setGstType((prev) => [...prev, "GST"]);
+    setGstValues((prev) => [...prev, ""]);
   };
 
   // Toggle columns
@@ -114,42 +135,9 @@ export default function NewSalesInvoice() {
       setAddItemRowIndex(rowIdx);
       setShowAddItemModal(true);
     } else {
-      // Find the selected item
-      const selectedItem = allItems.find(
-        (item) => item.name === value || item._id === value
+      setRows((r) =>
+        r.map((row, idx) => (idx === rowIdx ? { ...row, goods: value } : row))
       );
-
-      if (selectedItem) {
-        // Existing item selected
-        setRows((r) =>
-          r.map((row, idx) => {
-            if (idx === rowIdx) {
-              return {
-                ...row,
-                goods: value,
-                rate: selectedItem?.salePrice || row.rate,
-              };
-            }
-            return row;
-          })
-        );
-      } else {
-        // Manual entry (not from existing items)
-        setRows((r) =>
-          r.map((row, idx) => {
-            if (idx === rowIdx) {
-              return {
-                ...row,
-                goods: value,
-              };
-            }
-            return row;
-          })
-        );
-      }
-
-      setItemSearch((prev) => prev.map((v, i) => (i === rowIdx ? "" : v)));
-      setShowItemDropdown(null);
     }
   };
 
@@ -158,69 +146,12 @@ export default function NewSalesInvoice() {
     if (addItemRowIndex !== null) {
       setRows((r) =>
         r.map((row, idx) =>
-          idx === addItemRowIndex
-            ? {
-                ...row,
-                goods: item.name,
-                rate: item.salePrice || row.rate,
-              }
-            : row
+          idx === addItemRowIndex ? { ...row, goods: item.name } : row
         )
       );
     }
     setShowAddItemModal(false);
     setAddItemRowIndex(null);
-
-    // Refresh items list to include newly created item
-    const fetchItems = async () => {
-      try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
-
-        if (companyId) {
-          const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching items:", err);
-      }
-    };
-    fetchItems();
-  };
-
-  // Handle keyboard navigation
-  const handleKeyDown = (e, rowIdx, fieldName) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-
-      // If in rate field, add new row and focus on goods field of new row
-      if (fieldName === "rate") {
-        handleAddRow();
-        setTimeout(() => {
-          const newRowIndex = rows.length;
-          const goodsInput = document.querySelector(
-            `input[data-row="${newRowIndex}"][data-field="goods"]`
-          );
-          if (goodsInput) goodsInput.focus();
-        }, 50);
-      } else {
-        // Move to next field in the same row
-        const currentInput = e.target;
-        const allInputs = Array.from(
-          document.querySelectorAll(
-            `input[data-row="${rowIdx}"], select[data-row="${rowIdx}"]`
-          )
-        );
-        const currentIndex = allInputs.indexOf(currentInput);
-
-        if (currentIndex < allInputs.length - 1) {
-          allInputs[currentIndex + 1].focus();
-        }
-      }
-    }
   };
 
   // Calculate totals
@@ -236,6 +167,7 @@ export default function NewSalesInvoice() {
       const customers = await customerService.getAllCustomers();
       const vendors = await vendorService.getAllVendors();
 
+      // Handle both {data: [...]} and [...] responses
       const customerList = Array.isArray(customers)
         ? customers
         : Array.isArray(customers.data)
@@ -255,27 +187,6 @@ export default function NewSalesInvoice() {
     fetchParties();
   }, []);
 
-  // Fetch items
-  useEffect(() => {
-    const fetchItems = async () => {
-      try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
-
-        if (companyId) {
-          const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching items:", err);
-      }
-    };
-    fetchItems();
-  }, []);
-
   // Filtered parties for dropdown
   const filteredParties = allParties.filter(
     (p) =>
@@ -284,17 +195,8 @@ export default function NewSalesInvoice() {
       p.phone?.includes(partySearch)
   );
 
-  // Filtered items for dropdown
-  const getFilteredItems = (rowIdx) => {
-    const search = itemSearch[rowIdx] || "";
-    return allItems.filter(
-      (item) =>
-        item.name?.toLowerCase().includes(search.toLowerCase()) ||
-        item.category?.name?.toLowerCase().includes(search.toLowerCase())
-    );
-  };
-
   // Dropdown close on outside click
+  const partyDropdownRef = useRef();
   useEffect(() => {
     const handleClick = (e) => {
       if (
@@ -322,28 +224,18 @@ export default function NewSalesInvoice() {
             <label>
               Select Customer<span className={styles.required}>*</span>
             </label>
-            <div className={styles.customerSelectRow}>
-              <input
-                className={styles.input}
-                placeholder="Search customer or vendor"
-                value={selectedParty}
-                onChange={(e) => {
-                  setPartySearch(e.target.value);
-                  setSelectedParty(e.target.value);
-                  setShowPartyDropdown(true);
-                }}
-                onFocus={() => setShowPartyDropdown(true)}
-                autoComplete="off"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    document
-                      .querySelector('input[name="invoicePrefix"]')
-                      ?.focus();
-                  }
-                }}
-              />
-            </div>
+            <input
+              className={styles.input}
+              placeholder="Search customer or vendor"
+              value={selectedParty}
+              onChange={(e) => {
+                setPartySearch(e.target.value);
+                setSelectedParty(e.target.value);
+                setShowPartyDropdown(true);
+              }}
+              onFocus={() => setShowPartyDropdown(true)}
+              autoComplete="off"
+            />
             {showPartyDropdown && (
               <div className={styles.dropdownMenu} ref={partyDropdownRef}>
                 <input
@@ -392,18 +284,6 @@ export default function NewSalesInvoice() {
                 </div>
               </div>
             )}
-            <button
-              className={styles.endCustomerBtn}
-              onClick={() => setShowEndCustomerModal(true)}
-              title="Add End Customer"
-            >
-              + End Customer
-            </button>
-            {selectedEndCustomer && (
-              <div className={styles.selectedEndCustomer}>
-                End Customer: {selectedEndCustomer}
-              </div>
-            )}
           </div>
           {/* Center: Empty */}
           <div />
@@ -416,30 +296,14 @@ export default function NewSalesInvoice() {
               <input
                 className={styles.input}
                 style={{ width: 60 }}
-                name="invoicePrefix"
                 value={invoicePrefix}
                 onChange={(e) => setInvoicePrefix(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    document
-                      .querySelector('input[name="invoiceNumber"]')
-                      ?.focus();
-                  }
-                }}
               />
               <input
                 className={styles.input}
                 style={{ width: 80 }}
-                name="invoiceNumber"
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    document.querySelector('input[type="date"]')?.focus();
-                  }
-                }}
               />
               <input
                 className={styles.input}
@@ -456,15 +320,6 @@ export default function NewSalesInvoice() {
               type="date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const firstGoodsInput = document.querySelector(
-                    'input[data-row="0"][data-field="goods"]'
-                  );
-                  if (firstGoodsInput) firstGoodsInput.focus();
-                }
-              }}
             />
           </div>
         </div>
@@ -473,211 +328,157 @@ export default function NewSalesInvoice() {
       {/* Table Section */}
       <div className={styles.section + " " + styles.tableSection}>
         <div style={{ position: "relative" }}>
-          <div className={styles.tableWrapper}>
-            <table className={styles.invoiceTable}>
-              <thead>
-                <tr>
-                  <th className={styles.thSr}>SR.NO.</th>
-                  <th>Goods/Service</th>
+          <table className={styles.invoiceTable}>
+            <thead>
+              <tr>
+                <th className={styles.thSr}>SR.NO.</th>
+                <th>Goods/Service</th>
+                {columns
+                  .filter((c) => c.visible)
+                  .map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
+                <th>Qty</th>
+                <th>Rate (₹)</th>
+                <th>GST</th>
+                <th>Amount (₹)</th>
+                <th className={styles.showHideColTh}>
+                  <button
+                    className={styles.showHideBtn}
+                    title="Show/Hide columns"
+                    onClick={() => setShowColumnsModal((v) => !v)}
+                    tabIndex={0}
+                  >
+                    <span style={{ fontSize: 18 }}>⇅</span>
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={idx}>
+                  <td className={styles.thSr}>{idx + 1}</td>
+                  {/* Goods/Service input, no search icon */}
+                  <td style={{ position: "relative" }}>
+                    <div className={styles.goodsServiceSelectWrapper}>
+                      <input
+                        className={styles.input}
+                        placeholder="Please select goods/service"
+                        value={row.goods}
+                        onChange={(e) => handleGoodsChange(idx, e.target.value)}
+                        style={{ width: "100%" }}
+                        onFocus={() => setGoodsFocusIndex(idx)}
+                        onBlur={() =>
+                          setTimeout(() => setGoodsFocusIndex(null), 200)
+                        }
+                      />
+                    </div>
+                    {goodsFocusIndex === idx && (
+                      <div className={styles.createNewItemRow}>
+                        <button
+                          type="button"
+                          className={styles.createNewItemBtn}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleGoodsChange(idx, "__create__")}
+                        >
+                          + Create new item
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  {/* Toggleable columns */}
                   {columns
                     .filter((c) => c.visible)
                     .map((col) => (
-                      <th key={col.key}>{col.label}</th>
-                    ))}
-                  <th>Qty</th>
-                  <th>Rate (₹)</th>
-                  <th>Amount (₹)</th>
-                  <th className={styles.showHideColTh}>
-                    <button
-                      className={styles.showHideBtn}
-                      title="Show/Hide columns"
-                      onClick={() => setShowColumnsModal((v) => !v)}
-                      tabIndex={0}
-                    >
-                      <span style={{ fontSize: 18 }}>⇅</span>
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => (
-                  <tr key={idx}>
-                    <td className={styles.thSr}>{idx + 1}</td>
-                    {/* Goods/Service input */}
-                    <td style={{ position: "relative" }}>
-                      <div className={styles.goodsServiceSelectWrapper}>
+                      <td key={col.key}>
                         <input
                           className={styles.input}
-                          placeholder="Search or select item"
-                          value={row.goods}
-                          onChange={(e) => {
-                            const value = e.target.value;
+                          type="text"
+                          value={row[col.key]}
+                          onChange={(e) =>
                             setRows((r) =>
                               r.map((row2, i) =>
-                                i === idx ? { ...row2, goods: value } : row2
+                                i === idx
+                                  ? { ...row2, [col.key]: e.target.value }
+                                  : row2
                               )
-                            );
-                            setItemSearch((prev) =>
-                              prev.map((v, i) => (i === idx ? value : v))
-                            );
-                            setShowItemDropdown(idx);
-                          }}
-                          style={{ width: "100%" }}
-                          onFocus={() => {
-                            setGoodsFocusIndex(idx);
-                            setShowItemDropdown(idx);
-                          }}
-                          onBlur={() => {
-                            setTimeout(() => {
-                              setGoodsFocusIndex(null);
-                              setShowItemDropdown(null);
-                            }, 200);
-                          }}
-                          data-row={idx}
-                          data-field="goods"
-                          onKeyDown={(e) => handleKeyDown(e, idx, "goods")}
-                          autoComplete="off"
+                            )
+                          }
                         />
-                      </div>
-                      {showItemDropdown === idx && (
-                        <div className={styles.itemDropdownMenu}>
-                          {getFilteredItems(idx).length > 0 ? (
-                            <>
-                              {getFilteredItems(idx).map((item) => (
-                                <div
-                                  key={item._id}
-                                  className={styles.itemDropdownItem}
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() =>
-                                    handleGoodsChange(idx, item.name)
-                                  }
-                                >
-                                  <div>
-                                    <strong>{item.name}</strong>
-                                    {item.category?.name && (
-                                      <span
-                                        style={{
-                                          color: "#888",
-                                          fontSize: 11,
-                                          marginLeft: 6,
-                                        }}
-                                      >
-                                        {item.category.name}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      color: "#666",
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    Rate: ₹{item.salePrice || 0}
-                                  </div>
-                                </div>
-                              ))}
-                            </>
-                          ) : (
-                            <div className={styles.itemDropdownItem}>
-                              No items found
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {goodsFocusIndex === idx && (
-                        <div className={styles.createNewItemRow}>
-                          <button
-                            type="button"
-                            className={styles.createNewItemBtn}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => handleGoodsChange(idx, "__create__")}
-                          >
-                            + Create new item
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    {/* Toggleable columns */}
-                    {columns
-                      .filter((c) => c.visible)
-                      .map((col) => (
-                        <td key={col.key}>
-                          <input
-                            className={styles.input}
-                            type="text"
-                            value={row[col.key]}
-                            onChange={(e) =>
-                              setRows((r) =>
-                                r.map((row2, i) =>
-                                  i === idx
-                                    ? { ...row2, [col.key]: e.target.value }
-                                    : row2
-                                )
-                              )
-                            }
-                            data-row={idx}
-                            data-field={col.key}
-                            onKeyDown={(e) => handleKeyDown(e, idx, col.key)}
-                          />
-                        </td>
-                      ))}
-                    {/* Qty */}
-                    <td>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        value={row.qty}
-                        onChange={(e) =>
-                          setRows((r) =>
-                            r.map((row2, i) =>
-                              i === idx ? { ...row2, qty: e.target.value } : row2
-                            )
+                      </td>
+                    ))}
+                  {/* Qty */}
+                  <td>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      value={row.qty}
+                      onChange={(e) =>
+                        setRows((r) =>
+                          r.map((row2, i) =>
+                            i === idx ? { ...row2, qty: e.target.value } : row2
                           )
-                        }
-                        data-row={idx}
-                        data-field="qty"
-                        onKeyDown={(e) => handleKeyDown(e, idx, "qty")}
-                      />
-                    </td>
-                    {/* Rate */}
-                    <td>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        value={row.rate}
-                        onChange={(e) =>
-                          setRows((r) =>
-                            r.map((row2, i) =>
-                              i === idx ? { ...row2, rate: e.target.value } : row2
-                            )
+                        )
+                      }
+                    />
+                  </td>
+                  {/* Rate */}
+                  <td>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      value={row.rate}
+                      onChange={(e) =>
+                        setRows((r) =>
+                          r.map((row2, i) =>
+                            i === idx ? { ...row2, rate: e.target.value } : row2
                           )
-                        }
-                        data-row={idx}
-                        data-field="rate"
-                        onKeyDown={(e) => handleKeyDown(e, idx, "rate")}
-                      />
-                    </td>
-                    {/* Amount */}
-                    <td>
+                        )
+                      }
+                    />
+                  </td>
+                  {/* GST Dropdown and Input */}
+                  <td>
+                    <select
+                      className={styles.input}
+                      style={{ width: 90, marginBottom: 4 }}
+                      value={gstType[idx] || "GST"}
+                      onChange={(e) => handleGstTypeChange(idx, e.target.value)}
+                    >
+                      <option value="GST">GST</option>
+                      <option value="Without GST">Without GST</option>
+                    </select>
+                    {gstType[idx] === "GST" && (
                       <input
                         className={styles.input}
                         type="number"
-                        value={
-                          row.qty && row.rate
-                            ? (Number(row.qty) * Number(row.rate)).toFixed(2)
-                            : ""
+                        placeholder="GST %"
+                        style={{ width: 60, marginTop: 2 }}
+                        value={gstValues[idx] || ""}
+                        onChange={(e) =>
+                          handleGstValueChange(idx, e.target.value)
                         }
-                        disabled
-                        style={{ background: "#f9fafb" }}
                       />
-                    </td>
-                    <td />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    )}
+                  </td>
+                  {/* Amount */}
+                  <td>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      value={
+                        row.qty && row.rate
+                          ? Number(row.qty) * Number(row.rate)
+                          : ""
+                      }
+                      disabled
+                    />
+                  </td>
+                  <td />
+                </tr>
+              ))}
+            </tbody>
+          </table>
           {showColumnsModal && (
             <div
               style={{
@@ -806,7 +607,7 @@ export default function NewSalesInvoice() {
               />
               Auto Round Off
             </label>
-            <span>₹{(autoRoundOff ? Math.round(subtotal) - subtotal : 0).toFixed(2)}</span>
+            <span>₹{total.toFixed(2)}</span>
           </div>
           <div className={styles.summaryTotalRow}>
             <span>Total Amount</span>
@@ -815,6 +616,7 @@ export default function NewSalesInvoice() {
         </div>
       </div>
 
+      {/* Modal for create new item */}
       {/* Modal for create new item */}
       {showAddItemModal && (
         <div
@@ -839,17 +641,10 @@ export default function NewSalesInvoice() {
           </div>
         </div>
       )}
-
       {/* End Customer Modal */}
       {showEndCustomerModal && (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setShowEndCustomerModal(false)}
-        >
-          <div
-            className={styles.modalContent}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
             <button
               className={styles.modalClose}
               onClick={() => setShowEndCustomerModal(false)}

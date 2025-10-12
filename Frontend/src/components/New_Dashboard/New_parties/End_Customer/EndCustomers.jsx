@@ -55,7 +55,7 @@ const EndCustomers = () => {
     } catch (error) {
       console.error("Error fetching customers:", error.message);
       setCustomers([]);
-      alert(`Failed to fetch customers: ${error.message}`);
+      // alert(`Failed to fetch customers: ${error.message}`);
     }
   };
 

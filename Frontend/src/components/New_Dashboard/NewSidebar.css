@@ -25,7 +25,7 @@
 /* ===== TOGGLE BUTTON ===== */
 .modern-sidebar-toggle {
   position: absolute;
-  top: 12px;
+  top: 15px;
   right: -14px;
   width: 28px;
   height: 28px;
@@ -33,7 +33,7 @@
   border: 2px solid #e5e7eb;
   border-radius: 50%;
   color: #4b5563;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   z-index: 110;
   display: flex;
@@ -41,6 +41,15 @@
   justify-content: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  line-height: 1;
+}
+
+.modern-sidebar-toggle svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+  margin: auto;
 }
 
 .modern-sidebar-toggle:hover {

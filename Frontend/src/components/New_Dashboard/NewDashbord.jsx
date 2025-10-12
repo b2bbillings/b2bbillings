@@ -18,7 +18,6 @@ const NewDashboard = ({
   companies = [],
   onNavigate = () => {},
   addToast = () => {},
-  isOnline = true,
   onLogout = () => {},
   onCompanyChange = () => {},
   onCompanyCreated = () => {},
@@ -156,7 +155,7 @@ const NewDashboard = ({
             </button>
             <div className="topbar-title">
               <FontAwesomeIcon icon={faHome} className="me-2" />
-              New Dashboard
+              Dashboard
             </div>
           </div>
 
@@ -189,7 +188,6 @@ const NewDashboard = ({
             activePage=""
             currentCompany={currentCompany}
             currentUser={currentUser}
-            isOnline={isOnline}
             companyId={effectiveCompanyId}
             onContentChange={handleContentChange}
           />
@@ -251,7 +249,6 @@ NewDashboard.propTypes = {
   companies: PropTypes.array,
   onNavigate: PropTypes.func,
   addToast: PropTypes.func,
-  isOnline: PropTypes.bool,
   onLogout: PropTypes.func,
   onCompanyChange: PropTypes.func,
   onCompanyCreated: PropTypes.func,
