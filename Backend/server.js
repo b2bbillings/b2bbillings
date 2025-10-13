@@ -83,6 +83,7 @@ const routeFiles = [
   "indirectIncomeRoutes", // ✅ NEW: Indirect income routes for income management
   "expenseIncomeCategoryRoutes", // ✅ NEW: Category routes for expense/income categories
   "endCustomerRoutes", // ✅ NEW: End customer routes
+  "invoiceRoutes", // ✅ NEW: Invoice routes for invoice management
 ];
 
 console.log("📂 Loading route files...");
@@ -1013,6 +1014,20 @@ try {
   console.log("   ✅ /api/transactions (legacy)");
 } catch (error) {
   console.error("   ❌ /api/transactions (legacy) failed:", error.message);
+}
+
+try {
+  app.use("/api/invoices", routes.invoiceRoutes);
+  console.log("   ✅ /api/invoices");
+} catch (error) {
+  console.error("   ❌ /api/invoices failed:", error.message);
+}
+
+try {
+  app.use("/api/companies/:companyId/invoices", routes.invoiceRoutes);
+  console.log("   ✅ /api/companies/:companyId/invoices");
+} catch (error) {
+  console.error("   ❌ /api/companies/:companyId/invoices failed:", error.message);
 }
 
 console.log("🌐 Route registration completed!");
