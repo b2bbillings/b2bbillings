@@ -1,4 +1,4 @@
-const EndCustomer = require("../models/endCustomerSchema");
+const EndCustomer = require("../models/EndCustomer");
 
 exports.getAll = async (req, res) => {
   try {
