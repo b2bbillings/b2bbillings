@@ -19,6 +19,7 @@ const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
   { key: "qty", label: "Qty" },
   { key: "rate", label: "Rate (₹)" },
+  { key: "gst", label: "GST (%)" },
   { key: "amount", label: "Amount (₹)" },
 ];
 
@@ -34,7 +35,7 @@ const TOGGLE_COLUMNS = [
   { key: "cess", label: "CESS(%)", visible: false },
 ];
 
-function PurchaseBillGst() {
+function PurchaseBillWithoutGST() {
   const [columns, setColumns] = useState(TOGGLE_COLUMNS);
   const [rows, setRows] = useState([
     {
@@ -82,6 +83,11 @@ function PurchaseBillGst() {
   const [showItemDropdown, setShowItemDropdown] = useState(null);
 
   const partyDropdownRef = useRef();
+
+  // Update GST % per row
+  const handleGstValueChange = (rowIdx, value) => {
+    setGstValues((prev) => prev.map((v, i) => (i === rowIdx ? value : v)));
+  };
 
   // Add row: also update gstValues
   const handleAddRow = () => {
@@ -141,6 +147,15 @@ function PurchaseBillGst() {
           return row;
         })
       );
+
+      // Update GST values if item has GST
+      if (selectedItem?.gstRate) {
+        setGstValues((prev) =>
+          prev.map((v, i) =>
+            i === rowIdx ? selectedItem.gstRate.toString() : v
+          )
+        );
+      }
 
       setItemSearch((prev) => prev.map((v, i) => (i === rowIdx ? "" : v)));
       setShowItemDropdown(null);
@@ -494,6 +509,7 @@ function PurchaseBillGst() {
                     ))}
                   <th>Qty</th>
                   <th>Rate (₹)</th>
+                  <th>GST (%)</th>
                   <th>Amount (₹)</th>
                   <th className={styles.showHideColTh}>
                     <button
@@ -666,6 +682,24 @@ function PurchaseBillGst() {
                         data-field="rate"
                         onKeyDown={(e) => handleKeyDown(e, idx, "rate")}
                       />
+                    </td>
+                    {/* GST Dropdown - Only GST slabs */}
+                    <td>
+                      <select
+                        className={styles.input}
+                        style={{ width: 90 }}
+                        value={gstValues[idx] || ""}
+                        onChange={(e) =>
+                          handleGstValueChange(idx, e.target.value)
+                        }
+                        data-row={idx}
+                        data-field="gstValue"
+                        onKeyDown={(e) => handleKeyDown(e, idx, "gstValue")}
+                      >
+                        <option value="">Select GST %</option>
+                        <option value="18">Include</option>
+                        <option value="28">Exclude</option>
+                      </select>
                     </td>
                     {/* Amount */}
                     <td>
@@ -882,4 +916,4 @@ function PurchaseBillGst() {
   );
 }
 
-export default PurchaseBillGst;
+export default PurchaseBillWithoutGST;
