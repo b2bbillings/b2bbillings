@@ -116,57 +116,9 @@ const NAVIGATION_ITEMS = [
     ],
   },
   {
-    id: "purchaseExpense",
-    label: "Purchase",
-    icon: faShoppingBag,
-    type: "accordion",
-    section: "purchaseExpense",
-    isActive: false, // Will be redesigned later
-    children: [
-      {
-        id: "purchaseBills",
-        label: "Purchase Bills",
-        icon: faFileInvoiceDollar,
-        requiresCompany: true,
-        isActive: false,
-      },
-      {
-        id: "purchaseOrders",
-        label: "Purchase Orders",
-        icon: faClipboardList,
-        requiresCompany: true,
-        isActive: false,
-      },
-    ],
-  },
-  {
-    id: "expenses",
-    label: "Expenses",
-    icon: faReceipt,
-    type: "accordion",
-    section: "expenses",
-    isActive: true, // ✅ ACTIVE - New Expenses management
-    children: [
-      {
-        id: "expenseManagement",
-        label: "Expenses",
-        icon: faMoneyBillWave,
-        requiresCompany: true,
-        isActive: true,
-      },
-      {
-        id: "indirectIncome",
-        label: "Indirect Income",
-        icon: faChartLine,
-        requiresCompany: true,
-        isActive: true,
-      },
-    ],
-  },
-  {
     id: "sales",
     label: "Sales",
-    icon: faShoppingCart,
+    icon: faMoneyBillWave,
     type: "accordion",
     section: "sales",
     requiresCompany: true,
@@ -197,6 +149,57 @@ const NAVIGATION_ITEMS = [
         id: "all-bills",
         label: "All Bills",
         icon: faClipboardList,
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: "purchase",
+    label: "Purchase",
+    icon: faShoppingBag,
+    type: "accordion",
+    section: "purchase",
+    requiresCompany: true,
+    isActive: true,
+    children: [
+      {
+        id: "purchaseBill",
+        label: "Purchase Bill",
+        icon: faFileInvoiceDollar,
+        path: "/purchase-bill",
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "purchaseOrder",
+        label: "Purchase Order",
+        icon: faClipboardList,
+        path: "/purchase-order",
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: "expenses",
+    label: "Expenses",
+    icon: faReceipt,
+    type: "accordion",
+    section: "expenses",
+    isActive: true, // ✅ ACTIVE - New Expenses management
+    children: [
+      {
+        id: "expenseManagement",
+        label: "Expenses",
+        icon: faMoneyBillWave,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "indirectIncome",
+        label: "Indirect Income",
+        icon: faChartLine,
         requiresCompany: true,
         isActive: true,
       },
@@ -798,6 +801,12 @@ const NewSidebar = React.memo(
         case 'endCustomers':
           path = '/end-customers';
           break;
+        case 'purchaseBill':
+          path = '/purchase-bill';
+          break;
+        case 'purchaseOrder':
+          path = '/purchase-order';
+          break;
         // Add more mappings if needed
         default:
           break;
@@ -1124,6 +1133,42 @@ const NewSidebar = React.memo(
                     >
                       <FontAwesomeIcon icon={faBuilding} className="me-2" />
                       Company/Brand
+                    </NavLink>
+                  </div>
+                </Accordion.Collapse>
+              </Accordion.Item>
+
+              {/* Purchase Section */}
+              <Accordion.Item eventKey="purchase" className="new-sidebar-accordion-item">
+                <div className="new-sidebar-header">
+                  <Accordion.Button onClick={() => handleToggle("purchase")}>
+                    <div className="new-sidebar-link-content">
+                      <FontAwesomeIcon icon={faShoppingBag} className="new-sidebar-icon" />
+                      <span className="new-sidebar-text">Purchase</span>
+                    </div>
+                    <FontAwesomeIcon 
+                      icon={faAngleRight} 
+                      className={`chevron-icon ${activeKey === "purchase" ? "rotated" : ""}`} 
+                    />
+                  </Accordion.Button>
+                </div>
+                <Accordion.Collapse eventKey="purchase">
+                  <div className="new-sidebar-submenu">
+                    <NavLink
+                      to={getPath('purchaseBill')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Purchase Bill", "purchaseBill")}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoiceDollar} className="me-2" />
+                      Purchase Bill
+                    </NavLink>
+                    <NavLink
+                      to={getPath('purchaseOrder')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Purchase Order", "purchaseOrder")}
+                    >
+                      <FontAwesomeIcon icon={faClipboardList} className="me-2" />
+                      Purchase Order
                     </NavLink>
                   </div>
                 </Accordion.Collapse>

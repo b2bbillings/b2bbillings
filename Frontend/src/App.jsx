@@ -52,6 +52,7 @@ import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
 import NewSalesInvoice from "./components/New_Dashboard/Sales/NewSalesInvoice";
 import EndCustomers from "./components/New_Dashboard/New_parties/End_Customer/EndCustomers";
+import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({ onComplete, userFirstName = "User" }) => {
@@ -2500,7 +2501,7 @@ function App() {
 
             <Route path="/payment-out" element={<SimplePaymentOutWrapper />} />
 
-              <Route path="/end-customers" element={<EndCustomers />} />
+            <Route path="/end-customers" element={<EndCustomers />} />
 
             <Route
               path="/companies/:companyId/*"
@@ -2521,6 +2522,13 @@ function App() {
               element={<SalesFormWrapper />}
             />
             <Route path="/sales-invoice" element={<SalesFormWrapper />} />
+
+            <Route
+              path="/companies/:companyId/purchase-bill"
+              element={<PurchaseBillGst />}
+            />
+
+            <Route path="/purchase-bill" element={<PurchaseBillGst />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

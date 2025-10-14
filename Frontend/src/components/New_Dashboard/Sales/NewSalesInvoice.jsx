@@ -9,6 +9,7 @@ import {
 } from "../../../services/customerVendorService";
 import itemService from "../../../services/itemService";
 import authService from "../../../services/authService";
+import invoiceService from "../../../services/invoiceService";
 
 const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
@@ -286,6 +287,50 @@ export default function NewSalesInvoice() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // Example: Save Invoice Handler
+  const handleSaveInvoice = async () => {
+    // Prepare invoice data as per your backend schema
+    const invoiceData = {
+      invoicePrefix,
+      invoiceNumber,
+      invoiceDate,
+      party: {
+        name: selectedParty,
+        // Add other party fields as needed
+      },
+      items: rows.map((row, idx) => ({
+        goods: row.goods,
+        quantity: Number(row.qty) || 0,
+        rate: Number(row.rate) || 0,
+        gstRate: Number(gstValues[idx]) || 0,
+        // Add other item fields as needed
+      })),
+      payment: {
+        amount: Number(paymentAmount) || 0,
+        mode: paymentMode,
+        refNo,
+        depositTo,
+        payFull,
+      },
+      autoRoundOff,
+      // Add other fields as needed
+    };
+
+    try {
+      const result = await invoiceService.createInvoice(invoiceData);
+      if (result && result.success !== false) {
+        alert("Invoice created successfully!");
+        // Optionally reset form or redirect
+      } else {
+        alert(
+          "Failed to create invoice: " + (result.message || "Unknown error")
+        );
+      }
+    } catch (err) {
+      alert("Error creating invoice: " + err.message);
+    }
+  };
 
   return (
     <div className={styles.fullPageWrapper}>
@@ -863,6 +908,11 @@ export default function NewSalesInvoice() {
           </div>
         </div>
       )}
+      <div style={{ marginTop: 24, textAlign: "right" }}>
+        <button className={styles.saveBtn} onClick={handleSaveInvoice}>
+          Save Invoice
+        </button>
+      </div>
     </div>
   );
 }

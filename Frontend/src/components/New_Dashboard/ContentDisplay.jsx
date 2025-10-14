@@ -35,6 +35,7 @@ import CompanyBrandInfo from "./Info/CompanyBrandInfo";
 import Sales from "./Sales/Sales";
 import NewSalesInvoice from "./Sales/invoice/NewSalesInvoice"; // Add this import
 import EndCustomers from "./New_parties/End_Customer/EndCustomers";
+import PurchaseBillGst from "./Purchase/PurchaseBillGst";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -65,6 +66,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/gst": { title: "GST", type: "gst" },
     "/company-brand": { title: "Company/Brand", type: "companyBrand" },
     "/end-customers": { title: "End Customers", type: "endCustomers" },
+    "/purchase-bill": { title: "Purchase Bill", type: "purchaseBill" },
+    "/purchase-order": { title: "Purchase Order", type: "purchaseOrder" },
   };
 
   useEffect(() => {
@@ -421,6 +424,13 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Purchase Bill Content
+  const renderPurchaseBillContent = () => (
+    <div className="content-purchase-bill">
+      <PurchaseBillGst />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -508,6 +518,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderCompanyBrandContent();
       case "endCustomers":
         return renderEndCustomersContent();
+      case "purchaseBill": // Add this case
+        return renderPurchaseBillContent();
       case "welcome":
       default:
         return renderWelcomeContent();

@@ -201,8 +201,7 @@ exports.updateInvoice = async (req, res) => {
       const serviceChargeAmount = parseFloat(updateData.serviceCharge) || 0;
       const serviceChargeTax = serviceChargeAmount > 0 ? (serviceChargeAmount * 18) / 100 : 0;
       const otherChargesAmount = parseFloat(updateData.otherCharges) || 0;
-      const totalTax = itemsResult.totalCGST + itemsResult.totalSGST + 
-                       itemsResult.totalIGST + itemsResult.totalCESS + serviceChargeTax;
+      const totalTax = totalCGST + totalSGST + totalIGST + totalCESS + serviceChargeTax;
       
       let grandTotal = itemsResult.totalTaxableAmount + totalTax + 
                        serviceChargeAmount + otherChargesAmount;
@@ -590,4 +589,19 @@ exports.duplicateInvoice = async (req, res) => {
   }
 };
 
-module.exports = exports;
+module.exports = {
+  createInvoice: exports.createInvoice,
+  getAllInvoices: exports.getAllInvoices,
+  getInvoiceStats: exports.getInvoiceStats,
+  getNextInvoiceNumber: exports.getNextInvoiceNumber,
+  searchInvoices: exports.searchInvoices,
+  getInvoiceById: exports.getInvoiceById,
+  updateInvoice: exports.updateInvoice,
+  updateInvoiceStatus: exports.updateInvoiceStatus,
+  recordPayment: exports.recordPayment,
+  deleteInvoice: exports.deleteInvoice,
+  restoreInvoice: exports.restoreInvoice,
+  downloadInvoicePDF: exports.downloadInvoicePDF,
+  emailInvoice: exports.emailInvoice,
+  duplicateInvoice: exports.duplicateInvoice
+};
