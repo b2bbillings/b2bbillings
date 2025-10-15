@@ -52,7 +52,9 @@ import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
 import NewSalesInvoice from "./components/New_Dashboard/Sales/NewSalesInvoice";
 import EndCustomers from "./components/New_Dashboard/New_parties/End_Customer/EndCustomers";
-import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst";
+import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst"
+import NewDashboard from "./components/New_Dashboard/NewDashbord";
+import PurchaseBillWithoutGST from "./components/New_Dashboard/Purchase/PurchaseBillWithoutGST";
 
 // ✅ FIXED: Welcome Animation Component with proper completion
 const WelcomeAnimation = ({ onComplete, userFirstName = "User" }) => {
@@ -2529,6 +2531,15 @@ function App() {
             />
 
             <Route path="/purchase-bill" element={<PurchaseBillGst />} />
+
+            <Route
+              path="/companies/:companyId/purchase-bill-without-gst"
+              element={<PurchaseBillWithoutGST />}
+            />
+            <Route
+              path="/purchase-bill-without-gst"
+              element={<PurchaseBillWithoutGST />}
+            />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

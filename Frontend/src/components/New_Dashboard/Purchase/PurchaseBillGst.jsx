@@ -80,6 +80,8 @@ function PurchaseBillGst() {
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
   const [showItemDropdown, setShowItemDropdown] = useState(null);
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [supplierDate, setSupplierDate] = useState("");
 
   const partyDropdownRef = useRef();
 
@@ -202,8 +204,8 @@ function PurchaseBillGst() {
   // Fetch customers and vendors
   useEffect(() => {
     const fetchParties = async () => {
-      const customers = await customerService.getAllCustomers();
-      const vendors = await vendorService.getAllVendors();
+      const customers = await getAllCustomers();
+      const vendors = await getAllVendors();
 
       const customerList = Array.isArray(customers)
         ? customers
@@ -330,7 +332,7 @@ function PurchaseBillGst() {
       {/* Customer Info Section */}
       <div className={styles.section + " " + styles.customerInfo}>
         <div className={styles.customerInfoGrid}>
-          {/* Select Customer */}
+          {/* 1. Select Customer */}
           <div style={{ position: "relative" }}>
             <label>
               Select Customer<span className={styles.required}>*</span>
@@ -351,7 +353,7 @@ function PurchaseBillGst() {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     document
-                      .querySelector('input[name="invoicePrefix"]')
+                      .querySelector('input[name="supplierInvoiceNumber"]')
                       ?.focus();
                   }
                 }}
@@ -411,11 +413,42 @@ function PurchaseBillGst() {
               </div>
             )}
           </div>
-          {/* Center: Empty */}
-          <div />
 
-          
-          {/* Right: Invoice Number + Invoice Date */}
+          {/* 2. Supplier Invoice Number & Supplier Date */}
+          <div>
+            <label>
+              Supplier Invoice Number
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              name="supplierInvoiceNumber"
+              placeholder="Supplier Invoice Number"
+              value={supplierInvoiceNumber}
+              onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+              style={{ marginBottom: 8 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document
+                    .querySelector('input[name="invoicePrefix"]')
+                    ?.focus();
+                }
+              }}
+            />
+            <label>
+              Supplier Date
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              type="date"
+              value={supplierDate}
+              onChange={(e) => setSupplierDate(e.target.value)}
+            />
+          </div>
+
+          {/* 3. Invoice Number + Invoice Date */}
           <div>
             <label>
               Invoice Number<span className={styles.required}>*</span>

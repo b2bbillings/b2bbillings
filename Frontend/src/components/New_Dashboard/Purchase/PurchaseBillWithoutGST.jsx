@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import styles from "./PurchaseBillGst.module.css"; // Added import for CSS module
+import styles from "./PurchaseBillGst.module.css"; // Use the same CSS module for consistent style
 import AddItemModal from "../Items/Add_Items";
 import itemService from "../../../services/itemService";
 import authService from "../../../services/authService";
@@ -19,7 +19,6 @@ const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
   { key: "qty", label: "Qty" },
   { key: "rate", label: "Rate (₹)" },
-  { key: "gst", label: "GST (%)" },
   { key: "amount", label: "Amount (₹)" },
 ];
 
@@ -75,19 +74,13 @@ function PurchaseBillWithoutGST() {
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
-  const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
   const [selectedParty, setSelectedParty] = useState("");
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
-  const [allItems, setAllItems] = useState([]);
-  const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
-  const [showItemDropdown, setShowItemDropdown] = useState(null);
-
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [supplierDate, setSupplierDate] = useState("");
   const partyDropdownRef = useRef();
-
-  // Update GST % per row
-  const handleGstValueChange = (rowIdx, value) => {
-    setGstValues((prev) => prev.map((v, i) => (i === rowIdx ? value : v)));
-  };
+  const [showItemDropdown, setShowItemDropdown] = useState(null);
+  const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
 
   // Add row: also update gstValues
   const handleAddRow = () => {
@@ -148,14 +141,6 @@ function PurchaseBillWithoutGST() {
         })
       );
 
-      // Update GST values if item has GST
-      if (selectedItem?.gstRate) {
-        setGstValues((prev) =>
-          prev.map((v, i) =>
-            i === rowIdx ? selectedItem.gstRate.toString() : v
-          )
-        );
-      }
 
       setItemSearch((prev) => prev.map((v, i) => (i === rowIdx ? "" : v)));
       setShowItemDropdown(null);
@@ -339,13 +324,15 @@ function PurchaseBillWithoutGST() {
   return (
     <div className={styles.fullPageWrapper}>
       <div className={styles.headerRow}>
-        <h2 className={styles.pageTitle}>Create New Purchase Invoice</h2>
+        <h2 className={styles.pageTitle}>
+          Create New Purchase Invoice (Without GST)
+        </h2>
       </div>
 
       {/* Customer Info Section */}
       <div className={styles.section + " " + styles.customerInfo}>
         <div className={styles.customerInfoGrid}>
-          {/* Select Customer */}
+          {/* 1. Select Customer */}
           <div style={{ position: "relative" }}>
             <label>
               Select Customer<span className={styles.required}>*</span>
@@ -366,7 +353,7 @@ function PurchaseBillWithoutGST() {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     document
-                      .querySelector('input[name="invoicePrefix"]')
+                      .querySelector('input[name="supplierInvoiceNumber"]')
                       ?.focus();
                   }
                 }}
@@ -392,20 +379,11 @@ function PurchaseBillWithoutGST() {
                       className={styles.dropdownItem}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedParty(
-                          party.name +
-                            (party.company ? ` (${party.company})` : "")
-                        );
+                        setSelectedParty(party.name);
                         setShowPartyDropdown(false);
                       }}
                     >
                       <span>{party.name}</span>
-                      {party.company && (
-                        <span style={{ color: "#888" }}>
-                          {" "}
-                          ({party.company})
-                        </span>
-                      )}
                       <span
                         style={{
                           float: "right",
@@ -426,11 +404,42 @@ function PurchaseBillWithoutGST() {
               </div>
             )}
           </div>
-          {/* Center: Empty */}
-          <div />
 
-          
-          {/* Right: Invoice Number + Invoice Date */}
+          {/* 2. Supplier Invoice Number & Supplier Date */}
+          <div>
+            <label>
+              Supplier Invoice Number
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              name="supplierInvoiceNumber"
+              placeholder="Supplier Invoice Number"
+              value={supplierInvoiceNumber}
+              onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+              style={{ marginBottom: 8 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document
+                    .querySelector('input[name="invoicePrefix"]')
+                    ?.focus();
+                }
+              }}
+            />
+            <label>
+              Supplier Date
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              type="date"
+              value={supplierDate}
+              onChange={(e) => setSupplierDate(e.target.value)}
+            />
+          </div>
+
+          {/* 3. Invoice Number + Invoice Date */}
           <div>
             <label>
               Invoice Number<span className={styles.required}>*</span>
@@ -482,10 +491,7 @@ function PurchaseBillWithoutGST() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  const firstGoodsInput = document.querySelector(
-                    'input[data-row="0"][data-field="goods"]'
-                  );
-                  if (firstGoodsInput) firstGoodsInput.focus();
+                  // focus next input if needed
                 }
               }}
             />
@@ -509,7 +515,6 @@ function PurchaseBillWithoutGST() {
                     ))}
                   <th>Qty</th>
                   <th>Rate (₹)</th>
-                  <th>GST (%)</th>
                   <th>Amount (₹)</th>
                   <th className={styles.showHideColTh}>
                     <button
@@ -683,38 +688,7 @@ function PurchaseBillWithoutGST() {
                         onKeyDown={(e) => handleKeyDown(e, idx, "rate")}
                       />
                     </td>
-                    {/* GST Dropdown - Only GST slabs */}
-                    <td>
-                      <select
-                        className={styles.input}
-                        style={{ width: 90 }}
-                        value={gstValues[idx] || ""}
-                        onChange={(e) =>
-                          handleGstValueChange(idx, e.target.value)
-                        }
-                        data-row={idx}
-                        data-field="gstValue"
-                        onKeyDown={(e) => handleKeyDown(e, idx, "gstValue")}
-                      >
-                        <option value="">Select GST %</option>
-                        <option value="18">Include</option>
-                        <option value="28">Exclude</option>
-                      </select>
-                    </td>
-                    {/* Amount */}
-                    <td>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        value={
-                          row.qty && row.rate
-                            ? Number(row.qty) * Number(row.rate)
-                            : ""
-                        }
-                        disabled
-                      />
-                    </td>
-                    <td />
+  
                   </tr>
                 ))}
               </tbody>

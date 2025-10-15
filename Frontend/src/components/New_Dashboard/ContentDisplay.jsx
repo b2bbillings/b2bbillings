@@ -36,6 +36,7 @@ import Sales from "./Sales/Sales";
 import NewSalesInvoice from "./Sales/invoice/NewSalesInvoice"; // Add this import
 import EndCustomers from "./New_parties/End_Customer/EndCustomers";
 import PurchaseBillGst from "./Purchase/PurchaseBillGst";
+import PurchaseBillWithoutGST from "./Purchase/PurchaseBillWithoutGST"; // <-- Add this import
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -68,6 +69,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/end-customers": { title: "End Customers", type: "endCustomers" },
     "/purchase-bill": { title: "Purchase Bill", type: "purchaseBill" },
     "/purchase-order": { title: "Purchase Order", type: "purchaseOrder" },
+    "/purchase-bill-without-gst": { title: "Purchase Bill Without GST", type: "purchaseBillWithoutGST" },
   };
 
   useEffect(() => {
@@ -113,6 +115,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         'companyBrand': { title: "Company/Brand", type: "companyBrand" },
         'end-customers': { title: "End Customers", type: "endCustomers" },
         'endCustomers': { title: "End Customers", type: "endCustomers" },
+        'purchaseBillWithoutGST': { title: "Purchase Bill Without GST", type: "purchaseBillWithoutGST" },
       };
       
       if (contentTypeMap[lastPart]) {
@@ -431,6 +434,13 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // Purchase Bill Without GST Content - Add this function
+  const renderPurchaseBillWithoutGSTContent = () => (
+    <div className="content-purchase-bill">
+      <PurchaseBillWithoutGST />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -520,6 +530,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderEndCustomersContent();
       case "purchaseBill": // Add this case
         return renderPurchaseBillContent();
+      case "purchaseBillWithoutGST": // Add this case
+        return renderPurchaseBillWithoutGSTContent();
       case "welcome":
       default:
         return renderWelcomeContent();

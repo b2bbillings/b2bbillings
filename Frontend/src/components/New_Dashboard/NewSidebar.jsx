@@ -179,6 +179,14 @@ const NAVIGATION_ITEMS = [
         requiresCompany: true,
         isActive: true,
       },
+      {
+        id: "purchaseBillWithoutGST", // <-- Add this block
+        label: "Purchase Bill Without GST",
+        icon: faFileInvoice,
+        path: "/purchase-bill-without-gst",
+        requiresCompany: true,
+        isActive: true,
+      },
     ],
   },
   {
@@ -807,6 +815,9 @@ const NewSidebar = React.memo(
         case 'purchaseOrder':
           path = '/purchase-order';
           break;
+        case 'purchaseBillWithoutGST':
+          path = '/purchase-bill-without-gst';
+          break;
         // Add more mappings if needed
         default:
           break;
@@ -1169,6 +1180,14 @@ const NewSidebar = React.memo(
                     >
                       <FontAwesomeIcon icon={faClipboardList} className="me-2" />
                       Purchase Order
+                    </NavLink>
+                    <NavLink
+                      to={getPath('purchaseBillWithoutGST')}
+                      className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
+                      onClick={() => handleSimpleNavigation("Purchase Bill Without GST", "purchaseBillWithoutGST")}
+                    >
+                      <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
+                      Purchase Bill Without GST
                     </NavLink>
                   </div>
                 </Accordion.Collapse>

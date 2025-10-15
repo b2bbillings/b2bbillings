@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import styles from "./NewSalesInvoice.module.css";
+import styles from "./SalesWithoutGST.module.css";
 import ShowHideColumns from "./ShowHideColumns";
 import AddItemModal from "../Items/Add_Items";
 import EndCustomers from "../New_parties/End_Customer/EndCustomers";
