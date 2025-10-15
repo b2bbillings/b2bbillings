@@ -311,7 +311,7 @@ export default function NewSalesInvoice() {
   return (
     <div className={styles.fullPageWrapper}>
       <div className={styles.headerRow}>
-        <h2 className={styles.pageTitle}>Create New Sales Invoice</h2>
+        <h2 className={styles.pageTitle}>Create New Sales Invoice (Without GST)</h2>
       </div>
 
       {/* Customer Info Section */}

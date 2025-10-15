@@ -270,7 +270,13 @@ const Items = () => {
         setCompanyName('');
         setCompanyPhone('');
         setShowCreateCompanyModal(false);
-        loadCompanies();
+
+        // Add the new company to the dropdown immediately
+        setCompanies(prev => {
+          // Avoid duplicates if already present
+          if (prev.some(c => c._id === result.data._id)) return prev;
+          return [...prev, result.data];
+        });
         setSelectedCompany(result.data._id);
       } else {
         setError(result.message || 'Failed to create company');

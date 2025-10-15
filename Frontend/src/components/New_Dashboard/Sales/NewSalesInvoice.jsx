@@ -260,8 +260,7 @@ export default function NewSalesInvoice() {
   const filteredParties = allParties.filter(
     (p) =>
       p.name?.toLowerCase().includes(partySearch.toLowerCase()) ||
-      p.company?.toLowerCase().includes(partySearch.toLowerCase()) ||
-      p.phone?.includes(partySearch)
+      p.company?.toLowerCase().includes(partySearch.toLowerCase())
   );
 
   // Filtered items for dropdown
@@ -367,62 +366,63 @@ export default function NewSalesInvoice() {
                   }
                 }}
               />
-            </div>
-            {showPartyDropdown && (
-              <div className={styles.dropdownMenu} ref={partyDropdownRef}>
-                <input
-                  type="text"
-                  className={styles.input}
-                  placeholder="Search..."
-                  value={partySearch}
-                  onChange={(e) => setPartySearch(e.target.value)}
-                  autoFocus
-                />
-                <div style={{ maxHeight: 200, overflowY: "auto" }}>
-                  {filteredParties.length === 0 && (
-                    <div className={styles.dropdownItem}>No results</div>
-                  )}
-                  {filteredParties.map((party) => (
-                    <div
-                      key={party._id}
-                      className={styles.dropdownItem}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setSelectedParty(
-                          party.name +
-                            (party.company ? ` (${party.company})` : "")
-                        );
-                        setShowPartyDropdown(false);
-                      }}
-                    >
-                      <span>{party.name}</span>
-                      {party.company && (
-                        <span style={{ color: "#888" }}>
-                          {" "}
-                          ({party.company})
-                        </span>
-                      )}
-                      <span
-                        style={{
-                          float: "right",
-                          fontSize: 12,
-                          color: "#007bff",
+              <button
+                className={styles.endCustomerBtn}
+                style={{ marginLeft: "auto" }}
+                onClick={() => setShowEndCustomerModal(true)}
+                type="button"
+              >
+                + End Customer
+              </button>
+              {showPartyDropdown && (
+                <div className={styles.dropdownMenu}>
+                  <input
+                    type="text"
+                    className={styles.input}
+                    placeholder="Search..."
+                    value={partySearch}
+                    onChange={(e) => setPartySearch(e.target.value)}
+                    autoFocus
+                  />
+                  <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                    {filteredParties.length === 0 && (
+                      <div className={styles.dropdownItem}>No results</div>
+                    )}
+                    {filteredParties.map((party) => (
+                      <div
+                        key={party._id}
+                        className={styles.dropdownItem}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSelectedParty(
+                            party.name +
+                              (party.company ? ` (${party.company})` : "")
+                          );
+                          setShowPartyDropdown(false);
                         }}
                       >
-                        {party.type}
-                      </span>
-                    </div>
-                  ))}
+                        <span>{party.name}</span>
+                        {party.company && (
+                          <span style={{ color: "#888" }}>
+                            {" "}
+                            ({party.company})
+                          </span>
+                        )}
+                        <span
+                          style={{
+                            float: "right",
+                            fontSize: 12,
+                            color: "#007bff",
+                          }}
+                        >
+                          {party.type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            <button
-              className={styles.endCustomerBtn}
-              onClick={() => setShowEndCustomerModal(true)}
-              title="Add End Customer"
-            >
-              + End Customer
-            </button>
+              )}
+            </div>
             {selectedEndCustomer && (
               <div className={styles.selectedEndCustomer}>
                 End Customer: {selectedEndCustomer}

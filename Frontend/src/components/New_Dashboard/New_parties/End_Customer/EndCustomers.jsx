@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, Search, Phone, User, Edit2, Trash2, X } from "lucide-react";
 import "./EndCustomers.css";
 
-const EndCustomers = () => {
+const EndCustomers = ({ onSelect }) => {
   const [customers, setCustomers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -113,11 +113,16 @@ const EndCustomers = () => {
         throw new Error(errorData.error || `Failed to ${editingCustomer ? "update" : "create"} customer`);
       }
 
+      const createdCustomer = { ...formData, _id: editingCustomer ? editingCustomer._id : Date.now() };
       setFormData({ customerName: "", whatsapp: "" });
       setShowModal(false);
       setEditingCustomer(null);
       setErrors({});
       fetchCustomers();
+
+      if (typeof onSelect === "function") {
+        onSelect(createdCustomer);
+      }
     } catch (error) {
       console.error(`Error ${editingCustomer ? "updating" : "creating"} customer:`, error.message);
       alert(`Error: ${error.message}`);
@@ -195,14 +200,13 @@ const EndCustomers = () => {
 
   return (
     <div className="customer-container">
-      <div className="header-section">
+      {/* <div className="header-section">
         <h1>Customer Management</h1>
         <p>Manage your customer contacts efficiently</p>
-      </div>
+      </div> */}
       <div className="controls-section">
         <div className="controls-wrapper">
           <div className="search-wrapper">
-            <Search className="search-icon" />
             <input
               type="text"
               placeholder="Search by name or phone number..."
@@ -224,7 +228,7 @@ const EndCustomers = () => {
         {filteredCustomers.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon-wrapper">
-              <User style={{ width: "50px", height: "50px", color: "#9ca3af" }} />
+              <User style={{ width: "40px", height: "40px", color: "#9ca3af" }} />
             </div>
             <h3>No customers found</h3>
             <p>
@@ -254,6 +258,25 @@ const EndCustomers = () => {
                     >
                       <Trash2 style={{ width: "16px", height: "16px" }} />
                     </button>
+                    {typeof onSelect === "function" && (
+                      <button
+                        onClick={() => onSelect(customer)}
+                        className="action-button select-button"
+                        title="Select this customer"
+                        style={{
+                          background: "#4f46e5",
+                          color: "#fff",
+                          marginLeft: 8,
+                          borderRadius: 4,
+                          padding: "2px 8px",
+                          fontSize: 12,
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Select
+                      </button>
+                    )}
                   </div>
                 </div>
                 <h3 className="customer-name">{customer.customerName}</h3>
