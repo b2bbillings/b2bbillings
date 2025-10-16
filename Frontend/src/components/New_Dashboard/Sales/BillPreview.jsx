@@ -12,6 +12,8 @@ import {
   faFilePdf
 } from '@fortawesome/free-solid-svg-icons';
 import './BillPreview.css';
+import html2pdf from 'html2pdf.js';
+
 
 const BillPreview = ({ billData, onBack, onEdit }) => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
