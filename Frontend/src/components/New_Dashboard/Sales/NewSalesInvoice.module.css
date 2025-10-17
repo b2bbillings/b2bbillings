@@ -688,7 +688,12 @@ body.modal-open {
   border-bottom: none;
 }
 
-
+/* NewSalesInvoice.module.css */
+.customerSelectRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
 
 
 

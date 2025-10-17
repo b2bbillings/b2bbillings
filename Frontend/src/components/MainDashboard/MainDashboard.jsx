@@ -271,7 +271,7 @@ function MainDashboard({
       },
       {
         key: "chats",
-        label: screenSize.isMobile ? "Chats" : "Team Chats",
+        label: screenSize.isMobile ? "Chats" : "Chats",
         icon: faComments,
         shortcut: "Ctrl+3",
         description: "Communicate with your team members",

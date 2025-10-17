@@ -3381,7 +3381,7 @@ function TeamChats({
           <div className="header-content">
             <div className="app-title">
               <FontAwesomeIcon icon={faComments} className="app-icon" />
-              <span>Team Chats</span>
+              <span>Chatting</span>
             </div>
             <div className="header-actions">
               <button 

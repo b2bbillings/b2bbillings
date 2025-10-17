@@ -1,32 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Button,
-  Spinner,
-  Alert,
-  Form,
-  Modal
+  Container, Row, Col, Card, Button, Alert, Form, Modal
 } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faPlus,
-  faEdit,
-  faTrash
-} from '@fortawesome/free-solid-svg-icons';
+import { faEdit, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { categoryService } from '../../../services/categoryService';
 import itemService from '../../../services/itemService';
-import companyService from '../../../services/companyService';
-import authService from '../../../services/authService';
+import brandService from '../../../services/brandService';
 import './Items.css';
 
 const Items = () => {
   // Basic states
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [companies, setCompanies] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -35,22 +22,15 @@ const Items = () => {
   // Form states
   const [itemName, setItemName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [gstRate, setGstRate] = useState('');
-  
-  // ✅ NEW: Stock-related states
+  const [salePrice, setSalePrice] = useState('');
   const [itemType, setItemType] = useState('product');
   const [unit, setUnit] = useState('PCS');
   const [buyPrice, setBuyPrice] = useState('');
-  const [salePrice, setSalePrice] = useState('');
   const [openingStock, setOpeningStock] = useState('');
   const [minStockLevel, setMinStockLevel] = useState('');
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Modal states
-  const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
-  const [companyName, setCompanyName] = useState('');
-  const [companyPhone, setCompanyPhone] = useState('');
 
   // GST options
   const gstOptions = [
@@ -65,34 +45,15 @@ const Items = () => {
   useEffect(() => {
     loadItems();
     loadCategories();
-    loadCompanies();
+    loadBrands();
   }, []);
 
   // API Functions
   const loadItems = async () => {
     setLoading(true);
     try {
-      const user = authService.getCurrentUser();
-      console.log('Current user object:', user); // Debug log
-      
-      // Try multiple ways to get company ID
-      const companyId = user?.companyId || user?.company?._id || user?.company;
-      
-      if (!user) {
-        setError('Please login to continue.');
-        return;
-      }
-      
-      if (!companyId) {
-        console.error('Company not found for user:', user);
-        // Don't block the UI, just show info that user needs to create a company
-        setError('No company found. Please create a company first using the "+" button next to the company selection.');
-        setItems([]); // Show empty list instead of blocking
-        setLoading(false);
-        return;
-      }
-
-      const result = await itemService.getItems(companyId);
+      // Fetch all items (not by company)
+      const result = await itemService.getAllItems(); // <-- You must implement this in your itemService
       if (result.success) {
         setItems(result.data || []);
       } else {
@@ -116,30 +77,14 @@ const Items = () => {
     }
   };
 
-  const loadCompanies = async () => {
+  const loadBrands = async () => {
     try {
-      const result = await companyService.getCompanies({ limit: 100 });
-      console.log('Companies API response:', result); // Debug log
-      
-      // Handle different response structures
-      if (result && result.success && result.data) {
-        // Standard success response with data array
-        const companiesData = Array.isArray(result.data) ? result.data : [];
-        setCompanies(companiesData);
-      } else if (result && Array.isArray(result)) {
-        // Direct array response
-        setCompanies(result);
-      } else if (result && result.data && Array.isArray(result.data)) {
-        // Response with data property
-        setCompanies(result.data);
-      } else {
-        // Fallback to empty array
-        console.warn('Unexpected companies response structure:', result);
-        setCompanies([]);
+      const result = await brandService.getBrands();
+      if (result.success) {
+        setBrands(result.data || []);
       }
     } catch (err) {
-      console.error('Error loading companies:', err);
-      setCompanies([]); // Ensure companies is always an array
+      console.error('Error loading brands:', err);
     }
   };
 
@@ -147,18 +92,15 @@ const Items = () => {
   const resetForm = () => {
     setItemName('');
     setSelectedCategory('');
-    setSelectedCompany('');
+    setSelectedBrand('');
     setGstRate('');
-    
-    // ✅ NEW: Reset stock-related states
+    setSalePrice('');
     setItemType('product');
     setUnit('PCS');
     setBuyPrice('');
-    setSalePrice('');
     setOpeningStock('');
     setMinStockLevel('');
     setAsOfDate(new Date().toISOString().split('T')[0]);
-    
     setError('');
     setSuccess('');
   };
@@ -166,19 +108,17 @@ const Items = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!itemName.trim()) {
       setError('Item name is required');
       return;
     }
-    
     if (!selectedCategory) {
       setError('Category is required');
       return;
     }
-    
-    if (!selectedCompany) {
-      setError('Company is required');
+    if (!selectedBrand) {
+      setError('Brand is required');
       return;
     }
 
@@ -186,19 +126,10 @@ const Items = () => {
     setError('');
 
     try {
-      const currentUser = authService.getCurrentUser();
-      
-      // Try multiple ways to get company ID
-      const companyId = currentUser?.companyId || currentUser?.company?._id || currentUser?.company;
-      
-      if (!companyId) {
-        setError('User company not found. Please select a company first.');
-        return;
-      }
-      
       const itemData = {
         name: itemName.trim(),
         category: selectedCategory,
+        brand: selectedBrand,
         unit: unit || "PCS",
         type: itemType || "product",
         gstRate: parseFloat(gstRate) || 0,
@@ -207,12 +138,10 @@ const Items = () => {
         openingStock: parseFloat(openingStock) || 0,
         minStockLevel: parseFloat(minStockLevel) || 0,
         asOfDate: asOfDate || new Date().toISOString().split('T')[0],
-        isActive: true,
-        createdBy: currentUser.id
+        isActive: true
       };
 
-      const result = await itemService.createItem(companyId, itemData);
-
+      const result = await itemService.createItem(itemData); // <-- No companyId
       if (result.success) {
         setSuccess('Item created successfully!');
         resetForm();
@@ -228,71 +157,11 @@ const Items = () => {
     }
   };
 
-  // Handle company creation
-  const handleCreateCompany = async (e) => {
-    e.preventDefault();
-    
-    if (!companyName.trim()) {
-      setError('Company name is required');
-      return;
-    }
-
-    if (!companyPhone.trim()) {
-      setError('Company phone number is required');
-      return;
-    }
-
-    if (!/^[0-9]{10}$/.test(companyPhone.trim())) {
-      setError('Please enter a valid 10-digit phone number');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const currentUser = authService.getCurrentUser();
-      
-      if (!currentUser?.id) {
-        setError('User not authenticated. Please login again.');
-        return;
-      }
-      
-      const companyData = {
-        businessName: companyName.trim(),
-        phoneNumber: companyPhone.trim(),
-        owner: currentUser.id
-      };
-
-      const result = await companyService.createCompany(companyData);
-
-      if (result.success) {
-        setSuccess('Company created successfully!');
-        setCompanyName('');
-        setCompanyPhone('');
-        setShowCreateCompanyModal(false);
-
-        // Add the new company to the dropdown immediately
-        setCompanies(prev => {
-          // Avoid duplicates if already present
-          if (prev.some(c => c._id === result.data._id)) return prev;
-          return [...prev, result.data];
-        });
-        setSelectedCompany(result.data._id);
-      } else {
-        setError(result.message || 'Failed to create company');
-      }
-    } catch (err) {
-      setError('Failed to create company');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Handle edit item
   const handleEditItem = (item) => {
     setItemName(item.name);
     setSelectedCategory(item.category?._id || '');
-    setSelectedCompany(item.company?._id || '');
+    setSelectedBrand(item.brand?._id || '');
     setGstRate(item.gstRate || '');
     setShowAddModal(true);
   };
@@ -302,7 +171,6 @@ const Items = () => {
     if (!window.confirm('Are you sure you want to delete this item?')) {
       return;
     }
-
     setLoading(true);
     try {
       const result = await itemService.deleteItem(itemId);
@@ -319,14 +187,6 @@ const Items = () => {
     }
   };
 
-  // Close create company modal
-  const closeCreateCompanyModal = () => {
-    setShowCreateCompanyModal(false);
-    setCompanyName('');
-    setCompanyPhone('');
-    setError('');
-  };
-
   return (
     <Container fluid className="p-4">
       <Row>
@@ -335,7 +195,6 @@ const Items = () => {
             <Card.Header className="bg-primary text-white">
               <h4 className="mb-0">Item Management</h4>
             </Card.Header>
-
             <Card.Body>
               {/* Alerts */}
               {error && (
@@ -343,13 +202,11 @@ const Items = () => {
                   {error}
                 </Alert>
               )}
-
               {success && (
                 <Alert variant="success" className="mb-3" dismissible onClose={() => setSuccess('')}>
                   {success}
                 </Alert>
               )}
-
               {/* Show items or empty state */}
               {items.length === 0 ? (
                 <div className="text-center py-5">
@@ -373,7 +230,7 @@ const Items = () => {
                           <Card.Body>
                             <h6>{item.name}</h6>
                             <p><strong>Category:</strong> {item.category?.name || 'N/A'}</p>
-                            <p><strong>Company:</strong> {item.company?.name || item.company?.companyName || 'N/A'}</p>
+                            <p><strong>Brand:</strong> {item.brand?.name || item.brand?.brandName || 'N/A'}</p>
                             <p><strong>GST:</strong> {item.gstRate ? `${item.gstRate}%` : '0%'}</p>
                             <div className="d-flex gap-2 mt-3">
                               <Button size="sm" variant="outline-primary" onClick={() => handleEditItem(item)}>
@@ -432,28 +289,19 @@ const Items = () => {
                       </Col>
                       <Col md={6} className="mb-3">
                         <Form.Group>
-                          <Form.Label>Company *</Form.Label>
-                          <div className="d-flex gap-2">
-                            <Form.Select
-                              value={selectedCompany}
-                              onChange={(e) => setSelectedCompany(e.target.value)}
-                              required
-                              className="flex-grow-1"
-                            >
-                              <option value="">Select Company</option>
-                              {Array.isArray(companies) && companies.map((company) => (
-                                <option key={company._id} value={company._id}>
-                                  {company.name || company.companyName || company.businessName}
-                                </option>
-                              ))}
-                            </Form.Select>
-                            <Button
-                              variant="outline-primary"
-                              onClick={() => setShowCreateCompanyModal(true)}
-                            >
-                              +
-                            </Button>
-                          </div>
+                          <Form.Label>Brand Name *</Form.Label>
+                          <Form.Select
+                            value={selectedBrand}
+                            onChange={(e) => setSelectedBrand(e.target.value)}
+                            required
+                          >
+                            <option value="">Select Brand</option>
+                            {brands.map((brand) => (
+                              <option key={brand._id} value={brand._id}>
+                                {brand.name || brand.brandName}
+                              </option>
+                            ))}
+                          </Form.Select>
                         </Form.Group>
                       </Col>
                       <Col md={6} className="mb-3">
@@ -594,48 +442,6 @@ const Items = () => {
                     </Button>
                     <Button variant="primary" type="submit" disabled={loading}>
                       {loading ? 'Creating...' : 'Create Item'}
-                    </Button>
-                  </Modal.Footer>
-                </Form>
-              </Modal>
-
-              {/* Create Company Modal */}
-              <Modal show={showCreateCompanyModal} onHide={closeCreateCompanyModal} centered>
-                <Modal.Header closeButton>
-                  <Modal.Title>Create New Company</Modal.Title>
-                </Modal.Header>
-                <Form onSubmit={handleCreateCompany}>
-                  <Modal.Body>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Company Name *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="Enter company name"
-                        required
-                        autoFocus
-                      />
-                    </Form.Group>
-                    <Form.Group>
-                      <Form.Label>Phone Number *</Form.Label>
-                      <Form.Control
-                        type="tel"
-                        value={companyPhone}
-                        onChange={(e) => setCompanyPhone(e.target.value)}
-                        placeholder="Enter 10-digit phone number"
-                        pattern="[0-9]{10}"
-                        maxLength="10"
-                        required
-                      />
-                    </Form.Group>
-                  </Modal.Body>
-                  <Modal.Footer>
-                    <Button variant="outline-secondary" onClick={closeCreateCompanyModal}>
-                      Cancel
-                    </Button>
-                    <Button variant="primary" type="submit" disabled={loading}>
-                      {loading ? 'Creating...' : 'Create Company'}
                     </Button>
                   </Modal.Footer>
                 </Form>

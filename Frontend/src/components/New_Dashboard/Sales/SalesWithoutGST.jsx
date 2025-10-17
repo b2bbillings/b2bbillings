@@ -9,6 +9,7 @@ import {
 } from "../../../services/customerVendorService";
 import itemService from "../../../services/itemService";
 import authService from "../../../services/authService";
+import invoiceService from "../../../services/invoiceService";
 
 const ALWAYS_VISIBLE = [
   { key: "goods", label: "Goods/Service" },
@@ -73,6 +74,10 @@ export default function NewSalesInvoice() {
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
   const [showItemDropdown, setShowItemDropdown] = useState(null);
+
+  // ADDED: supplier invoice states (match NewSalesInvoice)
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [supplierDate, setSupplierDate] = useState("");
 
   const partyDropdownRef = useRef();
 
@@ -276,6 +281,82 @@ export default function NewSalesInvoice() {
     fetchItems();
   }, []);
 
+  // prefill next invoice number for Sales Without GST
+  useEffect(() => {
+    const prefill = async () => {
+      try {
+        const user = authService.getCurrentUser();
+        const companyId = user?.companyId || user?.company?._id || user?.company;
+        if (!companyId) return;
+
+        const res = await invoiceService.getNextInvoiceNumber("sales-without-gst", companyId, invoicePrefix);
+        if (res.success && res.data) {
+          // res.data = { prefix, number, formatted, seq }
+          setInvoicePrefix(res.data.prefix || invoicePrefix);
+          // store only numeric padded part in invoiceNumber state for your UI
+          setInvoiceNumber(res.data.number || invoiceNumber);
+        }
+      } catch (err) {
+        // silent fail - user can edit manually
+        console.error("prefill invoice number failed", err);
+      }
+    };
+    prefill();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save invoice to backend
+  const handleSaveInvoice = async () => {
+    try {
+      const user = authService.getCurrentUser();
+      const companyId = user?.companyId || user?.company?._id || user?.company;
+      if (!companyId) {
+        alert("Company not found on current user.");
+        return;
+      }
+      if (!selectedParty) {
+        alert("Select a customer before saving.");
+        return;
+      }
+
+      // Prepare invoice payload
+      const payload = {
+        companyId,
+        customer: selectedParty,
+        endCustomer: selectedEndCustomer,
+        invoicePrefix,
+        invoiceNumber,
+        invoiceDate,
+        goodsDetails: rows.map((row) => ({
+          goods: row.goods,
+          qty: row.qty,
+          rate: row.rate,
+          // add other fields as necessary
+        })),
+        payment: {
+          mode: paymentMode,
+          referenceNo: refNo,
+          depositTo,
+          amount: paymentAmount,
+          fullPayment: payFull,
+        },
+        // add other necessary invoice fields
+      };
+
+      // use unified invoice service and target Sales Without GST endpoint
+      const res = await invoiceService.createInvoice("sales-without-gst", payload);
+      if (res.success) {
+        alert("Invoice saved");
+        // optionally clear form or navigate
+      } else {
+        alert("Failed to save invoice: " + res.message);
+      }
+    } catch (err) {
+      console.error("Save invoice error:", err);
+      alert("Error saving invoice");
+    }
+  };
+
   // Filtered parties for dropdown
   const filteredParties = allParties.filter(
     (p) =>
@@ -317,12 +398,12 @@ export default function NewSalesInvoice() {
       {/* Customer Info Section */}
       <div className={styles.section + " " + styles.customerInfo}>
         <div className={styles.customerInfoGrid}>
-          {/* Select Customer */}
-          <div style={{ position: "relative" }}>
+          {/* 1. Select Customer + End Customer (side-by-side) */}
+          <div style={{ position: "relative" }} ref={partyDropdownRef}>
             <label>
               Select Customer<span className={styles.required}>*</span>
             </label>
-            <div className={styles.customerSelectRow}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
@@ -338,14 +419,25 @@ export default function NewSalesInvoice() {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     document
-                      .querySelector('input[name="invoicePrefix"]')
+                      .querySelector('input[name="supplierInvoiceNumber"]')
                       ?.focus();
                   }
                 }}
+                style={{ flex: 1 }}
               />
+              <button
+                className={styles.endCustomerBtn}
+                onClick={() => setShowEndCustomerModal(true)}
+                title="Add End Customer"
+                type="button"
+                style={{ whiteSpace: "nowrap" }}
+              >
+                + End Customer
+              </button>
             </div>
+
             {showPartyDropdown && (
-              <div className={styles.dropdownMenu} ref={partyDropdownRef}>
+              <div className={styles.dropdownMenu}>
                 <input
                   type="text"
                   className={styles.input}
@@ -392,13 +484,13 @@ export default function NewSalesInvoice() {
                 </div>
               </div>
             )}
-            <button
-              className={styles.endCustomerBtn}
-              onClick={() => setShowEndCustomerModal(true)}
-              title="Add End Customer"
-            >
-              + End Customer
-            </button>
+
+            {/* Selected displays below inputs */}
+            {selectedParty && (
+              <div className={styles.selectedEndCustomer}>
+                Selected Customer: {selectedParty}
+              </div>
+            )}
             {selectedEndCustomer && (
               <div className={styles.selectedEndCustomer}>
                 End Customer: {selectedEndCustomer}
@@ -407,7 +499,41 @@ export default function NewSalesInvoice() {
           </div>
           {/* Center: Empty */}
           <div />
-          {/* Right: Invoice Number + Invoice Date */}
+          {/* 2. Supplier Invoice Number & Supplier Date */}
+          <div>
+            <label>
+              Supplier Invoice Number
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              name="supplierInvoiceNumber"
+              placeholder="Supplier Invoice Number"
+              value={supplierInvoiceNumber}
+              onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+              style={{ marginBottom: 8 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document
+                    .querySelector('input[name="invoicePrefix"]')
+                    ?.focus();
+                }
+              }}
+            />
+            <label>
+              Supplier Date
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              type="date"
+              value={supplierDate}
+              onChange={(e) => setSupplierDate(e.target.value)}
+            />
+          </div>
+
+          {/* 3. Invoice Number + Invoice Date */}
           <div>
             <label>
               Invoice Number<span className={styles.required}>*</span>

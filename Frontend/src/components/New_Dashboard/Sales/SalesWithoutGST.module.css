@@ -41,10 +41,11 @@
   margin-bottom: 18px;
 }
 .customerInfoGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  align-items: start;
+  display: flex;             /* place children in a single row */
+  flex-wrap: nowrap;         /* keep everything on one line */
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
 }
 .customerGrid {
   display: grid;
@@ -284,6 +285,64 @@
 }
 .createNewItemBtn:hover {
   text-decoration: underline;
+}
+
+/* Replace grid customer layout with single-row inline layout */
+.customerInfoGrid {
+  display: flex;             /* place children in a single row */
+  flex-wrap: nowrap;         /* keep everything on one line */
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* make each section share available space but keep compact */
+.customerInfoGrid > div {
+  flex: 1 1 0;
+  min-width: 160px;         /* prevents collapsing too narrow */
+  display: flex;
+  flex-direction: column;   /* labels above inputs, inputs inline inside children where needed */
+}
+
+/* ensure inner rows (like input + button) stay inline */
+.customerInfoGrid > div > .invoiceNumberRow,
+.customerInfoGrid > div > .customerSelectRow,
+.customerInfoGrid > div > .paymentGrid {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* allow inputs inside inline rows to size naturally */
+.customerInfoGrid .input {
+  flex: 1 1 auto;
+  width: auto;
+  margin-top: 4px;
+}
+
+/* keep end-customer button compact and inline */
+.endCustomerBtn {
+  white-space: nowrap;
+  padding: 6px 8px;
+  height: 34px;
+  align-self: flex-end;
+}
+
+/* keep invoice number small inputs inline */
+.invoiceNumberRow input {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* On very small screens still allow wrapping to avoid overflow */
+@media (max-width: 520px) {
+  .customerInfoGrid {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .customerInfoGrid > div {
+    min-width: 100%;
+  }
 }
 
 /* Responsive */

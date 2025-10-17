@@ -329,13 +329,13 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
               {/* Reference Number */}
               <Col md={6} className="mb-3">
                 <Form.Group>
-                  <Form.Label>Reference Number</Form.Label>
+                  <Form.Label>Find Invoice</Form.Label>
                   <Form.Control
                     type="text"
                     name="referenceNumber"
                     value={formData.referenceNumber}
                     onChange={handleInputChange}
-                    placeholder="Transaction reference (optional)"
+                    placeholder="Find Invoice"
                   />
                 </Form.Group>
               </Col>

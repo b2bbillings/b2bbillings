@@ -77,8 +77,9 @@ export default function NewSalesInvoice() {
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
   const [showItemDropdown, setShowItemDropdown] = useState(null);
-
   const partyDropdownRef = useRef();
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [supplierDate, setSupplierDate] = useState("");
 
   // Update GST % per row
   const handleGstValueChange = (rowIdx, value) => {
@@ -160,16 +161,19 @@ export default function NewSalesInvoice() {
 
   // When item is created in modal
   const handleItemCreated = (item) => {
-    if (addItemRowIndex !== null) {
-      setRows((r) =>
-        r.map((row, idx) =>
-          idx === addItemRowIndex ? { ...row, goods: item.name } : row
-        )
-      );
-    }
-    setShowAddItemModal(false);
-    setAddItemRowIndex(null);
-  };
+  // Add the new item to the list
+  setAllItems((prev) => [...prev, item]);
+  // Select it in the correct row
+  if (addItemRowIndex !== null) {
+    setRows((r) =>
+      r.map((row, idx) =>
+        idx === addItemRowIndex ? { ...row, goods: item.name } : row
+      )
+    );
+  }
+  setShowAddItemModal(false);
+  setAddItemRowIndex(null);
+};
 
   // Handle keyboard navigation
   const handleKeyDown = (e, rowIdx, fieldName) => {
@@ -265,13 +269,13 @@ export default function NewSalesInvoice() {
 
   // Filtered items for dropdown
   const getFilteredItems = (rowIdx) => {
-    const search = itemSearch[rowIdx] || "";
-    return allItems.filter(
-      (item) =>
-        item.name?.toLowerCase().includes(search.toLowerCase()) ||
-        item.category?.name?.toLowerCase().includes(search.toLowerCase())
-    );
-  };
+  const search = itemSearch[rowIdx] || "";
+  return allItems.filter(
+    (item) =>
+      item.name?.toLowerCase().includes(search.toLowerCase()) ||
+      item.category?.name?.toLowerCase().includes(search.toLowerCase())
+  );
+};
 
   // Dropdown close on outside click
   useEffect(() => {
@@ -340,12 +344,12 @@ export default function NewSalesInvoice() {
       {/* Customer Info Section */}
       <div className={styles.section + " " + styles.customerInfo}>
         <div className={styles.customerInfoGrid}>
-          {/* Select Customer */}
-          <div style={{ position: "relative" }}>
+          {/* 1. Select Customer */}
+          <div style={{ position: "relative" }} ref={partyDropdownRef}>
             <label>
               Select Customer<span className={styles.required}>*</span>
             </label>
-            <div className={styles.customerSelectRow}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
@@ -361,77 +365,121 @@ export default function NewSalesInvoice() {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     document
-                      .querySelector('input[name="invoicePrefix"]')
+                      .querySelector('input[name="supplierInvoiceNumber"]')
                       ?.focus();
                   }
                 }}
+                style={{ flex: 1 }}
               />
               <button
                 className={styles.endCustomerBtn}
-                style={{ marginLeft: "auto" }}
                 onClick={() => setShowEndCustomerModal(true)}
+                title="Add End Customer"
                 type="button"
+                style={{ whiteSpace: "nowrap" }}
               >
                 + End Customer
               </button>
-              {showPartyDropdown && (
-                <div className={styles.dropdownMenu}>
-                  <input
-                    type="text"
-                    className={styles.input}
-                    placeholder="Search..."
-                    value={partySearch}
-                    onChange={(e) => setPartySearch(e.target.value)}
-                    autoFocus
-                  />
-                  <div style={{ maxHeight: 200, overflowY: "auto" }}>
-                    {filteredParties.length === 0 && (
-                      <div className={styles.dropdownItem}>No results</div>
-                    )}
-                    {filteredParties.map((party) => (
-                      <div
-                        key={party._id}
-                        className={styles.dropdownItem}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSelectedParty(
-                            party.name +
-                              (party.company ? ` (${party.company})` : "")
-                          );
-                          setShowPartyDropdown(false);
+            </div>
+            {showPartyDropdown && (
+              <div className={styles.dropdownMenu}>
+                <input
+                  type="text"
+                  className={styles.input}
+                  placeholder="Search..."
+                  value={partySearch}
+                  onChange={(e) => setPartySearch(e.target.value)}
+                  autoFocus
+                />
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {filteredParties.length === 0 && (
+                    <div className={styles.dropdownItem}>No results</div>
+                  )}
+                  {filteredParties.map((party) => (
+                    <div
+                      key={party._id}
+                      className={styles.dropdownItem}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedParty(
+                          party.name +
+                            (party.company ? ` (${party.company})` : "")
+                        );
+                        setShowPartyDropdown(false);
+                      }}
+                    >
+                      <span>{party.name}</span>
+                      {party.company && (
+                        <span style={{ color: "#888" }}>
+                          {" "}
+                          ({party.company})
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          float: "right",
+                          fontSize: 12,
+                          color: "#007bff",
                         }}
                       >
-                        <span>{party.name}</span>
-                        {party.company && (
-                          <span style={{ color: "#888" }}>
-                            {" "}
-                            ({party.company})
-                          </span>
-                        )}
-                        <span
-                          style={{
-                            float: "right",
-                            fontSize: 12,
-                            color: "#007bff",
-                          }}
-                        >
-                          {party.type}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                        {party.type}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Show selected customer below the input */}
+            {selectedParty && (
+              <div className={styles.selectedEndCustomer}>
+                Selected Customer: {selectedParty}
+              </div>
+            )}
+
+            {/* Show selected end customer below the button */}
             {selectedEndCustomer && (
               <div className={styles.selectedEndCustomer}>
                 End Customer: {selectedEndCustomer}
               </div>
             )}
           </div>
-          {/* Center: Empty */}
-          <div />
-          {/* Right: Invoice Number + Invoice Date */}
+
+          {/* 2. Supplier Invoice Number & Supplier Date */}
+          <div>
+            <label>
+              Supplier Invoice Number
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              name="supplierInvoiceNumber"
+              placeholder="Supplier Invoice Number"
+              value={supplierInvoiceNumber}
+              onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+              style={{ marginBottom: 8 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document
+                    .querySelector('input[name="invoicePrefix"]')
+                    ?.focus();
+                }
+              }}
+            />
+            <label>
+              Supplier Date
+              <span className={styles.required}>*</span>
+            </label>
+            <input
+              className={styles.input}
+              type="date"
+              value={supplierDate}
+              onChange={(e) => setSupplierDate(e.target.value)}
+            />
+          </div>
+
+          {/* 3. Invoice Number + Invoice Date */}
           <div>
             <label>
               Invoice Number<span className={styles.required}>*</span>
@@ -657,7 +705,9 @@ export default function NewSalesInvoice() {
                         onChange={(e) =>
                           setRows((r) =>
                             r.map((row2, i) =>
-                              i === idx ? { ...row2, qty: e.target.value } : row2
+                              i === idx
+                                ? { ...row2, qty: e.target.value }
+                                : row2
                             )
                           )
                         }
@@ -675,7 +725,9 @@ export default function NewSalesInvoice() {
                         onChange={(e) =>
                           setRows((r) =>
                             r.map((row2, i) =>
-                              i === idx ? { ...row2, rate: e.target.value } : row2
+                              i === idx
+                                ? { ...row2, rate: e.target.value }
+                                : row2
                             )
                           )
                         }
@@ -793,7 +845,6 @@ export default function NewSalesInvoice() {
               >
                 <option>Cash-in-Hand</option>
                 <option>Bank Account</option>
-                
               </select>
             </div>
             <div>
