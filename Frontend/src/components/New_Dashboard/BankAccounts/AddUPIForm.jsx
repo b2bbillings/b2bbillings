@@ -12,9 +12,9 @@ import {
   faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import './AddUPIForm.css';
-import newUPIDetailsService from '../../services/newUPIDetailsService';
-import newBankDetailsService from '../../services/newBankDetailsService';
-import { getSelectedCompany } from '../../utils/auth';
+import newUPIDetailsService from '../../../services/newUPIDetailsService';
+import newBankDetailsService from '../../../services/newBankDetailsService';
+import { getSelectedCompany } from '../../../utils/auth';
 
 const AddUPIForm = ({ onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({

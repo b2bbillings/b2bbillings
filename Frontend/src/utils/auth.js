@@ -3,9 +3,20 @@ export const getAuthToken = () => {
     return localStorage.getItem('token') || sessionStorage.getItem('token');
 };
 
-// Get selected company ID
+// Get selected company ID (returns parsed id/object when stored as JSON)
 export const getSelectedCompany = () => {
-    return localStorage.getItem('selectedCompany') || sessionStorage.getItem('selectedCompany');
+    try {
+        const raw = localStorage.getItem('selectedCompany') || sessionStorage.getItem('selectedCompany');
+        if (!raw) return null;
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed?.id || parsed?._id || parsed || null;
+        } catch {
+            return raw;
+        }
+    } catch (e) {
+        return null;
+    }
 };
 
 // Set authentication token
@@ -30,4 +41,13 @@ export const clearAuth = () => {
 export const isAuthenticated = () => {
     const token = getAuthToken();
     return !!token;
+};
+
+export default {
+    getAuthToken,
+    getSelectedCompany,
+    setAuthToken,
+    setSelectedCompany,
+    clearAuth,
+    isAuthenticated
 };

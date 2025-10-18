@@ -11,10 +11,10 @@ import {
   faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import './AddBankAccountForm.css';
-import newBankDetailsService from '../../services/newBankDetailsService';
-import { getSelectedCompany } from '../../utils/auth';
+import newBankDetailsService from '../../../services/newBankDetailsService';
+import { getSelectedCompany } from '../../../utils/auth';
 
-const AddBankAccountForm = ({ onSubmit, onCancel }) => {
+const AddBankAccountForm = ({ currentCompany, onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({
     bankName: '',
     accountNumber: '',
@@ -194,7 +194,7 @@ const AddBankAccountForm = ({ onSubmit, onCancel }) => {
 
     try {
       // Get company ID
-      const companyId = getSelectedCompany();
+      const companyId = currentCompany?.id || currentCompany?._id;
       
       // Debug: Check what's in localStorage/sessionStorage
       console.log('Debug - Company ID check:', {

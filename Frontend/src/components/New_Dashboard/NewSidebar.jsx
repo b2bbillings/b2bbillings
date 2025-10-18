@@ -64,7 +64,7 @@ const NAVIGATION_ITEMS = [
     icon: faTachometerAlt,
     type: "single",
     requiresCompany: false,
-    isActive: true, // ✅ ACTIVE - Dashboard overview
+    isActive: true,
   },
   {
     id: "categories",
@@ -72,7 +72,7 @@ const NAVIGATION_ITEMS = [
     icon: faClipboardList,
     type: "single",
     requiresCompany: false,
-    isActive: true, // ✅ ACTIVE - functional link
+    isActive: true,
   },
   {
     id: "items",
@@ -80,7 +80,7 @@ const NAVIGATION_ITEMS = [
     icon: faBox,
     type: "single",
     requiresCompany: false,
-    isActive: true, // ✅ ACTIVE - functional link
+    isActive: true,
   },
   {
     id: "parties",
@@ -122,7 +122,7 @@ const NAVIGATION_ITEMS = [
     type: "accordion",
     section: "sales",
     requiresCompany: true,
-    isActive: true, // ✅ ACTIVE - Sales management with billing
+    isActive: true,
     children: [
       {
         id: "sales-with-gst",
@@ -214,6 +214,53 @@ const NAVIGATION_ITEMS = [
     ],
   },
   {
+    id: "sales",
+    label: "Sales",
+    icon: faMoneyBillWave,
+    type: "accordion",
+    section: "sales",
+    requiresCompany: true,
+    isActive: true,
+    children: [
+      {
+        id: "sales-with-gst",
+        label: "Sales with GST",
+        icon: faFileInvoiceDollar,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "sales-without-gst",
+        label: "Sales without GST",
+        icon: faFileInvoice,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "sales-invoice", // Add this new item
+        label: "Sales Invoice",
+        icon: faFileContract,
+        requiresCompany: true,
+        isActive: true,
+      },
+      {
+        id: "all-bills",
+        label: "All Bills",
+        icon: faClipboardList,
+        requiresCompany: true,
+        isActive: true,
+      },
+    ],
+  },
+  {
+    id: "bankAccounts",
+    label: "Bank Accounts",
+    icon: faUniversity,
+    type: "single",
+    requiresCompany: true,
+    isActive: true,
+  },
+  {
     id: "transactions",
     label: "Transactions",
     icon: faExchangeAlt,
@@ -237,22 +284,6 @@ const NAVIGATION_ITEMS = [
         isActive: true,
       },
     ],
-  },
-  {
-    id: "bankAccounts",
-    label: "Bank Accounts",
-    icon: faUniversity,
-    type: "single",
-    requiresCompany: true,
-    isActive: false, // Will be redesigned later
-  },
-  {
-    id: "allProducts",
-    label: "Inventory",
-    icon: faWarehouse,
-    type: "single",
-    requiresCompany: true,
-    isActive: false, // Will be redesigned later
   },
   {
     id: "staffManagement",
@@ -818,6 +849,9 @@ const NewSidebar = React.memo(
         case 'purchaseBillWithoutGST':
           path = '/purchase-bill-without-gst';
           break;
+        case 'bankAccounts':
+          path = '/bank-accounts';
+          break;
         // Add more mappings if needed
         default:
           break;
@@ -927,6 +961,19 @@ const NewSidebar = React.memo(
                 <div className="new-sidebar-link-content">
                   <FontAwesomeIcon icon={faBox} className="new-sidebar-icon" />
                   <span className="new-sidebar-text">Items</span>
+                </div>
+              </NavLink>
+            </div>
+
+            <div className="new-sidebar-item">
+              <NavLink
+                to={getPath('bankAccounts')}
+                className={({ isActive }) => `new-sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleSimpleNavigation("Bank Accounts", "bankAccounts")}
+              >
+                <div className="new-sidebar-link-content">
+                  <FontAwesomeIcon icon={faUniversity} className="new-sidebar-icon" />
+                  <span className="new-sidebar-text">Bank Accounts</span>
                 </div>
               </NavLink>
             </div>

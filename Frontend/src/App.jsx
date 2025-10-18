@@ -19,7 +19,7 @@ import Layout from "./Layout/Layout";
 import HomePage from "./Pages/HomePage";
 import AuthPage from "./Pages/AuthPage";
 import CommunityPage from "./Pages/CommunityPage";
-
+import ContentDisplay from "./components/New_Dashboard/ContentDisplay.jsx";
 import AdminDashboard from "./components/Admin/AdminDashboard";
 import MainDashboard from "./components/MainDashboard/MainDashboard";
 import DailyTaskAssignment from "./components/Home/Staff/DailyTaskAssignment";
@@ -52,7 +52,7 @@ import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
 import NewSalesInvoice from "./components/New_Dashboard/Sales/NewSalesInvoice";
 import EndCustomers from "./components/New_Dashboard/New_parties/End_Customer/EndCustomers";
-import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst"
+import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst";
 import NewDashboard from "./components/New_Dashboard/NewDashbord";
 import PurchaseBillWithoutGST from "./components/New_Dashboard/Purchase/PurchaseBillWithoutGST";
 
@@ -2540,6 +2540,19 @@ function App() {
               path="/purchase-bill-without-gst"
               element={<PurchaseBillWithoutGST />}
             />
+
+            <Route
+  path="/companies/:companyId/bank-accounts"
+  element={
+    <ProtectedRoute>
+      <ContentDisplay
+        currentCompany={currentCompany}
+        currentUser={currentUser}
+        addToast={showToast}
+      />
+    </ProtectedRoute>
+  }
+/>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

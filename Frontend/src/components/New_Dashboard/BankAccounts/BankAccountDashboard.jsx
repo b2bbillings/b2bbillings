@@ -1,565 +1,502 @@
-import React, { useState, useEffect } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faUniversity,
-  faPlus,
-  faMobileAlt,
-  faEye,
-  faEyeSlash,
-  faSearch,
-  faFilter,
-  faSort,
-  faWallet,
-  faMoneyBillWave,
-  faExchangeAlt,
-  faHistory,
-  faEdit,
-  faTrash,
-  faCreditCard,
-  faQrcode,
-  faChartLine,
-  faDownload,
-  faUpload
-} from '@fortawesome/free-solid-svg-icons';
-import AddBankAccountForm from './AddBankAccountForm';
-import AddUPIForm from './AddUPIForm';
-import BankAccountDetail from './BankAccountDetail';
-import UPIAccountDetail from './UPIAccountDetail';
-import CashPaymentForm from './CashPaymentForm';
-import newUPIDetailsService from '../../services/newUPIDetailsService';
-import newBankDetailsService from '../../services/newBankDetailsService';
-import { getSelectedCompany } from '../../utils/auth';
+import React, { useState } from 'react';
 import './BankAccountDashboard.css';
 
-const BankAccountDashboard = ({ currentUser, currentCompany, addToast }) => {
+const BankAccountDashboard = () => {
   const [activeView, setActiveView] = useState('overview');
-  const [selectedAccount, setSelectedAccount] = useState(null);
-  const [selectedUPI, setSelectedUPI] = useState(null);
-  const [bankAccounts, setBankAccounts] = useState([]);
-  const [upiAccounts, setUPIAccounts] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [showBalance, setShowBalance] = useState(true);
+  const [bankAccounts, setBankAccounts] = useState([
+    {
+      id: 1,
+      bankName: 'State Bank of India',
+      accountNumber: '****1234',
+      accountHolderName: 'Dash Enterprises',
+      ifscCode: 'SBIN0001234',
+      branchName: 'Latur Branch',
+      balance: 125000,
+      isActive: true
+    },
+    {
+      id: 2,
+      bankName: 'HDFC Bank',
+      accountNumber: '****5678',
+      accountHolderName: 'Dash Enterprises',
+      ifscCode: 'HDFC0004567',
+      branchName: 'Mumbai Branch',
+      balance: 85000,
+      isActive: true
+    }
+  ]);
 
-  // Sample data - replace with API calls
-  useEffect(() => {
-    loadBankAccounts();
-    loadUPIAccounts();
-  }, []);
+  const [formData, setFormData] = useState({
+    underGroup: 'Bank Accounts',
+    accountDisplayName: '',
+    shortName: '',
+    email: '',
+    mobileNo: '',
+    accountHolderName: '',
+    accountNumber: '',
+    ifscCode: '',
+    bankName: '',
+    openingBalance: '',
+    balanceType: 'Dr',
+    status: 'Active'
+  });
 
-  const loadBankAccounts = async () => {
-    try {
-      const companyId = getSelectedCompany();
-      if (!companyId) {
-        console.warn('No company selected for loading bank accounts');
-        return;
-      }
+  const [errors, setErrors] = useState({});
 
-      const result = await newBankDetailsService.getBankDetails(companyId, { active: 'true' });
-      if (result.success) {
-        setBankAccounts(result.data.map(account => ({
-          id: account._id,
-          _id: account._id,
-          bankName: account.bankName,
-          accountNumber: `****${account.accountNumber.slice(-4)}`,
-          fullAccountNumber: account.accountNumber,
-          accountHolderName: account.accountHolderName,
-          ifscCode: account.ifscCode,
-          branchName: account.branchName,
-          balance: 0, // TODO: Get actual balance from transactions
-          isActive: account.isActive,
-          createdAt: new Date(account.createdAt)
-        })));
-      } else {
-        console.error('Failed to load bank accounts:', result.message);
-      }
-    } catch (error) {
-      console.error('Error loading bank accounts:', error);
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
     }
   };
 
-  const loadUPIAccounts = async () => {
-    try {
-      const companyId = getSelectedCompany();
-      if (!companyId) {
-        console.warn('No company selected for loading UPI accounts');
-        return;
-      }
-
-      const result = await newUPIDetailsService.getUPIDetails(companyId, { active: 'true' });
-      if (result.success) {
-        setUPIAccounts(result.data.map(upi => ({
-          id: upi._id,
-          _id: upi._id,
-          upiId: upi.upiId,
-          providerName: upi.providerName,
-          displayName: upi.displayName,
-          linkedBankAccount: upi.linkedBankAccount, // This is an object from API
-          qrCodeData: upi.qrCodeData,
-          qrCodeImage: upi.qrCodeImage,
-          balance: 0, // TODO: Get actual balance from transactions
-          isActive: upi.isActive,
-          createdAt: new Date(upi.createdAt)
-        })));
-      } else {
-        console.error('Failed to load UPI accounts:', result.message);
-      }
-    } catch (error) {
-      console.error('Error loading UPI accounts:', error);
-    }
-  };
-
-  const handleAddBankAccount = (accountData) => {
-    // Add to current state immediately for better UX
-    const newAccount = {
-      id: accountData._id || Date.now().toString(),
-      _id: accountData._id,
-      bankName: accountData.bankName,
-      accountNumber: `****${accountData.accountNumber?.slice(-4) || '****'}`,
-      fullAccountNumber: accountData.accountNumber,
-      accountHolderName: accountData.accountHolderName,
-      ifscCode: accountData.ifscCode,
-      branchName: accountData.branchName,
-      balance: 0,
-      isActive: accountData.isActive || true,
-      createdAt: accountData.createdAt || new Date()
-    };
-    setBankAccounts([...bankAccounts, newAccount]);
-    setActiveView('overview');
-    addToast?.('Bank account added successfully!', 'success');
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.accountDisplayName) newErrors.accountDisplayName = 'Required';
+    if (!formData.accountHolderName) newErrors.accountHolderName = 'Required';
+    if (!formData.accountNumber) newErrors.accountNumber = 'Required';
+    if (!formData.ifscCode) newErrors.ifscCode = 'Required';
+    if (!formData.bankName) newErrors.bankName = 'Required';
     
-    // Optionally reload from API to ensure consistency
-    // loadBankAccounts();
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleAddUPI = (upiData) => {
-    // Add to current state immediately for better UX
-    const newUPI = {
-      id: upiData._id || Date.now().toString(),
-      _id: upiData._id,
-      upiId: upiData.upiId,
-      providerName: upiData.providerName,
-      displayName: upiData.displayName,
-      linkedBankAccount: upiData.linkedBankAccount, // This is already an object from API
-      qrCodeData: upiData.qrCodeData,
-      qrCodeImage: upiData.qrCodeImage,
-      balance: 0,
-      isActive: upiData.isActive || true,
-      createdAt: upiData.createdAt || new Date()
-    };
-    setUPIAccounts([...upiAccounts, newUPI]);
-    setActiveView('overview');
-    addToast?.('UPI account added successfully!', 'success');
-    
-    // Optionally reload from API to ensure consistency
-    // loadUPIAccounts();
-  };
-
-  const handleDeleteBankAccount = (accountId) => {
-    if (window.confirm('Are you sure you want to delete this bank account? This action cannot be undone.')) {
-      setBankAccounts(accounts => accounts.filter(acc => acc.id !== accountId));
-      if (selectedAccount?.id === accountId) {
-        setSelectedAccount(null);
-        setActiveView('overview');
-      }
-      addToast?.('Bank account deleted successfully!', 'success');
-    }
-  };
-
-  const handleDeleteUPI = (upiId) => {
-    if (window.confirm('Are you sure you want to delete this UPI account? This action cannot be undone.')) {
-      setUPIAccounts(upis => upis.filter(upi => upi.id !== upiId));
-      if (selectedUPI?.id === upiId) {
-        setSelectedUPI(null);
-        setActiveView('overview');
-      }
-      addToast?.('UPI account deleted successfully!', 'success');
-    }
-  };
-
-  // Transaction recording function
-  const recordTransaction = (transactionData) => {
-    const newTransaction = {
-      id: Date.now().toString(),
-      timestamp: new Date(),
-      companyId: currentCompany?.id,
-      userId: currentUser?.id,
-      ...transactionData
-    };
-    
-    setTransactions(prevTransactions => [newTransaction, ...prevTransactions]);
-    return newTransaction;
-  };
-
-  // Payment functions
-  const handleCashPayment = (paymentData) => {
-    try {
-      // Record the transaction
-      const transaction = recordTransaction({
-        type: 'cash_payment',
-        amount: parseFloat(paymentData.amount),
-        description: paymentData.description || 'Cash Payment',
-        category: 'payment',
-        reference: paymentData.reference || `CASH${Date.now()}`,
-        paymentMethod: 'cash',
-        recipientName: paymentData.recipientName,
-        recipientPhone: paymentData.recipientPhone,
-        status: 'completed'
-      });
-
-      addToast?.(`Cash payment of ₹${paymentData.amount} recorded successfully!`, 'success');
+  const handleSubmit = () => {
+    if (validateForm()) {
+      const newAccount = {
+        id: Date.now(),
+        bankName: formData.bankName,
+        accountNumber: `****${formData.accountNumber.slice(-4)}`,
+        accountHolderName: formData.accountHolderName,
+        ifscCode: formData.ifscCode,
+        branchName: formData.accountDisplayName,
+        balance: parseFloat(formData.openingBalance || 0),
+        isActive: formData.status === 'Active'
+      };
+      setBankAccounts([...bankAccounts, newAccount]);
       setActiveView('overview');
-    } catch (error) {
-      addToast?.('Error recording cash payment', 'error');
+      setFormData({
+        underGroup: 'Bank Accounts',
+        accountDisplayName: '',
+        shortName: '',
+        email: '',
+        mobileNo: '',
+        accountHolderName: '',
+        accountNumber: '',
+        ifscCode: '',
+        bankName: '',
+        openingBalance: '',
+        balanceType: 'Dr',
+        status: 'Active'
+      });
     }
   };
 
-
-
-
-
-  const handleSelectBankAccount = (account) => {
-    setSelectedAccount(account);
-    setActiveView('bankDetail');
+  const handleCancel = () => {
+    setActiveView('overview');
+    setFormData({
+      underGroup: 'Bank Accounts',
+      accountDisplayName: '',
+      shortName: '',
+      email: '',
+      mobileNo: '',
+      accountHolderName: '',
+      accountNumber: '',
+      ifscCode: '',
+      bankName: '',
+      openingBalance: '',
+      balanceType: 'Dr',
+      status: 'Active'
+    });
+    setErrors({});
   };
 
-  const handleSelectUPI = (upi) => {
-    setSelectedUPI(upi);
-    setActiveView('upiDetail');
-  };
-
-  const filteredBankAccounts = bankAccounts.filter(account => {
-    const matchesSearch = account.bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         account.accountNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === 'all' || 
-                         (filterType === 'active' && account.isActive) ||
-                         (filterType === 'inactive' && !account.isActive);
-    return matchesSearch && matchesFilter;
-  });
-
-  const filteredUPIAccounts = upiAccounts.filter(upi => {
-    const matchesSearch = upi.upiId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         upi.providerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === 'all' || 
-                         (filterType === 'active' && upi.isActive) ||
-                         (filterType === 'inactive' && !upi.isActive);
-    return matchesSearch && matchesFilter;
-  });
-
-  const totalBalance = bankAccounts.reduce((sum, acc) => sum + acc.balance, 0) +
-                      upiAccounts.reduce((sum, upi) => sum + upi.balance, 0);
-
-  // Calculate today's transactions
-  const today = new Date();
-  const todayTransactions = transactions.filter(tx => {
-    const txDate = new Date(tx.timestamp);
-    return txDate.getDate() === today.getDate() &&
-           txDate.getMonth() === today.getMonth() &&
-           txDate.getFullYear() === today.getFullYear();
-  });
-  
-  const todayTotal = todayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-
-  const renderSidebar = () => (
-    <div className="bank-sidebar">
-      <div className="sidebar-header">
-        <FontAwesomeIcon icon={faUniversity} className="header-icon" />
-        <h2>Bank Accounts</h2>
-      </div>
-
-      <div className="sidebar-stats">
-        <div className="stat-card">
-          <div className="stat-value">
-            {showBalance ? `₹${totalBalance.toLocaleString()}` : '₹****'}
-            <FontAwesomeIcon 
-              icon={showBalance ? faEye : faEyeSlash} 
-              className="toggle-balance"
-              onClick={() => setShowBalance(!showBalance)}
-            />
-          </div>
-          <div className="stat-label">Total Balance</div>
-        </div>
-      </div>
-
-      <div className="sidebar-actions">
-        <button 
-          className={`sidebar-btn ${activeView === 'addBank' ? 'active' : ''}`}
-          onClick={() => setActiveView('addBank')}
-        >
-          <FontAwesomeIcon icon={faPlus} />
-          Add Bank Account
-        </button>
-        
-        <button 
-          className={`sidebar-btn ${activeView === 'addUPI' ? 'active' : ''}`}
-          onClick={() => setActiveView('addUPI')}
-        >
-          <FontAwesomeIcon icon={faPlus} />
-          Add UPI Details
-        </button>
-
-        <button 
-          className={`sidebar-btn ${activeView === 'cashPayment' ? 'active' : ''}`}
-          onClick={() => setActiveView('cashPayment')}
-        >
-          <FontAwesomeIcon icon={faMoneyBillWave} />
-          Cash Payment
-        </button>
-
-
-
-
-      </div>
-    </div>
-  );
+  const totalBalance = bankAccounts.reduce((sum, acc) => sum + acc.balance, 0);
 
   const renderOverview = () => (
-    <div className="bank-overview">
+    <div className="bank-overview-container">
       <div className="overview-header">
-        <h1>Bank Account Management</h1>
-        <div className="header-actions">
-          <div className="search-bar">
-            <FontAwesomeIcon icon={faSearch} className="search-icon" />
-            <input
-              type="text"
-              placeholder="Search accounts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <select 
-            value={filterType} 
-            onChange={(e) => setFilterType(e.target.value)}
-            className="filter-select"
-          >
-            <option value="all">All Accounts</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+        <div>
+          <h1 className="page-title">Bank Accounts</h1>
+          <p className="page-subtitle">Manage your company's bank accounts</p>
         </div>
       </div>
 
-      <div className="overview-stats">
-        <div className="stat-card large">
-          <FontAwesomeIcon icon={faWallet} className="stat-icon" />
-          <div className="stat-content">
-            <div className="stat-value">
-              {showBalance ? `₹${totalBalance.toLocaleString()}` : '₹****'}
-            </div>
-            <div className="stat-label">Total Balance</div>
-          </div>
+      <div className="total-balance-card">
+        <div className="balance-icon-wrapper">
+          <svg className="balance-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
         </div>
-        
-        <div className="stat-card">
-          <FontAwesomeIcon icon={faUniversity} className="stat-icon" />
-          <div className="stat-content">
-            <div className="stat-value">{bankAccounts.length}</div>
-            <div className="stat-label">Bank Accounts</div>
-          </div>
-        </div>
-        
-        <div className="stat-card">
-          <FontAwesomeIcon icon={faMobileAlt} className="stat-icon" />
-          <div className="stat-content">
-            <div className="stat-value">{upiAccounts.length}</div>
-            <div className="stat-label">UPI Accounts</div>
-          </div>
-        </div>
-        
-        <div className="stat-card">
-          <FontAwesomeIcon icon={faChartLine} className="stat-icon" />
-          <div className="stat-content">
-            <div className="stat-value">₹{todayTotal.toLocaleString()}</div>
-            <div className="stat-label">Today's Transactions ({todayTransactions.length})</div>
-          </div>
+        <div>
+          <div className="balance-label">Total Balance</div>
+          <div className="balance-amount">₹{totalBalance.toLocaleString()}</div>
         </div>
       </div>
 
-      <div className="accounts-grid">
-        <div className="accounts-section-overview">
-          <h2>Recent Bank Accounts</h2>
-          <div className="accounts-cards">
-            {filteredBankAccounts.slice(0, 6).map(account => (
-              <div 
-                key={account.id}
-                className="account-card"
-                onClick={() => handleSelectBankAccount(account)}
-              >
-                <div className="card-header">
-                  <FontAwesomeIcon icon={faUniversity} className="card-icon" />
-                  <div className={`status-badge ${account.isActive ? 'active' : 'inactive'}`}>
+      <div className="add-account-section">
+        <button onClick={() => setActiveView('addBank')} className="add-account-btn">
+          <svg className="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Bank Account
+        </button>
+      </div>
+
+      <div className="accounts-list">
+        {bankAccounts.map(account => (
+          <div key={account.id} className="account-card">
+            <div className="account-card-content">
+              <div className="account-main-info">
+                <div className="account-header">
+                  <h3 className="account-bank-name">{account.bankName}</h3>
+                  <span className={`status-badge ${account.isActive ? 'active' : 'inactive'}`}>
                     {account.isActive ? 'Active' : 'Inactive'}
-                  </div>
+                  </span>
                 </div>
-                <div className="card-content">
-                  <h3>{account.bankName}</h3>
-                  <p className="account-number">{account.accountNumber}</p>
-                  <p className="account-type">{account.accountType}</p>
-                  <div className="card-balance">
-                    {showBalance ? `₹${account.balance.toLocaleString()}` : '₹****'}
+                <div className="account-details-grid">
+                  <div>
+                    <span className="detail-label">Account Holder:</span> {account.accountHolderName}
                   </div>
-                </div>
-                <div className="card-actions">
-                  <button 
-                    className="action-btn primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectBankAccount(account);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faEye} />
-                    View Details
-                  </button>
-                  <button 
-                    className="action-btn danger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteBankAccount(account.id);
-                    }}
-                    title="Delete Account"
-                  >
-                    <FontAwesomeIcon icon={faTrash} />
-                  </button>
+                  <div>
+                    <span className="detail-label">Account Number:</span> {account.accountNumber}
+                  </div>
+                  <div>
+                    <span className="detail-label">IFSC Code:</span> {account.ifscCode}
+                  </div>
+                  <div>
+                    <span className="detail-label">Branch:</span> {account.branchName}
+                  </div>
                 </div>
               </div>
-            ))}
+              <div className="account-balance-section">
+                <div className="balance-text">Balance</div>
+                <div className="balance-value">₹{account.balance.toLocaleString()}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderAddBankForm = () => (
+    <div className="form-page">
+      <div className="form-page-container">
+        {/* Header */}
+        <div className="form-page-header">
+          <button onClick={handleCancel} className="back-button">
+            <svg className="back-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div>
+            <h1 className="form-title">Create Bank Account</h1>
           </div>
         </div>
 
-        <div className="accounts-section-overview">
-          <h2>Recent UPI Accounts</h2>
-          <div className="accounts-cards">
-            {filteredUPIAccounts.slice(0, 6).map(upi => (
-              <div 
-                key={upi.id}
-                className="account-card upi-card"
-                onClick={() => handleSelectUPI(upi)}
-              >
-                <div className="card-header">
-                  <FontAwesomeIcon icon={faMobileAlt} className="card-icon" />
-                  <div className={`status-badge ${upi.isActive ? 'active' : 'inactive'}`}>
-                    {upi.isActive ? 'Active' : 'Inactive'}
-                  </div>
-                </div>
-                <div className="card-content">
-                  <h3>{upi.providerName}</h3>
-                  <p className="account-number">{upi.upiId}</p>
-                  <p className="linked-account">
-                    {upi.linkedBankAccount?.bankName ? 
-                      `${upi.linkedBankAccount.bankName} - ${upi.linkedBankAccount.accountNumber?.slice(-4) || '****'}` : 
-                      'No linked account'
-                    }
-                  </p>
-                  <div className="card-balance">
-                    {showBalance ? `₹${upi.balance.toLocaleString()}` : '₹****'}
-                  </div>
-                </div>
-                <div className="card-actions">
-                  <button 
-                    className="action-btn primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectUPI(upi);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faEye} />
-                    View Details
-                  </button>
-                  <button 
-                    className="action-btn danger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteUPI(upi.id);
-                    }}
-                    title="Delete UPI Account"
-                  >
-                    <FontAwesomeIcon icon={faTrash} />
-                  </button>
+        {/* Form Container */}
+        <div className="form-card">
+          <div className="form-body">
+            {/* Under Group */}
+            <div className="form-row">
+              <label className="form-label">
+                Under group
+                <button type="button" className="info-icon-btn">
+                  <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              </label>
+              <div className="form-input-group">
+                <select
+                  name="underGroup"
+                  value={formData.underGroup}
+                  onChange={handleInputChange}
+                  className="form-select"
+                >
+                  <option value="Bank Accounts">Bank Accounts</option>
+                  <option value="Cash in Hand">Cash in Hand</option>
+                  <option value="Current Assets">Current Assets</option>
+                </select>
+                <button type="button" className="info-icon-btn">
+                  <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Account Display Name & Short Name */}
+            <div className="form-row-grid">
+              <div className="form-row">
+                <label className="form-label">
+                  Account display name<span className="required">*</span>
+                </label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="text"
+                    name="accountDisplayName"
+                    value={formData.accountDisplayName}
+                    onChange={handleInputChange}
+                    placeholder="Barry Tone PVT. LTD."
+                    className={`form-input ${errors.accountDisplayName ? 'error' : ''}`}
+                  />
                 </div>
               </div>
-            ))}
+
+              <div className="form-row">
+                <label className="form-label">Short/Alias Name</label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="text"
+                    name="shortName"
+                    value={formData.shortName}
+                    onChange={handleInputChange}
+                    placeholder="Jack"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Email & Mobile */}
+            <div className="form-row-grid">
+              <div className="form-row">
+                <label className="form-label">Email</label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="example@domain.com"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label className="form-label">Mobile No.</label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="tel"
+                    name="mobileNo"
+                    value={formData.mobileNo}
+                    onChange={handleInputChange}
+                    placeholder="99XXXXXX01"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bank Details Section */}
+            <div className="form-section">
+              <h3 className="section-title">Bank Details</h3>
+
+              <div className="section-content">
+                {/* Account Holder Name & Account Number */}
+                <div className="form-row-grid">
+                  <div className="form-row">
+                    <label className="form-label">
+                      Account Holder's Name<span className="required">*</span>
+                    </label>
+                    <div className="form-input-wrapper">
+                      <input
+                        type="text"
+                        name="accountHolderName"
+                        value={formData.accountHolderName}
+                        onChange={handleInputChange}
+                        placeholder="My Company"
+                        className={`form-input ${errors.accountHolderName ? 'error' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label">
+                      Account Number<span className="required">*</span>
+                    </label>
+                    <div className="form-input-wrapper">
+                      <input
+                        type="text"
+                        name="accountNumber"
+                        value={formData.accountNumber}
+                        onChange={handleInputChange}
+                        placeholder="32XXXXXXXXX01"
+                        className={`form-input ${errors.accountNumber ? 'error' : ''}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* IFSC Code & Bank Name */}
+                <div className="form-row-grid">
+                  <div className="form-row">
+                    <label className="form-label">
+                      IFSC Code<span className="required">*</span>
+                    </label>
+                    <div className="form-input-wrapper">
+                      <input
+                        type="text"
+                        name="ifscCode"
+                        value={formData.ifscCode}
+                        onChange={handleInputChange}
+                        placeholder="AAXXXXXXX01"
+                        className={`form-input ${errors.ifscCode ? 'error' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label">
+                      Bank Name<span className="required">*</span>
+                    </label>
+                    <div className="form-input-wrapper">
+                      <input
+                        type="text"
+                        name="bankName"
+                        value={formData.bankName}
+                        onChange={handleInputChange}
+                        placeholder="Enter your bank name"
+                        className={`form-input ${errors.bankName ? 'error' : ''}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Opening Balance Section */}
+            <div className="form-section">
+              <h3 className="section-title">Opening Balance</h3>
+
+              <div className="form-row">
+                <label className="form-label">Opening Balance</label>
+                <div className="balance-input-group">
+                  <div className="currency-input-wrapper">
+                    <span className="currency-symbol">₹</span>
+                    <input
+                      type="number"
+                      name="openingBalance"
+                      value={formData.openingBalance}
+                      onChange={handleInputChange}
+                      placeholder="0.00"
+                      step="0.01"
+                      className="form-input currency-input"
+                    />
+                  </div>
+                  <select
+                    name="balanceType"
+                    value={formData.balanceType}
+                    onChange={handleInputChange}
+                    className="balance-type-select"
+                  >
+                    <option value="Dr">Dr</option>
+                    <option value="Cr">Cr</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Section */}
+            <div className="form-section">
+              <div className="form-row">
+                <label className="form-label">
+                  Status
+                  <button type="button" className="info-icon-btn">
+                    <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </label>
+                <div className="radio-group">
+                  <label className="radio-label">
+                    <input
+                      type="radio"
+                      name="status"
+                      value="Active"
+                      checked={formData.status === 'Active'}
+                      onChange={handleInputChange}
+                      className="radio-input"
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="radio-label">
+                    <input
+                      type="radio"
+                      name="status"
+                      value="Inactive"
+                      checked={formData.status === 'Inactive'}
+                      onChange={handleInputChange}
+                      className="radio-input"
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="form-footer">
+            <button onClick={handleCancel} className="cancel-btn">
+              Cancel
+            </button>
+            <button onClick={handleSubmit} className="save-btn">
+              Save
+            </button>
+          </div>
+
+          {/* Keyboard Shortcuts */}
+          <div className="keyboard-shortcuts">
+            <span className="shortcut-item">
+              <kbd className="kbd">ALT</kbd>
+              <span>+</span>
+              <kbd className="kbd">S</kbd>
+              <span>Save</span>
+            </span>
+            <span className="shortcut-item">
+              <kbd className="kbd">ALT</kbd>
+              <span>+</span>
+              <kbd className="kbd">C</kbd>
+              <span>Cancel</span>
+            </span>
+            <span className="shortcut-item">
+              <kbd className="kbd">ALT</kbd>
+              <span>+</span>
+              <kbd className="kbd">D</kbd>
+              <span>Discard</span>
+            </span>
+            <div className="shortcut-arrows">
+              <span className="arrow-icons">
+                <svg className="arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <svg className="arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </span>
+              <span>Left/Right Arrow</span>
+              <button type="button" className="info-icon-btn">
+                <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 
-  const renderContent = () => {
-    switch (activeView) {
-      case 'addBank':
-        return (
-          <AddBankAccountForm 
-            onSubmit={handleAddBankAccount}
-            onCancel={() => setActiveView('overview')}
-          />
-        );
-      case 'addUPI':
-        return (
-          <AddUPIForm 
-            onSubmit={handleAddUPI}
-            onCancel={() => setActiveView('overview')}
-            bankAccounts={bankAccounts}
-          />
-        );
-      case 'bankDetail':
-        return (
-          <BankAccountDetail 
-            account={selectedAccount}
-            transactions={transactions.filter(tx => tx.fromAccount === selectedAccount?.id || tx.toAccount === selectedAccount?.id)}
-            onBack={() => setActiveView('overview')}
-            onUpdate={(updatedAccount) => {
-              setBankAccounts(accounts => 
-                accounts.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc)
-              );
-              setSelectedAccount(updatedAccount);
-              addToast?.('Bank account updated successfully!', 'success');
-            }}
-            onRecordTransaction={recordTransaction}
-            addToast={addToast}
-            showBalance={showBalance}
-          />
-        );
-      case 'upiDetail':
-        return (
-          <UPIAccountDetail 
-            upi={selectedUPI}
-            transactions={transactions.filter(tx => tx.fromUPI === selectedUPI?.id || tx.toUPI === selectedUPI?.id)}
-            onBack={() => setActiveView('overview')}
-            onUpdate={(updatedUPI) => {
-              setUPIAccounts(upis => 
-                upis.map(upi => upi.id === updatedUPI.id ? updatedUPI : upi)
-              );
-              setSelectedUPI(updatedUPI);
-              addToast?.('UPI account updated successfully!', 'success');
-            }}
-            onRecordTransaction={recordTransaction}
-            addToast={addToast}
-            showBalance={showBalance}
-          />
-        );
-      case 'cashPayment':
-        return (
-          <CashPaymentForm 
-            onSubmit={handleCashPayment}
-            onCancel={() => setActiveView('overview')}
-            bankAccounts={bankAccounts}
-          />
-        );
-
-
-      default:
-        return renderOverview();
-    }
-  };
-
   return (
-    <div className="bank-account-dashboard">
-      {renderSidebar()}
-      <div className="bank-content">
-        {renderContent()}
-      </div>
+    <div className="bank-dashboard">
+      {activeView === 'overview' && renderOverview()}
+      {activeView === 'addBank' && renderAddBankForm()}
     </div>
   );
 };

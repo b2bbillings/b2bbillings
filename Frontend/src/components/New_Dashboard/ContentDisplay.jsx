@@ -37,6 +37,7 @@ import NewSalesInvoice from "./Sales/invoice/NewSalesInvoice"; // Add this impor
 import EndCustomers from "./New_parties/End_Customer/EndCustomers";
 import PurchaseBillGst from "./Purchase/PurchaseBillGst";
 import PurchaseBillWithoutGST from "./Purchase/PurchaseBillWithoutGST"; // <-- Add this import
+import BankAccountDashboard from "./BankAccounts/BankAccountDashboard";
 import "./ContentDisplay.css";
 
 // Content display component for new dashboard
@@ -63,13 +64,16 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     "/sales-with-gst": { title: "Sales with GST", type: "salesWithGST" },
     "/sales-without-gst": { title: "Sales without GST", type: "salesWithoutGST" },
     "/all-bills": { title: "All Bills", type: "allBills" },
-    "/sales-invoice": { title: "Sales Invoice", type: "salesInvoice" }, // Make sure this is here
+    "/sales-invoice": { title: "Sales Invoice", type: "salesInvoice" },
     "/gst": { title: "GST", type: "gst" },
     "/company-brand": { title: "Company/Brand", type: "companyBrand" },
     "/end-customers": { title: "End Customers", type: "endCustomers" },
     "/purchase-bill": { title: "Purchase Bill", type: "purchaseBill" },
     "/purchase-order": { title: "Purchase Order", type: "purchaseOrder" },
     "/purchase-bill-without-gst": { title: "Purchase Bill Without GST", type: "purchaseBillWithoutGST" },
+
+    // NEW: bank accounts route
+    "/bank-accounts": { title: "Bank Accounts", type: "bankAccounts" },
   };
 
   useEffect(() => {
@@ -116,6 +120,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         'end-customers': { title: "End Customers", type: "endCustomers" },
         'endCustomers': { title: "End Customers", type: "endCustomers" },
         'purchaseBillWithoutGST': { title: "Purchase Bill Without GST", type: "purchaseBillWithoutGST" },
+        'bankAccounts': { title: "Bank Accounts", type: "bankAccounts" },
       };
       
       if (contentTypeMap[lastPart]) {
@@ -441,6 +446,17 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
     </div>
   );
 
+  // add render function for bank accounts
+  const renderBankAccountsContent = () => (
+    <div className="content-bank-accounts">
+      <BankAccountDashboard 
+        currentUser={currentUser}
+        currentCompany={currentCompany}
+        addToast={addToast}
+      />
+    </div>
+  );
+
   // Coming Soon Content
   const renderComingSoonContent = () => (
     <div className="content-section">
@@ -519,8 +535,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       case "salesWithoutGST":
       case "allBills":
         return renderSalesContent();
-      case "salesInvoice": // Make sure this case exists
-        console.log("🎯 Rendering Sales Invoice Content"); // Debug log
+      case "salesInvoice":
         return renderSalesInvoiceContent();
       case "gst":
         return renderGSTContent();
@@ -528,10 +543,21 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderCompanyBrandContent();
       case "endCustomers":
         return renderEndCustomersContent();
-      case "purchaseBill": // Add this case
+      case "purchaseBill":
         return renderPurchaseBillContent();
-      case "purchaseBillWithoutGST": // Add this case
+      case "purchaseBillWithoutGST":
         return renderPurchaseBillWithoutGSTContent();
+
+      // NEW: Bank Accounts
+      case "bankAccounts":
+        return (
+          <BankAccountDashboard
+            currentUser={currentUser}
+            currentCompany={currentCompany}
+            addToast={addToast}
+          />
+        );
+
       case "welcome":
       default:
         return renderWelcomeContent();
