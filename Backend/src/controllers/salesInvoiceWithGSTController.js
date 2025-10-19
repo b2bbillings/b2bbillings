@@ -144,6 +144,8 @@ exports.createSalesInvoiceWithGST = async (req, res) => {
  */
 exports.createSalesInvoiceWithoutGST = async (req, res) => {
   try {
+    console.log("📥 [createSalesInvoiceWithoutGST] Request body:", JSON.stringify(req.body, null, 2));
+
     const {
       companyId,
       customer,
@@ -157,6 +159,7 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
 
     // Validation
     if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+      console.error("❌ Invalid companyId:", companyId);
       return res.status(400).json({
         success: false,
         message: "Valid companyId is required",
@@ -164,6 +167,7 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
     }
 
     if (!customer || !customer.name) {
+      console.error("❌ Invalid customer:", customer);
       return res.status(400).json({
         success: false,
         message: "Customer information is required",
@@ -171,11 +175,14 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
+      console.error("❌ Invalid items:", items);
       return res.status(400).json({
         success: false,
         message: "At least one item is required",
       });
     }
+
+    console.log("✅ Validation passed. Items count:", items.length);
 
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber;
@@ -205,10 +212,16 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
       meta: meta || {},
     });
 
+    console.log("💾 Created invoice object (before save):", invoice);
+
     // Calculate totals
     invoice.recalculateTotals();
 
+    console.log("💾 After recalculateTotals:", { subTotal: invoice.totals.subTotal, finalTotal: invoice.totals.finalTotal });
+
     await invoice.save();
+
+    console.log("✅ [createSalesInvoiceWithoutGST] Invoice saved to database:", invoice._id);
 
     res.status(201).json({
       success: true,

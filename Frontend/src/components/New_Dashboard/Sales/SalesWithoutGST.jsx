@@ -69,7 +69,8 @@ export default function NewSalesInvoice() {
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
-  const [selectedParty, setSelectedParty] = useState("");
+  const [selectedParty, setSelectedParty] = useState(null); // Store full party object
+  const [selectedPartyDisplay, setSelectedPartyDisplay] = useState(""); // For display in input
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
@@ -262,8 +263,20 @@ export default function NewSalesInvoice() {
   // Fetch customers and vendors
   useEffect(() => {
     const fetchParties = async () => {
+      const companyId = getCompanyId();
+      
+      console.log("🔍 [SalesWithoutGST] Fetching customers with companyId:", companyId);
+
+      if (!companyId) {
+        console.error("❌ No companyId found - cannot fetch customers");
+        return;
+      }
+
       const customers = await customerService.getAllCustomers();
       const vendors = await vendorService.getAllVendors();
+
+      console.log("👥 Fetched customers:", customers);
+      console.log("🏢 Fetched vendors:", vendors);
 
       const customerList = Array.isArray(customers)
         ? customers
@@ -275,6 +288,9 @@ export default function NewSalesInvoice() {
         : Array.isArray(vendors.data)
         ? vendors.data
         : [];
+
+      console.log("✅ Customer list:", customerList.length, "customers");
+      console.log("✅ Vendor list:", vendorList.length, "vendors");
 
       setAllParties([
         ...customerList.map((c) => ({ ...c, type: "Customer" })),
@@ -355,7 +371,8 @@ export default function NewSalesInvoice() {
         return;
       }
 
-      console.log("💾 Saving invoice with companyId:", companyId);
+      console.log("💾 [SalesWithoutGST] Saving invoice with companyId:", companyId);
+      console.log("💾 [SalesWithoutGST] Selected customer object:", selectedParty);
 
       // Filter out empty rows
       const validItems = rows.filter(row => row.goods && row.qty && row.rate);
@@ -369,8 +386,11 @@ export default function NewSalesInvoice() {
       const payload = {
         companyId,
         customer: {
-          name: selectedParty,
-          // Add other customer fields as needed
+          id: selectedParty._id,
+          name: selectedParty.name,
+          company: selectedParty.company || "",
+          phone: selectedParty.phone || "",
+          email: selectedParty.email || "",
         },
         endCustomer: selectedEndCustomer ? {
           name: selectedEndCustomer,
@@ -378,11 +398,10 @@ export default function NewSalesInvoice() {
         invoicePrefix,
         invoiceNumber,
         invoiceDate,
-        goodsDetails: validItems.map((row) => ({
-          goods: row.goods,
-          qty: row.qty,
-          rate: row.rate,
-          // add other fields as necessary
+        items: validItems.map((row) => ({
+          name: row.goods,
+          qty: Number(row.qty) || 0,
+          rate: Number(row.rate) || 0,
         })),
         payment: {
           mode: paymentMode,
@@ -394,17 +413,24 @@ export default function NewSalesInvoice() {
         // add other necessary invoice fields
       };
 
+      console.log("📤 [SalesWithoutGST] Sending payload:", payload);
+
       // use unified invoice service and target Sales Without GST endpoint
       const res = await invoiceService.createInvoice("sales-without-gst", payload);
-      if (res.success) {
-        alert("Invoice saved");
+      
+      console.log("📥 [SalesWithoutGST] Response:", res);
+      
+      if (res && res.success) {
+        console.log("✅ [SalesWithoutGST] Invoice saved successfully:", res.data);
+        alert(`Invoice saved successfully! Invoice Number: ${res.data.invoiceNumber}`);
         // optionally clear form or navigate
       } else {
-        alert("Failed to save invoice: " + res.message);
+        console.error("❌ [SalesWithoutGST] Failed to save:", res);
+        alert("Failed to save invoice: " + (res?.message || "Unknown error"));
       }
     } catch (err) {
-      console.error("Save invoice error:", err);
-      alert("Error saving invoice");
+      console.error("❌ [SalesWithoutGST] Save invoice error:", err);
+      alert("Error saving invoice: " + (err.response?.data?.message || err.message));
     }
   };
 
@@ -458,10 +484,11 @@ export default function NewSalesInvoice() {
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
-                value={selectedParty}
+                value={selectedPartyDisplay}
                 onChange={(e) => {
                   setPartySearch(e.target.value);
-                  setSelectedParty(e.target.value);
+                  setSelectedPartyDisplay(e.target.value);
+                  setSelectedParty(null); // Clear selection when typing
                   setShowPartyDropdown(true);
                 }}
                 onFocus={() => setShowPartyDropdown(true)}
@@ -507,7 +534,9 @@ export default function NewSalesInvoice() {
                       className={styles.dropdownItem}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedParty(
+                        console.log("✅ Selected customer/vendor:", party);
+                        setSelectedParty(party); // Store full party object
+                        setSelectedPartyDisplay(
                           party.name +
                             (party.company ? ` (${party.company})` : "")
                         );
@@ -537,9 +566,9 @@ export default function NewSalesInvoice() {
             )}
 
             {/* Selected displays below inputs */}
-            {selectedParty && (
+            {selectedPartyDisplay && (
               <div className={styles.selectedEndCustomer}>
-                Selected Customer: {selectedParty}
+                Selected Customer: {selectedPartyDisplay}
               </div>
             )}
             {selectedEndCustomer && (
@@ -990,6 +1019,27 @@ export default function NewSalesInvoice() {
             <span>₹{total.toFixed(2)}</span>
           </div>
         </div>
+      </div>
+
+      {/* Save Invoice Button */}
+      <div style={{ marginTop: "20px", textAlign: "right" }}>
+        <button
+          onClick={handleSaveInvoice}
+          style={{
+            padding: "12px 30px",
+            backgroundColor: "#4CAF50",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            fontSize: "16px",
+            fontWeight: "600",
+            cursor: "pointer",
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = "#45a049"}
+          onMouseOut={(e) => e.target.style.backgroundColor = "#4CAF50"}
+        >
+          💾 Save Invoice
+        </button>
       </div>
 
       {/* Modal for create new item */}

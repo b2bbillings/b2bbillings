@@ -68,11 +68,13 @@ export default function NewSalesInvoice() {
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const [goodsFocusIndex, setGoodsFocusIndex] = useState(null);
   const [gstValues, setGstValues] = useState([""]); // Initialize with one empty string
+  const [gstInclusionType, setGstInclusionType] = useState(["Excluded"]); // "Included" or "Excluded" for each row
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
-  const [selectedParty, setSelectedParty] = useState("");
+  const [selectedParty, setSelectedParty] = useState(null); // Store full party object
+  const [selectedPartyDisplay, setSelectedPartyDisplay] = useState(""); // For display in input
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState([""]); // Initialize with one empty string
@@ -108,6 +110,23 @@ export default function NewSalesInvoice() {
     setGstValues((prev) => prev.map((v, i) => (i === rowIdx ? value : v)));
   };
 
+  // Calculate amount based on qty, rate, GST%, and GST inclusion type
+  const calculateAmount = (qty, rate, gstPercent, inclusionType) => {
+    if (!qty || !rate) return "";
+    
+    const baseAmount = Number(qty) * Number(rate);
+    const gst = Number(gstPercent) || 0;
+    
+    if (inclusionType === "Included") {
+      // GST is already included in the rate, so amount = qty * rate
+      return baseAmount;
+    } else {
+      // GST is excluded, so add GST to the base amount
+      const gstAmount = (baseAmount * gst) / 100;
+      return baseAmount + gstAmount;
+    }
+  };
+
   // Add row: also update gstValues
   const handleAddRow = () => {
     setRows([
@@ -130,6 +149,7 @@ export default function NewSalesInvoice() {
       },
     ]);
     setGstValues((prev) => [...prev, ""]);
+    setGstInclusionType((prev) => [...prev, "Excluded"]);
     setItemSearch((prev) => [...prev, ""]);
   };
 
@@ -273,8 +293,20 @@ export default function NewSalesInvoice() {
   // Fetch customers and vendors
   useEffect(() => {
     const fetchParties = async () => {
+      const companyId = getCompanyId();
+      
+      console.log("🔍 Fetching customers with companyId:", companyId);
+
+      if (!companyId) {
+        console.error("❌ No companyId found - cannot fetch customers");
+        return;
+      }
+
       const customers = await customerService.getAllCustomers();
       const vendors = await vendorService.getAllVendors();
+
+      console.log("👥 Fetched customers:", customers);
+      console.log("🏢 Fetched vendors:", vendors);
 
       const customerList = Array.isArray(customers)
         ? customers
@@ -286,6 +318,9 @@ export default function NewSalesInvoice() {
         : Array.isArray(vendors.data)
         ? vendors.data
         : [];
+
+      console.log("✅ Customer list:", customerList);
+      console.log("✅ Vendor list:", vendorList);
 
       setAllParties([
         ...customerList.map((c) => ({ ...c, type: "Customer" })),
@@ -369,12 +404,22 @@ export default function NewSalesInvoice() {
         return;
       }
 
+      console.log("🔍 Selected Party:", selectedParty);
+      console.log("🔍 Selected Party Display:", selectedPartyDisplay);
+
       if (!selectedParty) {
-        alert("Please select a customer before saving.");
+        alert("Please select a customer before saving. Click on a customer from the dropdown list.");
         return;
       }
 
       console.log("💾 Saving invoice with companyId:", companyId);
+      console.log("👤 Customer data:", {
+        id: selectedParty._id,
+        name: selectedParty.name,
+        company: selectedParty.company,
+        phone: selectedParty.phone,
+        email: selectedParty.email
+      });
 
       // Filter out empty rows
       const validItems = rows.filter(row => row.goods && row.qty && row.rate);
@@ -391,12 +436,15 @@ export default function NewSalesInvoice() {
         invoiceNumber,
         invoiceDate,
         customer: {
-          name: selectedParty,
-          // Add other party fields as needed
+          id: selectedParty._id,
+          name: selectedParty.name,
+          company: selectedParty.company || "",
+          phone: selectedParty.phone || "",
+          email: selectedParty.email || "",
         },
         items: validItems.map((row, idx) => ({
-          goods: row.goods,
-          quantity: Number(row.qty) || 0,
+          name: row.goods, // Backend expects 'name' field
+          qty: Number(row.qty) || 0, // Backend expects 'qty' not 'quantity'
           rate: Number(row.rate) || 0,
           gstRate: Number(gstValues[idx]) || 0,
           // Add other item fields as needed
@@ -450,10 +498,11 @@ export default function NewSalesInvoice() {
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
-                value={selectedParty}
+                value={selectedPartyDisplay}
                 onChange={(e) => {
                   setPartySearch(e.target.value);
-                  setSelectedParty(e.target.value);
+                  setSelectedPartyDisplay(e.target.value);
+                  setSelectedParty(null); // Clear selection when typing
                   setShowPartyDropdown(true);
                 }}
                 onFocus={() => setShowPartyDropdown(true)}
@@ -498,7 +547,9 @@ export default function NewSalesInvoice() {
                       className={styles.dropdownItem}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedParty(
+                        console.log("✅ Selected customer/vendor:", party);
+                        setSelectedParty(party); // Store full party object
+                        setSelectedPartyDisplay(
                           party.name +
                             (party.company ? ` (${party.company})` : "")
                         );
@@ -530,7 +581,7 @@ export default function NewSalesInvoice() {
             {/* Show selected customer below the input */}
             {selectedParty && (
               <div className={styles.selectedEndCustomer}>
-                Selected Customer: {selectedParty}
+                Selected Customer: {selectedPartyDisplay}
               </div>
             )}
 
@@ -656,6 +707,7 @@ export default function NewSalesInvoice() {
                   <th>Qty</th>
                   <th>Rate (₹)</th>
                   <th>GST (%)</th>
+                  <th>GST Type</th>
                   <th>Amount (₹)</th>
                   <th className={styles.showHideColTh}>
                     <button
@@ -847,8 +899,29 @@ export default function NewSalesInvoice() {
                         onKeyDown={(e) => handleKeyDown(e, idx, "gstValue")}
                       >
                         <option value="">Select GST %</option>
-                        <option value="18">Include</option>
-                        <option value="28">Exclude</option>
+                        <option value="0">0%</option>
+                        <option value="5">5%</option>
+                        <option value="12">12%</option>
+                        <option value="18">18%</option>
+                        <option value="28">28%</option>
+                      </select>
+                    </td>
+                    {/* GST Type - Included or Excluded */}
+                    <td>
+                      <select
+                        className={styles.input}
+                        style={{ width: 100 }}
+                        value={gstInclusionType[idx] || "Excluded"}
+                        onChange={(e) =>
+                          setGstInclusionType((prev) =>
+                            prev.map((v, i) => (i === idx ? e.target.value : v))
+                          )
+                        }
+                        data-row={idx}
+                        data-field="gstType"
+                      >
+                        <option value="Excluded">Excluded</option>
+                        <option value="Included">Included</option>
                       </select>
                     </td>
                     {/* Amount */}
@@ -856,11 +929,12 @@ export default function NewSalesInvoice() {
                       <input
                         className={styles.input}
                         type="number"
-                        value={
-                          row.qty && row.rate
-                            ? Number(row.qty) * Number(row.rate)
-                            : ""
-                        }
+                        value={calculateAmount(
+                          row.qty,
+                          row.rate,
+                          gstValues[idx],
+                          gstInclusionType[idx]
+                        )}
                         disabled
                       />
                     </td>

@@ -71,7 +71,8 @@ function PurchaseBillWithoutGST() {
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
-  const [selectedParty, setSelectedParty] = useState("");
+  const [selectedParty, setSelectedParty] = useState(null); // Store full vendor object
+  const [selectedPartyDisplay, setSelectedPartyDisplay] = useState(""); // For display in input
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
@@ -241,8 +242,20 @@ function PurchaseBillWithoutGST() {
   // Fetch customers and vendors
   useEffect(() => {
     const fetchParties = async () => {
+      const companyId = getCompanyId();
+
+      console.log("🔍 [PurchaseBillWithoutGST] Fetching parties with companyId:", companyId);
+
+      if (!companyId) {
+        console.error("❌ [PurchaseBillWithoutGST] No companyId found. Cannot fetch parties.");
+        return;
+      }
+
       const customers = await customerService.getAllCustomers();
       const vendors = await vendorService.getAllVendors();
+
+      console.log("📦 [PurchaseBillWithoutGST] Fetched customers:", customers);
+      console.log("📦 [PurchaseBillWithoutGST] Fetched vendors:", vendors);
 
       const customerList = Array.isArray(customers)
         ? customers
@@ -255,10 +268,15 @@ function PurchaseBillWithoutGST() {
         ? vendors.data
         : [];
 
+      console.log("✅ [PurchaseBillWithoutGST] Processed customer list length:", customerList.length);
+      console.log("✅ [PurchaseBillWithoutGST] Processed vendor list length:", vendorList.length);
+
       setAllParties([
         ...customerList.map((c) => ({ ...c, type: "Customer" })),
         ...vendorList.map((v) => ({ ...v, type: "Vendor" })),
       ]);
+
+      console.log("✅ [PurchaseBillWithoutGST] All parties set successfully");
     };
     fetchParties();
   }, []);
@@ -341,7 +359,8 @@ function PurchaseBillWithoutGST() {
         return;
       }
 
-      console.log("💾 Saving purchase invoice (without GST) with companyId:", companyId);
+      console.log("💾 [PurchaseBillWithoutGST] Saving purchase invoice with companyId:", companyId);
+      console.log("💾 [PurchaseBillWithoutGST] Selected vendor object:", selectedParty);
 
       // Filter out empty rows
       const validItems = rows.filter(row => row.goods && row.qty && row.rate);
@@ -364,14 +383,16 @@ function PurchaseBillWithoutGST() {
         invoiceNumber,
         invoiceDate,
         vendor: {
-          name: selectedParty,
-          // Add other vendor fields as needed
+          id: selectedParty._id,
+          name: selectedParty.name,
+          company: selectedParty.company || "",
+          phone: selectedParty.phone || "",
+          email: selectedParty.email || "",
         },
         items: validItems.map((row) => ({
-          goods: row.goods,
-          quantity: Number(row.qty) || 0,
+          name: row.goods,
+          qty: Number(row.qty) || 0,
           rate: Number(row.rate) || 0,
-          // Add other item fields as needed
         })),
         payment: {
           amount: Number(paymentAmount) || 0,
@@ -424,10 +445,11 @@ function PurchaseBillWithoutGST() {
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
-                value={selectedParty}
+                value={selectedPartyDisplay}
                 onChange={(e) => {
                   setPartySearch(e.target.value);
-                  setSelectedParty(e.target.value);
+                  setSelectedPartyDisplay(e.target.value);
+                  setSelectedParty(null);
                   setShowPartyDropdown(true);
                 }}
                 onFocus={() => setShowPartyDropdown(true)}
@@ -462,7 +484,12 @@ function PurchaseBillWithoutGST() {
                       className={styles.dropdownItem}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedParty(party.name);
+                        console.log("🎯 [PurchaseBillWithoutGST] Selected party:", party);
+                        setSelectedParty(party);
+                        setSelectedPartyDisplay(
+                          party.name +
+                            (party.company ? ` (${party.company})` : "")
+                        );
                         setShowPartyDropdown(false);
                       }}
                     >

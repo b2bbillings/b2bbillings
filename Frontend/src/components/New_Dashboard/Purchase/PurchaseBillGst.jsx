@@ -10,6 +10,9 @@ import {
   vendorService,
 } from "../../../services/customerVendorService";
 import invoiceService from "../../../services/invoiceService";
+
+const { getAllCustomers } = customerService;
+const { getAllVendors } = vendorService;
 // import ShowHideColumns from "./ShowHideColumns";
 
 const ALWAYS_VISIBLE = [
@@ -68,11 +71,13 @@ function PurchaseBillGst() {
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const [goodsFocusIndex, setGoodsFocusIndex] = useState(null);
   const [gstValues, setGstValues] = useState(rows.map(() => ""));
+  const [gstInclusionType, setGstInclusionType] = useState(rows.map(() => "Excluded")); // "Included" or "Excluded" for each row
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
-  const [selectedParty, setSelectedParty] = useState("");
+  const [selectedParty, setSelectedParty] = useState(null); // Store full vendor object
+  const [selectedPartyDisplay, setSelectedPartyDisplay] = useState(""); // For display in input
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
   const [allItems, setAllItems] = useState([]);
   const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
@@ -94,6 +99,23 @@ function PurchaseBillGst() {
       companyId = user?.companyId || user?.company?._id || user?.company;
     }
     return companyId;
+  };
+
+  // Calculate amount based on qty, rate, GST%, and GST inclusion type
+  const calculateAmount = (qty, rate, gstPercent, inclusionType) => {
+    if (!qty || !rate) return "";
+    
+    const baseAmount = Number(qty) * Number(rate);
+    const gst = Number(gstPercent) || 0;
+    
+    if (inclusionType === "Included") {
+      // GST is already included in the rate, so amount = qty * rate
+      return baseAmount;
+    } else {
+      // GST is excluded, so add GST to the base amount
+      const gstAmount = (baseAmount * gst) / 100;
+      return baseAmount + gstAmount;
+    }
   };
 
   // Add row: also update gstValues
@@ -118,6 +140,7 @@ function PurchaseBillGst() {
       },
     ]);
     setGstValues((prev) => [...prev, ""]);
+    setGstInclusionType((prev) => [...prev, "Excluded"]);
     setItemSearch((prev) => [...prev, ""]);
   };
 
@@ -242,8 +265,20 @@ function PurchaseBillGst() {
   // Fetch customers and vendors
   useEffect(() => {
     const fetchParties = async () => {
+      const companyId = getCompanyId();
+
+      console.log("🔍 [PurchaseBillGst] Fetching parties with companyId:", companyId);
+
+      if (!companyId) {
+        console.error("❌ [PurchaseBillGst] No companyId found. Cannot fetch parties.");
+        return;
+      }
+
       const customers = await getAllCustomers();
       const vendors = await getAllVendors();
+
+      console.log("📦 [PurchaseBillGst] Fetched customers:", customers);
+      console.log("📦 [PurchaseBillGst] Fetched vendors:", vendors);
 
       const customerList = Array.isArray(customers)
         ? customers
@@ -256,10 +291,15 @@ function PurchaseBillGst() {
         ? vendors.data
         : [];
 
+      console.log("✅ [PurchaseBillGst] Processed customer list length:", customerList.length);
+      console.log("✅ [PurchaseBillGst] Processed vendor list length:", vendorList.length);
+
       setAllParties([
         ...customerList.map((c) => ({ ...c, type: "Customer" })),
         ...vendorList.map((v) => ({ ...v, type: "Vendor" })),
       ]);
+
+      console.log("✅ [PurchaseBillGst] All parties set successfully");
     };
     fetchParties();
   }, []);
@@ -342,7 +382,8 @@ function PurchaseBillGst() {
         return;
       }
 
-      console.log("💾 Saving purchase invoice with companyId:", companyId);
+      console.log("💾 [PurchaseBillGst] Saving purchase invoice with companyId:", companyId);
+      console.log("💾 [PurchaseBillGst] Selected vendor object:", selectedParty);
 
       // Filter out empty rows
       const validItems = rows.filter(row => row.goods && row.qty && row.rate);
@@ -369,15 +410,17 @@ function PurchaseBillGst() {
         invoiceNumber,
         invoiceDate,
         vendor: {
-          name: selectedParty,
-          // Add other vendor fields as needed
+          id: selectedParty._id,
+          name: selectedParty.name,
+          company: selectedParty.company || "",
+          phone: selectedParty.phone || "",
+          email: selectedParty.email || "",
         },
         items: validItems.map((row, idx) => ({
-          goods: row.goods,
-          quantity: Number(row.qty) || 0,
+          name: row.goods,
+          qty: Number(row.qty) || 0,
           rate: Number(row.rate) || 0,
           gstRate: Number(gstValues[idx]) || 0,
-          // Add other item fields as needed
         })),
         payment: {
           amount: Number(paymentAmount) || 0,
@@ -428,10 +471,11 @@ function PurchaseBillGst() {
               <input
                 className={styles.input}
                 placeholder="Search customer or vendor"
-                value={selectedParty}
+                value={selectedPartyDisplay}
                 onChange={(e) => {
                   setPartySearch(e.target.value);
-                  setSelectedParty(e.target.value);
+                  setSelectedPartyDisplay(e.target.value);
+                  setSelectedParty(null);
                   setShowPartyDropdown(true);
                 }}
                 onFocus={() => setShowPartyDropdown(true)}
@@ -466,7 +510,9 @@ function PurchaseBillGst() {
                       className={styles.dropdownItem}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedParty(
+                        console.log("🎯 [PurchaseBillGst] Selected party:", party);
+                        setSelectedParty(party);
+                        setSelectedPartyDisplay(
                           party.name +
                             (party.company ? ` (${party.company})` : "")
                         );
@@ -614,6 +660,8 @@ function PurchaseBillGst() {
                     ))}
                   <th>Qty</th>
                   <th>Rate (₹)</th>
+                  <th>GST (%)</th>
+                  <th>GST Type</th>
                   <th>Amount (₹)</th>
                   <th className={styles.showHideColTh}>
                     <button
@@ -787,16 +835,57 @@ function PurchaseBillGst() {
                         onKeyDown={(e) => handleKeyDown(e, idx, "rate")}
                       />
                     </td>
+                    {/* GST % */}
+                    <td>
+                      <select
+                        className={styles.input}
+                        style={{ width: 90 }}
+                        value={gstValues[idx] || ""}
+                        onChange={(e) =>
+                          setGstValues((prev) =>
+                            prev.map((v, i) => (i === idx ? e.target.value : v))
+                          )
+                        }
+                        data-row={idx}
+                        data-field="gstValue"
+                      >
+                        <option value="">Select GST %</option>
+                        <option value="0">0%</option>
+                        <option value="5">5%</option>
+                        <option value="12">12%</option>
+                        <option value="18">18%</option>
+                        <option value="28">28%</option>
+                      </select>
+                    </td>
+                    {/* GST Type - Included or Excluded */}
+                    <td>
+                      <select
+                        className={styles.input}
+                        style={{ width: 100 }}
+                        value={gstInclusionType[idx] || "Excluded"}
+                        onChange={(e) =>
+                          setGstInclusionType((prev) =>
+                            prev.map((v, i) => (i === idx ? e.target.value : v))
+                          )
+                        }
+                        data-row={idx}
+                        data-field="gstType"
+                      >
+                        <option value="Excluded">Excluded</option>
+                        <option value="Included">Included</option>
+                      </select>
+                    </td>
                     {/* Amount */}
                     <td>
                       <input
                         className={styles.input}
                         type="number"
-                        value={
-                          row.qty && row.rate
-                            ? Number(row.qty) * Number(row.rate)
-                            : ""
-                        }
+                        value={calculateAmount(
+                          row.qty,
+                          row.rate,
+                          gstValues[idx],
+                          gstInclusionType[idx]
+                        )}
                         disabled
                       />
                     </td>
