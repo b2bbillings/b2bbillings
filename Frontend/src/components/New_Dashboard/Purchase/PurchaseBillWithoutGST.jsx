@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./PurchaseBillGst.module.css"; // Use the same CSS module for consistent style
-import AddItemModal from "../Items/Add_Items";
+import AddItemModal from "./AddItemModal";
 import itemService from "../../../services/itemService";
 import authService from "../../../services/authService";
 import ShowHideColumns from "../Sales/ShowHideColumns";
@@ -10,9 +10,6 @@ import {
   vendorService,
 } from "../../../services/customerVendorService";
 import invoiceService from "../../../services/invoiceService";
-// import purchaseBillService from "../../../services/purchaseBillService"; // Uncomment if needed, ensure implementation exists
-
-// Note: ShowHideColumns import is commented out. If you need to use it, uncomment and implement the component.
 // import ShowHideColumns from "./ShowHideColumns";
 
 const ALWAYS_VISIBLE = [
@@ -76,11 +73,27 @@ function PurchaseBillWithoutGST() {
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [selectedParty, setSelectedParty] = useState("");
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
+  const [allItems, setAllItems] = useState([]);
+  const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
+  const [showItemDropdown, setShowItemDropdown] = useState(null);
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
   const [supplierDate, setSupplierDate] = useState("");
   const partyDropdownRef = useRef();
-  const [showItemDropdown, setShowItemDropdown] = useState(null);
   const [showEndCustomerModal, setShowEndCustomerModal] = useState(false);
+
+  // Helper function to get company ID
+  const getCompanyId = () => {
+    let companyId = localStorage.getItem("currentCompanyId") || sessionStorage.getItem("currentCompanyId");
+    if (!companyId) {
+      const urlMatch = window.location.pathname.match(/\/companies\/([^\/]+)/);
+      if (urlMatch && urlMatch[1]) companyId = urlMatch[1];
+    }
+    if (!companyId) {
+      const user = authService.getCurrentUser();
+      companyId = user?.companyId || user?.company?._id || user?.company;
+    }
+    return companyId;
+  };
 
   // Add row: also update gstValues
   const handleAddRow = () => {
@@ -148,14 +161,40 @@ function PurchaseBillWithoutGST() {
   };
 
   // When item is created in modal
-  const handleItemCreated = (item) => {
+  const handleItemCreated = async (item) => {
+    console.log("✅ Item created callback:", item);
+    
+    // Reload items from database
+    try {
+      const companyId = getCompanyId();
+      if (companyId) {
+        console.log("🔄 Reloading items from database...");
+        const result = await itemService.getItems(companyId);
+        if (result && result.success) {
+          const items = result.data?.items || result.data || [];
+          setAllItems(items);
+          console.log("✅ Items reloaded:", items.length);
+        }
+      }
+    } catch (err) {
+      console.error("Error reloading items:", err);
+    }
+    
+    // Select it in the correct row
     if (addItemRowIndex !== null) {
       setRows((r) =>
         r.map((row, idx) =>
-          idx === addItemRowIndex ? { ...row, goods: item.name } : row
+          idx === addItemRowIndex
+            ? {
+                ...row,
+                goods: item.name,
+                rate: item.buyPrice || item.salePrice || row.rate,
+              }
+            : row
         )
       );
     }
+    
     setShowAddItemModal(false);
     setAddItemRowIndex(null);
   };
@@ -228,18 +267,28 @@ function PurchaseBillWithoutGST() {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
+        const companyId = getCompanyId();
+
+        console.log("🔍 Fetching items with companyId:", companyId);
 
         if (companyId) {
           const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
+          console.log("📦 Fetched items result:", result);
+          
+          if (result && result.success) {
+            const items = result.data?.items || result.data || [];
+            console.log("✅ Items loaded:", items.length);
+            setAllItems(items);
+          } else {
+            console.warn("⚠️ No items data in response");
+            setAllItems([]);
           }
+        } else {
+          console.error("❌ No companyId found");
         }
       } catch (err) {
         console.error("Error fetching items:", err);
+        setAllItems([]);
       }
     };
     fetchItems();
@@ -279,36 +328,69 @@ function PurchaseBillWithoutGST() {
 
   // Example: Save Invoice Handler
   const handleSaveInvoice = async () => {
-    // Prepare invoice data as per your backend schema
-    const invoiceData = {
-      invoicePrefix,
-      invoiceNumber,
-      invoiceDate,
-      party: {
-        name: selectedParty,
-        // Add other party fields as needed
-      },
-      items: rows.map((row, idx) => ({
-        goods: row.goods,
-        quantity: Number(row.qty) || 0,
-        rate: Number(row.rate) || 0,
-        gstRate: Number(gstValues[idx]) || 0,
-        // Add other item fields as needed
-      })),
-      payment: {
-        amount: Number(paymentAmount) || 0,
-        mode: paymentMode,
-        refNo,
-        depositTo,
-        payFull,
-      },
-      autoRoundOff,
-      // Add other fields as needed
-    };
-
     try {
-      const result = await invoiceService.createInvoice(invoiceData);
+      const companyId = getCompanyId();
+      
+      if (!companyId) {
+        alert("Company ID not found. Please log in again or select a company.");
+        return;
+      }
+      
+      if (!selectedParty) {
+        alert("Select a vendor before saving.");
+        return;
+      }
+
+      console.log("💾 Saving purchase invoice (without GST) with companyId:", companyId);
+
+      // Filter out empty rows
+      const validItems = rows.filter(row => row.goods && row.qty && row.rate);
+      
+      if (validItems.length === 0) {
+        alert("Please add at least one item to the invoice.");
+        return;
+      }
+
+      // Calculate subtotal
+      const subtotal = validItems.reduce(
+        (sum, row) => sum + Number(row.qty || 0) * Number(row.rate || 0),
+        0
+      );
+
+      // Prepare invoice data as per your backend schema
+      const invoiceData = {
+        companyId,
+        invoicePrefix,
+        invoiceNumber,
+        invoiceDate,
+        vendor: {
+          name: selectedParty,
+          // Add other vendor fields as needed
+        },
+        items: validItems.map((row) => ({
+          goods: row.goods,
+          quantity: Number(row.qty) || 0,
+          rate: Number(row.rate) || 0,
+          // Add other item fields as needed
+        })),
+        payment: {
+          amount: Number(paymentAmount) || 0,
+          mode: paymentMode,
+          refNo,
+          depositTo,
+          payFull,
+        },
+        autoRoundOff,
+        subtotal,
+        total: subtotal,
+        // Add other fields as needed
+      };
+
+      console.log("📤 Purchase invoice (without GST) data:", invoiceData);
+
+      const result = await invoiceService.createInvoice("purchase-without-gst", invoiceData);
       if (result && result.success !== false) {
+        console.log("✅ Purchase invoice (without GST) saved:", result);
         alert("Invoice created successfully!");
         // Optionally reset form or redirect
       } else {
@@ -317,6 +399,7 @@ function PurchaseBillWithoutGST() {
         );
       }
     } catch (err) {
+      console.error("❌ Error creating purchase invoice (without GST):", err);
       alert("Error creating invoice: " + err.message);
     }
   };

@@ -65,6 +65,17 @@ export const customerService = {
     }
   },
 
+  // Get ALL customers without pagination (for dropdowns)
+  getAllCustomers: async () => {
+    try {
+      const response = await api.get('/customers?limit=1000');
+      return response?.data || response || [];
+    } catch (error) {
+      console.error('Error fetching all customers:', error);
+      return [];
+    }
+  },
+
   // Search customers for autocomplete
   searchCustomers: async (query) => {
     try {
@@ -184,6 +195,17 @@ export const vendorService = {
       return response;
     } catch (error) {
       throw error;
+    }
+  },
+
+  // Get ALL vendors without pagination (for dropdowns)
+  getAllVendors: async () => {
+    try {
+      const response = await api.get('/vendors?limit=1000');
+      return response?.data || response || [];
+    } catch (error) {
+      console.error('Error fetching all vendors:', error);
+      return [];
     }
   },
 

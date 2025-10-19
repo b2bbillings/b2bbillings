@@ -450,7 +450,6 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
   const renderBankAccountsContent = () => (
     <div className="content-bank-accounts">
       <BankAccountDashboard 
-        currentUser={currentUser}
         currentCompany={currentCompany}
         addToast={addToast}
       />
@@ -552,7 +551,6 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       case "bankAccounts":
         return (
           <BankAccountDashboard
-            currentUser={currentUser}
             currentCompany={currentCompany}
             addToast={addToast}
           />

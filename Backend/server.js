@@ -84,6 +84,9 @@ const routeFiles = [
   "expenseIncomeCategoryRoutes", // ✅ NEW: Category routes for expense/income categories
   "endCustomerRoutes", // ✅ NEW: End customer routes
   "invoiceRoutes", // ✅ NEW: Invoice routes for invoice management
+  "brandRoutes", // ✅ NEW: Brand routes for brand management
+  "salesInvoiceWithGSTRoutes", // ✅ NEW: Sales invoices with GST
+  "purchaseInvoiceRoutes", // ✅ NEW: Purchase invoices (GST and non-GST)
 ];
 
 console.log("📂 Loading route files...");
@@ -1028,6 +1031,30 @@ try {
   console.log("   ✅ /api/companies/:companyId/invoices");
 } catch (error) {
   console.error("   ❌ /api/companies/:companyId/invoices failed:", error.message);
+}
+
+// Register Brand routes
+try {
+  app.use("/api/brand", routes.brandRoutes);
+  console.log("   ✅ /api/brand");
+} catch (error) {
+  console.error("   ❌ /api/brand failed:", error.message);
+}
+
+// Register Sales Invoice routes (WITH GST and WITHOUT GST)
+try {
+  app.use("/api/sales-invoices", routes.salesInvoiceWithGSTRoutes);
+  console.log("   ✅ /api/sales-invoices");
+} catch (error) {
+  console.error("   ❌ /api/sales-invoices failed:", error.message);
+}
+
+// Register Purchase Invoice routes (WITH GST and WITHOUT GST)
+try {
+  app.use("/api/purchase-invoices", routes.purchaseInvoiceRoutes);
+  console.log("   ✅ /api/purchase-invoices");
+} catch (error) {
+  console.error("   ❌ /api/purchase-invoices failed:", error.message);
 }
 
 console.log("🌐 Route registration completed!");

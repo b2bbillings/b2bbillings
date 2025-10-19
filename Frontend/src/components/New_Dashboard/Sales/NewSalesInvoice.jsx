@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./NewSalesInvoice.module.css";
 import ShowHideColumns from "./ShowHideColumns";
-import AddItemModal from "../Items/Add_Items";
+import AddItemModal from "./AddItemModal";
 import EndCustomers from "../New_parties/End_Customer/EndCustomers";
 import {
   customerService,
@@ -67,7 +67,7 @@ export default function NewSalesInvoice() {
   const [payFull, setPayFull] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const [goodsFocusIndex, setGoodsFocusIndex] = useState(null);
-  const [gstValues, setGstValues] = useState(rows.map(() => ""));
+  const [gstValues, setGstValues] = useState([""]); // Initialize with one empty string
   const [allParties, setAllParties] = useState([]);
   const [partySearch, setPartySearch] = useState("");
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
@@ -75,11 +75,33 @@ export default function NewSalesInvoice() {
   const [selectedParty, setSelectedParty] = useState("");
   const [selectedEndCustomer, setSelectedEndCustomer] = useState("");
   const [allItems, setAllItems] = useState([]);
-  const [itemSearch, setItemSearch] = useState(rows.map(() => ""));
+  const [itemSearch, setItemSearch] = useState([""]); // Initialize with one empty string
   const [showItemDropdown, setShowItemDropdown] = useState(null);
   const partyDropdownRef = useRef();
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
   const [supplierDate, setSupplierDate] = useState("");
+
+  // Helper function to get company ID
+  const getCompanyId = () => {
+    // Method 1: Check localStorage
+    let companyId = localStorage.getItem("currentCompanyId") || sessionStorage.getItem("currentCompanyId");
+    
+    // Method 2: Extract from URL
+    if (!companyId) {
+      const urlMatch = window.location.pathname.match(/\/companies\/([^\/]+)/);
+      if (urlMatch && urlMatch[1]) {
+        companyId = urlMatch[1];
+      }
+    }
+    
+    // Method 3: Get from user object
+    if (!companyId) {
+      const user = authService.getCurrentUser();
+      companyId = user?.companyId || user?.company?._id || user?.company;
+    }
+    
+    return companyId;
+  };
 
   // Update GST % per row
   const handleGstValueChange = (rowIdx, value) => {
@@ -160,20 +182,54 @@ export default function NewSalesInvoice() {
   };
 
   // When item is created in modal
-  const handleItemCreated = (item) => {
-  // Add the new item to the list
-  setAllItems((prev) => [...prev, item]);
-  // Select it in the correct row
-  if (addItemRowIndex !== null) {
-    setRows((r) =>
-      r.map((row, idx) =>
-        idx === addItemRowIndex ? { ...row, goods: item.name } : row
-      )
-    );
-  }
-  setShowAddItemModal(false);
-  setAddItemRowIndex(null);
-};
+  const handleItemCreated = async (item) => {
+    console.log("✅ Item created callback:", item);
+    
+    // Reload items from database to get the complete item with populated fields
+    try {
+      const companyId = getCompanyId();
+
+      if (companyId) {
+        console.log("🔄 Reloading items from database...");
+        const result = await itemService.getItems(companyId);
+        if (result && result.success) {
+          const items = result.data?.items || result.data || [];
+          setAllItems(items);
+          console.log("✅ Items reloaded:", items.length);
+        }
+      }
+    } catch (err) {
+      console.error("Error reloading items:", err);
+    }
+    
+    // Select it in the correct row
+    if (addItemRowIndex !== null) {
+      setRows((r) =>
+        r.map((row, idx) =>
+          idx === addItemRowIndex
+            ? {
+                ...row,
+                goods: item.name,
+                rate: item.salePrice || row.rate,
+                gst: item.gstRate || row.gst,
+              }
+            : row
+        )
+      );
+      
+      // Update GST values if item has GST
+      if (item.gstRate) {
+        setGstValues((prev) =>
+          prev.map((v, i) =>
+            i === addItemRowIndex ? item.gstRate.toString() : v
+          )
+        );
+      }
+    }
+    
+    setShowAddItemModal(false);
+    setAddItemRowIndex(null);
+  };
 
   // Handle keyboard navigation
   const handleKeyDown = (e, rowIdx, fieldName) => {
@@ -243,18 +299,29 @@ export default function NewSalesInvoice() {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
+        const companyId = getCompanyId();
+        
+        console.log("🔍 Fetching items with companyId:", companyId);
 
         if (companyId) {
           const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
+          console.log("📦 Fetched items result:", result);
+          
+          if (result && result.success) {
+            // API returns { success: true, data: { items: [...] } }
+            const items = result.data?.items || result.data || [];
+            console.log("✅ Items loaded:", items.length, items);
+            setAllItems(items);
+          } else {
+            console.warn("⚠️ No items data in response:", result);
+            setAllItems([]);
           }
+        } else {
+          console.error("❌ No companyId found");
         }
       } catch (err) {
         console.error("Error fetching items:", err);
+        setAllItems([]);
       }
     };
     fetchItems();
@@ -293,37 +360,66 @@ export default function NewSalesInvoice() {
 
   // Example: Save Invoice Handler
   const handleSaveInvoice = async () => {
-    // Prepare invoice data as per your backend schema
-    const invoiceData = {
-      invoicePrefix,
-      invoiceNumber,
-      invoiceDate,
-      party: {
-        name: selectedParty,
-        // Add other party fields as needed
-      },
-      items: rows.map((row, idx) => ({
-        goods: row.goods,
-        quantity: Number(row.qty) || 0,
-        rate: Number(row.rate) || 0,
-        gstRate: Number(gstValues[idx]) || 0,
-        // Add other item fields as needed
-      })),
-      payment: {
-        amount: Number(paymentAmount) || 0,
-        mode: paymentMode,
-        refNo,
-        depositTo,
-        payFull,
-      },
-      autoRoundOff,
-      // Add other fields as needed
-    };
-
     try {
-      const result = await invoiceService.createInvoice(invoiceData);
+      // Get company ID
+      const companyId = getCompanyId();
+      
+      if (!companyId) {
+        alert("Company ID not found. Please log in again or select a company.");
+        return;
+      }
+
+      if (!selectedParty) {
+        alert("Please select a customer before saving.");
+        return;
+      }
+
+      console.log("💾 Saving invoice with companyId:", companyId);
+
+      // Filter out empty rows
+      const validItems = rows.filter(row => row.goods && row.qty && row.rate);
+      
+      if (validItems.length === 0) {
+        alert("Please add at least one item to the invoice.");
+        return;
+      }
+
+      // Prepare invoice data as per your backend schema
+      const invoiceData = {
+        companyId, // Include company ID
+        invoicePrefix,
+        invoiceNumber,
+        invoiceDate,
+        customer: {
+          name: selectedParty,
+          // Add other party fields as needed
+        },
+        items: validItems.map((row, idx) => ({
+          goods: row.goods,
+          quantity: Number(row.qty) || 0,
+          rate: Number(row.rate) || 0,
+          gstRate: Number(gstValues[idx]) || 0,
+          // Add other item fields as needed
+        })),
+        payment: {
+          amount: Number(paymentAmount) || 0,
+          mode: paymentMode,
+          refNo,
+          depositTo,
+          payFull,
+        },
+        autoRoundOff,
+        subtotal,
+        total,
+        // Add other fields as needed
+      };
+
+      console.log("📤 Invoice data:", invoiceData);
+
+      const result = await invoiceService.createInvoice("sales-with-gst", invoiceData);
       if (result && result.success !== false) {
         alert("Invoice created successfully!");
+        console.log("✅ Invoice saved:", result);
         // Optionally reset form or redirect
       } else {
         alert(
@@ -331,6 +427,7 @@ export default function NewSalesInvoice() {
         );
       }
     } catch (err) {
+      console.error("❌ Error saving invoice:", err);
       alert("Error creating invoice: " + err.message);
     }
   };
@@ -582,7 +679,7 @@ export default function NewSalesInvoice() {
                         <input
                           className={styles.input}
                           placeholder="Search or select item"
-                          value={row.goods}
+                          value={row.goods || ""}
                           onChange={(e) => {
                             const value = e.target.value;
                             setRows((r) =>
@@ -680,7 +777,7 @@ export default function NewSalesInvoice() {
                           <input
                             className={styles.input}
                             type="text"
-                            value={row[col.key]}
+                            value={row[col.key] || ""}
                             onChange={(e) =>
                               setRows((r) =>
                                 r.map((row2, i) =>
@@ -701,7 +798,7 @@ export default function NewSalesInvoice() {
                       <input
                         className={styles.input}
                         type="number"
-                        value={row.qty}
+                        value={row.qty || ""}
                         onChange={(e) =>
                           setRows((r) =>
                             r.map((row2, i) =>
@@ -721,7 +818,7 @@ export default function NewSalesInvoice() {
                       <input
                         className={styles.input}
                         type="number"
-                        value={row.rate}
+                        value={row.rate || ""}
                         onChange={(e) =>
                           setRows((r) =>
                             r.map((row2, i) =>

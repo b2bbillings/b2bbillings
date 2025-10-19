@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./SalesWithoutGST.module.css";
 import ShowHideColumns from "./ShowHideColumns";
-import AddItemModal from "../Items/Add_Items";
+import AddItemModal from "./AddItemModal";
 import EndCustomers from "../New_parties/End_Customer/EndCustomers";
 import {
   customerService,
@@ -81,6 +81,28 @@ export default function NewSalesInvoice() {
 
   const partyDropdownRef = useRef();
 
+  // Helper function to get company ID
+  const getCompanyId = () => {
+    // Method 1: Check localStorage
+    let companyId = localStorage.getItem("currentCompanyId") || sessionStorage.getItem("currentCompanyId");
+    
+    // Method 2: Extract from URL
+    if (!companyId) {
+      const urlMatch = window.location.pathname.match(/\/companies\/([^\/]+)/);
+      if (urlMatch && urlMatch[1]) {
+        companyId = urlMatch[1];
+      }
+    }
+    
+    // Method 3: Get from user object
+    if (!companyId) {
+      const user = authService.getCurrentUser();
+      companyId = user?.companyId || user?.company?._id || user?.company;
+    }
+    
+    return companyId;
+  };
+
   // Add row
   const handleAddRow = () => {
     setRows([
@@ -159,7 +181,27 @@ export default function NewSalesInvoice() {
   };
 
   // When item is created in modal
-  const handleItemCreated = (item) => {
+  const handleItemCreated = async (item) => {
+    console.log("✅ Item created callback:", item);
+    
+    // Reload items from database to get the complete item with populated fields
+    try {
+      const companyId = getCompanyId();
+
+      if (companyId) {
+        console.log("🔄 Reloading items from database...");
+        const result = await itemService.getItems(companyId);
+        if (result && result.success) {
+          const items = result.data?.items || result.data || [];
+          setAllItems(items);
+          console.log("✅ Items reloaded:", items.length);
+        }
+      }
+    } catch (err) {
+      console.error("Error reloading items:", err);
+    }
+    
+    // Select it in the correct row
     if (addItemRowIndex !== null) {
       setRows((r) =>
         r.map((row, idx) =>
@@ -173,27 +215,9 @@ export default function NewSalesInvoice() {
         )
       );
     }
+    
     setShowAddItemModal(false);
     setAddItemRowIndex(null);
-
-    // Refresh items list to include newly created item
-    const fetchItems = async () => {
-      try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
-
-        if (companyId) {
-          const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching items:", err);
-      }
-    };
-    fetchItems();
   };
 
   // Handle keyboard navigation
@@ -264,18 +288,29 @@ export default function NewSalesInvoice() {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const user = authService.getCurrentUser();
-        const companyId =
-          user?.companyId || user?.company?._id || user?.company;
+        const companyId = getCompanyId();
+
+        console.log("🔍 Fetching items with companyId:", companyId);
 
         if (companyId) {
           const result = await itemService.getItems(companyId);
-          if (result.success) {
-            setAllItems(result.data || []);
+          console.log("📦 Fetched items result:", result);
+          
+          if (result && result.success) {
+            // API returns { success: true, data: { items: [...] } }
+            const items = result.data?.items || result.data || [];
+            console.log("✅ Items loaded:", items.length, items);
+            setAllItems(items);
+          } else {
+            console.warn("⚠️ No items data in response:", result);
+            setAllItems([]);
           }
+        } else {
+          console.error("❌ No companyId found");
         }
       } catch (err) {
-        console.error("Error fetching items:", err);
+        console.error("❌ Error fetching items:", err);
+        setAllItems([]);
       }
     };
     fetchItems();
@@ -308,26 +343,42 @@ export default function NewSalesInvoice() {
   // Save invoice to backend
   const handleSaveInvoice = async () => {
     try {
-      const user = authService.getCurrentUser();
-      const companyId = user?.companyId || user?.company?._id || user?.company;
+      const companyId = getCompanyId();
+      
       if (!companyId) {
-        alert("Company not found on current user.");
+        alert("Company ID not found. Please log in again or select a company.");
         return;
       }
+      
       if (!selectedParty) {
         alert("Select a customer before saving.");
+        return;
+      }
+
+      console.log("💾 Saving invoice with companyId:", companyId);
+
+      // Filter out empty rows
+      const validItems = rows.filter(row => row.goods && row.qty && row.rate);
+      
+      if (validItems.length === 0) {
+        alert("Please add at least one item to the invoice.");
         return;
       }
 
       // Prepare invoice payload
       const payload = {
         companyId,
-        customer: selectedParty,
-        endCustomer: selectedEndCustomer,
+        customer: {
+          name: selectedParty,
+          // Add other customer fields as needed
+        },
+        endCustomer: selectedEndCustomer ? {
+          name: selectedEndCustomer,
+        } : undefined,
         invoicePrefix,
         invoiceNumber,
         invoiceDate,
-        goodsDetails: rows.map((row) => ({
+        goodsDetails: validItems.map((row) => ({
           goods: row.goods,
           qty: row.qty,
           rate: row.rate,
