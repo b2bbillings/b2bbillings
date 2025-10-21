@@ -15,6 +15,9 @@ const {
 
 // ✅ ENHANCED: Validation middleware for bank accounts
 const validateBankAccount = (req, res, next) => {
+  console.log('🔍 VALIDATING BANK ACCOUNT');
+  console.log('📋 Request Body:', JSON.stringify(req.body, null, 2));
+  
   const {
     accountName,
     accountDisplayName,
@@ -22,8 +25,10 @@ const validateBankAccount = (req, res, next) => {
     bankName,
     accountNumber,
     ifscCode,
-    accountType = "bank"
+    accountType,
+    type
   } = req.body;
+  
   const errors = [];
 
   // ✅ FIXED: Accept either accountDisplayName or accountName
@@ -33,40 +38,68 @@ const validateBankAccount = (req, res, next) => {
     errors.push("Account display name is required");
   }
 
-  // ✅ NEW: Validate account holder name for bank accounts
-  if (accountType !== "cash" && !accountHolderName?.trim()) {
+  // ✅ FIXED: Determine account type from either 'type' or 'accountType' field
+  // The frontend sends 'type: bank' and 'accountType: Savings'
+  // We need to check the 'type' field for bank/cash/upi validation
+  const actualType = type || "bank"; // Default to "bank" if not specified
+  
+  console.log('🔍 Account Type Check:');
+  console.log('  - type field:', type);
+  console.log('  - accountType field:', accountType);
+  console.log('  - actualType (for validation):', actualType);
+
+  // ✅ NEW: Validate account holder name for bank/upi accounts (not for cash)
+  if (actualType !== "cash" && !accountHolderName?.trim()) {
     errors.push("Account holder name is required for bank accounts");
   }
 
-  // ✅ FIXED: Make bankName optional for cash accounts
-  if (accountType !== "cash" && !bankName?.trim()) {
-    errors.push("Bank name is required for non-cash accounts");
+  // ✅ FIXED: Make bankName required for bank/upi accounts (not for cash)
+  if (actualType !== "cash" && !bankName?.trim()) {
+    errors.push("Bank name is required for bank accounts");
   }
 
-  // ✅ FIXED: Make accountNumber optional for cash accounts
-  if (accountType !== "cash" && !accountNumber?.trim()) {
-    errors.push("Account number is required for non-cash accounts");
+  // ✅ FIXED: Make accountNumber required for bank/upi accounts (not for cash)
+  if (actualType !== "cash" && !accountNumber?.trim()) {
+    errors.push("Account number is required for bank accounts");
   }
 
-  // ✅ NEW: Validate IFSC code for bank accounts
-  if (accountType !== "cash" && !ifscCode?.trim()) {
+  // ✅ NEW: Validate IFSC code for bank/upi accounts (not for cash)
+  if (actualType !== "cash" && !ifscCode?.trim()) {
     errors.push("IFSC code is required for bank accounts");
+  } else if (actualType !== "cash" && ifscCode?.trim()) {
+    // Validate IFSC format: 4 letters + 0 + 6 alphanumeric characters
+    const ifscPattern = /^[A-Z]{4}0[A-Z0-9]{6}$/i;
+    if (!ifscPattern.test(ifscCode.trim())) {
+      errors.push("Invalid IFSC code format (e.g., SBIN0001234)");
+    }
   }
 
   // ✅ ENHANCED: Updated valid types to match service expectations
-  const validTypes = ["bank", "savings", "current", "cash", "upi", "other"];
-  if (!validTypes.includes(accountType)) {
-    errors.push(`Account type must be one of: ${validTypes.join(", ")}`);
+  // Only validate the 'type' field, not 'accountType' (which can be Savings, Current, etc.)
+  const validTypes = ["bank", "cash", "upi"];
+  if (type && !validTypes.includes(type)) {
+    errors.push(`Type must be one of: ${validTypes.join(", ")}`);
   }
 
   if (errors.length > 0) {
+    console.log('❌ VALIDATION FAILED:', errors);
     return res.status(400).json({
       success: false,
       message: "Validation failed",
       errors,
+      receivedData: {
+        accountDisplayName: finalAccountName,
+        accountHolderName,
+        bankName,
+        accountNumber,
+        ifscCode,
+        type: actualType,
+        accountType
+      }
     });
   }
 
+  console.log('✅ VALIDATION PASSED');
   next();
 };
 

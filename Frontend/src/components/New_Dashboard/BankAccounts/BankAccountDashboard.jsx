@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import './BankAccountDashboard.css';
 import newBankDetailsService from '../../../services/newBankDetailsService';
 import { getSelectedCompany } from '../../../utils/auth';
+import { AlertCircle, X } from 'lucide-react';
 
 const BankAccountDashboard = ({ addToast }) => {
   const [activeView, setActiveView] = useState('overview');
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const [errorModal, setErrorModal] = useState({ show: false, title: '', message: '', errors: [] });
 
   const [formData, setFormData] = useState({
     underGroup: 'Bank Accounts',
@@ -71,6 +74,31 @@ const BankAccountDashboard = ({ addToast }) => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Enter key: Move to next field
+      if (e.key === 'Enter' && activeView === 'addBank') {
+        const focusedElement = document.activeElement;
+        
+        // Don't move to next field if we're on the Save button or textarea
+        if (focusedElement?.classList.contains('save-btn') || 
+            focusedElement?.tagName === 'BUTTON' ||
+            focusedElement?.tagName === 'TEXTAREA') {
+          return;
+        }
+
+        // Get all focusable form elements
+        const formElements = Array.from(
+          document.querySelectorAll(
+            'input:not([type="radio"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+          )
+        );
+
+        const currentIndex = formElements.indexOf(focusedElement);
+        if (currentIndex !== -1 && currentIndex < formElements.length - 1) {
+          e.preventDefault();
+          formElements[currentIndex + 1].focus();
+        }
+      }
+
       // Alt + S: Save
       if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
@@ -158,7 +186,8 @@ const BankAccountDashboard = ({ addToast }) => {
         return;
       }
 
-      const result = await newBankDetailsService.getBankDetails(companyId, { active: 'true' });
+      // Fetch all accounts (both active and inactive)
+      const result = await newBankDetailsService.getBankDetails(companyId, { active: 'all' });
       
       console.log('📋 Bank accounts loaded:', result);
       
@@ -203,31 +232,41 @@ const BankAccountDashboard = ({ addToast }) => {
   };
 
   const validateForm = () => {
+    console.log('🔍 VALIDATING FORM');
+    console.log('📋 Form Data:', formData);
+    
     const newErrors = {};
     
-    // Required fields validation
+    // ✅ FIXED: Determine if this is a cash account based on underGroup
+    const isCashAccount = formData.underGroup?.toLowerCase().includes('cash');
+    console.log('💰 Is Cash Account:', isCashAccount);
+    
+    // Required fields validation (for all account types)
     if (!formData.accountDisplayName.trim()) {
       newErrors.accountDisplayName = 'Account display name is required';
     }
     
-    if (!formData.accountHolderName.trim()) {
-      newErrors.accountHolderName = 'Account holder name is required';
-    }
-    
-    if (!formData.accountNumber.trim()) {
-      newErrors.accountNumber = 'Account number is required';
-    } else if (formData.accountNumber.length < 9 || formData.accountNumber.length > 18) {
-      newErrors.accountNumber = 'Account number must be between 9-18 digits';
-    }
-    
-    if (!formData.ifscCode.trim()) {
-      newErrors.ifscCode = 'IFSC code is required';
-    } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(formData.ifscCode)) {
-      newErrors.ifscCode = 'Invalid IFSC code format (e.g., SBIN0001234)';
-    }
-    
-    if (!formData.bankName.trim()) {
-      newErrors.bankName = 'Bank name is required';
+    // ✅ FIXED: Only validate bank-specific fields for non-cash accounts
+    if (!isCashAccount) {
+      if (!formData.accountHolderName.trim()) {
+        newErrors.accountHolderName = 'Account holder name is required';
+      }
+      
+      if (!formData.accountNumber.trim()) {
+        newErrors.accountNumber = 'Account number is required';
+      } else if (formData.accountNumber.trim().length < 9 || formData.accountNumber.trim().length > 18) {
+        newErrors.accountNumber = 'Account number must be between 9-18 digits';
+      }
+      
+      if (!formData.ifscCode.trim()) {
+        newErrors.ifscCode = 'IFSC code is required';
+      } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(formData.ifscCode)) {
+        newErrors.ifscCode = 'Invalid IFSC code format (e.g., SBIN0001234)';
+      }
+      
+      if (!formData.bankName.trim()) {
+        newErrors.bankName = 'Bank name is required';
+      }
     }
 
     // Email validation (if provided)
@@ -240,17 +279,28 @@ const BankAccountDashboard = ({ addToast }) => {
       newErrors.mobileNo = 'Please enter a valid 10-digit mobile number';
     }
     
+    console.log('📝 Validation Errors:', newErrors);
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    
+    const isValid = Object.keys(newErrors).length === 0;
+    console.log(isValid ? '✅ VALIDATION PASSED' : '❌ VALIDATION FAILED');
+    
+    return isValid;
   };
 
   const handleSubmit = async () => {
+    console.log('🚀 SUBMIT BUTTON CLICKED');
+    console.log('📋 Current Form Data:', formData);
+    
     if (!validateForm()) {
+      console.log('❌ Form validation failed');
       addToast?.('Please fix the errors in the form', 'error');
       return;
     }
 
+    console.log('✅ Form validation passed');
     setLoading(true);
+    
     try {
       const companyId = getCompanyId();
       
@@ -261,58 +311,110 @@ const BankAccountDashboard = ({ addToast }) => {
         throw new Error('Please select a company first');
       }
 
+      // ✅ FIXED: Determine account type based on underGroup
+      const isCashAccount = formData.underGroup?.toLowerCase().includes('cash');
+      const accountType = isCashAccount ? 'cash' : 'bank';
+      
+      console.log('💰 Account Type Detection:');
+      console.log('  - underGroup:', formData.underGroup);
+      console.log('  - isCashAccount:', isCashAccount);
+      console.log('  - accountType:', accountType);
+
+      // ✅ FIXED: Build account data based on account type
       const bankAccountData = {
-        // Basic Information
-        underGroup: formData.underGroup,
+        // Basic Information - REQUIRED (for all types)
+        underGroup: formData.underGroup || 'Bank Accounts',
         accountDisplayName: formData.accountDisplayName.trim(),
         shortName: formData.shortName.trim() || formData.accountDisplayName.trim().substring(0, 20),
         accountName: formData.accountDisplayName.trim(),
         
-        // Contact Information
-        email: formData.email.trim(),
-        mobileNo: formData.mobileNo.trim(),
+        // Contact Information - OPTIONAL
+        email: formData.email?.trim() || '',
+        mobileNo: formData.mobileNo?.trim() || '',
         
-        // Bank Details
-        accountHolderName: formData.accountHolderName.trim(),
-        accountNumber: formData.accountNumber.trim(),
-        ifscCode: formData.ifscCode.toUpperCase().trim(),
-        bankName: formData.bankName.trim(),
-        branchName: formData.branchName.trim(),
-        branchAddress: formData.branchAddress.trim(),
-        accountType: formData.accountType,
-        
-        // Balance Information
+        // Balance Information - REQUIRED
         openingBalance: parseFloat(formData.openingBalance) || 0,
-        balanceType: formData.balanceType,
+        balanceType: formData.balanceType || 'Dr',
         
-        // Status
-        status: formData.status,
-        isActive: formData.status === 'Active',
+        // Status - REQUIRED
+        status: formData.status || 'Active',
+        isActive: (formData.status || 'Active') === 'Active',
         
-        // Additional Information
-        notes: formData.notes.trim(),
+        // Additional Information - OPTIONAL
+        notes: formData.notes?.trim() || '',
         
-        // Type
-        type: 'bank'
+        // Type - REQUIRED (bank/cash/upi)
+        type: accountType
       };
 
-      console.log('📤 Sending bank account data:', bankAccountData);
+      // ✅ Add bank-specific fields only for non-cash accounts
+      if (!isCashAccount) {
+        bankAccountData.accountHolderName = formData.accountHolderName.trim();
+        bankAccountData.accountNumber = formData.accountNumber.trim();
+        bankAccountData.ifscCode = formData.ifscCode.toUpperCase().trim();
+        bankAccountData.bankName = formData.bankName.trim();
+        bankAccountData.branchName = formData.branchName?.trim() || '';
+        bankAccountData.branchAddress = formData.branchAddress?.trim() || '';
+        bankAccountData.accountType = formData.accountType || 'Savings';
+      } else {
+        // For cash accounts, use default/placeholder values
+        bankAccountData.accountHolderName = formData.accountDisplayName.trim();
+        bankAccountData.accountNumber = 'CASH-' + Date.now();
+        bankAccountData.ifscCode = 'CASH0000000';
+        bankAccountData.bankName = 'Cash';
+        bankAccountData.branchName = 'N/A';
+        bankAccountData.branchAddress = '';
+        bankAccountData.accountType = 'Cash';
+      }
+
+      console.log('📤 Sending bank account data:', JSON.stringify(bankAccountData, null, 2));
 
       const result = await newBankDetailsService.createBankDetail(companyId, bankAccountData);
       
       console.log('📥 API Response:', result);
       
       if (result.success) {
+        console.log('✅ Bank account created successfully!');
         addToast?.('Bank account created successfully!', 'success');
         await loadBankAccounts();
         setActiveView('overview');
         resetForm();
       } else {
-        throw new Error(result.message || 'Failed to create bank account');
+        console.log('❌ API returned failure:', result.message);
+        // Show detailed error message if available
+        const errorMsg = result.error?.errors 
+          ? `Validation failed: ${result.error.errors.join(', ')}`
+          : result.message || 'Failed to create bank account';
+        throw new Error(errorMsg);
       }
     } catch (error) {
-      console.error('Error creating bank account:', error);
-      addToast?.(error.message || 'Failed to create bank account', 'error');
+      console.error('❌ Error creating bank account:', error);
+      
+      // Extract detailed error information
+      let errorTitle = 'Failed to Create Bank Account';
+      let errorMessage = 'An unexpected error occurred';
+      let errorList = [];
+      
+      if (error.response?.data?.errors) {
+        errorTitle = 'Validation Error';
+        errorMessage = 'Please fix the following issues:';
+        errorList = error.response.data.errors;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Show error modal
+      setErrorModal({
+        show: true,
+        title: errorTitle,
+        message: errorMessage,
+        errors: errorList
+      });
+      
+      // Also show toast for backward compatibility
+      addToast?.(errorMessage, 'error');
     } finally {
       setLoading(false);
     }
@@ -431,6 +533,21 @@ const BankAccountDashboard = ({ addToast }) => {
           </svg>
           Add Bank Account
         </button>
+        
+        <button 
+          onClick={() => setShowInactive(!showInactive)} 
+          className={`toggle-inactive-btn ${showInactive ? 'active' : ''}`}
+          title={showInactive ? 'Hide inactive accounts' : 'Show inactive accounts'}
+        >
+          <svg className="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {showInactive ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            )}
+          </svg>
+          {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+        </button>
       </div>
 
       {loading ? (
@@ -446,57 +563,62 @@ const BankAccountDashboard = ({ addToast }) => {
           <h3>No bank accounts yet</h3>
           <p>Add your first bank account to get started</p>
         </div>
-      ) : (
-        <div className="accounts-list">
-          {bankAccounts.map(account => (
-            <div key={account.id} className="account-card">
-              <div className="account-card-content">
-                <div className="account-main-info">
-                  <div className="account-header">
-                    <h3 className="account-bank-name">{account.bankName}</h3>
-                    <span className={`status-badge ${account.isActive ? 'active' : 'inactive'}`}>
-                      {account.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  <div className="account-details-grid">
-                    <div className="detail-item">
-                      <span className="detail-label">Account Holder:</span>
-                      <span className="detail-value">{account.accountHolderName}</span>
-                    </div>
-                    <div className="detail-item">
-                      <span className="detail-label">Account Number:</span>
-                      <span className="detail-value">{account.accountNumber}</span>
-                    </div>
-                    <div className="detail-item">
-                      <span className="detail-label">Account Type:</span>
-                      <span className="detail-value">{account.accountType}</span>
-                    </div>
-                    <div className="detail-item">
-                      <span className="detail-label">IFSC Code:</span>
-                      <span className="detail-value">{account.ifscCode}</span>
-                    </div>
-                    <div className="detail-item">
-                      <span className="detail-label">Branch:</span>
-                      <span className="detail-value">{account.branchName}</span>
-                    </div>
-                  </div>
+      ) : (() => {
+        const filteredAccounts = bankAccounts.filter(account => showInactive ? true : account.isActive);
+        
+        if (filteredAccounts.length === 0) {
+          return (
+            <div className="empty-state">
+              <svg className="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+              <h3>No {showInactive ? '' : 'active '}accounts found</h3>
+              <p>{showInactive ? 'All your accounts are active' : 'Click "Show Inactive" to see inactive accounts'}</p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="accounts-list">
+            {filteredAccounts.map(account => (
+            <div key={account.id} className="account-card-modern">
+              <div className="account-card-header">
+                <div className="account-name-section">
+                  <h3 className="account-name">{account.accountDisplayName || account.accountHolderName || 'Account'}</h3>
+                  <span className={`status-badge-modern ${account.isActive ? 'active' : 'inactive'}`}>
+                    {account.isActive ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-                <div className="account-actions">
-                  <button 
-                    className="action-btn delete"
-                    onClick={() => handleDeleteAccount(account.id)}
-                    title="Delete Account"
-                  >
-                    <svg className="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                <button 
+                  className="delete-btn-modern"
+                  onClick={() => handleDeleteAccount(account.id)}
+                  title="Delete Account"
+                >
+                  <svg className="delete-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="account-details-modern">
+                <div className="detail-row">
+                  <span className="detail-label-modern">Account Holder</span>
+                  <span className="detail-value-modern">{account.accountHolderName || 'N/A'}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label-modern">Account Number</span>
+                  <span className="detail-value-modern account-number-modern">{account.accountNumber || 'N/A'}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label-modern">Account Type</span>
+                  <span className="detail-value-modern">{account.accountType || 'N/A'}</span>
                 </div>
               </div>
             </div>
           ))}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 
@@ -798,12 +920,8 @@ const BankAccountDashboard = ({ addToast }) => {
           </div>
 
           <div className="form-footer">
-            <div className="footer-left">
-              <button onClick={handleCancel} className="cancel-btn" disabled={loading}>
-                Cancel
-              </button>
-            </div>
-            <div className="footer-right">
+            {/* Keyboard Shortcuts - Above buttons */}
+            <div className="keyboard-shortcuts-container">
               <div className="keyboard-shortcuts">
                 <span className="shortcut-hint">
                   <kbd>ALT</kbd> + <kbd>S</kbd> Save
@@ -818,6 +936,13 @@ const BankAccountDashboard = ({ addToast }) => {
                   <kbd>←</kbd> <kbd>→</kbd> Left/Right Arrow
                 </span>
               </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="footer-actions">
+              <button onClick={handleCancel} className="cancel-btn" disabled={loading}>
+                Cancel
+              </button>
               <button onClick={handleSubmit} className="save-btn" disabled={loading}>
                 {loading ? (
                   <>
@@ -839,6 +964,47 @@ const BankAccountDashboard = ({ addToast }) => {
     <div className="bank-dashboard">
       {activeView === 'overview' && renderOverview()}
       {activeView === 'addBank' && renderAddBankForm()}
+      
+      {/* Error Modal */}
+      {errorModal.show && (
+        <div className="error-modal-overlay" onClick={() => setErrorModal({ show: false, title: '', message: '', errors: [] })}>
+          <div className="error-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="error-modal-header">
+              <div className="error-modal-icon">
+                <AlertCircle size={32} />
+              </div>
+              <h3>{errorModal.title}</h3>
+              <button 
+                className="error-modal-close"
+                onClick={() => setErrorModal({ show: false, title: '', message: '', errors: [] })}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="error-modal-body">
+              <p className="error-modal-message">{errorModal.message}</p>
+              
+              {errorModal.errors.length > 0 && (
+                <ul className="error-modal-list">
+                  {errorModal.errors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            
+            <div className="error-modal-footer">
+              <button 
+                className="error-modal-btn"
+                onClick={() => setErrorModal({ show: false, title: '', message: '', errors: [] })}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

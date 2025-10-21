@@ -491,52 +491,62 @@ class BankAccountController {
         });
       }
 
-      if (!accountHolderName?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Account holder name is required",
-          code: "VALIDATION_ERROR",
-        });
+      // ✅ FIXED: Check if this is a cash account
+      const isCashAccount = type === 'cash';
+      console.log('💰 Is Cash Account:', isCashAccount);
+
+      // ✅ FIXED: Only validate bank-specific fields for non-cash accounts
+      if (!isCashAccount) {
+        if (!accountHolderName?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "Account holder name is required",
+            code: "VALIDATION_ERROR",
+          });
+        }
+
+        if (!accountNumber?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "Account number is required",
+            code: "VALIDATION_ERROR",
+          });
+        }
+
+        if (!ifscCode?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "IFSC code is required",
+            code: "VALIDATION_ERROR",
+          });
+        }
+
+        if (!bankName?.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: "Bank name is required",
+            code: "VALIDATION_ERROR",
+          });
+        }
       }
 
-      if (!accountNumber?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Account number is required",
-          code: "VALIDATION_ERROR",
+      // ✅ FIXED: Check for duplicate account number (only for non-cash accounts)
+      if (!isCashAccount && accountNumber?.trim()) {
+        const existingAccount = await BankAccount.findOne({
+          companyId: mongoose.Types.ObjectId.isValid(companyId)
+            ? new mongoose.Types.ObjectId(companyId)
+            : companyId,
+          accountNumber: accountNumber.trim(),
+          type: { $ne: 'cash' } // Exclude cash accounts from duplicate check
         });
-      }
 
-      if (!ifscCode?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "IFSC code is required",
-          code: "VALIDATION_ERROR",
-        });
-      }
-
-      if (!bankName?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Bank name is required",
-          code: "VALIDATION_ERROR",
-        });
-      }
-
-      // Check for duplicate account number
-      const existingAccount = await BankAccount.findOne({
-        companyId: mongoose.Types.ObjectId.isValid(companyId)
-          ? new mongoose.Types.ObjectId(companyId)
-          : companyId,
-        accountNumber: accountNumber.trim(),
-      });
-
-      if (existingAccount) {
-        return res.status(409).json({
-          success: false,
-          message: "An account with this account number already exists",
-          code: "DUPLICATE_ACCOUNT_NUMBER",
-        });
+        if (existingAccount) {
+          return res.status(409).json({
+            success: false,
+            message: "An account with this account number already exists",
+            code: "DUPLICATE_ACCOUNT_NUMBER",
+          });
+        }
       }
 
       // Calculate current balance based on opening balance and type

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Form, Button, Row, Col, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -7,13 +7,23 @@ import {
   faCalendarAlt, 
   faCreditCard,
   faSave,
-  faSpinner
+  faSpinner,
+  faInfoCircle
 } from '@fortawesome/free-solid-svg-icons';
 import Select from 'react-select';
 import paymentService from '../../../services/paymentService';
 import { customerService, vendorService } from '../../../services/customerVendorService';
 
 const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
+  // Refs for form fields navigation
+  const dateRef = useRef(null);
+  const partyRef = useRef(null);
+  const amountRef = useRef(null);
+  const paymentMethodRef = useRef(null);
+  const referenceNumberRef = useRef(null);
+  const descriptionRef = useRef(null);
+  const submitButtonRef = useRef(null);
+
   // Form state
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -144,7 +154,7 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
     }
   }, [currentCompany, addToast]);
 
-  // Handle form field changes
+  // Handle input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -158,6 +168,27 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
         ...prev,
         [name]: null
       }));
+    }
+  };
+
+  // Handle Enter key to move to next field
+  const handleKeyDown = (e, nextRef) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (nextRef && nextRef.current) {
+        // For react-select components
+        if (nextRef.current.focus) {
+          nextRef.current.focus();
+        }
+        // For regular input elements
+        else if (nextRef.current.select) {
+          nextRef.current.select();
+        }
+        // For submit button
+        else if (nextRef.current.click) {
+          nextRef.current.click();
+        }
+      }
     }
   };
 
@@ -361,10 +392,12 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                     Date *
                   </Form.Label>
                   <Form.Control
+                    ref={dateRef}
                     type="date"
                     name="date"
                     value={formData.date}
                     onChange={handleInputChange}
+                    onKeyDown={(e) => handleKeyDown(e, partyRef)}
                     isInvalid={!!errors.date}
                     required
                   />
@@ -382,6 +415,7 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                     Select Party *
                   </Form.Label>
                   <Select
+                    ref={partyRef}
                     value={formData.party}
                     onChange={handlePartyChange}
                     options={groupedParties.length > 0 ? groupedParties : parties}
@@ -389,6 +423,9 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                     placeholder="Search and select party..."
                     isLoading={loadingParties}
                     styles={selectStyles}
+                    onKeyDown={(e) => handleKeyDown(e, amountRef)}
+                    openMenuOnClick={true}
+                    openMenuOnFocus={true}
                     noOptionsMessage={() => loadingParties ? "Loading parties..." : "No parties found. Add customers, vendors, or end customers first."}
                     formatGroupLabel={(data) => (
                       <div style={{ 
@@ -431,10 +468,12 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                     Amount *
                   </Form.Label>
                   <Form.Control
+                    ref={amountRef}
                     type="number"
                     name="amount"
                     value={formData.amount}
                     onChange={handleInputChange}
+                    onKeyDown={(e) => handleKeyDown(e, paymentMethodRef)}
                     placeholder="Enter amount"
                     step="0.01"
                     min="0"
@@ -455,9 +494,11 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                     Payment Method *
                   </Form.Label>
                   <Form.Select
+                    ref={paymentMethodRef}
                     name="paymentMethod"
                     value={formData.paymentMethod}
                     onChange={handleInputChange}
+                    onKeyDown={(e) => handleKeyDown(e, referenceNumberRef)}
                     isInvalid={!!errors.paymentMethod}
                     required
                   >
@@ -480,10 +521,12 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                 <Form.Group>
                   <Form.Label>Find Invoice</Form.Label>
                   <Form.Control
+                    ref={referenceNumberRef}
                     type="text"
                     name="referenceNumber"
                     value={formData.referenceNumber}
                     onChange={handleInputChange}
+                    onKeyDown={(e) => handleKeyDown(e, descriptionRef)}
                     placeholder="Find Invoice"
                   />
                 </Form.Group>
@@ -494,20 +537,52 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                 <Form.Group>
                   <Form.Label>Description</Form.Label>
                   <Form.Control
+                    ref={descriptionRef}
                     as="textarea"
                     rows={1}
                     name="description"
                     value={formData.description}
                     onChange={handleInputChange}
+                    onKeyDown={(e) => handleKeyDown(e, submitButtonRef)}
                     placeholder="Payment description (optional)"
                   />
                 </Form.Group>
               </Col>
             </Row>
 
+            {/* Keyboard Shortcut Info */}
+            <div className="mt-3 mb-3">
+              <Alert variant="info" className="py-2 px-3 mb-0" style={{ 
+                fontSize: '0.875rem',
+                backgroundColor: '#e7f3ff',
+                borderColor: '#b3d9ff',
+                color: '#004085'
+              }}>
+                <div className="d-flex align-items-center">
+                  <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                  <span>
+                    <strong>Quick Tip:</strong> Press <kbd style={{
+                      backgroundColor: '#f8f9fa',
+                      border: '2px solid #495057',
+                      borderRadius: '5px',
+                      padding: '4px 10px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      color: '#212529',
+                      boxShadow: '0 3px 0 #adb5bd, 0 4px 6px rgba(0,0,0,0.2)',
+                      display: 'inline-block',
+                      marginLeft: '4px',
+                      marginRight: '4px'
+                    }}>Enter ↵</kbd> to move to the next field for faster data entry
+                  </span>
+                </div>
+              </Alert>
+            </div>
+
             {/* Submit Button */}
             <div className="d-flex justify-content-end mt-4">
               <Button 
+                ref={submitButtonRef}
                 type="submit" 
                 variant="success" 
                 disabled={loading}

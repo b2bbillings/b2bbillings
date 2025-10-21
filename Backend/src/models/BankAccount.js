@@ -59,7 +59,7 @@ const bankAccountSchema = new mongoose.Schema(
     // Account Type - Updated to match frontend
     type: {
       type: String,
-      enum: ["bank", "upi"],
+      enum: ["bank", "cash", "upi"],
       default: "bank",
       required: true,
     },
@@ -71,25 +71,39 @@ const bankAccountSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Bank Information (Required for both bank and UPI accounts)
+    // Bank Information (Required for bank and UPI accounts, optional for cash)
     bankName: {
       type: String,
-      required: true,
+      required: function() {
+        return this.type !== 'cash';
+      },
       trim: true,
       maxlength: 100,
     },
     accountNumber: {
       type: String,
-      required: true,
+      required: function() {
+        return this.type !== 'cash';
+      },
       trim: true,
       maxlength: 20,
     },
     ifscCode: {
       type: String,
-      required: true,
+      required: function() {
+        return this.type !== 'cash';
+      },
       trim: true,
       uppercase: true,
-      match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, "Please enter a valid IFSC code"],
+      validate: {
+        validator: function(v) {
+          // Skip validation for cash accounts
+          if (this.type === 'cash') return true;
+          if (!v) return false;
+          return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v);
+        },
+        message: "Please enter a valid IFSC code"
+      }
     },
     branchName: {
       type: String,
