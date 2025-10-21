@@ -11,6 +11,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import Select from 'react-select';
 import paymentService from '../../../services/paymentService';
+import { customerService, vendorService } from '../../../services/customerVendorService';
 
 const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
   // Form state
@@ -28,6 +29,8 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
   const [loading, setLoading] = useState(false);
   const [loadingParties, setLoadingParties] = useState(true);
   const [errors, setErrors] = useState({});
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [savedPaymentData, setSavedPaymentData] = useState(null);
 
   // Payment method options
   const paymentMethods = [
@@ -39,29 +42,91 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
     { value: 'other', label: 'Other', icon: faCreditCard }
   ];
 
-  // Fetch parties (customers and vendors) on component mount
+  // Fetch all parties (customers, vendors, and end customers) on component mount
   useEffect(() => {
-    const fetchParties = async () => {
+    const fetchAllParties = async () => {
       try {
         setLoadingParties(true);
-        const companyId = currentCompany?.id || currentCompany?._id;
+        const token = localStorage.getItem('token');
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         
-        // Use the enhanced payment service to fetch parties
-        const result = await paymentService.getPartiesForPayment(companyId, '', 'all');
-        
-        if (result.success && result.data) {
-          // Format parties for react-select
-          const formattedParties = result.data.map(party => ({
-            value: party._id || party.id || party.value,
-            label: `${party.displayName || party.name || party.label} (${party.type || party.partyType})`,
-            type: party.type || party.partyType,
-            data: party
-          }));
+        // Fetch customers, vendors, and end customers in parallel
+        const [customersResponse, vendorsResponse, endCustomersResponse] = await Promise.allSettled([
+          customerService.getAllCustomers(),
+          vendorService.getAllVendors(),
+          fetch(`${API_BASE_URL}/end-customers`, {
+            headers: {
+              'Authorization': token ? `Bearer ${token}` : '',
+              'Content-Type': 'application/json'
+            }
+          }).then(res => res.json())
+        ]);
 
-          setParties(formattedParties);
-        } else {
-          console.warn('No parties found or failed to fetch:', result.message);
-          setParties([]);
+        const allParties = [];
+
+        // Process customers
+        if (customersResponse.status === 'fulfilled' && customersResponse.value) {
+          const customers = Array.isArray(customersResponse.value) 
+            ? customersResponse.value 
+            : customersResponse.value.data || [];
+          
+          customers.forEach(customer => {
+            allParties.push({
+              value: customer._id || customer.id,
+              label: `${customer.name || customer.customerName} (Customer)`,
+              type: 'customer',
+              data: customer,
+              phone: customer.phone,
+              email: customer.email
+            });
+          });
+        }
+
+        // Process vendors
+        if (vendorsResponse.status === 'fulfilled' && vendorsResponse.value) {
+          const vendors = Array.isArray(vendorsResponse.value) 
+            ? vendorsResponse.value 
+            : vendorsResponse.value.data || [];
+          
+          vendors.forEach(vendor => {
+            allParties.push({
+              value: vendor._id || vendor.id,
+              label: `${vendor.name || vendor.vendorName} (Vendor)`,
+              type: 'vendor',
+              data: vendor,
+              phone: vendor.phone,
+              email: vendor.email
+            });
+          });
+        }
+
+        // Process end customers
+        if (endCustomersResponse.status === 'fulfilled' && endCustomersResponse.value) {
+          const endCustomers = Array.isArray(endCustomersResponse.value) 
+            ? endCustomersResponse.value 
+            : endCustomersResponse.value.data || [];
+          
+          endCustomers.forEach(endCustomer => {
+            allParties.push({
+              value: endCustomer._id || endCustomer.id,
+              label: `${endCustomer.customerName || endCustomer.name} (End Customer)`,
+              type: 'end_customer',
+              data: endCustomer,
+              phone: endCustomer.whatsapp
+            });
+          });
+        }
+
+        // Sort parties alphabetically by label
+        allParties.sort((a, b) => a.label.localeCompare(b.label));
+
+        setParties(allParties);
+        
+        if (allParties.length === 0) {
+          console.warn('No parties found');
+          if (addToast) {
+            addToast('No parties found. Please add customers, vendors, or end customers first.', 'info');
+          }
         }
       } catch (error) {
         console.error('Error fetching parties:', error);
@@ -74,7 +139,9 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
       }
     };
 
-    fetchParties();
+    if (currentCompany) {
+      fetchAllParties();
+    }
   }, [currentCompany, addToast]);
 
   // Handle form field changes
@@ -145,30 +212,59 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
     
     try {
       const companyId = currentCompany?.id || currentCompany?._id;
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       
+      // Prepare payment data matching backend requirements
       const paymentData = {
         date: formData.date,
         partyId: formData.party.value,
+        partyName: formData.party.label.split(' (')[0], // Extract name without type
         partyType: formData.party.type,
+        type: 'payment_in',
+        paymentType: 'payment_in',
+        companyId: companyId,
         amount: parseFloat(formData.amount),
         paymentMethod: formData.paymentMethod,
-        description: formData.description,
-        referenceNumber: formData.referenceNumber,
-        type: 'payment_in',
-        companyId
+        referenceNumber: formData.referenceNumber || '',
+        description: formData.description || ''
       };
 
-      // Use the enhanced payment service for submission
-      const response = await paymentService.createSimplePayment({
-        ...paymentData,
-        paymentType: 'payment_in',
-        partyName: formData.party.label.split(' (')[0] // Extract name without type
+      // For non-cash payments, bank account is optional but can be added later
+      if (formData.paymentMethod !== 'cash' && formData.bankAccountId) {
+        paymentData.bankAccountId = formData.bankAccountId;
+      }
+
+      // Make direct API call to backend
+      const response = await fetch(`${API_BASE_URL}/payments/payment-in`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify(paymentData)
       });
 
-      if (response.success) {
-        if (addToast) {
-          addToast('Payment In recorded successfully', 'success');
-        }
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save payment');
+      }
+
+      if (result.success) {
+        // Store payment data for success modal
+        setSavedPaymentData({
+          paymentNumber: result.data?.payment?.paymentNumber || 'N/A',
+          partyName: formData.party.label.split(' (')[0],
+          amount: formData.amount,
+          paymentMethod: formData.paymentMethod,
+          date: formData.date,
+          description: formData.description,
+          referenceNumber: formData.referenceNumber
+        });
+
+        // Show success modal
+        setShowSuccessModal(true);
 
         // Reset form
         setFormData({
@@ -180,7 +276,7 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
           referenceNumber: ''
         });
       } else {
-        throw new Error(response.message || 'Failed to save payment');
+        throw new Error(result.message || 'Failed to save payment');
       }
     } catch (error) {
       console.error('Error saving payment:', error);
@@ -210,8 +306,39 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
     placeholder: (provided) => ({
       ...provided,
       color: '#6c757d'
+    }),
+    menu: (provided) => ({
+      ...provided,
+      zIndex: 9999
+    }),
+    option: (provided, state) => ({
+      ...provided,
+      backgroundColor: state.isSelected 
+        ? '#0d6efd' 
+        : state.isFocused 
+        ? '#e7f3ff' 
+        : 'white',
+      color: state.isSelected ? 'white' : '#212529',
+      cursor: 'pointer',
+      padding: '8px 12px'
     })
   };
+
+  // Group parties by type for better organization
+  const groupedParties = [
+    {
+      label: 'Customers',
+      options: parties.filter(p => p.type === 'customer')
+    },
+    {
+      label: 'Vendors',
+      options: parties.filter(p => p.type === 'vendor')
+    },
+    {
+      label: 'End Customers',
+      options: parties.filter(p => p.type === 'end_customer')
+    }
+  ].filter(group => group.options.length > 0); // Only show groups that have options
 
   return (
     <div className="payment-in-container">
@@ -257,12 +384,34 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
                   <Select
                     value={formData.party}
                     onChange={handlePartyChange}
-                    options={parties}
+                    options={groupedParties.length > 0 ? groupedParties : parties}
                     isSearchable
                     placeholder="Search and select party..."
                     isLoading={loadingParties}
                     styles={selectStyles}
-                    noOptionsMessage={() => loadingParties ? "Loading parties..." : "No parties found"}
+                    noOptionsMessage={() => loadingParties ? "Loading parties..." : "No parties found. Add customers, vendors, or end customers first."}
+                    formatGroupLabel={(data) => (
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        fontWeight: 'bold',
+                        color: '#495057',
+                        fontSize: '0.875rem',
+                        textTransform: 'uppercase',
+                        padding: '4px 0'
+                      }}>
+                        <span>{data.label}</span>
+                        <span style={{
+                          backgroundColor: '#e9ecef',
+                          borderRadius: '10px',
+                          padding: '2px 8px',
+                          fontSize: '0.75rem'
+                        }}>
+                          {data.options.length}
+                        </span>
+                      </div>
+                    )}
                   />
                   {errors.party && (
                     <div className="invalid-feedback d-block">
@@ -387,6 +536,166 @@ const PaymentIn = ({ currentCompany, currentUser, addToast }) => {
           <FontAwesomeIcon icon={faUser} className="me-2" />
           Please select a company to record payments.
         </Alert>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && savedPaymentData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          animation: 'fadeIn 0.3s ease-out'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+            animation: 'slideUp 0.3s ease-out',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+              padding: '30px',
+              textAlign: 'center'
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                margin: '0 auto 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 8px 20px rgba(0, 0, 0, 0.1)'
+              }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                  <path d="M20 6L9 17L4 12" stroke="#28a745" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <h2 style={{
+                color: 'white',
+                fontSize: '24px',
+                fontWeight: '600',
+                margin: '0'
+              }}>Payment Received!</h2>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: '14px',
+                margin: '10px 0 0'
+              }}>Payment has been successfully recorded</p>
+            </div>
+
+            {/* Payment Details */}
+            <div style={{ padding: '30px' }}>
+              <div style={{
+                backgroundColor: '#f8f9fa',
+                borderRadius: '12px',
+                padding: '20px',
+                marginBottom: '20px'
+              }}>
+                <div style={{ marginBottom: '15px' }}>
+                  <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px', fontWeight: '500' }}>
+                    Payment Number
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: '#28a745' }}>
+                    {savedPaymentData.paymentNumber}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid #dee2e6', paddingTop: '15px', marginTop: '15px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>Party Name</div>
+                      <div style={{ fontSize: '14px', fontWeight: '500', color: '#212529' }}>
+                        {savedPaymentData.partyName}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>Amount</div>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#28a745' }}>
+                        ₹{parseFloat(savedPaymentData.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>Payment Method</div>
+                      <div style={{ fontSize: '14px', fontWeight: '500', color: '#212529', textTransform: 'capitalize' }}>
+                        {savedPaymentData.paymentMethod.replace('_', ' ')}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>Date</div>
+                      <div style={{ fontSize: '14px', fontWeight: '500', color: '#212529' }}>
+                        {new Date(savedPaymentData.date).toLocaleDateString('en-IN')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {savedPaymentData.description && (
+                  <div style={{ borderTop: '1px solid #dee2e6', paddingTop: '15px', marginTop: '15px' }}>
+                    <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>Description</div>
+                    <div style={{ fontSize: '14px', color: '#495057' }}>{savedPaymentData.description}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  setSavedPaymentData(null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px 24px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#218838'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
+              >
+                Add Another Payment
+              </button>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes slideUp {
+              from {
+                opacity: 0;
+                transform: translateY(20px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+          `}</style>
+        </div>
       )}
     </div>
   );

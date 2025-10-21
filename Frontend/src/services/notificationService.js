@@ -20,14 +20,14 @@ const CONFIG = {
 };
 
 // ✅ Debug logging for environment detection
-console.log("🔔 NotificationService Config:", {
-  API_BASE_URL: CONFIG.API_BASE_URL,
-  WEBSOCKET_URL: CONFIG.WEBSOCKET_URL,
-  environment: CONFIG.API_BASE_URL.includes("localhost")
-    ? "development"
-    : "production",
-  timeout: CONFIG.REQUEST_TIMEOUT,
-});
+// console.log("🔔 NotificationService Config:", {
+//   API_BASE_URL: CONFIG.API_BASE_URL,
+//   WEBSOCKET_URL: CONFIG.WEBSOCKET_URL,
+//   environment: CONFIG.API_BASE_URL.includes("localhost")
+//     ? "development"
+//     : "production",
+//   timeout: CONFIG.REQUEST_TIMEOUT,
+// });
 
 // ===============================
 // 🔧 EVENT EMITTER
@@ -101,11 +101,11 @@ class APIClient {
     this.setupInterceptors();
 
     // ✅ Enhanced debug logging
-    console.log("🔔 NotificationService APIClient initialized:", {
-      originalBaseURL: CONFIG.API_BASE_URL,
-      finalBaseURL: baseURL,
-      timeout: CONFIG.REQUEST_TIMEOUT,
-    });
+    // console.log("🔔 NotificationService APIClient initialized:", {
+    //   originalBaseURL: CONFIG.API_BASE_URL,
+    //   finalBaseURL: baseURL,
+    //   timeout: CONFIG.REQUEST_TIMEOUT,
+    // });
   }
 
   setupInterceptors() {
@@ -123,14 +123,14 @@ class APIClient {
         }
 
         // ✅ Enhanced debug logging for notification requests
-        console.log("🔔 Notification API Request:", {
-          url: config.url,
-          fullURL: `${config.baseURL}${config.url}`,
-          method: config.method,
-          hasToken: !!token,
-          companyId,
-          baseURL: config.baseURL,
-        });
+        // console.log("🔔 Notification API Request:", {
+        //   url: config.url,
+        //   fullURL: `${config.baseURL}${config.url}`,
+        //   method: config.method,
+        //   hasToken: !!token,
+        //   companyId,
+        //   baseURL: config.baseURL,
+        // });
 
         config.metadata = {startTime: Date.now()};
         return config;
@@ -141,11 +141,11 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => {
         // ✅ Success logging
-        console.log("✅ Notification API Success:", {
-          url: response.config.url,
-          status: response.status,
-          duration: Date.now() - response.config.metadata?.startTime || 0,
-        });
+        // console.log("✅ Notification API Success:", {
+        //   url: response.config.url,
+        //   status: response.status,
+        //   duration: Date.now() - response.config.metadata?.startTime || 0,
+        // });
         return response;
       },
       (error) => {
@@ -344,12 +344,12 @@ class NotificationService extends EventEmitter {
     const token = this.api.getAuthToken();
     const user = this.getCurrentUser();
 
-    console.log("🔐 NotificationService Auth Check:", {
-      hasToken: !!token,
-      hasUser: !!user,
-      userEmail: user?.email,
-      tokenLength: token?.length || 0,
-    });
+    // console.log("🔐 NotificationService Auth Check:", {
+    //   hasToken: !!token,
+    //   hasUser: !!user,
+    //   userEmail: user?.email,
+    //   tokenLength: token?.length || 0,
+    // });
 
     if (!token || !user) {
       console.warn(
@@ -397,7 +397,7 @@ class NotificationService extends EventEmitter {
         .replace(/^http/, "ws")
         .replace(/^https/, "wss");
 
-      console.log("🔔 NotificationService: Connecting to WebSocket:", wsUrl);
+      // console.log("🔔 NotificationService: Connecting to WebSocket:", wsUrl);
 
       this.socket = io(wsUrl, {
         auth: {token},
@@ -425,7 +425,7 @@ class NotificationService extends EventEmitter {
       this.isConnected = true;
       this.retryCount = 0;
       this.emit("connected");
-      console.log("🔔 NotificationService: WebSocket connected");
+      // console.log("🔔 NotificationService: WebSocket connected");
 
       const user = this.getCurrentUser();
       if (user?.id) {

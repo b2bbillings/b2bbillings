@@ -14,13 +14,13 @@ const APP_VERSION = process.env.REACT_APP_VERSION || "2.1.0";
 
 const logDebug = (message, data) => {
   if (isDevelopment) {
-    console.log(`🔧 CHATSERVICE: ${message}`, data || "");
+    // console.log(`🔧 CHATSERVICE: ${message}`, data || "");
   }
 };
 
 const logInfo = (message, data) => {
   if (isDevelopment) {
-    console.log(`ℹ️ CHATSERVICE: ${message}`, data || "");
+    // console.log(`ℹ️ CHATSERVICE: ${message}`, data || "");
   }
 };
 

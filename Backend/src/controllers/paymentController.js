@@ -523,16 +523,11 @@ const createPaymentIn = async (req, res) => {
       });
     }
 
-    // Enhanced bank account validation
-    if (paymentMethod && paymentMethod !== "cash" && !effectiveBankAccountId) {
-      return res.status(400).json({
-        success: false,
-        message: "Bank account is required for non-cash payments",
-      });
-    }
-
+    // Enhanced bank account validation (optional for now)
+    // Bank account is optional - it can be linked later
     if (
       effectiveBankAccountId &&
+      effectiveBankAccountId !== null &&
       !mongoose.Types.ObjectId.isValid(effectiveBankAccountId)
     ) {
       return res.status(400).json({
@@ -962,16 +957,11 @@ const createPaymentOut = async (req, res) => {
       });
     }
 
-    // Enhanced bank account validation
-    if (paymentMethod && paymentMethod !== "cash" && !effectiveBankAccountId) {
-      return res.status(400).json({
-        success: false,
-        message: "Bank account is required for non-cash payments",
-      });
-    }
-
+    // Enhanced bank account validation (optional for now)
+    // Bank account is optional - it can be linked later
     if (
       effectiveBankAccountId &&
+      effectiveBankAccountId !== null &&
       !mongoose.Types.ObjectId.isValid(effectiveBankAccountId)
     ) {
       return res.status(400).json({
@@ -2642,6 +2632,9 @@ const createSimplePayment = async (req, res) => {
     // Get models
     const Payment = getModel("Payment");
     const Party = getModel("Party");
+    const Customer = getModel("Customer");
+    const Vendor = getModel("Vendor");
+    const EndCustomer = getModel("EndCustomer");
     const Transaction = getModel("Transaction");
 
     if (!Payment) {
@@ -2651,16 +2644,29 @@ const createSimplePayment = async (req, res) => {
       });
     }
 
-    // Verify party exists
+    // Verify party exists based on party type
     let partyDoc = null;
-    if (Party) {
-      partyDoc = await Party.findById(partyId);
-      if (!partyDoc) {
-        return res.status(404).json({
-          success: false,
-          message: "Party not found"
-        });
+    const partyTypeValue = partyType || 'customer';
+    
+    try {
+      if (partyTypeValue === 'customer' && Customer) {
+        partyDoc = await Customer.findById(partyId);
+      } else if (partyTypeValue === 'vendor' && Vendor) {
+        partyDoc = await Vendor.findById(partyId);
+      } else if (partyTypeValue === 'end_customer' && EndCustomer) {
+        partyDoc = await EndCustomer.findById(partyId);
+      } else if (Party) {
+        // Fallback to Party model
+        partyDoc = await Party.findById(partyId);
       }
+      
+      // If party not found, it's okay - we'll use the partyName from request
+      if (!partyDoc) {
+        console.log(`⚠️ Party not found in ${partyTypeValue} model, using provided partyName`);
+      }
+    } catch (error) {
+      console.error('Error finding party:', error);
+      // Continue with partyName from request
     }
 
     // Generate payment number
@@ -2696,18 +2702,31 @@ const createSimplePayment = async (req, res) => {
     // Create payment
     const payment = await Payment.create(paymentData);
 
-    // Update party balance
-    if (Party && partyDoc) {
-      const balanceChange = effectiveType === 'payment_in' 
-        ? -parseFloat(amount)  // Customer paid, reduce their balance
-        : parseFloat(amount);   // We paid vendor, increase their balance
-      
-      partyDoc.currentBalance = (partyDoc.currentBalance || 0) + balanceChange;
-      await partyDoc.save();
+    // Update party balance if party document found
+    if (partyDoc) {
+      try {
+        const balanceChange = effectiveType === 'payment_in' 
+          ? -parseFloat(amount)  // Customer paid, reduce their balance
+          : parseFloat(amount);   // We paid vendor, increase their balance
+        
+        // Check which balance field to use
+        if ('currentBalance' in partyDoc) {
+          partyDoc.currentBalance = (partyDoc.currentBalance || 0) + balanceChange;
+        } else if ('balance' in partyDoc) {
+          partyDoc.balance = (partyDoc.balance || 0) + balanceChange;
+        } else if ('openingBalance' in partyDoc) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balanceChange;
+        }
+        
+        await partyDoc.save();
 
-      // Update payment with new balance
-      payment.partyBalanceAfter = partyDoc.currentBalance;
-      await payment.save();
+        // Update payment with new balance
+        payment.partyBalanceAfter = partyDoc.currentBalance || partyDoc.balance || partyDoc.openingBalance || 0;
+        await payment.save();
+      } catch (balanceError) {
+        console.error('Error updating party balance:', balanceError);
+        // Don't fail the payment if balance update fails
+      }
     }
 
     // Create transaction record

@@ -431,13 +431,13 @@ AccordionItem.displayName = "AccordionItem";
 const SubMenuItem = React.memo(
   ({ child, isActive, isDisabled, onClick, isNavigating, onContentChange, toggleSidebar }) => {
     const handleClick = (e) => {
-      console.log("🎯 SubMenuItem handleClick called for:", child.id);
+      // console.log("🎯 SubMenuItem handleClick called for:", child.id);
       
       // Prevent default link behavior to allow React Router navigation
       e.preventDefault();
       
       if (isDisabled || !child.isActive) {
-        console.log("⚠️ Item disabled or inactive:", { isDisabled, isActive: child.isActive });
+        // console.log("⚠️ Item disabled or inactive:", { isDisabled, isActive: child.isActive });
         return;
       }
       
@@ -448,11 +448,11 @@ const SubMenuItem = React.memo(
       
       if (routeNavigationItems.includes(child.id)) {
         // For customers and vendors, navigate to the specific route
-        console.log("🚀 Route navigation item - navigating to:", child.id);
+        // console.log("🚀 Route navigation item - navigating to:", child.id);
         onClick(child.id);
       } else if (contentDisplayItems.includes(child.id)) {
         // For pure content display items, only call onContentChange
-        console.log("📋 Content display item - calling onContentChange for:", child.id, child.label);
+        // console.log("📋 Content display item - calling onContentChange for:", child.id, child.label);
         if (onContentChange) {
           onContentChange(child.id, child.label);
         }
@@ -460,12 +460,12 @@ const SubMenuItem = React.memo(
         return;
       } else {
         // For all other items, call both onClick and onContentChange
-        console.log("🚀 Calling onClick for:", child.id);
+        // console.log("🚀 Calling onClick for:", child.id);
         onClick(child.id);
         
         // Also call onContentChange
         if (onContentChange) {
-          console.log("📋 Calling onContentChange for:", child.id, child.label);
+          // console.log("📋 Calling onContentChange for:", child.id, child.label);
           onContentChange(child.id, child.label);
         }
       }
@@ -594,14 +594,14 @@ const NewSidebar = React.memo(
             }
             break;
           case "gst":
-            console.log("🎯 GST Navigation Debug:", {
-              effectiveCompanyId,
-              targetUrl: effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/gst` : "/info/gst"
-            });
+            // console.log("🎯 GST Navigation Debug:", {
+            //   effectiveCompanyId,
+            //   targetUrl: effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/gst` : "/info/gst"
+            // });
             try {
               const targetUrl = effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/gst` : "/info/gst";
-              console.log("🚀 About to call navigate() with:", targetUrl);
-              console.log("🔧 Navigate function:", typeof navigate, navigate);
+              // console.log("🚀 About to call navigate() with:", targetUrl);
+              // console.log("🔧 Navigate function:", typeof navigate, navigate);
               
               // Try multiple navigation approaches
               try {
@@ -613,9 +613,9 @@ const NewSidebar = React.memo(
               
               // Force URL change and trigger React Router
               setTimeout(() => {
-                console.log("🔄 Checking if URL changed:", window.location.pathname);
+                // console.log("🔄 Checking if URL changed:", window.location.pathname);
                 if (!window.location.pathname.includes('/info/gst')) {
-                  console.log("⚠️ URL didn't change, forcing navigation...");
+                  // console.log("⚠️ URL didn't change, forcing navigation...");
                   window.history.pushState(null, '', targetUrl);
                   
                   // Trigger a popstate event to make React Router aware of the change
@@ -624,7 +624,7 @@ const NewSidebar = React.memo(
                   // Also try a hard refresh if needed
                   setTimeout(() => {
                     if (!window.location.pathname.includes('/info/gst')) {
-                      console.log("🔄 Hard refresh needed");
+                      // console.log("🔄 Hard refresh needed");
                       window.location.href = targetUrl;
                     }
                   }, 200);
@@ -635,28 +635,28 @@ const NewSidebar = React.memo(
             }
             break;
           case "companyBrand":
-            console.log("🎯 Company/Brand Navigation Debug:", {
-              effectiveCompanyId,
-              targetUrl: effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/company-brand` : "/info/company-brand"
-            });
+            // console.log("🎯 Company/Brand Navigation Debug:", {
+            //   effectiveCompanyId,
+            //   targetUrl: effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/company-brand` : "/info/company-brand"
+            // });
             try {
               const targetUrl = effectiveCompanyId ? `/companies/${effectiveCompanyId}/info/company-brand` : "/info/company-brand";
-              console.log("🚀 About to call navigate() with:", targetUrl);
-              console.log("🔧 Navigate function:", typeof navigate, navigate);
+              // console.log("🚀 About to call navigate() with:", targetUrl);
+              // console.log("🔧 Navigate function:", typeof navigate, navigate);
               
               // Try multiple navigation approaches
               try {
                 navigate(targetUrl, { replace: false });
-                console.log("✅ Navigate call completed successfully");
+                // console.log("✅ Navigate call completed successfully");
               } catch (navError) {
                 console.error("❌ navigate() failed:", navError);
               }
               
               // Force URL change and trigger React Router
               setTimeout(() => {
-                console.log("🔄 Checking if URL changed:", window.location.pathname);
+                // console.log("🔄 Checking if URL changed:", window.location.pathname);
                 if (!window.location.pathname.includes('/info/company-brand')) {
-                  console.log("⚠️ URL didn't change, forcing navigation...");
+                  // console.log("⚠️ URL didn't change, forcing navigation...");
                   window.history.pushState(null, '', targetUrl);
                   
                   // Trigger a popstate event to make React Router aware of the change
@@ -665,7 +665,7 @@ const NewSidebar = React.memo(
                   // Also try a hard refresh if needed
                   setTimeout(() => {
                     if (!window.location.pathname.includes('/info/company-brand')) {
-                      console.log("🔄 Hard refresh needed");
+                      // console.log("🔄 Hard refresh needed");
                       window.location.href = targetUrl;
                     }
                   }, 200);
@@ -867,7 +867,7 @@ const NewSidebar = React.memo(
         path = infoMap[type];
       }
 
-      console.log("🔗 Generated path for", type, ":", path); // Debug log
+      // console.log("🔗 Generated path for", type, ":", path); // Debug log
       return path;
     };
 
@@ -1080,7 +1080,7 @@ const NewSidebar = React.memo(
                       to={getPath('salesWithGST')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
                       onClick={() => {
-                        console.log("🖱️ Clicked Sales with GST"); // Debug log
+                        // console.log("🖱️ Clicked Sales with GST"); // Debug log
                         handleSimpleNavigation("Sales with GST", "salesWithGST");
                       }}
                     >
@@ -1091,7 +1091,7 @@ const NewSidebar = React.memo(
                       to={getPath('salesWithoutGST')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
                       onClick={() => {
-                        console.log("🖱️ Clicked Sales without GST"); // Debug log
+                        // console.log("🖱️ Clicked Sales without GST"); // Debug log
                         handleSimpleNavigation("Sales without GST", "salesWithoutGST");
                       }}
                     >
@@ -1102,7 +1102,7 @@ const NewSidebar = React.memo(
                       to={getPath('salesInvoice')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
                       onClick={() => {
-                        console.log("🖱️ Clicked Sales Invoice"); // Debug log
+                        // console.log("🖱️ Clicked Sales Invoice"); // Debug log
                         handleSimpleNavigation("Sales Invoice", "salesInvoice");
                       }}
                     >
@@ -1113,7 +1113,7 @@ const NewSidebar = React.memo(
                       to={getPath('allBills')}
                       className={({ isActive }) => `new-submenu-item ${isActive ? "active" : ""}`}
                       onClick={() => {
-                        console.log("🖱️ Clicked All Bills"); // Debug log
+                        // console.log("🖱️ Clicked All Bills"); // Debug log
                         handleSimpleNavigation("All Bills", "allBills");
                       }}
                     >
