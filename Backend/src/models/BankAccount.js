@@ -18,12 +18,57 @@ const bankAccountSchema = new mongoose.Schema(
       maxlength: 100,
     },
 
+    // Display Name and Alias
+    accountDisplayName: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 150,
+    },
+    shortName: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+    },
+
+    // Contact Information
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      validate: {
+        validator: function(v) {
+          if (!v) return true; // Optional field
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        },
+        message: 'Please enter a valid email address'
+      }
+    },
+    mobileNo: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: function(v) {
+          if (!v) return true; // Optional field
+          return /^[6-9]\d{9}$/.test(v);
+        },
+        message: 'Please enter a valid mobile number (10 digits starting with 6-9)'
+      }
+    },
+
     // Account Type - Updated to match frontend
     type: {
       type: String,
       enum: ["bank", "upi"],
       default: "bank",
       required: true,
+    },
+
+    // Under Group
+    underGroup: {
+      type: String,
+      default: 'Bank Accounts',
+      trim: true,
     },
 
     // Bank Information (Required for both bank and UPI accounts)
@@ -50,6 +95,18 @@ const bankAccountSchema = new mongoose.Schema(
       type: String,
       trim: true,
       maxlength: 100,
+    },
+    branchAddress: {
+      type: String,
+      trim: true,
+      maxlength: 250,
+    },
+
+    // Additional Information
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: 500,
     },
 
     // UPI Information (Required only for UPI accounts)
@@ -89,8 +146,8 @@ const bankAccountSchema = new mongoose.Schema(
     // Legacy fields - kept for backward compatibility but not used in new system
     accountType: {
       type: String,
-      enum: ["savings", "current", "cash", "fd", "rd", "loan", "cc"],
-      default: "savings",
+      enum: ["Savings", "Current", "Fixed Deposit", "Recurring Deposit", "NRI Account", "Joint Account"],
+      default: "Savings",
     },
     accountHolderName: {
       type: String,
@@ -102,7 +159,11 @@ const bankAccountSchema = new mongoose.Schema(
     openingBalance: {
       type: Number,
       default: 0,
-      min: 0,
+    },
+    balanceType: {
+      type: String,
+      enum: ['Dr', 'Cr'],
+      default: 'Dr',
     },
     currentBalance: {
       type: Number,
@@ -117,6 +178,11 @@ const bankAccountSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    status: {
+      type: String,
+      enum: ['Active', 'Inactive'],
+      default: 'Active',
     },
 
     // Print Settings - kept for backward compatibility
@@ -193,6 +259,28 @@ bankAccountSchema.pre("save", function (next) {
   // Set current balance to opening balance if it's a new document
   if (this.isNew && this.currentBalance === 0) {
     this.currentBalance = this.openingBalance;
+    
+    // Apply balance type (Dr/Cr)
+    if (this.balanceType === 'Cr') {
+      this.currentBalance = -Math.abs(this.currentBalance);
+    }
+  }
+
+  // Sync status with isActive
+  if (this.status === 'Active') {
+    this.isActive = true;
+  } else if (this.status === 'Inactive') {
+    this.isActive = false;
+  }
+
+  // Auto-generate shortName if not provided
+  if (!this.shortName && this.accountDisplayName) {
+    this.shortName = this.accountDisplayName.substring(0, 20);
+  }
+
+  // Auto-generate accountName from accountDisplayName if not provided
+  if (!this.accountName && this.accountDisplayName) {
+    this.accountName = this.accountDisplayName;
   }
 
   // Validate UPI specific fields
@@ -213,6 +301,11 @@ bankAccountSchema.pre("save", function (next) {
   // Ensure UPI ID is lowercase
   if (this.upiId) {
     this.upiId = this.upiId.toLowerCase();
+  }
+
+  // Ensure email is lowercase
+  if (this.email) {
+    this.email = this.email.toLowerCase();
   }
 
   next();

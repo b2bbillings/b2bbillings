@@ -22,7 +22,7 @@ const BankAccountDashboard = ({ addToast }) => {
     bankName: '',
     branchName: '',
     branchAddress: '',
-    openingBalance: '',
+    openingBalance: '0.00',
     balanceType: 'Dr',
     status: 'Active',
     notes: ''
@@ -30,6 +30,32 @@ const BankAccountDashboard = ({ addToast }) => {
 
   const [errors, setErrors] = useState({});
   const [showAccountNumber, setShowAccountNumber] = useState(false);
+
+  // Helper function to get company ID from multiple sources
+  const getCompanyId = () => {
+    let companyId = getSelectedCompany();
+    
+    if (!companyId) {
+      companyId = localStorage.getItem('selectedCompanyId') || 
+                  sessionStorage.getItem('companyId') ||
+                  localStorage.getItem('companyId');
+      
+      if (!companyId) {
+        const currentCompanyStr = localStorage.getItem('currentCompany') || 
+                                   sessionStorage.getItem('currentCompany');
+        if (currentCompanyStr) {
+          try {
+            const currentCompany = JSON.parse(currentCompanyStr);
+            companyId = currentCompany?._id || currentCompany?.id;
+          } catch (e) {
+            console.error('Error parsing currentCompany:', e);
+          }
+        }
+      }
+    }
+    
+    return companyId;
+  };
 
   const bankList = [
     'State Bank of India', 'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Punjab National Bank',
@@ -42,6 +68,79 @@ const BankAccountDashboard = ({ addToast }) => {
     'Savings', 'Current', 'Fixed Deposit', 'Recurring Deposit', 'NRI Account', 'Joint Account'
   ];
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Alt + S: Save
+      if (e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (activeView === 'addBank' && !loading) {
+          handleSubmit();
+        }
+      }
+      
+      // Alt + C: Cancel
+      if (e.altKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        if (activeView === 'addBank') {
+          handleCancel();
+        }
+      }
+      
+      // Alt + D: Discard (same as cancel)
+      if (e.altKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        if (activeView === 'addBank') {
+          handleCancel();
+        }
+      }
+
+      // Escape key: Cancel/Close
+      if (e.key === 'Escape') {
+        if (activeView === 'addBank') {
+          handleCancel();
+        }
+      }
+
+      // Left/Right Arrow: Navigate between Active/Inactive status
+      if (activeView === 'addBank' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const focusedElement = document.activeElement;
+        if (focusedElement?.getAttribute('name') === 'status-toggle') {
+          e.preventDefault();
+          setFormData(prev => ({
+            ...prev,
+            status: prev.status === 'Active' ? 'Inactive' : 'Active'
+          }));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeView, loading, formData]);
+
+  // Debug: Check company ID on mount
+  useEffect(() => {
+    const companyId = getCompanyId();
+    console.log('🏢 Bank Account Dashboard - Company ID:', companyId);
+    console.log('📦 LocalStorage keys:', Object.keys(localStorage));
+    console.log('📦 SessionStorage keys:', Object.keys(sessionStorage));
+    
+    // Log all possible company-related items
+    [
+      'selectedCompany',
+      'selectedCompanyId', 
+      'companyId',
+      'currentCompany',
+      'company'
+    ].forEach(key => {
+      const localValue = localStorage.getItem(key);
+      const sessionValue = sessionStorage.getItem(key);
+      if (localValue) console.log(`  localStorage.${key}:`, localValue);
+      if (sessionValue) console.log(`  sessionStorage.${key}:`, sessionValue);
+    });
+  }, []);
+
   // Load bank accounts on mount
   useEffect(() => {
     loadBankAccounts();
@@ -50,33 +149,45 @@ const BankAccountDashboard = ({ addToast }) => {
   const loadBankAccounts = async () => {
     try {
       setLoading(true);
-      const companyId = getSelectedCompany();
+      const companyId = getCompanyId();
+      
+      console.log('📋 Loading bank accounts for company:', companyId);
+      
       if (!companyId) {
-        console.warn('No company selected for loading bank accounts');
+        console.warn('⚠️ No company selected for loading bank accounts');
         return;
       }
 
       const result = await newBankDetailsService.getBankDetails(companyId, { active: 'true' });
+      
+      console.log('📋 Bank accounts loaded:', result);
+      
       if (result.success) {
-        setBankAccounts(result.data.map(account => ({
+        const accounts = result.data.map(account => ({
           id: account._id,
           _id: account._id,
+          accountDisplayName: account.accountDisplayName || account.accountName,
           bankName: account.bankName,
-          accountNumber: `****${account.accountNumber.slice(-4)}`,
+          accountNumber: `****${account.accountNumber?.slice(-4) || 'XXXX'}`,
           fullAccountNumber: account.accountNumber,
           accountHolderName: account.accountHolderName,
           accountType: account.accountType,
           ifscCode: account.ifscCode,
           branchName: account.branchName,
-          balance: 0,
+          balance: account.currentBalance || 0,
           isActive: account.isActive,
+          status: account.status,
           createdAt: new Date(account.createdAt)
-        })));
+        }));
+        
+        console.log('✅ Formatted accounts:', accounts);
+        setBankAccounts(accounts);
       } else {
-        console.error('Failed to load bank accounts:', result.message);
+        console.error('❌ Failed to load bank accounts:', result.message);
+        addToast?.('Failed to load bank accounts: ' + result.message, 'error');
       }
     } catch (error) {
-      console.error('Error loading bank accounts:', error);
+      console.error('❌ Error loading bank accounts:', error);
       addToast?.('Failed to load bank accounts', 'error');
     } finally {
       setLoading(false);
@@ -94,22 +205,40 @@ const BankAccountDashboard = ({ addToast }) => {
   const validateForm = () => {
     const newErrors = {};
     
-    if (!formData.bankName.trim()) newErrors.bankName = 'Bank name is required';
-    if (!formData.accountDisplayName.trim()) newErrors.accountDisplayName = 'Account display name is required';
-    if (!formData.accountHolderName.trim()) newErrors.accountHolderName = 'Account holder name is required';
-    if (!formData.accountNumber.trim()) newErrors.accountNumber = 'Account number is required';
-    if (formData.accountNumber.length < 9 || formData.accountNumber.length > 18) {
+    // Required fields validation
+    if (!formData.accountDisplayName.trim()) {
+      newErrors.accountDisplayName = 'Account display name is required';
+    }
+    
+    if (!formData.accountHolderName.trim()) {
+      newErrors.accountHolderName = 'Account holder name is required';
+    }
+    
+    if (!formData.accountNumber.trim()) {
+      newErrors.accountNumber = 'Account number is required';
+    } else if (formData.accountNumber.length < 9 || formData.accountNumber.length > 18) {
       newErrors.accountNumber = 'Account number must be between 9-18 digits';
     }
-    if (!formData.confirmAccountNumber.trim()) newErrors.confirmAccountNumber = 'Please confirm account number';
-    if (formData.accountNumber !== formData.confirmAccountNumber) {
-      newErrors.confirmAccountNumber = 'Account numbers do not match';
+    
+    if (!formData.ifscCode.trim()) {
+      newErrors.ifscCode = 'IFSC code is required';
+    } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(formData.ifscCode)) {
+      newErrors.ifscCode = 'Invalid IFSC code format (e.g., SBIN0001234)';
     }
-    if (!formData.ifscCode.trim()) newErrors.ifscCode = 'IFSC code is required';
-    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(formData.ifscCode.toUpperCase())) {
-      newErrors.ifscCode = 'Invalid IFSC code format';
+    
+    if (!formData.bankName.trim()) {
+      newErrors.bankName = 'Bank name is required';
     }
-    if (!formData.branchName.trim()) newErrors.branchName = 'Branch name is required';
+
+    // Email validation (if provided)
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    // Mobile validation (if provided)
+    if (formData.mobileNo && !/^[6-9]\d{9}$/.test(formData.mobileNo)) {
+      newErrors.mobileNo = 'Please enter a valid 10-digit mobile number';
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -123,24 +252,55 @@ const BankAccountDashboard = ({ addToast }) => {
 
     setLoading(true);
     try {
-      const companyId = getSelectedCompany();
+      const companyId = getCompanyId();
+      
+      console.log('🔍 Company ID found:', companyId);
       
       if (!companyId) {
+        addToast?.('Please select a company first. Go to company settings.', 'error');
         throw new Error('Please select a company first');
       }
 
-      const bankDetailData = {
-        bankName: formData.bankName,
+      const bankAccountData = {
+        // Basic Information
+        underGroup: formData.underGroup,
+        accountDisplayName: formData.accountDisplayName.trim(),
+        shortName: formData.shortName.trim() || formData.accountDisplayName.trim().substring(0, 20),
+        accountName: formData.accountDisplayName.trim(),
+        
+        // Contact Information
+        email: formData.email.trim(),
+        mobileNo: formData.mobileNo.trim(),
+        
+        // Bank Details
+        accountHolderName: formData.accountHolderName.trim(),
         accountNumber: formData.accountNumber.trim(),
-        accountHolderName: formData.accountHolderName,
+        ifscCode: formData.ifscCode.toUpperCase().trim(),
+        bankName: formData.bankName.trim(),
+        branchName: formData.branchName.trim(),
+        branchAddress: formData.branchAddress.trim(),
         accountType: formData.accountType,
-        ifscCode: formData.ifscCode.toUpperCase(),
-        branchName: formData.branchName,
-        branchAddress: formData.branchAddress,
-        notes: formData.notes
+        
+        // Balance Information
+        openingBalance: parseFloat(formData.openingBalance) || 0,
+        balanceType: formData.balanceType,
+        
+        // Status
+        status: formData.status,
+        isActive: formData.status === 'Active',
+        
+        // Additional Information
+        notes: formData.notes.trim(),
+        
+        // Type
+        type: 'bank'
       };
 
-      const result = await newBankDetailsService.createBankDetail(companyId, bankDetailData);
+      console.log('📤 Sending bank account data:', bankAccountData);
+
+      const result = await newBankDetailsService.createBankDetail(companyId, bankAccountData);
+      
+      console.log('📥 API Response:', result);
       
       if (result.success) {
         addToast?.('Bank account created successfully!', 'success');
@@ -173,12 +333,13 @@ const BankAccountDashboard = ({ addToast }) => {
       bankName: '',
       branchName: '',
       branchAddress: '',
-      openingBalance: '',
+      openingBalance: '0.00',
       balanceType: 'Dr',
       status: 'Active',
       notes: ''
     });
     setErrors({});
+    setShowAccountNumber(false);
   };
 
   const handleCancel = () => {
@@ -190,7 +351,13 @@ const BankAccountDashboard = ({ addToast }) => {
     if (window.confirm('Are you sure you want to delete this bank account?')) {
       try {
         setLoading(true);
-        const companyId = getSelectedCompany();
+        const companyId = getCompanyId();
+        
+        if (!companyId) {
+          addToast?.('Please select a company first', 'error');
+          return;
+        }
+        
         const result = await newBankDetailsService.deleteBankDetail(companyId, accountId);
         
         if (result.success) {
@@ -337,7 +504,7 @@ const BankAccountDashboard = ({ addToast }) => {
     <div className="form-page">
       <div className="form-page-container">
         <div className="form-page-header">
-          <button onClick={handleCancel} className="back-button">
+          <button onClick={handleCancel} className="back-button" title="Back to list">
             <svg className="back-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -349,11 +516,33 @@ const BankAccountDashboard = ({ addToast }) => {
 
         <div className="form-card">
           <div className="form-body">
+            {/* Under Group */}
+            <div className="form-row">
+              <label className="form-label">
+                Under group
+                <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </label>
+              <div className="form-input-wrapper">
+                <select
+                  name="underGroup"
+                  value={formData.underGroup}
+                  onChange={handleInputChange}
+                  className="form-select"
+                >
+                  <option value="Bank Accounts">Bank Accounts</option>
+                  <option value="Cash in Hand">Cash in Hand</option>
+                  <option value="Current Assets">Current Assets</option>
+                </select>
+              </div>
+            </div>
+
             {/* Account Display Name & Short Name */}
             <div className="form-row-grid">
               <div className="form-row">
                 <label className="form-label">
-                  Account Display Name<span className="required">*</span>
+                  Account display name<span className="required">*</span>
                 </label>
                 <div className="form-input-wrapper">
                   <input
@@ -361,8 +550,9 @@ const BankAccountDashboard = ({ addToast }) => {
                     name="accountDisplayName"
                     value={formData.accountDisplayName}
                     onChange={handleInputChange}
-                    placeholder="e.g., SBI Main Account"
+                    placeholder="Barry Tone PVT. LTD."
                     className={`form-input ${errors.accountDisplayName ? 'error' : ''}`}
+                    autoFocus
                   />
                   {errors.accountDisplayName && <span className="error-text">{errors.accountDisplayName}</span>}
                 </div>
@@ -376,7 +566,39 @@ const BankAccountDashboard = ({ addToast }) => {
                     name="shortName"
                     value={formData.shortName}
                     onChange={handleInputChange}
-                    placeholder="e.g., SBI Main"
+                    placeholder="Jack"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Email & Mobile */}
+            <div className="form-row-grid">
+              <div className="form-row">
+                <label className="form-label">Email</label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="example@domain.com"
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label className="form-label">Mobile No.</label>
+                <div className="form-input-wrapper">
+                  <input
+                    type="tel"
+                    name="mobileNo"
+                    value={formData.mobileNo}
+                    onChange={handleInputChange}
+                    placeholder="99XXXXXX01"
+                    maxLength="10"
                     className="form-input"
                   />
                 </div>
@@ -388,50 +610,11 @@ const BankAccountDashboard = ({ addToast }) => {
               <h3 className="section-title">Bank Details</h3>
 
               <div className="section-content">
+                {/* Account Holder Name & Account Number */}
                 <div className="form-row-grid">
                   <div className="form-row">
                     <label className="form-label">
-                      Bank Name<span className="required">*</span>
-                    </label>
-                    <div className="form-input-wrapper">
-                      <select
-                        name="bankName"
-                        value={formData.bankName}
-                        onChange={handleInputChange}
-                        className={`form-select ${errors.bankName ? 'error' : ''}`}
-                      >
-                        <option value="">Select Bank</option>
-                        {bankList.map(bank => (
-                          <option key={bank} value={bank}>{bank}</option>
-                        ))}
-                      </select>
-                      {errors.bankName && <span className="error-text">{errors.bankName}</span>}
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <label className="form-label">
-                      Account Type<span className="required">*</span>
-                    </label>
-                    <div className="form-input-wrapper">
-                      <select
-                        name="accountType"
-                        value={formData.accountType}
-                        onChange={handleInputChange}
-                        className="form-select"
-                      >
-                        {accountTypes.map(type => (
-                          <option key={type} value={type}>{type}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-row-grid">
-                  <div className="form-row">
-                    <label className="form-label">
-                      Account Holder Name<span className="required">*</span>
+                      Account Holder's Name<span className="required">*</span>
                     </label>
                     <div className="form-input-wrapper">
                       <input
@@ -439,7 +622,7 @@ const BankAccountDashboard = ({ addToast }) => {
                         name="accountHolderName"
                         value={formData.accountHolderName}
                         onChange={handleInputChange}
-                        placeholder="Enter account holder name"
+                        placeholder="My Company"
                         className={`form-input ${errors.accountHolderName ? 'error' : ''}`}
                       />
                       {errors.accountHolderName && <span className="error-text">{errors.accountHolderName}</span>}
@@ -457,13 +640,14 @@ const BankAccountDashboard = ({ addToast }) => {
                           name="accountNumber"
                           value={formData.accountNumber}
                           onChange={handleInputChange}
-                          placeholder="Enter account number"
+                          placeholder="32XXXXXXXX01"
                           className={`form-input ${errors.accountNumber ? 'error' : ''}`}
                         />
                         <button
                           type="button"
                           className="toggle-visibility-btn"
                           onClick={() => setShowAccountNumber(!showAccountNumber)}
+                          title={showAccountNumber ? "Hide account number" : "Show account number"}
                         >
                           {showAccountNumber ? (
                             <svg className="eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -482,24 +666,8 @@ const BankAccountDashboard = ({ addToast }) => {
                   </div>
                 </div>
 
+                {/* IFSC Code & Bank Name */}
                 <div className="form-row-grid">
-                  <div className="form-row">
-                    <label className="form-label">
-                      Confirm Account Number<span className="required">*</span>
-                    </label>
-                    <div className="form-input-wrapper">
-                      <input
-                        type={showAccountNumber ? "text" : "password"}
-                        name="confirmAccountNumber"
-                        value={formData.confirmAccountNumber}
-                        onChange={handleInputChange}
-                        placeholder="Re-enter account number"
-                        className={`form-input ${errors.confirmAccountNumber ? 'error' : ''}`}
-                      />
-                      {errors.confirmAccountNumber && <span className="error-text">{errors.confirmAccountNumber}</span>}
-                    </div>
-                  </div>
-
                   <div className="form-row">
                     <label className="form-label">
                       IFSC Code<span className="required">*</span>
@@ -510,7 +678,7 @@ const BankAccountDashboard = ({ addToast }) => {
                         name="ifscCode"
                         value={formData.ifscCode}
                         onChange={handleInputChange}
-                        placeholder="e.g., SBIN0001234"
+                        placeholder="AAXXXXXXX01"
                         style={{ textTransform: 'uppercase' }}
                         maxLength="11"
                         className={`form-input ${errors.ifscCode ? 'error' : ''}`}
@@ -518,52 +686,111 @@ const BankAccountDashboard = ({ addToast }) => {
                       {errors.ifscCode && <span className="error-text">{errors.ifscCode}</span>}
                     </div>
                   </div>
-                </div>
 
-                <div className="form-row-grid">
                   <div className="form-row">
                     <label className="form-label">
-                      Branch Name<span className="required">*</span>
+                      Bank Name<span className="required">*</span>
                     </label>
                     <div className="form-input-wrapper">
                       <input
                         type="text"
-                        name="branchName"
-                        value={formData.branchName}
+                        name="bankName"
+                        value={formData.bankName}
                         onChange={handleInputChange}
-                        placeholder="Enter branch name"
-                        className={`form-input ${errors.branchName ? 'error' : ''}`}
+                        placeholder="Enter your bank name"
+                        className={`form-input ${errors.bankName ? 'error' : ''}`}
+                        list="bank-list"
                       />
-                      {errors.branchName && <span className="error-text">{errors.branchName}</span>}
+                      <datalist id="bank-list">
+                        {bankList.map(bank => (
+                          <option key={bank} value={bank} />
+                        ))}
+                      </datalist>
+                      {errors.bankName && <span className="error-text">{errors.bankName}</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Opening Balance Section */}
+            <div className="form-section">
+              <h3 className="section-title">Opening Balance</h3>
+
+              <div className="section-content">
+                <div className="form-row-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
+                  <div className="form-row">
+                    <label className="form-label">Opening Balance</label>
+                    <div className="form-input-wrapper">
+                      <div className="input-with-prefix">
+                        <span className="input-prefix">₹</span>
+                        <input
+                          type="number"
+                          name="openingBalance"
+                          value={formData.openingBalance}
+                          onChange={handleInputChange}
+                          placeholder="0.00"
+                          step="0.01"
+                          min="0"
+                          className="form-input with-prefix"
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="form-row">
-                    <label className="form-label">Branch Address</label>
+                    <label className="form-label">Type</label>
                     <div className="form-input-wrapper">
-                      <input
-                        type="text"
-                        name="branchAddress"
-                        value={formData.branchAddress}
+                      <select
+                        name="balanceType"
+                        value={formData.balanceType}
                         onChange={handleInputChange}
-                        placeholder="Enter branch address"
-                        className="form-input"
-                      />
+                        className="form-select"
+                      >
+                        <option value="Dr">Dr (Debit)</option>
+                        <option value="Cr">Cr (Credit)</option>
+                      </select>
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
 
+            {/* Status Section */}
+            <div className="form-section">
+              <h3 className="section-title">Status</h3>
+
+              <div className="section-content">
                 <div className="form-row">
-                  <label className="form-label">Notes</label>
-                  <div className="form-input-wrapper full">
-                    <textarea
-                      name="notes"
-                      value={formData.notes}
-                      onChange={handleInputChange}
-                      placeholder="Add any additional notes"
-                      rows="3"
-                      className="form-textarea"
-                    />
+                  <label className="form-label">
+                    Status
+                    <svg className="info-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </label>
+                  <div className="form-input-wrapper">
+                    <div className="status-toggle">
+                      <label className="status-option">
+                        <input
+                          type="radio"
+                          name="status-toggle"
+                          value="Active"
+                          checked={formData.status === 'Active'}
+                          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        />
+                        <span className="status-label">Active</span>
+                      </label>
+                      <label className="status-option">
+                        <input
+                          type="radio"
+                          name="status-toggle"
+                          value="Inactive"
+                          checked={formData.status === 'Inactive'}
+                          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        />
+                        <span className="status-label">Inactive</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -571,19 +798,37 @@ const BankAccountDashboard = ({ addToast }) => {
           </div>
 
           <div className="form-footer">
-            <button onClick={handleCancel} className="cancel-btn" disabled={loading}>
-              Cancel
-            </button>
-            <button onClick={handleSubmit} className="save-btn" disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="spinner-small"></span>
-                  Saving...
-                </>
-              ) : (
-                'Save'
-              )}
-            </button>
+            <div className="footer-left">
+              <button onClick={handleCancel} className="cancel-btn" disabled={loading}>
+                Cancel
+              </button>
+            </div>
+            <div className="footer-right">
+              <div className="keyboard-shortcuts">
+                <span className="shortcut-hint">
+                  <kbd>ALT</kbd> + <kbd>S</kbd> Save
+                </span>
+                <span className="shortcut-hint">
+                  <kbd>ALT</kbd> + <kbd>C</kbd> Cancel
+                </span>
+                <span className="shortcut-hint">
+                  <kbd>ALT</kbd> + <kbd>D</kbd> Discard
+                </span>
+                <span className="shortcut-hint">
+                  <kbd>←</kbd> <kbd>→</kbd> Left/Right Arrow
+                </span>
+              </div>
+              <button onClick={handleSubmit} className="save-btn" disabled={loading}>
+                {loading ? (
+                  <>
+                    <span className="spinner-small"></span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

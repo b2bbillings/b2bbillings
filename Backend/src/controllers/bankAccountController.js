@@ -40,7 +40,7 @@ class BankAccountController {
 
       const accounts = await BankAccount.find(query)
         .select(
-          "accountName bankName accountNumber ifscCode branchName type currentBalance isActive createdAt updatedAt"
+          "accountName accountDisplayName shortName email mobileNo bankName accountNumber ifscCode branchName branchAddress accountHolderName accountType underGroup openingBalance balanceType type currentBalance isActive status notes createdAt updatedAt"
         )
         .sort({accountName: 1})
         .limit(parseInt(limit))
@@ -49,19 +49,47 @@ class BankAccountController {
       const formattedAccounts = accounts.map((account) => ({
         _id: account._id,
         id: account._id,
+        
+        // Display Information
+        accountDisplayName: account.accountDisplayName || account.accountName,
+        shortName: account.shortName,
+        accountName: account.accountName,
+        underGroup: account.underGroup || 'Bank Accounts',
+        
+        // Contact Information
+        email: account.email,
+        mobileNo: account.mobileNo,
+        
+        // Bank Information
         bankName: account.bankName || account.accountName,
         name: account.accountName,
-        accountName: account.accountName,
+        accountHolderName: account.accountHolderName,
         accountNumber: account.accountNumber,
+        accountType: account.accountType || account.type || "bank",
         branch: account.branchName || "Main Branch",
+        branchName: account.branchName,
+        branchAddress: account.branchAddress,
         ifscCode: account.ifscCode || "",
-        accountType: account.type || "bank",
-        type: account.type || "bank",
+        
+        // Balance Information
+        openingBalance: account.openingBalance || 0,
+        balanceType: account.balanceType || 'Dr',
         currentBalance: account.currentBalance || 0,
         balance: account.currentBalance || 0,
+        
+        // Status
+        status: account.status || (account.isActive ? 'Active' : 'Inactive'),
         isActive: account.isActive !== false,
+        
+        // Additional Information
+        notes: account.notes,
+        
+        // Type
+        type: account.type || "bank",
         isCash: (account.type || "bank") === "cash",
         isBank: (account.type || "bank") === "bank",
+        
+        // Metadata
         createdAt: account.createdAt,
         updatedAt: account.updatedAt,
       }));
@@ -415,7 +443,12 @@ class BankAccountController {
   async createBankAccount(req, res) {
     try {
       const companyId = req.companyId || req.params.companyId;
-      const userId = req.user?.id;
+      const userId = req.user?.id || req.user?._id;
+
+      console.log('🏦 CREATE BANK ACCOUNT REQUEST');
+      console.log('  Company ID:', companyId);
+      console.log('  User ID:', userId);
+      console.log('  Request Body:', JSON.stringify(req.body, null, 2));
 
       if (!companyId) {
         return res.status(400).json({
@@ -425,61 +458,137 @@ class BankAccountController {
         });
       }
 
+      // Extract all fields from request body
       const {
+        underGroup,
+        accountDisplayName,
+        shortName,
+        email,
+        mobileNo,
         accountName,
-        bankName,
+        accountHolderName,
         accountNumber,
+        accountType,
         ifscCode,
+        bankName,
         branchName,
-        accountType = "bank",
-        type,
-        openingBalance = 0,
+        branchAddress,
+        openingBalance,
+        balanceType,
+        status,
+        notes,
+        type = 'bank',
       } = req.body;
 
-      if (!accountName?.trim()) {
+      // Use accountDisplayName or fallback to accountName for compatibility
+      const finalAccountName = accountDisplayName?.trim() || accountName?.trim();
+
+      if (!finalAccountName) {
         return res.status(400).json({
           success: false,
-          message: "Account name is required",
+          message: "Account display name is required",
           code: "VALIDATION_ERROR",
         });
       }
 
-      const finalAccountType = type || accountType;
-
-      if (finalAccountType !== "cash" && !bankName?.trim()) {
+      if (!accountHolderName?.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Bank name is required for non-cash accounts",
+          message: "Account holder name is required",
           code: "VALIDATION_ERROR",
         });
       }
 
-      if (finalAccountType !== "cash" && !accountNumber?.trim()) {
+      if (!accountNumber?.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Account number is required for non-cash accounts",
+          message: "Account number is required",
           code: "VALIDATION_ERROR",
         });
       }
 
+      if (!ifscCode?.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "IFSC code is required",
+          code: "VALIDATION_ERROR",
+        });
+      }
+
+      if (!bankName?.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank name is required",
+          code: "VALIDATION_ERROR",
+        });
+      }
+
+      // Check for duplicate account number
+      const existingAccount = await BankAccount.findOne({
+        companyId: mongoose.Types.ObjectId.isValid(companyId)
+          ? new mongoose.Types.ObjectId(companyId)
+          : companyId,
+        accountNumber: accountNumber.trim(),
+      });
+
+      if (existingAccount) {
+        return res.status(409).json({
+          success: false,
+          message: "An account with this account number already exists",
+          code: "DUPLICATE_ACCOUNT_NUMBER",
+        });
+      }
+
+      // Calculate current balance based on opening balance and type
+      let currentBalance = parseFloat(openingBalance) || 0;
+      if (balanceType === 'Cr') {
+        currentBalance = -Math.abs(currentBalance);
+      }
+
+      // Create new bank account with all fields
       const accountData = {
         companyId: mongoose.Types.ObjectId.isValid(companyId)
           ? new mongoose.Types.ObjectId(companyId)
           : companyId,
-        accountName: accountName.trim(),
-        bankName:
-          bankName?.trim() || (finalAccountType === "cash" ? "Cash" : ""),
-        accountNumber:
-          accountNumber?.trim() || (finalAccountType === "cash" ? "CASH" : ""),
-        ifscCode: ifscCode?.trim() || "",
-        branchName: branchName?.trim() || "Main Branch",
-        type: finalAccountType,
+        
+        // Basic Information
+        underGroup: underGroup || 'Bank Accounts',
+        accountDisplayName: finalAccountName,
+        shortName: shortName?.trim() || finalAccountName.substring(0, 20),
+        accountName: finalAccountName,
+        
+        // Contact Information
+        email: email?.trim(),
+        mobileNo: mobileNo?.trim(),
+        
+        // Account Details
+        accountHolderName: accountHolderName.trim(),
+        accountNumber: accountNumber.trim(),
+        accountType: accountType || 'Savings',
+        
+        // Bank Information
+        bankName: bankName.trim(),
+        ifscCode: ifscCode.trim().toUpperCase(),
+        branchName: branchName?.trim(),
+        branchAddress: branchAddress?.trim(),
+        
+        // Balance Information
         openingBalance: parseFloat(openingBalance) || 0,
-        currentBalance: parseFloat(openingBalance) || 0,
-        isActive: true,
-        createdAt: new Date(),
+        balanceType: balanceType || 'Dr',
+        currentBalance: currentBalance,
+        
+        // Status
+        status: status || 'Active',
+        isActive: status === 'Active',
+        
+        // Additional Information
+        notes: notes?.trim(),
+        
+        // Type
+        type: type || 'bank',
       };
 
+      // Add user ID if available
       if (userId) {
         accountData.createdBy = mongoose.Types.ObjectId.isValid(userId)
           ? new mongoose.Types.ObjectId(userId)
@@ -489,35 +598,64 @@ class BankAccountController {
       const bankAccount = new BankAccount(accountData);
       await bankAccount.save();
 
+      console.log('✅ Bank account saved successfully!');
+      console.log('  Account ID:', bankAccount._id);
+      console.log('  Account Name:', bankAccount.accountDisplayName);
+
       const formattedAccount = {
         _id: bankAccount._id,
         id: bankAccount._id,
-        bankName: bankAccount.bankName,
-        name: bankAccount.accountName,
+        accountDisplayName: bankAccount.accountDisplayName,
+        shortName: bankAccount.shortName,
         accountName: bankAccount.accountName,
+        accountHolderName: bankAccount.accountHolderName,
+        bankName: bankAccount.bankName,
         accountNumber: bankAccount.accountNumber,
-        branch: bankAccount.branchName,
+        accountType: bankAccount.accountType,
         ifscCode: bankAccount.ifscCode,
-        accountType: bankAccount.type,
-        type: bankAccount.type,
+        branchName: bankAccount.branchName,
+        branchAddress: bankAccount.branchAddress,
+        email: bankAccount.email,
+        mobileNo: bankAccount.mobileNo,
+        underGroup: bankAccount.underGroup,
+        openingBalance: bankAccount.openingBalance,
+        balanceType: bankAccount.balanceType,
         currentBalance: bankAccount.currentBalance,
         balance: bankAccount.currentBalance,
+        status: bankAccount.status,
         isActive: bankAccount.isActive,
+        notes: bankAccount.notes,
+        type: bankAccount.type,
+        createdAt: bankAccount.createdAt,
       };
+
+      console.log('📤 Sending response:', formattedAccount);
 
       res.status(201).json({
         success: true,
         message: "Bank account created successfully",
         data: formattedAccount,
+        account: formattedAccount,
       });
     } catch (error) {
       console.error("❌ Error creating bank account:", error);
 
-      if (error.code === 11000) {
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((err) => err.message);
         return res.status(400).json({
           success: false,
-          message: "Account with this details already exists",
-          code: "DUPLICATE_FIELD",
+          message: "Validation failed",
+          errors: errors,
+          code: "VALIDATION_ERROR",
+        });
+      }
+
+      if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
+        return res.status(409).json({
+          success: false,
+          message: `An account with this ${field} already exists`,
+          code: "DUPLICATE_ENTRY",
         });
       }
 

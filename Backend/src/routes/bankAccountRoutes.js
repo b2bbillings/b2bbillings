@@ -15,11 +15,27 @@ const {
 
 // ✅ ENHANCED: Validation middleware for bank accounts
 const validateBankAccount = (req, res, next) => {
-  const {accountName, bankName, accountNumber, accountType = "bank"} = req.body;
+  const {
+    accountName,
+    accountDisplayName,
+    accountHolderName,
+    bankName,
+    accountNumber,
+    ifscCode,
+    accountType = "bank"
+  } = req.body;
   const errors = [];
 
-  if (!accountName?.trim()) {
-    errors.push("Account name is required");
+  // ✅ FIXED: Accept either accountDisplayName or accountName
+  const finalAccountName = accountDisplayName?.trim() || accountName?.trim();
+  
+  if (!finalAccountName) {
+    errors.push("Account display name is required");
+  }
+
+  // ✅ NEW: Validate account holder name for bank accounts
+  if (accountType !== "cash" && !accountHolderName?.trim()) {
+    errors.push("Account holder name is required for bank accounts");
   }
 
   // ✅ FIXED: Make bankName optional for cash accounts
@@ -30,6 +46,11 @@ const validateBankAccount = (req, res, next) => {
   // ✅ FIXED: Make accountNumber optional for cash accounts
   if (accountType !== "cash" && !accountNumber?.trim()) {
     errors.push("Account number is required for non-cash accounts");
+  }
+
+  // ✅ NEW: Validate IFSC code for bank accounts
+  if (accountType !== "cash" && !ifscCode?.trim()) {
+    errors.push("IFSC code is required for bank accounts");
   }
 
   // ✅ ENHANCED: Updated valid types to match service expectations

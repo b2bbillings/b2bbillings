@@ -2590,6 +2590,188 @@ const deleteTransaction = async (req, res) => {
   }
 };
 
+// Simple Payment Creation (for Payment In/Out forms)
+const createSimplePayment = async (req, res) => {
+  try {
+    const {
+      date,
+      partyId,
+      partyType,
+      partyName,
+      amount,
+      paymentMethod,
+      description,
+      referenceNumber,
+      type,
+      paymentType,
+      companyId,
+      bankAccountId
+    } = req.body;
+
+    // Validation
+    if (!partyId || !amount || !companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Party, amount, and company are required"
+      });
+    }
+
+    const effectiveType = type || paymentType;
+    if (!effectiveType || !['payment_in', 'payment_out'].includes(effectiveType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid payment type (payment_in or payment_out) is required"
+      });
+    }
+
+    if (parseFloat(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount must be greater than 0"
+      });
+    }
+
+    // Validate party ID
+    if (!mongoose.Types.ObjectId.isValid(partyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid party ID format"
+      });
+    }
+
+    // Get models
+    const Payment = getModel("Payment");
+    const Party = getModel("Party");
+    const Transaction = getModel("Transaction");
+
+    if (!Payment) {
+      return res.status(500).json({
+        success: false,
+        message: "Payment model not available"
+      });
+    }
+
+    // Verify party exists
+    let partyDoc = null;
+    if (Party) {
+      partyDoc = await Party.findById(partyId);
+      if (!partyDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Party not found"
+        });
+      }
+    }
+
+    // Generate payment number
+    const paymentCount = await Payment.countDocuments();
+    const prefix = effectiveType === 'payment_in' ? 'PIN' : 'POUT';
+    const paymentNumber = `${prefix}-${String(paymentCount + 1).padStart(6, "0")}`;
+
+    // Build payment data
+    const paymentData = {
+      paymentNumber,
+      type: effectiveType,
+      paymentType: effectiveType,
+      party: new mongoose.Types.ObjectId(partyId),
+      partyId: partyId,
+      partyName: partyName || partyDoc?.name || 'Unknown',
+      amount: parseFloat(amount),
+      paymentMethod: paymentMethod || 'cash',
+      paymentDate: date ? new Date(date) : new Date(),
+      company: new mongoose.Types.ObjectId(companyId),
+      companyId: new mongoose.Types.ObjectId(companyId),
+      reference: referenceNumber || '',
+      notes: description || '',
+      status: 'completed',
+      partyBalanceBefore: partyDoc?.currentBalance || 0,
+      createdBy: req.user?.id || req.user?._id
+    };
+
+    // Add bank account if provided
+    if (bankAccountId && mongoose.Types.ObjectId.isValid(bankAccountId)) {
+      paymentData.bankAccountId = new mongoose.Types.ObjectId(bankAccountId);
+    }
+
+    // Create payment
+    const payment = await Payment.create(paymentData);
+
+    // Update party balance
+    if (Party && partyDoc) {
+      const balanceChange = effectiveType === 'payment_in' 
+        ? -parseFloat(amount)  // Customer paid, reduce their balance
+        : parseFloat(amount);   // We paid vendor, increase their balance
+      
+      partyDoc.currentBalance = (partyDoc.currentBalance || 0) + balanceChange;
+      await partyDoc.save();
+
+      // Update payment with new balance
+      payment.partyBalanceAfter = partyDoc.currentBalance;
+      await payment.save();
+    }
+
+    // Create transaction record
+    if (Transaction) {
+      try {
+        const transactionCount = await Transaction.countDocuments();
+        const transactionId = `TXN-${String(transactionCount + 1).padStart(8, "0")}`;
+
+        await Transaction.create({
+          transactionId,
+          transactionDate: paymentData.paymentDate,
+          transactionType: effectiveType,
+          companyId: new mongoose.Types.ObjectId(companyId),
+          amount: parseFloat(amount),
+          direction: effectiveType === 'payment_in' ? 'in' : 'out',
+          partyId: new mongoose.Types.ObjectId(partyId),
+          partyName: paymentData.partyName,
+          partyType: partyType || 'customer',
+          paymentMethod: paymentMethod || 'cash',
+          description: description || `Payment ${effectiveType === 'payment_in' ? 'received from' : 'made to'} ${paymentData.partyName}`,
+          reference: referenceNumber || '',
+          status: 'completed',
+          referenceId: payment._id,
+          referenceType: 'payment',
+          referenceNumber: paymentNumber,
+          bankAccountId: bankAccountId ? new mongoose.Types.ObjectId(bankAccountId) : undefined,
+          balanceBefore: paymentData.partyBalanceBefore,
+          balanceAfter: payment.partyBalanceAfter || paymentData.partyBalanceBefore,
+          createdBy: req.user?.id || req.user?._id
+        });
+      } catch (txnError) {
+        console.error('Transaction creation error:', txnError);
+        // Don't fail the payment if transaction creation fails
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Payment ${effectiveType === 'payment_in' ? 'In' : 'Out'} created successfully`,
+      data: {
+        payment: {
+          _id: payment._id,
+          paymentNumber: payment.paymentNumber,
+          type: payment.type,
+          partyName: payment.partyName,
+          amount: payment.amount,
+          paymentMethod: payment.paymentMethod,
+          paymentDate: payment.paymentDate,
+          status: payment.status,
+          partyBalanceAfter: payment.partyBalanceAfter
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Create simple payment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create payment',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   getPendingInvoicesForPayment,
   getPendingPurchaseInvoicesForPayment,
@@ -2602,4 +2784,5 @@ module.exports = {
   cancelPayment,
   updateTransaction,
   deleteTransaction,
+  createSimplePayment,
 };

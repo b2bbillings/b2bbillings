@@ -13,7 +13,8 @@ const {
     getPendingPurchaseInvoicesForPayment,
     getPaymentAllocations,
     updateTransaction,
-    deleteTransaction
+    deleteTransaction,
+    createSimplePayment
 } = require('../controllers/paymentController');
 
 // Authentication middleware
@@ -97,6 +98,10 @@ router.get('/pending-purchase-invoices/:partyId', auth, asyncHandler(getPendingP
 // Payment creation routes
 router.post('/pay-in', auth, validatePayment, handleValidationErrors, asyncHandler(createPaymentIn));
 router.post('/pay-out', auth, validatePayment, handleValidationErrors, asyncHandler(createPaymentOut));
+
+// Simple payment routes (for Payment In/Out forms)
+router.post('/payment-in', auth, asyncHandler(createSimplePayment));
+router.post('/payment-out', auth, asyncHandler(createSimplePayment));
 
 // Payment retrieval routes
 router.get('/', auth, asyncHandler(getPayments));

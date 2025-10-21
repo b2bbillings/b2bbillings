@@ -964,7 +964,7 @@ const companySearchValidationRules = [
 router.post(
   "/create-with-linking",
   partyValidationRules.concat(linkingValidationRules),
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.createPartyWithLinking || partyController.createParty
 );
 
@@ -972,7 +972,7 @@ router.post(
 router.post(
   "/",
   partyValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.createParty
 );
 
@@ -980,7 +980,7 @@ router.post(
 router.post(
   "/quick",
   quickAddValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.createQuickParty
 );
 
@@ -988,7 +988,7 @@ router.post(
 router.post(
   "/link-supplier",
   supplierLinkingValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.linkSupplierToCompany || partyController.createParty
 );
 
@@ -996,7 +996,7 @@ router.post(
 router.get(
   "/linked-suppliers",
   queryValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.getSuppliersWithLinkedCompanies ||
     partyController.getAllParties
 );
@@ -1007,7 +1007,7 @@ router.get(
 router.get(
   "/search",
   searchQueryValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.searchPartiesGet
 );
 
@@ -1015,7 +1015,7 @@ router.get(
 router.post(
   "/search/external",
   externalSearchValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.searchExternalDatabase
 );
 
@@ -1023,7 +1023,7 @@ router.post(
 router.get(
   "/search/companies",
   companySearchValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.searchCompanies
 );
 
@@ -1031,7 +1031,7 @@ router.get(
 router.get(
   "/check-phone/:phoneNumber",
   phoneValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.checkPhoneExists
 );
 
@@ -1042,7 +1042,7 @@ router.get("/stats", partyController.getPartyStats);
 router.get(
   "/search/:query",
   searchValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.searchParties
 );
 
@@ -1050,7 +1050,7 @@ router.get(
 router.get(
   "/",
   queryValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.getAllParties
 );
 
@@ -1058,7 +1058,7 @@ router.get(
 router.get(
   "/:id",
   idValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.getPartyById
 );
 
@@ -1068,7 +1068,7 @@ router.put(
   idValidationRules
     .concat(updateValidationRules)
     .concat(linkingValidationRules),
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.updatePartyWithLinking || partyController.updateParty
 );
 
@@ -1076,7 +1076,7 @@ router.put(
 router.put(
   "/:id",
   idValidationRules.concat(updateValidationRules),
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.updateParty
 );
 
@@ -1084,7 +1084,7 @@ router.put(
 router.delete(
   "/:id",
   idValidationRules,
-  validation.handleValidationErrors,
+  handleValidationErrors,
   partyController.deleteParty
 );
 
@@ -1092,7 +1092,7 @@ router.delete(
 router.post(
   "/:id/profile-image",
   param("id").isMongoId().withMessage("Invalid party ID format"),
-  validation.handleValidationErrors,
+  handleValidationErrors,
   (req, res, next) => {
     console.log("🔥 Profile image route hit!", req.params.id);
     next();
