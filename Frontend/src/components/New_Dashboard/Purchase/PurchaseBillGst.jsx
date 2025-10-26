@@ -406,8 +406,8 @@ function PurchaseBillGst() {
       // Prepare invoice data as per your backend schema
       const invoiceData = {
         companyId,
-        invoicePrefix,
-        invoiceNumber,
+        // Send the invoice number as entered by user (without prefix manipulation)
+        invoiceNumber: invoiceNumber, // Send as-is (e.g., "1111")
         invoiceDate,
         vendor: {
           id: selectedParty._id,

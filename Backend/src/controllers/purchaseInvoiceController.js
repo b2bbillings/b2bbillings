@@ -96,8 +96,12 @@ exports.createPurchaseInvoiceWithGST = async (req, res) => {
 
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber;
+    let finalInvoicePrefix = invoicePrefix;
+    
     if (!finalInvoiceNumber) {
       const prefix = invoicePrefix || "P-GST";
+      finalInvoicePrefix = prefix;
+      
       const lastInvoice = await PurchaseInvoiceWithGST.findOne({ companyId })
         .sort({ createdAt: -1 })
         .select("invoiceNumber")
@@ -111,12 +115,15 @@ exports.createPurchaseInvoiceWithGST = async (req, res) => {
         }
       }
       finalInvoiceNumber = `${prefix}-${String(nextNumber).padStart(4, "0")}`;
+    } else {
+      // User provided custom invoice number - don't force a prefix
+      finalInvoicePrefix = invoicePrefix || "";
     }
 
     // Create invoice
     const invoice = new PurchaseInvoiceWithGST({
       invoiceNumber: finalInvoiceNumber,
-      invoicePrefix: invoicePrefix || "P-GST",
+      invoicePrefix: finalInvoicePrefix,
       invoiceDate: invoiceDate || new Date(),
       companyId,
       vendor,
@@ -137,6 +144,16 @@ exports.createPurchaseInvoiceWithGST = async (req, res) => {
     });
   } catch (error) {
     console.error("createPurchaseInvoiceWithGST error:", error);
+    
+    // Check for duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate invoice number. An invoice with number "${error.keyValue?.invoiceNumber}" already exists.`,
+        error: error.message,
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: "Failed to create purchase invoice",
@@ -186,8 +203,12 @@ exports.createPurchaseInvoiceWithoutGST = async (req, res) => {
 
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber;
+    let finalInvoicePrefix = invoicePrefix;
+    
     if (!finalInvoiceNumber) {
       const prefix = invoicePrefix || "P-NGST";
+      finalInvoicePrefix = prefix;
+      
       const lastInvoice = await PurchaseInvoiceWithoutGST.findOne({ companyId })
         .sort({ createdAt: -1 })
         .select("invoiceNumber")
@@ -201,12 +222,15 @@ exports.createPurchaseInvoiceWithoutGST = async (req, res) => {
         }
       }
       finalInvoiceNumber = `${prefix}-${String(nextNumber).padStart(4, "0")}`;
+    } else {
+      // User provided custom invoice number - don't force a prefix
+      finalInvoicePrefix = invoicePrefix || "";
     }
 
     // Create invoice
     const invoice = new PurchaseInvoiceWithoutGST({
       invoiceNumber: finalInvoiceNumber,
-      invoicePrefix: invoicePrefix || "P-NGST",
+      invoicePrefix: finalInvoicePrefix,
       invoiceDate: invoiceDate || new Date(),
       companyId,
       vendor,
@@ -227,6 +251,16 @@ exports.createPurchaseInvoiceWithoutGST = async (req, res) => {
     });
   } catch (error) {
     console.error("createPurchaseInvoiceWithoutGST error:", error);
+    
+    // Check for duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate invoice number. An invoice with number "${error.keyValue?.invoiceNumber}" already exists.`,
+        error: error.message,
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: "Failed to create purchase invoice",

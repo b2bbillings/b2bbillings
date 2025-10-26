@@ -56,7 +56,7 @@ function PurchaseBillWithoutGST() {
   const [addItemRowIndex, setAddItemRowIndex] = useState(null);
   const [customer, setCustomer] = useState("");
   const [invoicePrefix, setInvoicePrefix] = useState("INV");
-  const [invoiceNumber, setInvoiceNumber] = useState("0001");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
@@ -312,6 +312,28 @@ function PurchaseBillWithoutGST() {
     fetchItems();
   }, []);
 
+  // Auto-fetch next invoice number
+  useEffect(() => {
+    const fetchNextInvoiceNumber = async () => {
+      try {
+        const companyId = getCompanyId();
+        if (!companyId) return;
+
+        const result = await invoiceService.getNextInvoiceNumber("purchase-without-gst", companyId);
+        if (result && result.success && result.data) {
+          // result.data has: { nextNumber, formatted, prefix }
+          // For purchase without GST, formatted will be like "P-NGST-0001"
+          // We'll use just the number part
+          setInvoiceNumber(String(result.data.nextNumber).padStart(4, "0"));
+          console.log("📋 Next invoice number:", result.data.nextNumber);
+        }
+      } catch (err) {
+        console.error("Error fetching next invoice number:", err);
+      }
+    };
+    fetchNextInvoiceNumber();
+  }, []);
+
   // Filtered parties for dropdown
   const filteredParties = allParties.filter(
     (p) =>
@@ -379,8 +401,8 @@ function PurchaseBillWithoutGST() {
       // Prepare invoice data as per your backend schema
       const invoiceData = {
         companyId,
-        invoicePrefix,
-        invoiceNumber,
+        // Send the invoice number as entered by user (without prefix manipulation)
+        invoiceNumber: invoiceNumber, // Send as-is (e.g., "1111")
         invoiceDate,
         vendor: {
           id: selectedParty._id,

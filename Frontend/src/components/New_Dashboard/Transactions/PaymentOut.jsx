@@ -9,7 +9,8 @@ import {
   faSave,
   faSpinner,
   faArrowUp,
-  faInfoCircle
+  faInfoCircle,
+  faFileInvoice
 } from '@fortawesome/free-solid-svg-icons';
 import Select from 'react-select';
 import paymentService from '../../../services/paymentService';
@@ -32,7 +33,8 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
     amount: '',
     paymentMethod: 'cash',
     description: '',
-    referenceNumber: ''
+    referenceNumber: '',
+    selectedInvoice: null
   });
 
   // Component state
@@ -42,6 +44,8 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
   const [errors, setErrors] = useState({});
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [savedPaymentData, setSavedPaymentData] = useState(null);
+  const [invoices, setInvoices] = useState([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
 
   // Payment method options
   const paymentMethods = [
@@ -197,7 +201,9 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
   const handlePartyChange = (selectedOption) => {
     setFormData(prev => ({
       ...prev,
-      party: selectedOption
+      party: selectedOption,
+      selectedInvoice: null, // Reset invoice when party changes
+      amount: '' // Reset amount when party changes
     }));
     
     if (errors.party) {
@@ -206,6 +212,69 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
         party: null
       }));
     }
+
+    // Fetch invoices for the selected party
+    if (selectedOption) {
+      fetchInvoicesForParty(selectedOption.value);
+    } else {
+      setInvoices([]);
+    }
+  };
+
+  // Fetch invoices for selected party (purchase invoices for payment out)
+  const fetchInvoicesForParty = async (partyId) => {
+    setLoadingInvoices(true);
+    try {
+      const companyId = currentCompany?.id || currentCompany?._id;
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+      const response = await fetch(
+        `${API_BASE_URL}/payments/pending-purchase-invoices/${partyId}?companyId=${companyId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success && data.invoices) {
+        const invoiceOptions = data.invoices.map(invoice => ({
+          value: invoice._id || invoice.id,
+          label: `${invoice.invoiceNumber || invoice.orderNumber} - ₹${parseFloat(invoice.dueAmount || invoice.totalAmount || 0).toLocaleString('en-IN')} Due`,
+          invoice: invoice,
+          invoiceNumber: invoice.invoiceNumber || invoice.orderNumber,
+          dueAmount: invoice.dueAmount || invoice.totalAmount || 0,
+          totalAmount: invoice.totalAmount || 0,
+          invoiceDate: invoice.invoiceDate || invoice.orderDate
+        }));
+        setInvoices(invoiceOptions);
+      } else {
+        setInvoices([]);
+      }
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+      setInvoices([]);
+      if (addToast) {
+        addToast('Failed to load invoices', 'error');
+      }
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
+
+  // Handle invoice selection
+  const handleInvoiceChange = (selectedOption) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedInvoice: selectedOption,
+      amount: selectedOption ? selectedOption.dueAmount.toString() : prev.amount,
+      referenceNumber: selectedOption ? selectedOption.invoiceNumber : ''
+    }));
   };
 
   // Validate form
@@ -262,6 +331,13 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
         description: formData.description || ''
       };
 
+      // Add invoice information if an invoice was selected
+      if (formData.selectedInvoice) {
+        paymentData.purchaseInvoiceId = formData.selectedInvoice.value;
+        paymentData.invoiceNumber = formData.selectedInvoice.invoiceNumber;
+        paymentData.referenceNumber = formData.selectedInvoice.invoiceNumber; // Use invoice number as reference
+      }
+
       // For non-cash payments, bank account is optional but can be added later
       if (formData.paymentMethod !== 'cash' && formData.bankAccountId) {
         paymentData.bankAccountId = formData.bankAccountId;
@@ -303,8 +379,10 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
           amount: '',
           paymentMethod: 'cash',
           description: '',
-          referenceNumber: ''
+          referenceNumber: '',
+          selectedInvoice: null
         });
+        setInvoices([]);
       } else {
         throw new Error(result.message || 'Failed to save payment');
       }
@@ -515,10 +593,74 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
             </Row>
 
             <Row>
+              {/* Invoice Selection */}
+              <Col md={12} className="mb-3">
+                <Form.Group>
+                  <Form.Label>
+                    <FontAwesomeIcon icon={faFileInvoice} className="me-2" />
+                    Select Invoice (Optional)
+                  </Form.Label>
+                  <Select
+                    value={formData.selectedInvoice}
+                    onChange={handleInvoiceChange}
+                    options={invoices}
+                    isSearchable
+                    placeholder={
+                      !formData.party 
+                        ? "Select a party first to see their invoices..."
+                        : loadingInvoices 
+                        ? "Loading invoices..." 
+                        : invoices.length === 0 
+                        ? "No pending invoices found"
+                        : "Search and select an invoice..."
+                    }
+                    isLoading={loadingInvoices}
+                    isDisabled={!formData.party || loadingInvoices}
+                    styles={selectStyles}
+                    isClearable
+                    noOptionsMessage={() => 
+                      !formData.party 
+                        ? "Select a party first" 
+                        : "No pending invoices found"
+                    }
+                    formatOptionLabel={(option) => (
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        padding: '4px 0'
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: '500', color: '#212529' }}>
+                            {option.invoiceNumber}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: '#6c757d' }}>
+                            Date: {new Date(option.invoiceDate).toLocaleDateString('en-IN')}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: '600', color: '#dc3545' }}>
+                            ₹{parseFloat(option.dueAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>
+                            Due Amount
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  />
+                  <Form.Text className="text-muted">
+                    Select an invoice to automatically fill the amount with the due amount
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+            </Row>
+
+            <Row>
               {/* Reference Number */}
               <Col md={6} className="mb-3">
                 <Form.Group>
-                  <Form.Label>Find Invoice  </Form.Label>
+                  <Form.Label>Reference Number</Form.Label>
                   <Form.Control
                     ref={referenceNumberRef}
                     type="text"
@@ -526,7 +668,7 @@ const PaymentOut = ({ currentCompany, currentUser, addToast }) => {
                     value={formData.referenceNumber}
                     onChange={handleInputChange}
                     onKeyDown={(e) => handleKeyDown(e, descriptionRef)}
-                    placeholder="Find Invoice "
+                    placeholder="Enter reference number (optional)"
                   />
                 </Form.Group>
               </Col>

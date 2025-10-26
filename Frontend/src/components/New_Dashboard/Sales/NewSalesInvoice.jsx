@@ -432,8 +432,8 @@ export default function NewSalesInvoice() {
       // Prepare invoice data as per your backend schema
       const invoiceData = {
         companyId, // Include company ID
-        invoicePrefix,
-        invoiceNumber,
+        // Send the invoice number as entered by user (without prefix manipulation)
+        invoiceNumber: invoiceNumber, // Send as-is (e.g., "1111")
         invoiceDate,
         customer: {
           id: selectedParty._id,

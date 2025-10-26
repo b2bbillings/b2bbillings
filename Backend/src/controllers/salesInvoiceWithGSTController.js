@@ -92,8 +92,11 @@ exports.createSalesInvoiceWithGST = async (req, res) => {
 
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber;
+    let finalInvoicePrefix = invoicePrefix;
+    
     if (!finalInvoiceNumber) {
       const prefix = invoicePrefix || "S-GST";
+      finalInvoicePrefix = prefix;
       
       // Use counter for auto-increment
       let counter = await SalesWithGstCounter.findOne({ companyId });
@@ -104,12 +107,15 @@ exports.createSalesInvoiceWithGST = async (req, res) => {
       await counter.save();
       
       finalInvoiceNumber = `${prefix}-${String(counter.seq).padStart(4, "0")}`;
+    } else {
+      // User provided custom invoice number - don't force a prefix
+      finalInvoicePrefix = invoicePrefix || "";
     }
 
     // Create invoice
     const invoice = new SalesInvoiceWithGST({
       invoiceNumber: finalInvoiceNumber,
-      invoicePrefix: invoicePrefix || "S-GST",
+      invoicePrefix: finalInvoicePrefix,
       invoiceDate: invoiceDate || new Date(),
       companyId,
       customer,
@@ -130,6 +136,16 @@ exports.createSalesInvoiceWithGST = async (req, res) => {
     });
   } catch (error) {
     console.error("createSalesInvoiceWithGST error:", error);
+    
+    // Check for duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate invoice number. An invoice with number "${error.keyValue?.invoiceNumber}" already exists.`,
+        error: error.message,
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: "Failed to create sales invoice",
@@ -186,8 +202,11 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
 
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber;
+    let finalInvoicePrefix = invoicePrefix;
+    
     if (!finalInvoiceNumber) {
       const prefix = invoicePrefix || "S-NGST";
+      finalInvoicePrefix = prefix;
       
       // Use counter for auto-increment
       let counter = await SalesWithoutGstCounter.findOne({ companyId });
@@ -198,12 +217,15 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
       await counter.save();
       
       finalInvoiceNumber = `${prefix}-${String(counter.seq).padStart(4, "0")}`;
+    } else {
+      // User provided custom invoice number - don't force a prefix
+      finalInvoicePrefix = invoicePrefix || "";
     }
 
     // Create invoice
     const invoice = new SalesInvoiceWithoutGST({
       invoiceNumber: finalInvoiceNumber,
-      invoicePrefix: invoicePrefix || "S-NGST",
+      invoicePrefix: finalInvoicePrefix,
       invoiceDate: invoiceDate || new Date(),
       companyId,
       customer,
@@ -230,6 +252,16 @@ exports.createSalesInvoiceWithoutGST = async (req, res) => {
     });
   } catch (error) {
     console.error("createSalesInvoiceWithoutGST error:", error);
+    
+    // Check for duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate invoice number. An invoice with number "${error.keyValue?.invoiceNumber}" already exists.`,
+        error: error.message,
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: "Failed to create sales invoice",
