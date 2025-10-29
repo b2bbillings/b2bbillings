@@ -76,14 +76,14 @@ function AuthPage({onLogin}) {
 
         .auth-header {
           text-align: left;
-          padding: 2.5rem 3rem 2rem;
+          padding: 1rem 1.5rem 0.75rem;
           background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
           border-bottom: 1px solid rgba(102, 126, 234, 0.1);
           display: flex;
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
-          gap: 2rem;
+          gap: 1rem;
         }
 
         .auth-header-left {
@@ -95,19 +95,19 @@ function AuthPage({onLogin}) {
         .brand-logo {
           display: inline-flex;
           align-items: center;
-          gap: 0.75rem;
-          font-size: 1.8rem;
+          gap: 0.4rem;
+          font-size: 1.3rem;
           font-weight: 800;
           color: #667eea;
           text-decoration: none;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.25rem;
         }
 
         .brand-icon {
-          width: 50px;
-          height: 50px;
+          width: 36px;
+          height: 36px;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 12px;
+          border-radius: 10px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -117,28 +117,28 @@ function AuthPage({onLogin}) {
 
         .auth-subtitle {
           color: #6b7280;
-          font-size: 1rem;
+          font-size: 0.8rem;
           margin: 0;
           font-weight: 500;
-          line-height: 1.5;
+          line-height: 1.3;
         }
 
         .feature-badges {
           display: flex;
-          gap: 1rem;
-          margin-top: 1rem;
+          gap: 0.6rem;
+          margin-top: 0.6rem;
           flex-wrap: wrap;
         }
 
         .feature-badge {
           display: inline-flex;
           align-items: center;
-          gap: 0.5rem;
+          gap: 0.35rem;
           background: rgba(102, 126, 234, 0.1);
           color: #667eea;
-          padding: 0.5rem 1rem;
+          padding: 0.35rem 0.7rem;
           border-radius: 50px;
-          font-size: 0.85rem;
+          font-size: 0.75rem;
           font-weight: 600;
           border: 1px solid rgba(102, 126, 234, 0.2);
         }
@@ -155,11 +155,11 @@ function AuthPage({onLogin}) {
         }
 
         .auth-toggle-title {
-          font-size: 1.25rem;
+          font-size: 1rem;
           font-weight: 700;
           color: #1f2937;
-          margin-bottom: 0.75rem;
-          margin: 0 0 0.75rem 0;
+          margin-bottom: 0.5rem;
+          margin: 0 0 0.5rem 0;
         }
 
         .auth-toggle {
@@ -167,22 +167,22 @@ function AuthPage({onLogin}) {
           background: rgba(255, 255, 255, 0.9);
           border: 2px solid rgba(102, 126, 234, 0.2);
           border-radius: 50px;
-          padding: 0.25rem;
+          padding: 0.15rem;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
           backdrop-filter: blur(10px);
         }
 
         .toggle-btn {
-          padding: 0.875rem 2.25rem;
+          padding: 0.6rem 1.5rem;
           border: none;
           border-radius: 50px;
           font-weight: 600;
-          font-size: 0.95rem;
+          font-size: 0.8rem;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           position: relative;
           overflow: hidden;
           white-space: nowrap;
-          min-width: 140px;
+          min-width: 110px;
         }
 
         .toggle-btn::before {
@@ -220,14 +220,14 @@ function AuthPage({onLogin}) {
 
         .auth-toggle-subtitle {
           color: #9ca3af;
-          font-size: 0.875rem;
-          margin-top: 0.5rem;
+          font-size: 0.75rem;
+          margin-top: 0.4rem;
           font-weight: 500;
         }
 
         .auth-content {
           position: relative;
-          min-height: 600px;
+          min-height: 450px;
         }
 
         .floating-elements {
@@ -285,8 +285,8 @@ function AuthPage({onLogin}) {
           .auth-header {
             flex-direction: column;
             text-align: center;
-            gap: 2rem;
-            padding: 2rem 2rem 1.5rem;
+            gap: 1rem;
+            padding: 1rem 1rem 0.75rem;
           }
           
           .auth-header-left,
@@ -306,56 +306,68 @@ function AuthPage({onLogin}) {
 
         @media (max-width: 768px) {
           .auth-header {
-            padding: 1.5rem 1.5rem 1rem;
+            padding: 0.85rem 0.85rem 0.6rem;
           }
           
           .brand-logo {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
           }
           
           .brand-icon {
-            width: 40px;
-            height: 40px;
+            width: 32px;
+            height: 32px;
           }
           
           .toggle-btn {
-            padding: 0.75rem 1.75rem;
-            font-size: 0.9rem;
-            min-width: 120px;
+            padding: 0.55rem 1.25rem;
+            font-size: 0.75rem;
+            min-width: 100px;
           }
           
           .auth-toggle-title {
-            font-size: 1.125rem;
+            font-size: 0.95rem;
           }
           
           .feature-badges {
-            gap: 0.5rem;
+            gap: 0.4rem;
           }
           
           .feature-badge {
-            font-size: 0.8rem;
-            padding: 0.4rem 0.8rem;
+            font-size: 0.7rem;
+            padding: 0.3rem 0.6rem;
+          }
+
+          .auth-subtitle {
+            font-size: 0.75rem;
           }
         }
 
         @media (max-width: 480px) {
           .auth-card {
-            margin: 1rem;
+            margin: 0.5rem;
             max-width: none;
           }
           
           .auth-header {
-            padding: 1.5rem 1rem 1rem;
+            padding: 0.75rem 0.75rem 0.5rem;
           }
           
           .toggle-btn {
-            padding: 0.6rem 1.25rem;
-            font-size: 0.85rem;
-            min-width: 100px;
+            padding: 0.5rem 1rem;
+            font-size: 0.7rem;
+            min-width: 90px;
           }
           
           .auth-toggle {
-            padding: 0.15rem;
+            padding: 0.1rem;
+          }
+
+          .brand-logo {
+            font-size: 1.1rem;
+          }
+
+          .auth-content {
+            min-height: 400px;
           }
         }
       `}</style>

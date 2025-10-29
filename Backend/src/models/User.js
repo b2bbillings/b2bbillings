@@ -1324,6 +1324,13 @@ userSchema.statics.findByEmailWithPassword = function (email) {
   );
 };
 
+// Static method to find user by phone with password
+userSchema.statics.findByPhoneWithPassword = function (phone) {
+  return this.findOne({phone: phone}).select(
+    "+password +loginAttempts +lockUntil +twoFactorSecret"
+  );
+};
+
 // Static method to find active users
 userSchema.statics.findActiveUsers = function (filters = {}) {
   return this.find({isActive: true, ...filters});

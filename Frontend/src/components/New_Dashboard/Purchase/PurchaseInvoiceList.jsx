@@ -11,6 +11,8 @@ export default function PurchaseInvoiceList() {
   const [activeTab, setActiveTab] = useState("General");
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState(null);
+  const [filterType, setFilterType] = useState("all"); // all, gst, no-gst
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   // Helper function to get company ID
   const getCompanyId = () => {
@@ -41,27 +43,36 @@ export default function PurchaseInvoiceList() {
 
         console.log("🔍 Fetching purchase invoices for companyId:", companyId);
 
-        // Fetch ALL invoices (both with GST and without GST) in one call
-        const result = await invoiceService.getInvoices("purchase-with-gst", { 
-          companyId, 
-          type: "all", // This tells backend to return both GST and non-GST invoices
-          limit: 1000 
-        });
+        // Fetch ALL invoices (both with GST and without GST) from the unified endpoint
+        const response = await fetch(
+          `${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/purchase-invoices?companyId=${companyId}&type=all&limit=1000`
+        );
 
-        console.log("📦 Purchase invoices result:", result);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log("📦 Purchase invoices API response:", result);
 
         const allInvoices = result?.data || [];
 
         // Map backend type to our type
         const mappedInvoices = allInvoices.map(inv => ({
           ...inv,
-          type: inv.type === 'gst' ? 'WITH_GST' : 'WITHOUT_GST'
+          type: inv.type === 'gst' ? 'WITH_GST' : inv.type === 'no-gst' ? 'WITHOUT_GST' : 'WITHOUT_GST'
         }));
 
-        console.log("✅ Total invoices loaded:", mappedInvoices.length);
+        console.log("✅ Total purchase invoices loaded:", mappedInvoices.length);
+        console.log("📊 Invoice breakdown:", {
+          withGST: mappedInvoices.filter(i => i.type === 'WITH_GST').length,
+          withoutGST: mappedInvoices.filter(i => i.type === 'WITHOUT_GST').length
+        });
+        
         setInvoices(mappedInvoices);
       } catch (err) {
-        console.error("❌ Error fetching invoices:", err);
+        console.error("❌ Error fetching purchase invoices:", err);
+        alert(`Failed to load invoices: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -73,8 +84,14 @@ export default function PurchaseInvoiceList() {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (activeMenuId && !event.target.closest('.actionsDropdown')) {
-        setActiveMenuId(null);
+      if (activeMenuId) {
+        // Check if click is outside the dropdown menu
+        const dropdownMenu = event.target.closest('[data-dropdown-menu]');
+        const moreButton = event.target.closest('[data-more-btn]');
+        
+        if (!dropdownMenu && !moreButton) {
+          setActiveMenuId(null);
+        }
       }
     };
 
@@ -119,43 +136,104 @@ export default function PurchaseInvoiceList() {
   };
 
   // Toggle actions menu
-  const toggleMenu = (invoiceId) => {
-    setActiveMenuId(activeMenuId === invoiceId ? null : invoiceId);
+  const toggleMenu = (invoiceId, event) => {
+    if (activeMenuId === invoiceId) {
+      setActiveMenuId(null);
+    } else {
+      setActiveMenuId(invoiceId);
+      // Calculate position for fixed dropdown
+      const buttonRect = event.currentTarget.getBoundingClientRect();
+      setMenuPosition({
+        top: buttonRect.bottom + 4,
+        left: buttonRect.left - 150 // Offset to align right side
+      });
+    }
   };
 
   // Handle print invoice
   const handlePrint = (invoice) => {
     setActiveMenuId(null);
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(generateInvoicePDF(invoice));
+    // Generate PDF and open print dialog
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    const content = generateInvoicePDF(invoice);
+    printWindow.document.write(content);
     printWindow.document.close();
-    printWindow.print();
+    
+    // Wait for content to load then trigger print
+    printWindow.onload = function() {
+      printWindow.focus();
+      printWindow.print();
+    };
   };
 
   // Handle view invoice
   const handleView = (invoice) => {
     setActiveMenuId(null);
-    console.log("👁️ View invoice:", invoice);
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    const content = generateInvoicePDF(invoice);
+    printWindow.document.write(content);
+    printWindow.document.close();
   };
 
-  // Handle download invoice
-  const handleDownload = (invoice, format = 'pdf') => {
+  // Handle download invoice as PDF
+  const handleDownload = async (invoice, format = 'pdf') => {
     setActiveMenuId(null);
-    console.log(`📥 Download invoice as ${format}:`, invoice);
-    const content = generateInvoicePDF(invoice);
-    const blob = new Blob([content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Purchase_Invoice_${invoice.invoiceNumber}.html`;
-    a.click();
+    
+    if (format === 'proforma') {
+      // Download as Proforma Invoice (HTML)
+      const content = generateProformaInvoice(invoice);
+      const blob = new Blob([content], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Proforma_Purchase_Invoice_${invoice.invoiceNumber}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      // Download as regular invoice (HTML that can be printed to PDF)
+      const content = generateInvoicePDF(invoice);
+      const blob = new Blob([content], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Purchase_Invoice_${invoice.invoiceNumber}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   // Handle delete invoice
-  const handleDelete = (invoice) => {
+  const handleDelete = async (invoice) => {
     setActiveMenuId(null);
-    if (window.confirm(`Are you sure you want to delete invoice ${invoice.invoiceNumber}?`)) {
-      console.log("🗑️ Delete invoice:", invoice);
+    if (!window.confirm(`Are you sure you want to delete invoice ${invoice.invoiceNumber}?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const companyId = getCompanyId();
+      const endpoint = `${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/purchase-invoices/${invoice._id}?companyId=${companyId}`;
+
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete invoice: ${response.status}`);
+      }
+
+      // Remove invoice from state
+      setInvoices(prev => prev.filter(inv => inv._id !== invoice._id));
+      alert(`Invoice ${invoice.invoiceNumber} deleted successfully`);
+    } catch (error) {
+      console.error('❌ Error deleting invoice:', error);
+      alert(`Failed to delete invoice: ${error.message}`);
     }
   };
 
@@ -167,19 +245,154 @@ export default function PurchaseInvoiceList() {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
         <title>Purchase Invoice - ${invoice.invoiceNumber}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .invoice-container { max-width: 800px; margin: 0 auto; border: 1px solid #000; padding: 20px; }
-          .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-          .company-info { margin-bottom: 20px; }
-          .invoice-details { display: flex; justify-content: space-between; margin-bottom: 20px; }
-          .vendor-info { margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-          th { background-color: #f0f0f0; }
-          .totals { text-align: right; }
-          .footer { margin-top: 40px; text-align: center; font-size: 12px; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            background: white;
+          }
+          .invoice-container { 
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+            padding: 15px;
+          }
+          .header { 
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+          }
+          .header h1 { 
+            font-size: 20px;
+            margin-bottom: 5px;
+          }
+          .company-section {
+            background: #f9fafb;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-left: 3px solid #7c3aed;
+          }
+          .company-section h2 {
+            font-size: 16px;
+            color: #7c3aed;
+            margin-bottom: 8px;
+          }
+          .company-section p {
+            font-size: 12px;
+            margin: 3px 0;
+            color: #374151;
+          }
+          .invoice-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f3f4f6;
+            border-radius: 4px;
+          }
+          .invoice-meta > div {
+            flex: 1;
+          }
+          .invoice-meta p {
+            font-size: 11px;
+            margin: 4px 0;
+          }
+          .invoice-meta strong {
+            font-size: 12px;
+            color: #1f2937;
+          }
+          .vendor-section {
+            background: #faf5ff;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-left: 3px solid #a78bfa;
+          }
+          .vendor-section h3 {
+            font-size: 13px;
+            color: #7c3aed;
+            margin-bottom: 6px;
+          }
+          .vendor-section p {
+            font-size: 11px;
+            margin: 3px 0;
+            color: #374151;
+          }
+          table { 
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 11px;
+          }
+          th {
+            background: #7c3aed;
+            color: white;
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+          }
+          td {
+            border: 1px solid #d1d5db;
+            padding: 6px;
+            color: #374151;
+          }
+          tbody tr:nth-child(even) {
+            background: #f9fafb;
+          }
+          .totals-section {
+            margin-left: auto;
+            width: 350px;
+            background: #faf5ff;
+            padding: 12px;
+            border: 2px solid #7c3aed;
+            border-radius: 4px;
+          }
+          .totals-section p {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 11px;
+            border-bottom: 1px solid #e9d5ff;
+          }
+          .totals-section p:last-child {
+            border-bottom: none;
+          }
+          .totals-section .grand-total {
+            border-top: 2px solid #7c3aed;
+            margin-top: 8px;
+            padding-top: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #7c3aed;
+          }
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+          }
+          .footer p {
+            font-size: 10px;
+            margin: 5px 0;
+          }
+          .signature-line {
+            margin-top: 40px;
+            border-top: 1px solid #000;
+            width: 200px;
+            margin-left: auto;
+            margin-right: 40px;
+            padding-top: 5px;
+            text-align: center;
+            font-size: 11px;
+          }
+          @media print {
+            body { padding: 0; }
+            .invoice-container { padding: 10mm; }
+            @page { margin: 10mm; }
+          }
         </style>
       </head>
       <body>
@@ -188,32 +401,32 @@ export default function PurchaseInvoiceList() {
             <h1>Purchase Invoice</h1>
           </div>
           
-          <div class="company-info">
+          <div class="company-section">
             <h2>${company.name || 'My Company'}</h2>
             <p>${company.address || 'Company Address'}</p>
             <p>${company.city || ''}, ${company.state || 'MAHARASHTRA'}</p>
             <p>Email: ${company.email || 'company@example.com'}</p>
             <p>Phone: ${company.phone || '+91 1234567890'}</p>
-            <p>GSTIN: ${company.gstin || 'GSTIN NUMBER'}</p>
+            ${company.gstin ? `<p>GSTIN: ${company.gstin}</p>` : ''}
           </div>
 
-          <div class="invoice-details">
+          <div class="invoice-meta">
             <div>
               <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
               <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
               <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
             </div>
-            <div>
+            <div style="text-align: right;">
               <p><strong>Type:</strong> ${invoice.type === 'WITH_GST' ? 'GST Invoice' : 'Invoice (No GST)'}</p>
               <p><strong>Status:</strong> ${invoice.status || 'Draft'}</p>
             </div>
           </div>
 
-          <div class="vendor-info">
+          <div class="vendor-section">
             <h3>Vendor (Bill from):</h3>
             <p><strong>${invoice.vendor?.name || invoice.supplier?.name || 'Cash Purchase'}</strong></p>
-            <p>${invoice.vendor?.address || invoice.supplier?.address || ''}</p>
-            <p>${invoice.vendor?.city || invoice.supplier?.city || ''}, ${invoice.vendor?.state || invoice.supplier?.state || 'MAHARASHTRA'}</p>
+            ${invoice.vendor?.address || invoice.supplier?.address ? `<p>${invoice.vendor?.address || invoice.supplier?.address}</p>` : ''}
+            <p>${invoice.vendor?.state || invoice.supplier?.state || 'MAHARASHTRA'}</p>
             <p>Country: ${invoice.vendor?.country || invoice.supplier?.country || 'India'}</p>
             ${invoice.vendor?.gstin || invoice.supplier?.gstin ? `<p>GSTIN: ${invoice.vendor?.gstin || invoice.supplier?.gstin}</p>` : ''}
             ${invoice.vendor?.phone || invoice.supplier?.phone ? `<p>Phone: ${invoice.vendor?.phone || invoice.supplier?.phone}</p>` : ''}
@@ -222,54 +435,345 @@ export default function PurchaseInvoiceList() {
           <table>
             <thead>
               <tr>
-                <th>Sr. No.</th>
+                <th style="width: 40px;">Sr. No.</th>
                 <th>Product/Service</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                ${invoice.type === 'WITH_GST' ? '<th>Discount</th><th>Taxable Amt</th><th>GST(%)</th>' : '<th>Discount</th>'}
-                <th>Total(₹)</th>
+                <th style="width: 60px;">Qty</th>
+                <th style="width: 80px;">Rate</th>
+                ${invoice.type === 'WITH_GST' ? `
+                  <th style="width: 70px;">Discount</th>
+                  <th style="width: 90px;">Taxable Amt</th>
+                  <th style="width: 60px;">GST(%)</th>
+                ` : '<th style="width: 70px;">Discount</th>'}
+                <th style="width: 90px;">Total(₹)</th>
               </tr>
             </thead>
             <tbody>
               ${(invoice.items || []).map((item, index) => `
                 <tr>
-                  <td>${index + 1}</td>
+                  <td style="text-align: center;">${index + 1}</td>
                   <td>${item.name || item.itemName || '-'}</td>
-                  <td>${item.quantity || 0}</td>
-                  <td>₹${(item.rate || 0).toFixed(2)}</td>
+                  <td style="text-align: center;">${item.quantity || 0}</td>
+                  <td style="text-align: right;">₹${(item.rate || 0).toFixed(2)}</td>
                   ${invoice.type === 'WITH_GST' ? `
-                    <td>₹${(item.discount || 0).toFixed(2)}</td>
-                    <td>₹${(item.taxableAmount || 0).toFixed(2)}</td>
-                    <td>${item.gstRate || 0}%</td>
+                    <td style="text-align: right;">₹${(item.discount || 0).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${(item.taxableAmount || 0).toFixed(2)}</td>
+                    <td style="text-align: center;">${item.gstRate || 0}%</td>
                   ` : `
-                    <td>₹${(item.discount || 0).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${(item.discount || 0).toFixed(2)}</td>
                   `}
-                  <td>₹${(item.total || 0).toFixed(2)}</td>
+                  <td style="text-align: right;">₹${(item.total || 0).toFixed(2)}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
 
-          <div class="totals">
-            <p><strong>Item Total:</strong> ₹${(invoice.totals?.itemTotal || 0).toFixed(2)}</p>
+          <div class="totals-section">
+            <p><span>Item Total:</span><strong>₹${(invoice.totals?.itemTotal || 0).toFixed(2)}</strong></p>
             ${invoice.type === 'WITH_GST' ? `
-              <p><strong>Taxable Amount(₹):</strong> ₹${(invoice.totals?.subTotal || 0).toFixed(2)}</p>
-              <p><strong>CGST:</strong> ₹${(invoice.totals?.cgst || 0).toFixed(2)}</p>
-              <p><strong>SGST:</strong> ₹${(invoice.totals?.sgst || 0).toFixed(2)}</p>
-              <p><strong>IGST:</strong> ₹${(invoice.totals?.igst || 0).toFixed(2)}</p>
+              <p><span>Taxable Amount(₹):</span><strong>₹${(invoice.totals?.subTotal || 0).toFixed(2)}</strong></p>
+              <p><span>CGST:</span><strong>₹${(invoice.totals?.cgst || 0).toFixed(2)}</strong></p>
+              <p><span>SGST:</span><strong>₹${(invoice.totals?.sgst || 0).toFixed(2)}</strong></p>
+              <p><span>IGST:</span><strong>₹${(invoice.totals?.igst || 0).toFixed(2)}</strong></p>
             ` : ''}
-            <p><strong>Round Off:</strong> ₹${(invoice.totals?.roundOff || 0).toFixed(2)}</p>
-            <h3><strong>Total Amount(₹):</strong> ₹${(invoice.totals?.finalTotal || 0).toFixed(2)}</h3>
-            <p><strong>Outstanding Amount(₹):</strong> ₹${(invoice.totals?.finalTotal || 0).toFixed(2)}</p>
+            <p><span>Round Off:</span><strong>₹${(invoice.totals?.roundOff || 0).toFixed(2)}</strong></p>
+            <p class="grand-total"><span>Total Amount(₹):</span><strong>₹${(invoice.totals?.finalTotal || 0).toFixed(2)}</strong></p>
+            <p><span>Outstanding Amount(₹):</span><strong>₹${(invoice.totals?.finalTotal || 0).toFixed(2)}</strong></p>
+          </div>
+
+          <div class="signature-line">
+            <p>For, ${company.name || 'My Company'}</p>
+            <br><br>
+            <p>Signature</p>
           </div>
 
           <div class="footer">
+            <p style="font-size: 9px; color: #6b7280;">This is a computer generated invoice</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  // Generate Proforma Invoice HTML
+  const generateProformaInvoice = (invoice) => {
+    const company = JSON.parse(localStorage.getItem('currentCompany') || '{}');
+    
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Proforma Purchase Invoice - ${invoice.invoiceNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            background: white;
+          }
+          .invoice-container { 
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+            padding: 15px;
+          }
+          .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 120px;
+            color: rgba(124, 58, 237, 0.1);
+            font-weight: bold;
+            z-index: -1;
+            pointer-events: none;
+          }
+          .header { 
+            text-align: center;
+            border-bottom: 2px solid #7c3aed;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+          }
+          .header h1 { 
+            font-size: 22px;
+            margin-bottom: 5px;
+            color: #7c3aed;
+          }
+          .header p {
+            font-size: 12px;
+            color: #6d28d9;
+            font-weight: bold;
+          }
+          .company-section {
+            background: #faf5ff;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-left: 3px solid #7c3aed;
+          }
+          .company-section h2 {
+            font-size: 16px;
+            color: #7c3aed;
+            margin-bottom: 8px;
+          }
+          .company-section p {
+            font-size: 12px;
+            margin: 3px 0;
+            color: #374151;
+          }
+          .invoice-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #fef3c7;
+            border-radius: 4px;
+          }
+          .invoice-meta > div {
+            flex: 1;
+          }
+          .invoice-meta p {
+            font-size: 11px;
+            margin: 4px 0;
+          }
+          .invoice-meta strong {
+            font-size: 12px;
+            color: #1f2937;
+          }
+          .vendor-section {
+            background: #eff6ff;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-left: 3px solid #3b82f6;
+          }
+          .vendor-section h3 {
+            font-size: 13px;
+            color: #1e40af;
+            margin-bottom: 6px;
+          }
+          .vendor-section p {
+            font-size: 11px;
+            margin: 3px 0;
+            color: #374151;
+          }
+          table { 
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 11px;
+          }
+          th {
+            background: #7c3aed;
+            color: white;
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+          }
+          td {
+            border: 1px solid #d1d5db;
+            padding: 6px;
+            color: #374151;
+          }
+          tbody tr:nth-child(even) {
+            background: #faf5ff;
+          }
+          .totals-section {
+            margin-left: auto;
+            width: 350px;
+            background: #faf5ff;
+            padding: 12px;
+            border: 2px solid #7c3aed;
+            border-radius: 4px;
+          }
+          .totals-section p {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 11px;
+            border-bottom: 1px solid #ddd6fe;
+          }
+          .totals-section p:last-child {
+            border-bottom: none;
+          }
+          .totals-section .grand-total {
+            border-top: 2px solid #7c3aed;
+            margin-top: 8px;
+            padding-top: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #7c3aed;
+          }
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+            background: #fef3c7;
+            padding: 10px;
+            border-radius: 4px;
+          }
+          .footer p {
+            font-size: 10px;
+            margin: 5px 0;
+            color: #92400e;
+          }
+          .footer strong {
+            color: #7c3aed;
+          }
+          .signature-line {
+            margin-top: 40px;
+            border-top: 1px solid #000;
+            width: 200px;
+            margin-left: auto;
+            margin-right: 40px;
+            padding-top: 5px;
+            text-align: center;
+            font-size: 11px;
+          }
+          @media print {
+            body { padding: 0; }
+            .invoice-container { padding: 10mm; }
+            @page { margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="watermark">PROFORMA</div>
+        <div class="invoice-container">
+          <div class="header">
+            <h1>Proforma Purchase Invoice</h1>
+            <p>(This is not a tax invoice)</p>
+          </div>
+          
+          <div class="company-section">
+            <h2>${company.name || 'My Company'}</h2>
+            <p>${company.address || 'Company Address'}</p>
+            <p>${company.city || ''}, ${company.state || 'MAHARASHTRA'}</p>
+            <p>Email: ${company.email || 'company@example.com'}</p>
+            <p>Phone: ${company.phone || '+91 1234567890'}</p>
+            ${company.gstin ? `<p>GSTIN: ${company.gstin}</p>` : ''}
+          </div>
+
+          <div class="invoice-meta">
+            <div>
+              <p><strong>Proforma Invoice Number:</strong> PRO-${invoice.invoiceNumber}</p>
+              <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
+              <p><strong>Valid Until:</strong> ${formatDate(invoice.dueDate)}</p>
+            </div>
+            <div style="text-align: right;">
+              <p><strong>Type:</strong> ${invoice.type === 'WITH_GST' ? 'GST Invoice' : 'Invoice (No GST)'}</p>
+              <p><strong>Status:</strong> Quotation</p>
+            </div>
+          </div>
+
+          <div class="vendor-section">
+            <h3>Vendor Details:</h3>
+            <p><strong>${invoice.vendor?.name || 'Vendor'}</strong></p>
+            ${invoice.vendor?.address ? `<p>${invoice.vendor.address}</p>` : ''}
+            <p>${invoice.vendor?.state || 'MAHARASHTRA'}</p>
+            <p>Country: ${invoice.vendor?.country || 'India'}</p>
+            ${invoice.vendor?.gstin ? `<p>GSTIN: ${invoice.vendor.gstin}</p>` : ''}
+            ${invoice.vendor?.phone ? `<p>Phone: ${invoice.vendor.phone}</p>` : ''}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 40px;">Sr. No.</th>
+                <th>Product/Service</th>
+                <th style="width: 60px;">Qty</th>
+                <th style="width: 80px;">Rate</th>
+                ${invoice.type === 'WITH_GST' ? `
+                  <th style="width: 70px;">Discount</th>
+                  <th style="width: 90px;">Taxable Amt</th>
+                  <th style="width: 60px;">GST(%)</th>
+                ` : '<th style="width: 70px;">Discount</th>'}
+                <th style="width: 90px;">Total(₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(invoice.items || []).map((item, index) => `
+                <tr>
+                  <td style="text-align: center;">${index + 1}</td>
+                  <td>${item.name || item.itemName || '-'}</td>
+                  <td style="text-align: center;">${item.quantity || 0}</td>
+                  <td style="text-align: right;">₹${(item.rate || 0).toFixed(2)}</td>
+                  ${invoice.type === 'WITH_GST' ? `
+                    <td style="text-align: right;">₹${(item.discount || 0).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${(item.taxableAmount || 0).toFixed(2)}</td>
+                    <td style="text-align: center;">${item.gstRate || 0}%</td>
+                  ` : `
+                    <td style="text-align: right;">₹${(item.discount || 0).toFixed(2)}</td>
+                  `}
+                  <td style="text-align: right;">₹${(item.total || 0).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="totals-section">
+            <p><span>Item Total:</span><strong>₹${(invoice.totals?.itemTotal || 0).toFixed(2)}</strong></p>
+            ${invoice.type === 'WITH_GST' ? `
+              <p><span>Taxable Amount(₹):</span><strong>₹${(invoice.totals?.subTotal || 0).toFixed(2)}</strong></p>
+              <p><span>CGST:</span><strong>₹${(invoice.totals?.cgst || 0).toFixed(2)}</strong></p>
+              <p><span>SGST:</span><strong>₹${(invoice.totals?.sgst || 0).toFixed(2)}</strong></p>
+              <p><span>IGST:</span><strong>₹${(invoice.totals?.igst || 0).toFixed(2)}</strong></p>
+            ` : ''}
+            <p><span>Round Off:</span><strong>₹${(invoice.totals?.roundOff || 0).toFixed(2)}</strong></p>
+            <p class="grand-total"><span>Estimated Total(₹):</span><strong>₹${(invoice.totals?.finalTotal || 0).toFixed(2)}</strong></p>
+          </div>
+
+          <div class="signature-line">
             <p>For, ${company.name || 'My Company'}</p>
             <br><br>
-            <p>_____________________</p>
             <p>Signature</p>
-            <br>
-            <p style="font-size: 10px;">This is a computer generated invoice</p>
+          </div>
+
+          <div class="footer">
+            <p><strong>Important Notice:</strong></p>
+            <p>This is a Proforma Invoice for quotation purposes only.</p>
+            <p>This document does not constitute a valid tax invoice.</p>
+            <p>Final invoice will be issued upon confirmation of order.</p>
           </div>
         </div>
       </body>
@@ -354,16 +858,29 @@ export default function PurchaseInvoiceList() {
   }
 
   // Table view with data
+  // Filter invoices based on selected type
+  const filteredInvoices = invoices.filter(invoice => {
+    if (filterType === "all") return true;
+    if (filterType === "gst") return invoice.type === "WITH_GST";
+    if (filterType === "no-gst") return invoice.type === "WITHOUT_GST";
+    return true;
+  });
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h1 className={styles.title}>Purchase Invoice</h1>
         <div className={styles.headerActions}>
-          <button className={styles.exportBtn}>📤 Export</button>
-          <button className={styles.importBtn}>📥 Import</button>
-          <button className={styles.printBtn}>🖨️ Print</button>
-          <div className={styles.dropdown}>
-            <button className={styles.reportBtn}>More Report ▾</button>
+          <div className={styles.filterDropdown}>
+            <select 
+              className={styles.filterSelect}
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <option value="all">All Invoices</option>
+              <option value="gst">With GST</option>
+              <option value="no-gst">Without GST</option>
+            </select>
           </div>
           <button className={styles.createBtn} onClick={() => setShowCreateMenu(true)}>
             <span>+</span> Create Invoice
@@ -415,7 +932,7 @@ export default function PurchaseInvoiceList() {
             </tr>
           </thead>
           <tbody>
-            {invoices.map((invoice) => (
+            {filteredInvoices.map((invoice) => (
               <tr key={invoice._id}>
                 <td>{formatDate(invoice.invoiceDate)}</td>
                 <td className={styles.invoiceNo}>{invoice.invoiceNumber}</td>
@@ -439,26 +956,34 @@ export default function PurchaseInvoiceList() {
                   </button>
                   <div className={styles.actionsDropdown}>
                     <button 
-                      className={styles.moreBtn} 
-                      onClick={() => toggleMenu(invoice._id)}
+                      className={styles.moreBtn}
+                      data-more-btn
+                      onClick={(e) => toggleMenu(invoice._id, e)}
                     >
                       ⋮
                     </button>
                     {activeMenuId === invoice._id && (
-                      <div className={styles.dropdownMenu}>
-                        <button onClick={() => handleView(invoice)}>
+                      <div 
+                        className={styles.dropdownMenu}
+                        data-dropdown-menu
+                        style={{
+                          top: `${menuPosition.top}px`,
+                          left: `${menuPosition.left}px`
+                        }}
+                      >
+                        <button onClick={(e) => { e.stopPropagation(); handleView(invoice); }}>
                           <span>👁️</span> View
                         </button>
-                        <button onClick={() => handlePrint(invoice)}>
+                        <button onClick={(e) => { e.stopPropagation(); handlePrint(invoice); }}>
                           <span>🖨️</span> Print Invoice
                         </button>
-                        <button onClick={() => handleDownload(invoice, 'proforma')}>
+                        <button onClick={(e) => { e.stopPropagation(); handleDownload(invoice, 'proforma'); }}>
                           <span>📄</span> Download Proforma
                         </button>
-                        <button onClick={() => handleDownload(invoice, 'pdf')}>
+                        <button onClick={(e) => { e.stopPropagation(); handleDownload(invoice, 'pdf'); }}>
                           <span>📥</span> Download Invoice
                         </button>
-                        <button onClick={() => handleDelete(invoice)} className={styles.deleteBtn}>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(invoice); }} className={styles.deleteBtn}>
                           <span>🗑️</span> Delete
                         </button>
                       </div>

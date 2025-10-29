@@ -15,6 +15,7 @@ import {
   faBuilding,
   faUsers,
   faChartLine,
+  faPhone,
 } from "@fortawesome/free-solid-svg-icons";
 import authService from "../../services/authService";
 
@@ -32,6 +33,7 @@ const LOGIN_CONFIG = {
 // ===============================
 const VALIDATION_PATTERNS = {
   email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  phone: /^\d{10}$/,
   password: /^.{6,}$/,
 };
 
@@ -62,6 +64,7 @@ function Login({
     lockoutTime: null,
     remainingTime: 0,
     isOnline: navigator.onLine,
+    loginType: "email", // 'email' or 'phone'
   });
 
   // ===============================
@@ -94,13 +97,22 @@ function Login({
   const validateForm = useCallback(() => {
     const newErrors = {};
 
-    // Email validation
-    if (!formData.email.trim()) {
-      newErrors.email = "Email address is required";
-    } else if (!VALIDATION_PATTERNS.email.test(formData.email.trim())) {
-      newErrors.email = "Please enter a valid email address";
-    } else if (formData.email.length > 254) {
-      newErrors.email = "Email address is too long";
+    // Email or Phone validation based on login type
+    if (uiState.loginType === "email") {
+      if (!formData.email.trim()) {
+        newErrors.email = "Email address is required";
+      } else if (!VALIDATION_PATTERNS.email.test(formData.email.trim())) {
+        newErrors.email = "Please enter a valid email address";
+      } else if (formData.email.length > 254) {
+        newErrors.email = "Email address is too long";
+      }
+    } else {
+      // Phone validation
+      if (!formData.email.trim()) {
+        newErrors.email = "Mobile number is required";
+      } else if (!VALIDATION_PATTERNS.phone.test(formData.email.replace(/\D/g, ""))) {
+        newErrors.email = "Please enter a valid 10-digit mobile number";
+      }
     }
 
     // Password validation
@@ -120,7 +132,7 @@ function Login({
     }
 
     return newErrors;
-  }, [formData, uiState.loginAttempts, uiState.remainingTime, maxAttempts]);
+  }, [formData, uiState.loginAttempts, uiState.remainingTime, uiState.loginType, maxAttempts]);
 
   // ===============================
   // 📝 INPUT CHANGE HANDLER
@@ -230,9 +242,8 @@ function Login({
     try {
       const deviceFingerprint = generateDeviceFingerprint();
 
-      // Prepare login data
+      // Prepare login data based on login type
       const loginData = {
-        email: formData.email.trim().toLowerCase(),
         password: formData.password,
         deviceFingerprint,
         clientInfo: {
@@ -244,6 +255,13 @@ function Login({
           referrer: document.referrer || "direct",
         },
       };
+
+      // Add email or phone based on login type
+      if (uiState.loginType === "phone") {
+        loginData.phone = formData.email.trim(); // Using email field for phone input
+      } else {
+        loginData.email = formData.email.trim().toLowerCase();
+      }
 
       // Call authentication service
       const response = await authService.login(loginData, {
@@ -440,6 +458,26 @@ function Login({
   }, []);
 
   // ===============================
+  // 🔄 LOGIN TYPE TOGGLE
+  // ===============================
+  const toggleLoginType = useCallback(() => {
+    setUiState((prev) => ({
+      ...prev,
+      loginType: prev.loginType === "email" ? "phone" : "email",
+      errors: {},
+    }));
+    setFormData((prev) => ({...prev, email: ""}));
+  }, []);
+
+  // ===============================
+  // 🔑 FORGOT PASSWORD HANDLER
+  // ===============================
+  const handleForgotPassword = useCallback(() => {
+    // Navigate to forgot password page or show modal
+    navigate("/forgot-password");
+  }, [navigate]);
+
+  // ===============================
   // 🔄 EFFECT: CHECK EXISTING LOCKOUT
   // ===============================
   useEffect(() => {
@@ -598,18 +636,44 @@ function Login({
           </div>
         )}
 
+        {/* ✨ LOGIN TYPE TOGGLE */}
+        <div className="login-type-toggle">
+          <button
+            type="button"
+            className={`login-type-btn ${uiState.loginType === "email" ? "active" : ""}`}
+            onClick={toggleLoginType}
+            disabled={uiState.isSubmitting}
+          >
+            <FontAwesomeIcon icon={faEnvelope} className="me-2" />
+            Email
+          </button>
+          <button
+            type="button"
+            className={`login-type-btn ${uiState.loginType === "phone" ? "active" : ""}`}
+            onClick={toggleLoginType}
+            disabled={uiState.isSubmitting}
+          >
+            <FontAwesomeIcon icon={faPhone} className="me-2" />
+            Mobile Number
+          </button>
+        </div>
+
         {/* ✨ LOGIN FORM */}
         <form onSubmit={handleSubmit} noValidate autoComplete="off">
-          {/* Email Input */}
+          {/* Email/Phone Input */}
           <div className="modern-input-group">
             <input
               ref={emailInputRef}
-              type="email"
+              type={uiState.loginType === "email" ? "email" : "tel"}
               className={`modern-input ${uiState.errors.email ? "error" : ""}`}
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="Enter your email address"
+              placeholder={
+                uiState.loginType === "email"
+                  ? "Enter your email address"
+                  : "Enter your mobile number"
+              }
               autoComplete="new-email"
               autoCorrect="off"
               autoCapitalize="off"
@@ -617,7 +681,10 @@ function Login({
               disabled={uiState.isSubmitting || uiState.isLocked}
               required
             />
-            <FontAwesomeIcon icon={faEnvelope} className="modern-input-icon" />
+            <FontAwesomeIcon 
+              icon={uiState.loginType === "email" ? faEnvelope : faPhone} 
+              className="modern-input-icon" 
+            />
             {uiState.errors.email && (
               <div className="error-message">
                 <FontAwesomeIcon icon={faExclamationTriangle} size="sm" />
@@ -664,6 +731,18 @@ function Login({
                 {uiState.errors.password}
               </div>
             )}
+          </div>
+
+          {/* Forgot Password Link */}
+          <div className="forgot-password-container">
+            <button
+              type="button"
+              className="forgot-password-link"
+              onClick={handleForgotPassword}
+              disabled={uiState.isSubmitting || uiState.isLocked}
+            >
+              Forgot Password?
+            </button>
           </div>
 
           {/* Failed Attempts Counter */}

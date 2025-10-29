@@ -15,6 +15,9 @@ const {
   checkAdminStatus, // ✅ NEW: Admin status check
   requireAdmin, // ✅ NEW: Admin middleware
   isUserAdmin, // ✅ NEW: Admin helper function
+  forgotPassword, // ✅ NEW: Forgot password with OTP
+  verifyOTP, // ✅ NEW: Verify OTP
+  resetPassword, // ✅ NEW: Reset password
 } = require("../controllers/authController");
 
 // Import middleware
@@ -378,6 +381,7 @@ const signupValidation = [
 
 const loginValidation = [
   body("email")
+    .optional()
     .isEmail()
     .normalizeEmail({
       gmail_remove_dots: false,
@@ -387,6 +391,11 @@ const loginValidation = [
     .withMessage("Please provide a valid email address")
     .isLength({max: 254})
     .withMessage("Email address is too long"),
+
+  body("phone")
+    .optional()
+    .matches(/^[6-9]\d{9}$/)
+    .withMessage("Phone number must be a valid 10-digit number starting with 6, 7, 8, or 9"),
 
   body("password")
     .notEmpty()
@@ -398,6 +407,14 @@ const loginValidation = [
     .optional()
     .isBoolean()
     .withMessage("Remember me must be a boolean value"),
+  
+  // Custom validation to ensure at least email or phone is provided
+  body().custom((value, {req}) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error("Email or phone number is required");
+    }
+    return true;
+  }),
 ];
 
 const emailValidation = [
@@ -595,6 +612,129 @@ router.post(
       await createAuthAuditLog(req, "REFRESH_TOKEN_ERROR", {
         error: error.message,
         severity: "medium",
+      });
+
+      next(error);
+    }
+  }
+);
+
+// @desc    Forgot password
+// @route   POST /api/auth/forgot-password
+// @access  Public
+router.post(
+  "/forgot-password",
+  generalLimit,
+  setSecurityHeaders,
+  logAuthRequest("FORGOT_PASSWORD"),
+  [
+    body("email")
+      .optional()
+      .isEmail()
+      .withMessage("Please provide a valid email address")
+      .normalizeEmail(),
+    body("phone")
+      .optional()
+      .matches(/^[6-9]\d{9}$/)
+      .withMessage("Phone number must be a valid 10-digit number"),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      await forgotPassword(req, res);
+    } catch (error) {
+      logger.error("Forgot password route error", {
+        error: error.message,
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        ip: req.ip,
+        requestId: req.requestId,
+      });
+
+      await createAuthAuditLog(req, "FORGOT_PASSWORD_ERROR", {
+        error: error.message,
+        severity: "medium",
+      });
+
+      next(error);
+    }
+  }
+);
+
+// @desc    Verify OTP for password reset
+// @route   POST /api/auth/verify-otp
+// @access  Public
+router.post(
+  "/verify-otp",
+  generalLimit,
+  setSecurityHeaders,
+  logAuthRequest("VERIFY_OTP"),
+  [
+    body("email")
+      .optional()
+      .isEmail()
+      .withMessage("Please provide a valid email address")
+      .normalizeEmail(),
+    body("phone")
+      .optional()
+      .matches(/^[6-9]\d{9}$/)
+      .withMessage("Phone number must be a valid 10-digit number"),
+    body("otp")
+      .notEmpty()
+      .withMessage("OTP is required")
+      .matches(/^\d{6}$/)
+      .withMessage("OTP must be a 6-digit number"),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      await verifyOTP(req, res);
+    } catch (error) {
+      logger.error("Verify OTP route error", {
+        error: error.message,
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        ip: req.ip,
+        requestId: req.requestId,
+      });
+
+      await createAuthAuditLog(req, "VERIFY_OTP_ERROR", {
+        error: error.message,
+        severity: "medium",
+      });
+
+      next(error);
+    }
+  }
+);
+
+// @desc    Reset password
+// @route   POST /api/auth/reset-password
+// @access  Public
+router.post(
+  "/reset-password",
+  generalLimit,
+  setSecurityHeaders,
+  logAuthRequest("RESET_PASSWORD"),
+  [
+    body("token").notEmpty().withMessage("Reset token is required"),
+    body("newPassword")
+      .isLength({min: 6})
+      .withMessage("Password must be at least 6 characters long"),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      await resetPassword(req, res);
+    } catch (error) {
+      logger.error("Reset password route error", {
+        error: error.message,
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        ip: req.ip,
+        requestId: req.requestId,
+      });
+
+      await createAuthAuditLog(req, "RESET_PASSWORD_ERROR", {
+        error: error.message,
+        severity: "high",
       });
 
       next(error);

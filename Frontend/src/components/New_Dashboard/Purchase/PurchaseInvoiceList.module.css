@@ -2,6 +2,16 @@
   padding: 24px;
   background: #f9fafb;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Responsive padding for mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
 }
 
 .header {
@@ -9,6 +19,16 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
 }
 
 .title {
@@ -18,11 +38,25 @@
   margin: 0;
 }
 
+@media (max-width: 768px) {
+  .title {
+    font-size: 20px;
+  }
+}
+
 .headerActions {
   display: flex;
   gap: 12px;
   align-items: center;
   position: relative;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .headerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .exportBtn, .importBtn, .printBtn, .reportBtn {
@@ -37,6 +71,46 @@
 
 .exportBtn:hover, .importBtn:hover, .printBtn:hover, .reportBtn:hover {
   background: #f3f4f6;
+}
+
+.filterDropdown {
+  position: relative;
+}
+
+.filterSelect {
+  padding: 8px 32px 8px 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  min-width: 150px;
+}
+
+@media (max-width: 768px) {
+  .filterSelect {
+    min-width: 130px;
+    font-size: 13px;
+    padding: 8px 28px 8px 10px;
+  }
+}
+
+.filterSelect:hover {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
 }
 
 .createBtn {
@@ -60,6 +134,17 @@
 
 .createBtn span {
   font-size: 18px;
+}
+
+@media (max-width: 768px) {
+  .createBtn {
+    font-size: 13px;
+    padding: 8px 16px;
+  }
+  
+  .createBtn span {
+    font-size: 16px;
+  }
 }
 
 .createMenuOverlay {
@@ -146,10 +231,26 @@
   margin-top: 40px;
 }
 
+@media (max-width: 768px) {
+  .emptyState {
+    padding: 60px 20px;
+    margin-top: 20px;
+    border-radius: 8px;
+  }
+}
+
 .emptyIcon {
   margin: 0 auto 32px;
   width: 180px;
   height: 180px;
+}
+
+@media (max-width: 768px) {
+  .emptyIcon {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 24px;
+  }
 }
 
 .emptyTitle {
@@ -157,6 +258,12 @@
   font-weight: 600;
   color: #1f2937;
   margin: 0 0 12px;
+}
+
+@media (max-width: 768px) {
+  .emptyTitle {
+    font-size: 20px;
+  }
 }
 
 .emptyDescription {
@@ -167,23 +274,60 @@
   line-height: 1.6;
 }
 
+@media (max-width: 768px) {
+  .emptyDescription {
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+}
+
 .emptyActions {
   display: flex;
   justify-content: center;
   gap: 16px;
   position: relative;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .emptyActions {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .emptyActions button {
+    width: 100%;
+    max-width: 280px;
+  }
 }
 
 .tableContainer {
   background: white;
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1024px) {
+  .tableContainer {
+    border-radius: 8px;
+  }
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 900px;
+}
+
+@media (max-width: 768px) {
+  .table {
+    min-width: 800px;
+    font-size: 12px;
+  }
 }
 
 .table thead {
@@ -199,6 +343,14 @@
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .table th {
+    padding: 10px 12px;
+    font-size: 10px;
+  }
 }
 
 .table td {
@@ -206,6 +358,13 @@
   border-bottom: 1px solid #f3f4f6;
   font-size: 14px;
   color: #374151;
+}
+
+@media (max-width: 768px) {
+  .table td {
+    padding: 12px;
+    font-size: 12px;
+  }
 }
 
 .table tbody tr:hover {
@@ -223,6 +382,14 @@
   font-size: 12px;
   font-weight: 500;
   text-transform: capitalize;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .status {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
 }
 
 .status.draft {
@@ -247,6 +414,14 @@
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .typeTag {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
 }
 
 .editBtn {
@@ -259,6 +434,15 @@
   color: #7c3aed;
   margin-right: 8px;
   transition: all 0.2s;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .editBtn {
+    padding: 5px 10px;
+    font-size: 12px;
+    margin-right: 6px;
+  }
 }
 
 .editBtn:hover {
@@ -275,6 +459,13 @@
   font-size: 16px;
   color: #6b7280;
   transition: all 0.2s;
+}
+
+@media (max-width: 768px) {
+  .moreBtn {
+    padding: 5px 10px;
+    font-size: 14px;
+  }
 }
 
 .moreBtn:hover {
@@ -299,6 +490,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .shortcuts {
+    font-size: 11px;
+    padding: 10px;
+    margin-top: 16px;
+  }
 }
 
 .shortcuts kbd {
@@ -308,6 +508,13 @@
   border-radius: 4px;
   font-size: 12px;
   font-family: monospace;
+}
+
+@media (max-width: 768px) {
+  .shortcuts kbd {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
 }
 
 .loading {
@@ -327,6 +534,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .actionsCell {
+    gap: 6px;
+  }
 }
 
 .actionsDropdown {
@@ -334,17 +548,33 @@
 }
 
 .dropdownMenu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
+  position: fixed;
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.1);
   min-width: 200px;
-  z-index: 1000;
-  overflow: hidden;
+  z-index: 9999;
+  overflow: visible;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .dropdownMenu {
+    min-width: 180px;
+    font-size: 13px;
+  }
 }
 
 .dropdownMenu button {
@@ -360,6 +590,29 @@
   align-items: center;
   gap: 10px;
   transition: background 0.2s;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+@media (max-width: 768px) {
+  .dropdownMenu button {
+    padding: 10px 12px;
+    font-size: 13px;
+    gap: 8px;
+  }
+}
+
+.dropdownMenu button:last-child {
+  border-bottom: none;
+}
+
+.dropdownMenu button:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.dropdownMenu button:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 .dropdownMenu button:hover {
@@ -368,6 +621,12 @@
 
 .dropdownMenu button span {
   font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  .dropdownMenu button span {
+    font-size: 14px;
+  }
 }
 
 .dropdownMenu button.deleteBtn {

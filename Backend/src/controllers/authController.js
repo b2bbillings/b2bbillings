@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const logger = require("../config/logger");
 const jwt = require("jsonwebtoken");
+const { sendOTPEmail, sendPasswordResetSuccessEmail } = require("../utils/emailService");
 
 // ✅ SIMPLE: Token blacklist for logout security (in-memory for development)
 const tokenBlacklist = new Set();
@@ -725,29 +726,44 @@ const login = async (req, res) => {
   const clientIp = req.ip || req.connection.remoteAddress;
 
   try {
-    const {email, password, rememberMe = false} = req.body;
+    const {email, phone, password, rememberMe = false} = req.body;
 
     console.log("🔐 Login attempt:", {
       email,
+      phone,
       ip: clientIp,
       rememberMe,
       environment: process.env.NODE_ENV,
     });
 
-    if (!email || !password) {
+    if ((!email && !phone) || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "Email or phone number and password are required",
         code: "MISSING_CREDENTIALS",
       });
     }
 
-    // Find user with password using model static method
-    const user = await User.findByEmailWithPassword(email);
+    // Find user by email or phone with password
+    let user;
+    if (phone) {
+      // Validate phone format
+      if (!/^[6-9]\d{9}$/.test(phone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format. Must be a 10-digit number starting with 6, 7, 8, or 9",
+          code: "INVALID_PHONE_FORMAT",
+        });
+      }
+      user = await User.findByPhoneWithPassword(phone);
+    } else {
+      user = await User.findByEmailWithPassword(email);
+    }
 
     if (!user) {
-      logger.warn("Login attempt with non-existent email", {
+      logger.warn("Login attempt with non-existent credentials", {
         email,
+        phone,
         ip: clientIp,
         userAgent: req.get("User-Agent"),
       });
@@ -757,7 +773,7 @@ const login = async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        message: "Invalid email or password",
+        message: phone ? "Invalid phone number or password" : "Invalid email or password",
         code: "INVALID_CREDENTIALS",
       });
     }
@@ -812,6 +828,7 @@ const login = async (req, res) => {
       logger.warn("Failed login attempt", {
         userId: user._id,
         email: user.email,
+        phone: user.phone,
         ip: clientIp,
         loginAttempts: (user.loginAttempts || 0) + 1,
       });
@@ -823,7 +840,7 @@ const login = async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        message: "Invalid email or password",
+        message: phone ? "Invalid phone number or password" : "Invalid email or password",
         code: "INVALID_CREDENTIALS",
       });
     }
@@ -1015,6 +1032,344 @@ const refreshToken = async (req, res) => {
   }
 };
 
+// ================================
+// FORGOT PASSWORD (OTP-based)
+// ================================
+
+const forgotPassword = async (req, res) => {
+  const startTime = Date.now();
+  const clientIp = req.ip || req.connection.remoteAddress;
+
+  try {
+    const {email, phone} = req.body;
+
+    if (!email && !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Email or phone number is required",
+        code: "MISSING_CREDENTIALS",
+      });
+    }
+
+    // Find user by email or phone
+    let user;
+    if (phone) {
+      // Validate phone format
+      if (!/^[6-9]\d{9}$/.test(phone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format",
+          code: "INVALID_PHONE_FORMAT",
+        });
+      }
+      user = await User.findOne({phone});
+    } else {
+      user = await User.findOne({email: email.toLowerCase()});
+    }
+
+    // Always return success to prevent enumeration
+    if (!user) {
+      logger.warn("Password reset requested for non-existent user", {
+        email,
+        phone,
+        ip: clientIp,
+      });
+
+      // Consistent timing
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      return res.status(200).json({
+        success: true,
+        message: phone 
+          ? "If this phone number is registered, you will receive an OTP"
+          : "If this email is registered, you will receive an OTP",
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Hash OTP for storage
+    const hashedOTP = require("crypto")
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    // Save OTP to user (expires in 10 minutes)
+    user.passwordResetToken = hashedOTP;
+    user.passwordResetExpires = Date.now() + 600000; // 10 minutes
+    await user.save({ validateModifiedOnly: true });
+
+    logger.info("Password reset OTP generated", {
+      userId: user._id,
+      email: user.email,
+      phone: user.phone,
+      ip: clientIp,
+    });
+
+    // Send OTP via email if email is provided
+    if (email && !phone) {
+      try {
+        await sendOTPEmail(user.email, otp, user.name);
+        logger.info("OTP email sent successfully", {
+          userId: user._id,
+          email: user.email,
+        });
+      } catch (emailError) {
+        logger.error("Failed to send OTP email", {
+          error: emailError.message,
+          userId: user._id,
+        });
+        // Continue even if email fails - user can still use phone
+      }
+    }
+
+    // TODO: Send OTP via SMS if phone is provided
+    // For phone-based reset, you'll need to integrate an SMS service like Twilio
+
+    const responseData = {
+      success: true,
+      message: phone 
+        ? `OTP sent to phone number ending in ${phone.slice(-4)}`
+        : `OTP sent to ${email}`,
+    };
+
+    // In development, include the OTP for testing
+    if (process.env.NODE_ENV === "development") {
+      responseData.otp = otp;
+    }
+
+    res.status(200).json(responseData);
+  } catch (error) {
+    logger.error("Forgot password error", {
+      error: error.message,
+      stack: error.stack,
+      ip: clientIp,
+      responseTime: Date.now() - startTime,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error processing password reset request",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
+// ================================
+// VERIFY OTP
+// ================================
+
+const verifyOTP = async (req, res) => {
+  const startTime = Date.now();
+  const clientIp = req.ip || req.connection.remoteAddress;
+
+  try {
+    const {email, phone, otp} = req.body;
+
+    if ((!email && !phone) || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email/phone and OTP are required",
+        code: "MISSING_FIELDS",
+      });
+    }
+
+    // Validate OTP format
+    if (!/^\d{6}$/.test(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP must be a 6-digit number",
+        code: "INVALID_OTP_FORMAT",
+      });
+    }
+
+    // Find user by email or phone
+    let user;
+    if (phone) {
+      user = await User.findOne({phone});
+    } else {
+      user = await User.findOne({email: email.toLowerCase()});
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credentials",
+        code: "INVALID_CREDENTIALS",
+      });
+    }
+
+    // Check if OTP exists and not expired
+    if (!user.passwordResetToken || !user.passwordResetExpires) {
+      return res.status(400).json({
+        success: false,
+        message: "No OTP found. Please request a new one",
+        code: "NO_OTP",
+      });
+    }
+
+    if (user.passwordResetExpires < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one",
+        code: "OTP_EXPIRED",
+      });
+    }
+
+    // Hash the provided OTP to compare with stored hash
+    const hashedOTP = require("crypto")
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    if (user.passwordResetToken !== hashedOTP) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+        code: "INVALID_OTP",
+      });
+    }
+
+    // OTP is valid - generate a temporary token for password reset
+    const resetToken = require("crypto").randomBytes(32).toString("hex");
+    const hashedResetToken = require("crypto")
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // Store reset token (valid for 15 minutes)
+    user.passwordResetToken = hashedResetToken;
+    user.passwordResetExpires = Date.now() + 900000; // 15 minutes
+    await user.save({ validateModifiedOnly: true });
+
+    logger.info("OTP verified successfully", {
+      userId: user._id,
+      email: user.email,
+      phone: user.phone,
+      ip: clientIp,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      resetToken: resetToken,
+    });
+  } catch (error) {
+    logger.error("Verify OTP error", {
+      error: error.message,
+      stack: error.stack,
+      ip: clientIp,
+      responseTime: Date.now() - startTime,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error verifying OTP",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
+// ================================
+// RESET PASSWORD
+// ================================
+
+const resetPassword = async (req, res) => {
+  const startTime = Date.now();
+  const clientIp = req.ip || req.connection.remoteAddress;
+
+  try {
+    const {token, newPassword} = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token and new password are required",
+        code: "MISSING_FIELDS",
+      });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+        code: "WEAK_PASSWORD",
+      });
+    }
+
+    // Hash the token to compare with stored hash
+    const hashedToken = require("crypto")
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: {$gt: Date.now()},
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    
+    // Reset login attempts if any
+    if (user.loginAttempts > 0) {
+      await user.resetLoginAttempts();
+    }
+
+    await user.save({ validateModifiedOnly: true });
+
+    logger.info("Password reset successful", {
+      userId: user._id,
+      email: user.email,
+      ip: clientIp,
+    });
+
+    // Send success notification email
+    if (user.email) {
+      try {
+        await sendPasswordResetSuccessEmail(user.email, user.name);
+      } catch (emailError) {
+        logger.error("Failed to send password reset success email", {
+          error: emailError.message,
+          userId: user._id,
+        });
+        // Don't fail the request if email fails
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Password has been reset successfully. You can now login with your new password.",
+    });
+  } catch (error) {
+    logger.error("Reset password error", {
+      error: error.message,
+      stack: error.stack,
+      ip: clientIp,
+      responseTime: Date.now() - startTime,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error resetting password",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
 // ✅ UPDATED: Export all functions including new admin functions
 module.exports = {
   signup,
@@ -1025,4 +1380,7 @@ module.exports = {
   checkAdminStatus, // ✅ NEW: Check if user is admin
   requireAdmin, // ✅ NEW: Admin middleware
   isUserAdmin, // ✅ NEW: Helper function to check admin status
+  forgotPassword, // ✅ NEW: Forgot password with OTP
+  verifyOTP, // ✅ NEW: Verify OTP
+  resetPassword, // ✅ NEW: Reset password
 };

@@ -18,6 +18,7 @@ import "./App.css";
 import Layout from "./Layout/Layout";
 import HomePage from "./Pages/HomePage";
 import AuthPage from "./Pages/AuthPage";
+import ForgotPasswordPage from "./Pages/ForgotPasswordPage";
 import CommunityPage from "./Pages/CommunityPage";
 import ContentDisplay from "./components/New_Dashboard/ContentDisplay.jsx";
 import AdminDashboard from "./components/Admin/AdminDashboard";
@@ -2199,6 +2200,8 @@ function App() {
             />
             {/* Redirect /login to /auth */}
             <Route path="/login" element={<Navigate to="/auth" replace />} />
+            {/* Forgot Password Route */}
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             {/* Profile Page Route - Completely standalone fullscreen page */}
             <Route path="/profile" element={<StandaloneProfilePage />} />
             {/* Root redirect */}

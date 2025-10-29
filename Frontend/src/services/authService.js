@@ -286,34 +286,54 @@ api.interceptors.response.use(
 const authService = {
   // Core authentication methods
   login: async (credentials) => {
-    const requestKey = `login_${credentials.email}`;
+    const requestKey = `login_${credentials.email || credentials.phone}`;
 
     return deduplicateAuthRequest(requestKey, async () => {
       try {
         // Validation: Check required fields
-        if (!credentials.email || !credentials.password) {
+        if ((!credentials.email && !credentials.phone) || !credentials.password) {
           return {
             success: false,
-            message: "Email and password are required",
+            message: credentials.phone ? "Phone and password are required" : "Email and password are required",
             code: "MISSING_CREDENTIALS",
           };
         }
 
-        // Validation: Email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(credentials.email)) {
-          return {
-            success: false,
-            message: "Please enter a valid email address",
-            code: "INVALID_EMAIL_FORMAT",
-          };
+        // Validation: Email or Phone format
+        if (credentials.email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(credentials.email)) {
+            return {
+              success: false,
+              message: "Please enter a valid email address",
+              code: "INVALID_EMAIL_FORMAT",
+            };
+          }
         }
 
-        const response = await api.post("/auth/login", {
-          email: credentials.email.toLowerCase().trim(),
+        if (credentials.phone) {
+          const phoneRegex = /^[6-9]\d{9}$/;
+          if (!phoneRegex.test(credentials.phone)) {
+            return {
+              success: false,
+              message: "Please enter a valid 10-digit phone number",
+              code: "INVALID_PHONE_FORMAT",
+            };
+          }
+        }
+
+        const loginData = {
           password: credentials.password,
           rememberMe: credentials.rememberMe || false,
-        });
+        };
+
+        if (credentials.phone) {
+          loginData.phone = credentials.phone;
+        } else {
+          loginData.email = credentials.email.toLowerCase().trim();
+        }
+
+        const response = await api.post("/auth/login", loginData);
 
         if (response.data.success) {
           const {tokens, user} = response.data.data;
@@ -1056,6 +1076,196 @@ const authService = {
     } catch (error) {
       console.error("Failed to update current user:", error);
       return false;
+    }
+  },
+
+  // ================================
+  // FORGOT PASSWORD (OTP-based)
+  // ================================
+  forgotPassword: async (credentials) => {
+    try {
+      const {email, phone} = credentials;
+
+      if (!email && !phone) {
+        return {
+          success: false,
+          message: "Email or phone number is required",
+          code: "MISSING_CREDENTIALS",
+        };
+      }
+
+      // Validate email format if provided
+      if (email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return {
+            success: false,
+            message: "Please enter a valid email address",
+            code: "INVALID_EMAIL_FORMAT",
+          };
+        }
+      }
+
+      // Validate phone format if provided
+      if (phone) {
+        const phoneRegex = /^[6-9]\d{9}$/;
+        if (!phoneRegex.test(phone)) {
+          return {
+            success: false,
+            message: "Please enter a valid 10-digit phone number",
+            code: "INVALID_PHONE_FORMAT",
+          };
+        }
+      }
+
+      const requestData = {};
+      if (phone) {
+        requestData.phone = phone;
+      } else {
+        requestData.email = email.toLowerCase().trim();
+      }
+
+      const response = await api.post("/auth/forgot-password", requestData);
+
+      if (response.data.success) {
+        return {
+          success: true,
+          message: response.data.message,
+          data: response.data,
+          otp: response.data.otp, // Only available in development
+        };
+      } else {
+        throw new Error(response.data.message || "Failed to send OTP");
+      }
+    } catch (error) {
+      const errorResponse = error.response?.data;
+
+      if (error.code === "ERR_NETWORK" || error.code === "NETWORK_ERROR") {
+        return {
+          success: false,
+          message: "Network error. Please check your connection and try again.",
+          code: "NETWORK_ERROR",
+        };
+      }
+
+      return {
+        success: false,
+        message: errorResponse?.message || "Failed to send OTP",
+        code: errorResponse?.code || "FORGOT_PASSWORD_ERROR",
+      };
+    }
+  },
+
+  // ================================
+  // VERIFY OTP
+  // ================================
+  verifyOTP: async (email, phone, otp) => {
+    try {
+      if ((!email && !phone) || !otp) {
+        return {
+          success: false,
+          message: "Email/phone and OTP are required",
+          code: "MISSING_FIELDS",
+        };
+      }
+
+      // Validate OTP format
+      if (!/^\d{6}$/.test(otp)) {
+        return {
+          success: false,
+          message: "OTP must be a 6-digit number",
+          code: "INVALID_OTP_FORMAT",
+        };
+      }
+
+      const requestData = {otp};
+      if (phone) {
+        requestData.phone = phone;
+      } else {
+        requestData.email = email.toLowerCase().trim();
+      }
+
+      const response = await api.post("/auth/verify-otp", requestData);
+
+      if (response.data.success) {
+        return {
+          success: true,
+          message: response.data.message,
+          resetToken: response.data.resetToken,
+        };
+      } else {
+        throw new Error(response.data.message || "Failed to verify OTP");
+      }
+    } catch (error) {
+      const errorResponse = error.response?.data;
+
+      if (error.code === "ERR_NETWORK" || error.code === "NETWORK_ERROR") {
+        return {
+          success: false,
+          message: "Network error. Please check your connection and try again.",
+          code: "NETWORK_ERROR",
+        };
+      }
+
+      return {
+        success: false,
+        message: errorResponse?.message || "Failed to verify OTP",
+        code: errorResponse?.code || "VERIFY_OTP_ERROR",
+      };
+    }
+  },
+
+  // ================================
+  // RESET PASSWORD
+  // ================================
+  resetPassword: async (token, newPassword) => {
+    try {
+      if (!token || !newPassword) {
+        return {
+          success: false,
+          message: "Reset token and new password are required",
+          code: "MISSING_FIELDS",
+        };
+      }
+
+      // Validate password strength
+      if (newPassword.length < 6) {
+        return {
+          success: false,
+          message: "Password must be at least 6 characters long",
+          code: "WEAK_PASSWORD",
+        };
+      }
+
+      const response = await api.post("/auth/reset-password", {
+        token,
+        newPassword,
+      });
+
+      if (response.data.success) {
+        return {
+          success: true,
+          message: response.data.message,
+        };
+      } else {
+        throw new Error(response.data.message || "Failed to reset password");
+      }
+    } catch (error) {
+      const errorResponse = error.response?.data;
+
+      if (error.code === "ERR_NETWORK" || error.code === "NETWORK_ERROR") {
+        return {
+          success: false,
+          message: "Network error. Please check your connection and try again.",
+          code: "NETWORK_ERROR",
+        };
+      }
+
+      return {
+        success: false,
+        message: errorResponse?.message || "Failed to reset password",
+        code: errorResponse?.code || "RESET_PASSWORD_ERROR",
+      };
     }
   },
 };
