@@ -45,7 +45,9 @@ const invoiceService = {
   getInvoices: async (type, params) => {
     try {
       const endpoint = getBaseEndpoint(type);
+      console.log(`📥 Fetching invoices: ${API_BASE_URL}${endpoint}`, params);
       const res = await axios.get(`${API_BASE_URL}${endpoint}`, { params });
+      console.log(`✅ Invoices fetched:`, res.data);
       return { success: true, data: res.data.data || res.data, meta: res.data.meta };
     } catch (err) {
       return { success: false, message: err?.response?.data?.message || err.message };

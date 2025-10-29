@@ -825,8 +825,8 @@ const NewSidebar = React.memo(
         case 'salesWithoutGST':
           path = '/salesWithoutGST';
           break;
-        case 'salesInvoice': // Make sure this case exists
-          path = '/sales-invoice';
+        case 'salesInvoice': // Navigate to landing page (SalesInvoiceList)
+          path = '/sales';
           break;
         case 'allBills':
           path = '/allBills';
@@ -840,8 +840,8 @@ const NewSidebar = React.memo(
         case 'endCustomers':
           path = '/end-customers';
           break;
-        case 'purchaseBill':
-          path = '/purchase-bill';
+        case 'purchaseBill': // Navigate to landing page (PurchaseInvoiceList)
+          path = '/purchases';
           break;
         case 'purchaseOrder':
           path = '/purchase-order';

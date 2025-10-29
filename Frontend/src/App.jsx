@@ -51,8 +51,10 @@ import SalesWithGST from "./components/New_Dashboard/Sales/SalesWithGST";
 import SalesWithoutGST from "./components/New_Dashboard/Sales/SalesWithoutGST";
 import AllBillsList from "./components/New_Dashboard/Sales/AllBillsList";
 import NewSalesInvoice from "./components/New_Dashboard/Sales/NewSalesInvoice";
+import SalesInvoiceList from "./components/New_Dashboard/Sales/SalesInvoiceList";
 import EndCustomers from "./components/New_Dashboard/New_parties/End_Customer/EndCustomers";
 import PurchaseBillGst from "./components/New_Dashboard/Purchase/PurchaseBillGst";
+import PurchaseInvoiceList from "./components/New_Dashboard/Purchase/PurchaseInvoiceList";
 import NewDashboard from "./components/New_Dashboard/NewDashbord";
 import PurchaseBillWithoutGST from "./components/New_Dashboard/Purchase/PurchaseBillWithoutGST";
 
@@ -1772,7 +1774,7 @@ function App() {
 
     return (
       <CompanyRouteWrapper>
-        <Sales
+        <SalesInvoiceList
           currentCompany={currentCompany}
           currentUser={currentUser}
           companyId={companyId}
@@ -1810,6 +1812,58 @@ function App() {
     return (
       <CompanyRouteWrapper>
         <SalesWithoutGST
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  // Purchase Management Wrappers
+  const PurchaseWrapper = () => {
+    const { companyId } = useParams();
+    console.log("🎯 PurchaseWrapper rendering with companyId:", companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <PurchaseInvoiceList
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const PurchaseWithGSTWrapper = () => {
+    const { companyId } = useParams();
+    console.log("🎯 PurchaseWithGSTWrapper rendering with companyId:", companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <PurchaseBillGst
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          companyId={companyId}
+          addToast={showToast}
+          isOnline={true}
+        />
+      </CompanyRouteWrapper>
+    );
+  };
+
+  const PurchaseWithoutGSTWrapper = () => {
+    const { companyId } = useParams();
+    console.log("🎯 PurchaseWithoutGSTWrapper rendering with companyId:", companyId);
+
+    return (
+      <CompanyRouteWrapper>
+        <PurchaseBillWithoutGST
           currentCompany={currentCompany}
           currentUser={currentUser}
           companyId={companyId}
@@ -2143,13 +2197,10 @@ function App() {
                 )
               }
             />
-
             {/* Redirect /login to /auth */}
             <Route path="/login" element={<Navigate to="/auth" replace />} />
-
             {/* Profile Page Route - Completely standalone fullscreen page */}
             <Route path="/profile" element={<StandaloneProfilePage />} />
-
             {/* Root redirect */}
             <Route
               path="/"
@@ -2161,14 +2212,11 @@ function App() {
                 )
               }
             />
-
             {/* ✅ PROTECTED ADMIN ROUTES - Only accessible by administrators */}
             <Route path="/admin/*" element={<AdminDashboardWrapper />} />
-
             <Route path="/home" element={<MainDashboardWrapper />} />
             <Route path="/dashboard" element={<MainDashboardWrapper />} />
             <Route path="/dashboard/:view" element={<MainDashboardWrapper />} />
-
             <Route
               path="/shops"
               element={
@@ -2177,12 +2225,10 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/community"
               element={<CommunityPageWrapper />}
             />
-
             <Route
               path="/companies/:companyId/staff"
               element={
@@ -2191,7 +2237,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/staff/daily-task-assignment"
               element={
@@ -2200,7 +2245,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/categories"
               element={
@@ -2209,7 +2253,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/categories"
               element={
@@ -2218,7 +2261,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/purchases/add"
               element={
@@ -2227,7 +2269,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/purchases/:id/edit"
               element={
@@ -2242,7 +2283,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/purchase-orders/add"
               element={
@@ -2251,7 +2291,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/purchase-orders/:id/edit"
               element={
@@ -2260,7 +2299,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/sales-invoice"
               element={
@@ -2273,7 +2311,6 @@ function App() {
               path="/sales-invoice"
               element={<SimpleNewSalesInvoiceWrapper />}
             />
-
             <Route
               path="/companies/:companyId/sales/edit/:transactionId"
               element={
@@ -2285,7 +2322,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/quotations/add"
               element={
@@ -2294,7 +2330,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/quotations/edit/:transactionId"
               element={
@@ -2306,7 +2341,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/sales-orders/add"
               element={
@@ -2315,7 +2349,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/sales-orders/:id/edit"
               element={
@@ -2324,7 +2357,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             {/* Parties Management Routes - Must be before catch-all route */}
             <Route
               path="/companies/:companyId/parties"
@@ -2334,7 +2366,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/customers"
               element={
@@ -2343,7 +2374,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/vendors"
               element={
@@ -2352,7 +2382,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/expenses"
               element={
@@ -2361,7 +2390,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/indirect-income"
               element={
@@ -2370,7 +2398,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/payment-in"
               element={
@@ -2379,7 +2406,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/payment-out"
               element={
@@ -2388,7 +2414,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             {/* Sales Management Routes */}
             <Route
               path="/companies/:companyId/sales"
@@ -2398,7 +2423,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/salesWithGST"
               element={
@@ -2407,7 +2431,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/salesWithoutGST"
               element={
@@ -2416,7 +2439,31 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
+            {/* Purchase Management Routes */}
+            <Route
+              path="/companies/:companyId/purchases"
+              element={
+                <ProtectedRoute>
+                  <PurchaseWrapper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/companies/:companyId/purchaseWithGST"
+              element={
+                <ProtectedRoute>
+                  <PurchaseWithGSTWrapper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/companies/:companyId/purchaseWithoutGST"
+              element={
+                <ProtectedRoute>
+                  <PurchaseWithoutGSTWrapper />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/companies/:companyId/allBills"
               element={
@@ -2425,7 +2472,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/allBills"
               element={
@@ -2434,7 +2480,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/parties"
               element={
@@ -2443,7 +2488,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/customers"
               element={
@@ -2452,7 +2496,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/vendors"
               element={
@@ -2461,7 +2504,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/expenses"
               element={
@@ -2470,7 +2512,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/indirect-income"
               element={
@@ -2479,7 +2520,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/newsales-invoice"
               element={
@@ -2488,7 +2528,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/newsales-invoice"
               element={
@@ -2497,14 +2536,10 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             {/* Simple Payment Routes without company context */}
             <Route path="/payment-in" element={<SimplePaymentInWrapper />} />
-
             <Route path="/payment-out" element={<SimplePaymentOutWrapper />} />
-
             <Route path="/end-customers" element={<EndCustomers />} />
-
             <Route
               path="/companies/:companyId/*"
               element={
@@ -2518,20 +2553,16 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/companies/:companyId/sales-invoice"
               element={<SalesFormWrapper />}
             />
             <Route path="/sales-invoice" element={<SalesFormWrapper />} />
-
             <Route
               path="/companies/:companyId/purchase-bill"
               element={<PurchaseBillGst />}
             />
-
             <Route path="/purchase-bill" element={<PurchaseBillGst />} />
-
             <Route
               path="/companies/:companyId/purchase-bill-without-gst"
               element={<PurchaseBillWithoutGST />}
@@ -2540,20 +2571,18 @@ function App() {
               path="/purchase-bill-without-gst"
               element={<PurchaseBillWithoutGST />}
             />
-
             <Route
-  path="/companies/:companyId/bank-accounts"
-  element={
-    <ProtectedRoute>
-      <ContentDisplay
-        currentCompany={currentCompany}
-        currentUser={currentUser}
-        addToast={showToast}
-      />
-    </ProtectedRoute>
-  }
-/>
-
+              path="/companies/:companyId/bank-accounts"
+              element={
+                <ProtectedRoute>
+                  <ContentDisplay
+                    currentCompany={currentCompany}
+                    currentUser={currentUser}
+                    addToast={showToast}
+                  />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
