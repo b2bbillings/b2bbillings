@@ -63,6 +63,29 @@
   background: rgba(156, 163, 175, 0.5);
 }
 
+/* ✅ PRODUCTION: Sidebar Logo Header */
+.sidebar-logo-header {
+  padding: 1.5rem 1rem;
+  border-bottom: 2px solid var(--company-border);
+  background: linear-gradient(135deg, #f9fafb, #ffffff);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-brand-logo {
+  max-width: 100%;
+  height: 50px;
+  width: auto;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-brand-logo:hover {
+  transform: scale(1.05);
+}
+
 /* ✅ PRODUCTION: Company info section with status indicator */
 .sidebar-company-info {
   padding: 1.5rem 1rem;

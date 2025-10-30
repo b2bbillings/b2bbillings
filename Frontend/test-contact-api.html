@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Contact API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Contact API Test</h1>
+    
+    <div class="section">
+        <h2>1. Check localStorage</h2>
+        <button onclick="checkLocalStorage()">Check localStorage</button>
+        <pre id="localStorage-result"></pre>
+    </div>
+
+    <div class="section">
+        <h2>2. Test API Endpoint</h2>
+        <button onclick="testContactAPI()">Test Create Contact</button>
+        <pre id="api-result"></pre>
+    </div>
+
+    <div class="section">
+        <h2>3. Manual Token & Company Input</h2>
+        <input type="text" id="token-input" placeholder="Paste your token here" style="width: 100%; padding: 5px;">
+        <input type="text" id="company-input" placeholder="Paste your company ID here" style="width: 100%; margin-top: 5px; padding: 5px;">
+        <button onclick="testWithManualCredentials()">Test with Manual Credentials</button>
+        <pre id="manual-result"></pre>
+    </div>
+
+    <script>
+        function checkLocalStorage() {
+            const result = {
+                token: localStorage.getItem('token') ? 'EXISTS (length: ' + localStorage.getItem('token').length + ')' : 'NOT FOUND',
+                tokenPreview: localStorage.getItem('token') ? localStorage.getItem('token').substring(0, 50) + '...' : null,
+                selectedCompany: localStorage.getItem('selectedCompany') || 'NOT FOUND',
+                user: localStorage.getItem('user') || 'NOT FOUND',
+                sessionToken: sessionStorage.getItem('token') ? 'EXISTS' : 'NOT FOUND',
+                sessionCompany: sessionStorage.getItem('selectedCompany') || 'NOT FOUND'
+            };
+            document.getElementById('localStorage-result').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function testContactAPI() {
+            const token = localStorage.getItem('token');
+            const rawCompany = localStorage.getItem('selectedCompany') || sessionStorage.getItem('selectedCompany');
+            
+            let companyId = rawCompany;
+            try {
+                const parsed = JSON.parse(rawCompany);
+                companyId = parsed?.id || parsed?._id || parsed || rawCompany;
+            } catch (e) {
+                companyId = rawCompany;
+            }
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : 'MISSING',
+                'x-company-id': companyId || 'MISSING'
+            };
+
+            const body = {
+                name: 'Test Contact from Browser',
+                phone: '9999999999',
+                phoneNumbers: [{ number: '9999999999', label: 'Primary' }],
+                partyType: 'customer',
+                priority: 'medium',
+                status: 'active'
+            };
+
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.textContent = 'Testing...\n\nRequest Details:\n' + JSON.stringify({
+                url: 'http://localhost:5000/api/contacts',
+                method: 'POST',
+                headers: headers,
+                body: body
+            }, null, 2);
+
+            try {
+                const response = await fetch('http://localhost:5000/api/contacts', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<span class="success">✅ SUCCESS!</span>\n\n' + 
+                        'Status: ' + response.status + '\n' +
+                        'Response:\n' + JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.innerHTML = '<span class="error">❌ ERROR!</span>\n\n' +
+                        'Status: ' + response.status + '\n' +
+                        'Response:\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">❌ FETCH ERROR!</span>\n\n' + error.message;
+            }
+        }
+
+        async function testWithManualCredentials() {
+            const token = document.getElementById('token-input').value.trim();
+            const companyId = document.getElementById('company-input').value.trim();
+
+            if (!token || !companyId) {
+                alert('Please provide both token and company ID');
+                return;
+            }
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'x-company-id': companyId
+            };
+
+            const body = {
+                name: 'Manual Test Contact',
+                phone: '8888888888',
+                phoneNumbers: [{ number: '8888888888', label: 'Primary' }],
+                partyType: 'customer',
+                priority: 'medium',
+                status: 'active'
+            };
+
+            const resultDiv = document.getElementById('manual-result');
+            resultDiv.textContent = 'Testing...\n\nRequest Details:\n' + JSON.stringify({
+                url: 'http://localhost:5000/api/contacts',
+                method: 'POST',
+                headers: headers,
+                body: body
+            }, null, 2);
+
+            try {
+                const response = await fetch('http://localhost:5000/api/contacts', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<span class="success">✅ SUCCESS!</span>\n\n' + 
+                        'Status: ' + response.status + '\n' +
+                        'Response:\n' + JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.innerHTML = '<span class="error">❌ ERROR!</span>\n\n' +
+                        'Status: ' + response.status + '\n' +
+                        'Response:\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">❌ FETCH ERROR!</span>\n\n' + error.message;
+            }
+        }
+
+        // Auto-check localStorage on load
+        window.addEventListener('load', checkLocalStorage);
+    </script>
+</body>
+</html>

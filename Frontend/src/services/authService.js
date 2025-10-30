@@ -1080,11 +1080,19 @@ const authService = {
   },
 
   // ================================
-  // FORGOT PASSWORD (OTP-based)
+  // FORGOT PASSWORD (Email Link-based)
   // ================================
-  forgotPassword: async (credentials) => {
+  forgotPassword: async (emailOrCredentials, options = {}) => {
     try {
-      const {email, phone} = credentials;
+      // Support both direct email string or credentials object
+      let email, phone;
+      
+      if (typeof emailOrCredentials === 'string') {
+        email = emailOrCredentials;
+      } else {
+        email = emailOrCredentials.email;
+        phone = emailOrCredentials.phone;
+      }
 
       if (!email && !phone) {
         return {
@@ -1118,24 +1126,31 @@ const authService = {
         }
       }
 
-      const requestData = {};
+      const requestData = {
+        resetMethod: 'email', // Request email link instead of OTP
+      };
+      
       if (phone) {
         requestData.phone = phone;
+        requestData.resetMethod = 'sms'; // Use SMS for phone
       } else {
         requestData.email = email.toLowerCase().trim();
       }
 
-      const response = await api.post("/auth/forgot-password", requestData);
+      const response = await api.post("/auth/forgot-password", requestData, {
+        signal: options.signal,
+        timeout: options.timeout,
+      });
 
       if (response.data.success) {
         return {
           success: true,
-          message: response.data.message,
+          message: response.data.message || "Password reset link has been sent to your email",
           data: response.data,
-          otp: response.data.otp, // Only available in development
+          resetToken: response.data.resetToken, // For development/testing
         };
       } else {
-        throw new Error(response.data.message || "Failed to send OTP");
+        throw new Error(response.data.message || "Failed to send reset link");
       }
     } catch (error) {
       const errorResponse = error.response?.data;
@@ -1148,9 +1163,17 @@ const authService = {
         };
       }
 
+      if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+        return {
+          success: false,
+          message: "Request timed out. Please try again.",
+          code: "TIMEOUT",
+        };
+      }
+
       return {
         success: false,
-        message: errorResponse?.message || "Failed to send OTP",
+        message: errorResponse?.message || "Failed to send reset link",
         code: errorResponse?.code || "FORGOT_PASSWORD_ERROR",
       };
     }

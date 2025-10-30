@@ -48,36 +48,8 @@ import authService from "../services/authService";
 // Import styles
 import "./Navbar.css";
 
-// Optimized SVG logo
-const B2B_LOGO = `data:image/svg+xml;base64,${btoa(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-    <defs>
-      <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#2563eb"/>
-        <stop offset="50%" stop-color="#3b82f6"/>
-        <stop offset="100%" stop-color="#1d4ed8"/>
-      </linearGradient>
-      <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-        <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#00000020"/>
-      </filter>
-    </defs>
-    
-    <circle cx="256" cy="256" r="240" fill="url(#brandGradient)" filter="url(#shadow)"/>
-    
-    <text x="256" y="200" font-family="Arial, sans-serif" font-weight="bold" font-size="72" 
-          text-anchor="middle" fill="white">B2B</text>
-    
-    <rect x="180" y="280" width="152" height="120" rx="8" fill="white" opacity="0.9"/>
-    <rect x="200" y="300" width="112" height="8" rx="4" fill="#2563eb"/>
-    <rect x="200" y="320" width="80" height="6" rx="3" fill="#64748b"/>
-    <rect x="200" y="335" width="100" height="6" rx="3" fill="#64748b"/>
-    <rect x="200" y="350" width="60" height="6" rx="3" fill="#64748b"/>
-    
-    <circle cx="420" cy="160" r="45" fill="white" opacity="0.95"/>
-    <text x="420" y="175" font-family="Arial, sans-serif" font-weight="bold" font-size="36" 
-          text-anchor="middle" fill="#2563eb">$</text>
-  </svg>
-`)}`;
+// B2B Logo - Import the actual logo image
+import B2B_LOGO_IMAGE from '../assets/images/B2B_Logo.jpg';
 
 // Professional color palette
 const COMPANY_COLORS = [
@@ -923,18 +895,10 @@ function Navbar({
                 title="Go to Dashboard"
               >
                 <img
-                  src={B2B_LOGO}
-                  alt="B2BBillings Logo"
-                  width="32"
-                  height="32"
-                  className="d-inline-block align-top me-2 brand-logo"
+                  src={B2B_LOGO_IMAGE}
+                  alt="B2B Billing"
+                  className="navbar-brand-logo-image"
                 />
-                <div className="brand-text-container">
-                  <span className="brand-text">B2BBillings</span>
-                  <small className="brand-tagline d-none d-lg-block">
-                    Business Billing Solutions
-                  </small>
-                </div>
               </BootstrapNavbar.Brand>
 
               <div className="d-none d-lg-flex align-items-center text-muted">

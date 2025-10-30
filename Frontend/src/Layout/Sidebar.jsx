@@ -546,6 +546,17 @@ const Sidebar = React.memo(
         aria-label="Main navigation"
       >
         <div className="sidebar-menu">
+          {/* B2B Logo Header */}
+          {isOpen && (
+            <div className="sidebar-logo-header">
+              <img 
+                src="/src/assets/images/B2B_Logo.jpg" 
+                alt="B2B Billing" 
+                className="sidebar-brand-logo"
+              />
+            </div>
+          )}
+          
           {/* Company Info */}
           {isOpen && companyDisplayName && (
             <div className="sidebar-company-info">

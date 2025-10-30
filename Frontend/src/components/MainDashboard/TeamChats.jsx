@@ -77,6 +77,8 @@ import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import partyService from "../../services/partyService";
 import chatService from "../../services/chatService";
 import teamChatService from "../../services/teamChatService";
+import allPartiesService from "../../services/allPartiesService";
+import { contactService } from "../../services/contactService";
 import AddNewParty from "../Home/Party/AddNewParty";
 import { 
   sendWhatsAppToMultipleContacts, 
@@ -112,6 +114,17 @@ function TeamChats({
   const [allParties, setAllParties] = useState([]);
   const [linkedParties, setLinkedParties] = useState([]);
   const [activeSection, setActiveSection] = useState("all");
+  
+  // ✅ NEW: Filter menu states
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState("all"); // all, customers, vendors, endCustomers, contacts
+  const [filterCounts, setFilterCounts] = useState({
+    all: 0,
+    customers: 0,
+    vendors: 0,
+    endCustomers: 0,
+    contacts: 0
+  });
 
   // Chat functionality states
   const [messages, setMessages] = useState([]);
@@ -132,6 +145,13 @@ function TeamChats({
 
   // Add New Party Modal
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
+  
+  // ✅ NEW: Browse All Contacts Modal (Customers, Vendors, End Customers)
+  const [showBrowseContactsModal, setShowBrowseContactsModal] = useState(false);
+  const [allAvailableContacts, setAllAvailableContacts] = useState([]);
+  const [loadingAvailableContacts, setLoadingAvailableContacts] = useState(false);
+  const [browseContactsFilter, setBrowseContactsFilter] = useState("all"); // all, customers, vendors, endCustomers
+  const [browseSearchQuery, setBrowseSearchQuery] = useState("");
   
   // ✅ NEW: Quick Add Form States
   const [quickAddForm, setQuickAddForm] = useState({
@@ -529,9 +549,9 @@ function TeamChats({
     });
   };
 
-  // ✅ FIXED: Enhanced fetch parties with proper data structure handling
+  // ✅ ENHANCED: Fetch only contacts (not customers/vendors/end customers)
   const fetchParties = async () => {
-    console.log("🔄 Fetching parties for company:", currentCompany?.id);
+    console.log("🔄 Fetching contacts for company:", currentCompany?.id);
     
     if (!currentCompany?.id) {
       console.log("❌ No company ID available");
@@ -551,17 +571,14 @@ function TeamChats({
       if (response && response.success && response.data) {
         console.log("📊 Raw data from API:", response.data);
         
-        // ✅ FIXED: Handle the correct data structure
+        // Handle the correct data structure
         let partiesData = [];
         
         if (Array.isArray(response.data)) {
-          // If data is directly an array
           partiesData = response.data;
         } else if (response.data.parties && Array.isArray(response.data.parties)) {
-          // If data contains a parties array (which is your case)
           partiesData = response.data.parties;
         } else if (response.data.data && Array.isArray(response.data.data)) {
-          // If nested data structure
           partiesData = response.data.data;
         } else {
           console.log("❌ Unexpected data structure:", response.data);
@@ -569,18 +586,23 @@ function TeamChats({
         }
         
         console.log("📊 Extracted parties data:", partiesData);
-        console.log("📊 Parties data type:", typeof partiesData);
-        console.log("📊 Is parties data array?", Array.isArray(partiesData));
         
         if (!Array.isArray(partiesData)) {
           throw new Error("Parties data is not an array");
         }
         
-        setAllParties(partiesData);
+        // Mark all as contacts source
+        const formattedParties = partiesData.map(party => ({
+          ...party,
+          source: party.source || 'contact',
+          partyType: party.partyType || 'contact',
+          id: party._id || party.id
+        }));
         
-        // ✅ FIXED: Enhanced filtering with debugging
-        const chatEnabledParties = partiesData.filter(party => {
-          // Check all possible phone fields
+        setAllParties(formattedParties);
+        
+        // Filter parties with valid phone and name
+        const chatEnabledParties = formattedParties.filter(party => {
           const phoneFields = [
             party.phone, 
             party.mobile, 
@@ -589,7 +611,6 @@ function TeamChats({
             party.mobileNumber
           ].filter(Boolean);
           
-          // Check all possible name fields  
           const nameFields = [
             party.name,
             party.businessName,
@@ -599,86 +620,43 @@ function TeamChats({
             party.companyName
           ].filter(Boolean);
           
-          const hasValidPhone = phoneFields.length > 0;
-          const hasValidName = nameFields.length > 0;
-          
-          // Debug logging for your specific number
-          if (phoneFields.some(phone => 
-            phone && (phone.includes("7378828085") || phone.includes("73788"))
-          )) {
-            console.log("🔍 Found party with your number:", {
-              party,
-              hasValidPhone,
-              hasValidName,
-              phoneFields,
-              nameFields,
-              canChat: party.canChat,
-              chatCompanyId: party.chatCompanyId
-            });
-          }
-          
-          return hasValidPhone && hasValidName;
+          return phoneFields.length > 0 && nameFields.length > 0;
         });
         
         // Set parties that have chat capabilities
-        const linkedChatParties = partiesData.filter(party => 
+        const linkedChatParties = formattedParties.filter(party => 
           party.canChat && party.chatCompanyId && 
           (party.phone || party.mobile || party.phoneNumber || party.contactNumber)
         );
         
-        console.log("🔍 DEBUGGING: Chat-enabled parties analysis");
-        console.log("🔍 All parties count:", partiesData.length);
-        console.log("🔍 Parties with canChat:", partiesData.filter(p => p.canChat).length);
-        console.log("🔍 Parties with chatCompanyId:", partiesData.filter(p => p.chatCompanyId).length);
-        console.log("🔍 Parties with both canChat and chatCompanyId:", partiesData.filter(p => p.canChat && p.chatCompanyId).length);
-        console.log("🔍 Sample party with chat capabilities:", partiesData.find(p => p.canChat && p.chatCompanyId));
-        console.log("🔍 Sample party without chat capabilities:", partiesData.find(p => !p.canChat || !p.chatCompanyId));
-        
         setLinkedParties(linkedChatParties);
-        setParties(partiesData); // Show all parties by default
+        setParties(formattedParties);
+        
+        // Update filter counts (only contacts)
+        setFilterCounts({
+          all: formattedParties.length,
+          customers: 0,
+          vendors: 0,
+          endCustomers: 0,
+          contacts: formattedParties.length
+        });
         
         console.log("✅ Processed parties:", {
-          total: partiesData.length,
+          total: formattedParties.length,
           chatEnabled: chatEnabledParties.length,
           linked: linkedChatParties.length
         });
         
-        // ✅ Debug: Check for your specific phone number
-        const myParty = partiesData.find(party => {
-          const phones = [
-            party.phone, 
-            party.mobile, 
-            party.phoneNumber, 
-            party.contactNumber
-          ].filter(Boolean);
-          
-          return phones.some(phone => 
-            phone && (phone.includes("7378828085") || phone.includes("73788"))
-          );
-        });
-        
-        if (myParty) {
-          console.log("✅ Found your party record:", myParty);
-        } else {
-          console.log("❌ Your party not found. All phone numbers:", 
-            partiesData.map(p => ({
-              id: p._id || p.id,
-              name: p.name || p.businessName || p.partyName,
-              phones: [p.phone, p.mobile, p.phoneNumber, p.contactNumber].filter(Boolean)
-            }))
-          );
-        }
-        
-        if (addToast && partiesData.length > 0) {
-          addToast(`Loaded ${partiesData.length} contacts`, "success");
-        } else if (partiesData.length === 0) {
+        if (addToast && formattedParties.length > 0) {
+          addToast(`Loaded ${formattedParties.length} contacts`, "success");
+        } else if (formattedParties.length === 0) {
           console.log("⚠️ No parties found");
           setError("No contacts found in database");
         }
         
-        // ✅ Update last message info from stored messages (WhatsApp-like initialization)
+        // Update last message info from stored messages
         setTimeout(() => {
-          updatePartiesWithStoredMessages(partiesData);
+          updatePartiesWithStoredMessages(formattedParties);
         }, 100);
         
       } else {
@@ -689,11 +667,10 @@ function TeamChats({
       console.error("❌ Error fetching parties:", err);
       setError(`Failed to load contacts: ${err.message}`);
       setAllParties([]);
-      setLinkedParties([]);
       setParties([]);
-      
+      setLinkedParties([]);
       if (addToast) {
-        addToast(`Failed to load contacts: ${err.message}`, "error");
+        addToast(`Error: ${err.message}`, "error");
       }
     } finally {
       setLoading(false);
@@ -836,8 +813,7 @@ function TeamChats({
     }
   }, [currentUser, currentCompany, selectedParty]);
 
-  // ✅ FIXED: Better filtering logic with null checks
-  // ✅ FIXED: Better filtering logic with null checks and WhatsApp-like sorting
+  // ✅ Filter by search query only (no type filtering in main view)
   const filteredParties = parties.filter(party => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -849,6 +825,7 @@ function TeamChats({
       (party.phoneNumber && party.phoneNumber.includes(searchQuery)) ||
       (party.contactNumber && party.contactNumber.includes(searchQuery));
 
+    // Legacy filter for linked chats
     if (activeSection === "linked") {
       return matchesSearch && party.canChat && party.chatCompanyId;
     }
@@ -1307,9 +1284,183 @@ function TeamChats({
     }
   };
 
+  // ✅ NEW: Fetch all available contacts from customers, vendors, end customers
+  const fetchAllAvailableContacts = async () => {
+    try {
+      setLoadingAvailableContacts(true);
+      console.log("📡 Fetching all available contacts...");
+      
+      const result = await allPartiesService.fetchAllParties();
+      
+      if (result.success && result.data) {
+        console.log("✅ Available contacts fetched:", result);
+        setAllAvailableContacts(result.data);
+        
+        // Update counts
+        setFilterCounts(prev => ({
+          ...prev,
+          customers: result.breakdown.customers,
+          vendors: result.breakdown.vendors,
+          endCustomers: result.breakdown.endCustomers
+        }));
+        
+        return result.data;
+      } else {
+        throw new Error("Failed to fetch available contacts");
+      }
+    } catch (error) {
+      console.error("❌ Error fetching available contacts:", error);
+      addToast && addToast("Failed to load available contacts", "error");
+      return [];
+    } finally {
+      setLoadingAvailableContacts(false);
+    }
+  };
+
+  // ✅ NEW: Add contact to chat list
+  const addContactToChat = async (contact) => {
+    try {
+      console.log("➕ Adding contact to chat list:", contact);
+      
+      // 🔍 DEBUG: Log current user and company context
+      console.log("🔍 DEBUG - Context:", {
+        currentUser: currentUser,
+        currentCompany: currentCompany,
+        localStorage: {
+          token: localStorage.getItem('token') ? 'EXISTS' : 'MISSING',
+          selectedCompany: localStorage.getItem('selectedCompany'),
+          user: localStorage.getItem('user') ? 'EXISTS' : 'MISSING'
+        }
+      });
+      
+      // Check if already exists
+      const exists = parties.find(p => 
+        (p._id || p.id) === (contact._id || contact.id) ||
+        p.phone === contact.phone
+      );
+      
+      if (exists) {
+        addToast && addToast("Contact already in your chat list", "warning");
+        setShowBrowseContactsModal(false);
+        // Open chat with existing contact
+        handleChatClick(exists);
+        return;
+      }
+      
+      // Create contact data - only include fields with actual values
+      const contactData = {
+        name: contact.name,
+        phone: contact.phone,
+        phoneNumbers: contact.phoneNumbers || [{ number: contact.phone, label: 'Primary' }],
+        // Map party type to valid enum values
+        partyType: (() => {
+          const type = contact.partyType || contact.source || 'customer';
+          // Map source types to valid partyType enum
+          if (type === 'endCustomer') return 'customer';
+          if (type === 'contact') return 'customer';
+          if (type === 'vendor' || type === 'supplier') return 'vendor';
+          return type;
+        })(),
+        priority: contact.priority || 'medium',
+        status: contact.status || 'active',
+      };
+      
+      // Add optional fields only if they have values
+      if (contact.email && contact.email.trim()) {
+        contactData.email = contact.email.trim();
+      }
+      if (contact.address && contact.address.trim()) {
+        contactData.address = contact.address.trim();
+      }
+      if (contact.company && contact.company.trim()) {
+        contactData.company = contact.company.trim();
+      }
+      if (contact.shopName && contact.shopName.trim()) {
+        contactData.shopName = contact.shopName.trim();
+      }
+      if (contact.shopOwner && contact.shopOwner.trim()) {
+        contactData.shopOwner = contact.shopOwner.trim();
+      }
+      if (contact.website && contact.website.trim()) {
+        contactData.website = contact.website.trim();
+      }
+      if (contact.notes) {
+        contactData.notes = contact.notes;
+      } else {
+        contactData.notes = `Added from ${contact.source || 'browse contacts'}`;
+      }
+      if (contact.tags && contact.tags.length > 0) {
+        contactData.tags = contact.tags;
+      }
+      if (contact.socialMedia && Object.keys(contact.socialMedia).length > 0) {
+        contactData.socialMedia = contact.socialMedia;
+      }
+      
+      console.log("🔄 Creating contact in database:", contactData);
+      const result = await contactService.createContact(contactData);
+      
+      if (result.success) {
+        console.log("✅ Contact added successfully:", result.data);
+        
+        // Create party object
+        const newParty = {
+          ...result.data,
+          id: result.data._id,
+          source: 'contact',
+          canChat: true,
+          hasUnreadMessages: false,
+          unreadCount: 0,
+          lastMessageTime: null,
+          lastMessage: 'Contact added to your list',
+          isOnline: false,
+          lastSeen: null
+        };
+        
+        // Add to parties list
+        setParties(prev => [newParty, ...prev]);
+        setAllParties(prev => [newParty, ...prev]);
+        
+        // Update counts
+        setFilterCounts(prev => ({
+          ...prev,
+          all: prev.all + 1,
+          contacts: prev.contacts + 1
+        }));
+        
+        addToast && addToast(`${contact.name} added to your chat list`, "success");
+        
+        // Close modal and open chat
+        setShowBrowseContactsModal(false);
+        setTimeout(() => {
+          handleChatClick(newParty);
+        }, 300);
+      }
+    } catch (error) {
+      console.error("❌ Error adding contact:", error);
+      console.error("❌ Error details:", {
+        status: error.response?.status,
+        message: error.response?.data?.message,
+        data: error.response?.data
+      });
+      
+      if (error.response?.status === 409) {
+        addToast && addToast("Contact already exists in your list", "warning");
+      } else if (error.response?.status === 400) {
+        const errorMsg = error.response?.data?.message || "Invalid contact data";
+        addToast && addToast(errorMsg, "error");
+        console.error("❌ Validation error:", errorMsg);
+      } else {
+        const errorMsg = error.response?.data?.message || "Failed to add contact to chat list";
+        addToast && addToast(errorMsg, "error");
+      }
+    }
+  };
+
   // Handle add new party
   const handleAddNewParty = () => {
-    setShowAddPartyModal(true); // ✅ Show quick add modal ADD NEW PARTY then make it true
+    // ✅ Show browse contacts modal to view all available contacts
+    setShowBrowseContactsModal(true);
+    fetchAllAvailableContacts();
   };
 
   const handlePartyAdded = (newParty) => {
@@ -2959,7 +3110,7 @@ function TeamChats({
               <div className="profile-detail-item">
                 <div className="detail-label">
                   <FontAwesomeIcon icon={faPhone} />
-                  <span>Phone</span>
+                  <span>Phone Numbers</span>
                 </div>
                 <div className="detail-value">
                   {isEditingProfile ? (
@@ -2971,7 +3122,51 @@ function TeamChats({
                       placeholder="Enter phone number"
                     />
                   ) : (
-                    <span>{displayPhone}</span>
+                    <div className="phone-numbers-list">
+                      {/* Primary Phone */}
+                      <div className="phone-number-item">
+                        <span className="phone-number">{displayPhone}</span>
+                        <Badge bg="primary" className="ms-2">Primary</Badge>
+                        <button
+                          className="chat-phone-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendWhatsAppToContact(profileParty);
+                          }}
+                          title="Chat on WhatsApp"
+                        >
+                          <FontAwesomeIcon icon={faWhatsapp} />
+                        </button>
+                      </div>
+                      
+                      {/* Additional Phone Numbers */}
+                      {profileParty.phoneNumbers && profileParty.phoneNumbers.length > 1 && (
+                        profileParty.phoneNumbers.slice(1).map((phoneItem, index) => (
+                          <div key={index} className="phone-number-item">
+                            <span className="phone-number">{phoneItem.number}</span>
+                            {phoneItem.label && (
+                              <Badge bg="secondary" className="ms-2">{phoneItem.label}</Badge>
+                            )}
+                            <button
+                              className="chat-phone-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const tempParty = { ...profileParty, phone: phoneItem.number };
+                                handleSendWhatsAppToContact(tempParty);
+                              }}
+                              title="Chat on WhatsApp"
+                            >
+                              <FontAwesomeIcon icon={faWhatsapp} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                      
+                      {/* Show if no additional numbers */}
+                      {(!profileParty.phoneNumbers || profileParty.phoneNumbers.length <= 1) && (
+                        <small className="text-muted d-block mt-1">Only one phone number available</small>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -2999,7 +3194,7 @@ function TeamChats({
               <div className="profile-detail-item">
                 <div className="detail-label">
                   <FontAwesomeIcon icon={faTag} />
-                  <span>Type</span>
+                  <span>Type / Source</span>
                 </div>
                 <div className="detail-value">
                   {isEditingProfile ? (
@@ -3014,11 +3209,26 @@ function TeamChats({
                       <option value="both">Both</option>
                     </select>
                   ) : (
-                    <span>{
-                      profileParty.partyType ? 
-                        profileParty.partyType.charAt(0).toUpperCase() + profileParty.partyType.slice(1) : 
-                        'Customer'
-                    }</span>
+                    <div className="party-type-badges">
+                      <Badge 
+                        bg={
+                          profileParty.source === 'customer' ? 'primary' :
+                          profileParty.source === 'vendor' ? 'success' :
+                          profileParty.source === 'endCustomer' ? 'info' :
+                          'warning'
+                        }
+                      >
+                        {profileParty.source === 'customer' ? '👤 Customer' :
+                         profileParty.source === 'vendor' ? '🏢 Vendor' :
+                         profileParty.source === 'endCustomer' ? '👥 End Customer' :
+                         '📇 Contact'}
+                      </Badge>
+                      {profileParty.partyType && profileParty.partyType !== profileParty.source && (
+                        <Badge bg="secondary" className="ms-2">
+                          {profileParty.partyType.charAt(0).toUpperCase() + profileParty.partyType.slice(1)}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -3315,6 +3525,196 @@ function TeamChats({
     return createPortal(quickAddModalContent, document.body);
   };
 
+  // ✅ NEW: Render Browse Contacts Modal (Customers, Vendors, End Customers)
+  const renderBrowseContactsModal = () => {
+    if (!showBrowseContactsModal) {
+      return null;
+    }
+
+    // Filter available contacts based on selected filter and search
+    const filteredAvailableContacts = allAvailableContacts.filter(contact => {
+      // Filter by type
+      let matchesFilter = true;
+      if (browseContactsFilter !== "all") {
+        if (browseContactsFilter === "customers") {
+          matchesFilter = contact.source === 'customer';
+        } else if (browseContactsFilter === "vendors") {
+          matchesFilter = contact.source === 'vendor';
+        } else if (browseContactsFilter === "endCustomers") {
+          matchesFilter = contact.source === 'endCustomer';
+        }
+      }
+
+      // Filter by search
+      const searchLower = browseSearchQuery.toLowerCase();
+      const matchesSearch = !browseSearchQuery || 
+        (contact.name && contact.name.toLowerCase().includes(searchLower)) ||
+        (contact.phone && contact.phone.includes(browseSearchQuery)) ||
+        (contact.email && contact.email.toLowerCase().includes(searchLower)) ||
+        (contact.company && contact.company.toLowerCase().includes(searchLower));
+
+      return matchesFilter && matchesSearch;
+    });
+
+    const browseContactsContent = (
+      <div className="profile-modal-overlay" onClick={() => setShowBrowseContactsModal(false)}>
+        <div className="browse-contacts-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="browse-contacts-header">
+            <h3>
+              <FontAwesomeIcon icon={faUsers} className="me-2" />
+              Add Contacts to Chat
+            </h3>
+            <button 
+              className="profile-close-btn"
+              onClick={() => setShowBrowseContactsModal(false)}
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+          </div>
+
+          {/* Search and Filter */}
+          <div className="browse-contacts-filters">
+            <div className="browse-search-container">
+              <input
+                type="text"
+                placeholder="Search by name, phone, email..."
+                className="browse-search-input"
+                value={browseSearchQuery}
+                onChange={(e) => setBrowseSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="browse-filter-tabs">
+              <button 
+                className={`browse-filter-tab ${browseContactsFilter === "all" ? "active" : ""}`}
+                onClick={() => setBrowseContactsFilter("all")}
+              >
+                All ({allAvailableContacts.length})
+              </button>
+              <button 
+                className={`browse-filter-tab ${browseContactsFilter === "customers" ? "active" : ""}`}
+                onClick={() => setBrowseContactsFilter("customers")}
+              >
+                Customers ({allAvailableContacts.filter(c => c.source === 'customer').length})
+              </button>
+              <button 
+                className={`browse-filter-tab ${browseContactsFilter === "vendors" ? "active" : ""}`}
+                onClick={() => setBrowseContactsFilter("vendors")}
+              >
+                Vendors ({allAvailableContacts.filter(c => c.source === 'vendor').length})
+              </button>
+              <button 
+                className={`browse-filter-tab ${browseContactsFilter === "endCustomers" ? "active" : ""}`}
+                onClick={() => setBrowseContactsFilter("endCustomers")}
+              >
+                End Customers ({allAvailableContacts.filter(c => c.source === 'endCustomer').length})
+              </button>
+            </div>
+
+            {/* Quick Add Button */}
+            {/* <button 
+              className="btn btn-success btn-sm"
+              onClick={() => {
+                setShowBrowseContactsModal(false);
+                setShowAddPartyModal(true);
+              }}
+              title="Add new contact manually"
+            >
+              <FontAwesomeIcon icon={faPlus} className="me-2" />
+              Create New Contact
+            </button> */}
+          </div>
+
+          {/* Contacts List */}
+          <div className="browse-contacts-list">
+            {loadingAvailableContacts ? (
+              <div className="text-center py-5">
+                <Spinner animation="border" />
+                <div className="mt-2">Loading contacts...</div>
+              </div>
+            ) : filteredAvailableContacts.length === 0 ? (
+              <div className="text-center py-5 text-muted">
+                <FontAwesomeIcon icon={faUsers} size="3x" className="mb-3 opacity-50" />
+                <p>No contacts found</p>
+                {browseSearchQuery && <small>Try adjusting your search or filters</small>}
+              </div>
+            ) : (
+              filteredAvailableContacts.map((contact) => {
+                const displayName = contact.name || contact.businessName || contact.partyName || 'Unnamed';
+                const displayPhone = contact.phone || contact.mobile || contact.phoneNumber || 'No phone';
+                const isAlreadyAdded = parties.some(p => p.phone === contact.phone);
+
+                return (
+                  <div key={contact._id || contact.id} className="browse-contact-item">
+                    <div className="browse-contact-avatar" style={{ backgroundColor: getAvatarColor(displayName) }}>
+                      {getUserInitials(displayName)}
+                    </div>
+                    <div className="browse-contact-info">
+                      <div className="browse-contact-name">{displayName}</div>
+                      <div className="browse-contact-details">
+                        <span className="phone-detail">
+                          <FontAwesomeIcon icon={faPhone} className="me-1" />
+                          {displayPhone}
+                        </span>
+                        {contact.email && (
+                          <span className="email-detail">
+                            <FontAwesomeIcon icon={faEnvelope} className="me-1" />
+                            {contact.email}
+                          </span>
+                        )}
+                      </div>
+                      <div className="browse-contact-meta">
+                        <Badge 
+                          bg={
+                            contact.source === 'customer' ? 'primary' :
+                            contact.source === 'vendor' ? 'success' :
+                            contact.source === 'endCustomer' ? 'info' :
+                            'secondary'
+                          }
+                          className="me-2"
+                        >
+                          {contact.source === 'customer' ? '👤 Customer' :
+                           contact.source === 'vendor' ? '🏢 Vendor' :
+                           contact.source === 'endCustomer' ? '👥 End Customer' :
+                           'Contact'}
+                        </Badge>
+                        {contact.company && (
+                          <small className="text-muted">
+                            <FontAwesomeIcon icon={faBuilding} className="me-1" />
+                            {contact.company}
+                          </small>
+                        )}
+                      </div>
+                    </div>
+                    <div className="browse-contact-actions">
+                      {isAlreadyAdded ? (
+                        <Badge bg="success">
+                          <FontAwesomeIcon icon={faCheck} className="me-1" />
+                          Added
+                        </Badge>
+                      ) : (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => addContactToChat(contact)}
+                          title="Add to chat list"
+                        >
+                          <FontAwesomeIcon icon={faPlus} className="me-1" />
+                          Add to Chat
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+    return createPortal(browseContactsContent, document.body);
+  };
+
   // ✅ NEW: Render Positioned Popup for maintenance messages
   const renderPositionedPopup = () => {
     if (!showMaintenanceModal || !maintenancePosition) {
@@ -3381,7 +3781,7 @@ function TeamChats({
           <div className="header-content">
             <div className="app-title">
               <FontAwesomeIcon icon={faComments} className="app-icon" />
-              <span>Chatting</span>
+              <span>Chats</span>
             </div>
             <div className="header-actions">
               <button 
@@ -3392,11 +3792,16 @@ function TeamChats({
                 <FontAwesomeIcon icon={faWhatsapp} />
               </button>
               <button 
-                className="header-btn" 
+                className="header-btn add-contact-btn" 
                 onClick={handleAddNewParty}
-                title="Add new contact"
+                title="Browse and add contacts (Customers, Vendors, End Customers)"
               >
                 <FontAwesomeIcon icon={faUserPlus} />
+                {(filterCounts.customers + filterCounts.vendors + filterCounts.endCustomers > 0) && (
+                  <span className="add-contact-badge">
+                    {filterCounts.customers + filterCounts.vendors + filterCounts.endCustomers}
+                  </span>
+                )}
               </button>
               <button 
                 className="header-btn"
@@ -3412,7 +3817,6 @@ function TeamChats({
         {/* Search */}
         <div className="whatsapp-search">
           <div className="search-container">
-            <FontAwesomeIcon icon={faSearch} className="search-icon" />
             <input
               type="text"
               placeholder="Search contacts..."
@@ -4063,6 +4467,9 @@ function TeamChats({
         </div>,
         document.body
       )}
+      
+      {/* ✅ NEW: Browse Contacts Modal */}
+      {renderBrowseContactsModal()}
     </>
   );
 }

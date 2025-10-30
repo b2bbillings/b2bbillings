@@ -18,6 +18,45 @@ contactAPI.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Attach selected company id (if any) so backend can resolve req.user.currentCompany/companyId
+    try {
+      const rawCompany = localStorage.getItem('selectedCompany') || sessionStorage.getItem('selectedCompany');
+      if (rawCompany) {
+        let companyId = rawCompany;
+        try {
+          const parsed = JSON.parse(rawCompany);
+          companyId = parsed?.id || parsed?._id || parsed || rawCompany;
+        } catch (e) {
+          companyId = rawCompany;
+        }
+
+        if (companyId) {
+          config.headers['x-company-id'] = companyId;
+        }
+      }
+    } catch (e) {
+      // ignore header attach errors
+    }
+    
+    // 🔍 DEBUG: Log request details
+    console.log('🔍 Contact API Request:', {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`,
+      headers: {
+        hasAuth: !!config.headers.Authorization,
+        hasCompanyId: !!config.headers['x-company-id'],
+        companyId: config.headers['x-company-id'],
+        authPreview: config.headers.Authorization ? `${config.headers.Authorization.substring(0, 20)}...` : 'MISSING'
+      },
+      localStorage: {
+        hasToken: !!localStorage.getItem('token'),
+        hasCompany: !!localStorage.getItem('selectedCompany'),
+        companyValue: localStorage.getItem('selectedCompany')
+      }
+    });
+    
     return config;
   },
   (error) => {
@@ -50,7 +89,7 @@ export const contactService = {
   createContact: async (contactData) => {
     try {
       console.log('📝 Creating contact:', contactData);
-      const response = await contactAPI.post('/', contactData);
+      const response = await contactAPI.post('', contactData);  // ✅ FIXED: Remove trailing slash
       console.log('✅ Contact created successfully:', response.data);
       return response.data;
     } catch (error) {
@@ -68,7 +107,7 @@ export const contactService = {
       console.log('🔗 API URL:', contactAPI.defaults.baseURL);
       console.log('🔑 Auth token exists:', !!localStorage.getItem('token'));
       
-      const response = await contactAPI.get('/', { params });
+      const response = await contactAPI.get('', { params });  // ✅ FIXED: Remove trailing slash
       console.log('✅ Contacts fetched successfully:', response.data);
       return response.data;
     } catch (error) {

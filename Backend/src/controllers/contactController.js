@@ -12,7 +12,9 @@ const mongoose = require('mongoose');
  */
 const createContact = async (req, res) => {
   try {
-    const { userId, companyId } = req.user;
+    // Get userId and companyId from authenticated user
+    const userId = req.user.id || req.user._id;
+    const companyId = req.user.companyId || req.user.currentCompany;
     
     const {
       name,
@@ -57,7 +59,7 @@ const createContact = async (req, res) => {
     const existingContact = await Contact.findOne({
       $or: [
         { phone: phone, companyId: companyId, isDeleted: false },
-        { email: email, companyId: companyId, isDeleted: false }
+        ...(email ? [{ email: email, companyId: companyId, isDeleted: false }] : [])
       ]
     });
 
@@ -247,7 +249,8 @@ const getContactsByCompany = async (req, res) => {
  */
 const getContactsByUser = async (req, res) => {
   try {
-    const { userId, companyId } = req.user;
+    const userId = req.user.id || req.user._id;
+    const companyId = req.user.companyId || req.user.currentCompany;
     const { targetUserId } = req.params;
     const { page = 1, limit = 20, search, partyType, status } = req.query;
 
@@ -420,7 +423,8 @@ const updateContact = async (req, res) => {
 const deleteContact = async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { userId, companyId } = req.user;
+    const userId = req.user.id || req.user._id;
+    const companyId = req.user.companyId || req.user.currentCompany;
 
     if (!mongoose.Types.ObjectId.isValid(contactId)) {
       return res.status(400).json({
@@ -465,7 +469,8 @@ const deleteContact = async (req, res) => {
 const bulkDeleteContacts = async (req, res) => {
   try {
     const { contactIds } = req.body;
-    const { userId, companyId } = req.user;
+    const userId = req.user.id || req.user._id;
+    const companyId = req.user.companyId || req.user.currentCompany;
 
     if (!Array.isArray(contactIds) || contactIds.length === 0) {
       return res.status(400).json({

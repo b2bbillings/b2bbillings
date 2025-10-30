@@ -10,6 +10,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import Login from "../components/Auth/Login";
 import SignUp from "../components/Auth/SignUp";
+import B2B_LOGO_IMAGE from '../assets/images/B2B_Logo.jpg';
 
 const AUTH_IMAGES = {
   signUp:
@@ -89,18 +90,49 @@ function AuthPage({onLogin}) {
         .auth-header-left {
           display: flex;
           flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .brand-logo-wrapper {
+          display: flex;
+          align-items: center;
           gap: 1rem;
+          flex-wrap: wrap;
         }
 
         .brand-logo {
           display: inline-flex;
           align-items: center;
-          gap: 0.4rem;
-          font-size: 1.3rem;
-          font-weight: 800;
-          color: #667eea;
+          justify-content: center;
           text-decoration: none;
-          margin-bottom: 0.25rem;
+          padding: 0.75rem 1rem;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85));
+          border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(102, 126, 234, 0.12);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          transition: all 0.3s ease;
+          flex-shrink: 0;
+        }
+
+        .brand-logo:hover {
+          box-shadow: 0 6px 28px rgba(102, 126, 234, 0.2);
+          transform: translateY(-2px);
+          border-color: rgba(102, 126, 234, 0.3);
+        }
+
+        .auth-brand-logo-image {
+          height: 45px;
+          width: auto;
+          max-width: 160px;
+          object-fit: contain;
+          filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.08));
+          transition: all 0.3s ease;
+        }
+
+        .brand-logo:hover .auth-brand-logo-image {
+          filter: drop-shadow(0 3px 10px rgba(102, 126, 234, 0.25));
+          transform: scale(1.02);
         }
 
         .brand-icon {
@@ -120,7 +152,10 @@ function AuthPage({onLogin}) {
           font-size: 0.8rem;
           margin: 0;
           font-weight: 500;
-          line-height: 1.3;
+          line-height: 1.4;
+          flex: 1;
+          min-width: 250px;
+          max-width: 400px;
         }
 
         .feature-badges {
@@ -294,6 +329,21 @@ function AuthPage({onLogin}) {
             align-items: center;
             text-align: center;
           }
+
+          .brand-logo-wrapper {
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+          }
+
+          .brand-logo {
+            margin: 0;
+          }
+
+          .auth-subtitle {
+            text-align: center;
+            max-width: 100%;
+          }
           
           .auth-toggle-section {
             text-align: center;
@@ -308,9 +358,23 @@ function AuthPage({onLogin}) {
           .auth-header {
             padding: 0.85rem 0.85rem 0.6rem;
           }
+
+          .brand-logo-wrapper {
+            gap: 0.6rem;
+          }
           
           .brand-logo {
-            font-size: 1.2rem;
+            padding: 0.6rem 0.85rem;
+          }
+
+          .auth-brand-logo-image {
+            height: 40px;
+            max-width: 140px;
+          }
+
+          .auth-subtitle {
+            font-size: 0.75rem;
+            min-width: 200px;
           }
           
           .brand-icon {
@@ -351,6 +415,24 @@ function AuthPage({onLogin}) {
           .auth-header {
             padding: 0.75rem 0.75rem 0.5rem;
           }
+
+          .brand-logo-wrapper {
+            gap: 0.5rem;
+          }
+
+          .brand-logo {
+            padding: 0.5rem 0.75rem;
+          }
+
+          .auth-brand-logo-image {
+            height: 35px;
+            max-width: 120px;
+          }
+
+          .auth-subtitle {
+            font-size: 0.7rem;
+            min-width: 150px;
+          }
           
           .toggle-btn {
             padding: 0.5rem 1rem;
@@ -382,18 +464,20 @@ function AuthPage({onLogin}) {
                   <div className="auth-header">
                     {/* LEFT SIDE - Brand & Features */}
                     <div className="auth-header-left">
-                      <a href="/" className="brand-logo">
-                        <div className="brand-icon">
-                          <FontAwesomeIcon icon={faStore} />
-                        </div>
-                        Shop Management
-                      </a>
-
-                      <p className="auth-subtitle">
-                        {currentView === "login"
-                          ? "Welcome back! Sign in to your account to continue managing your business operations."
-                          : "Start your journey with our comprehensive business management platform."}
-                      </p>
+                      <div className="brand-logo-wrapper">
+                        <a href="/" className="brand-logo">
+                          <img 
+                            src={B2B_LOGO_IMAGE} 
+                            alt="B2B Billing" 
+                            className="auth-brand-logo-image"
+                          />
+                        </a>
+                        <p className="auth-subtitle">
+                          {currentView === "login"
+                            ? "Welcome back! Sign in to your account to continue managing your business operations."
+                            : "Start your journey with our comprehensive business management platform."}
+                        </p>
+                      </div>
 
                       <div className="feature-badges">
                         <div className="feature-badge">

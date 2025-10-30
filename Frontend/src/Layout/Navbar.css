@@ -44,6 +44,19 @@
    Brand Section Styles
    ======================================== */
 
+.navbar-brand-logo-image {
+  height: 45px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+
+.navbar-brand-logo-image:hover {
+  transform: scale(1.05);
+}
+
 .brand-logo {
   transition: transform 0.2s ease;
 }

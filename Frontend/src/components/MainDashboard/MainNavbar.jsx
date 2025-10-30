@@ -665,10 +665,16 @@ function MainNavbar({
                 style={{cursor: "pointer"}}
                 title="Go to Dashboard - B2B Billing Solution"
               >
-                <div className="brand-logo me-2">
-                  <FontAwesomeIcon icon={faFileInvoice} size="lg" />
-                </div>
-                <span className="brand-text">B2B Billing</span>
+                <img 
+                  src="/src/assets/images/B2B_Logo.jpg" 
+                  alt="B2B Billing" 
+                  className="brand-logo-image"
+                  style={{
+                    height: "40px",
+                    width: "auto",
+                    objectFit: "contain"
+                  }}
+                />
               </Navbar.Brand>
 
               {/* Navigation Links - Desktop - Only working features */}
@@ -1286,6 +1292,19 @@ function MainNavbar({
         .navbar .container-fluid {
           max-width: 100%;
           overflow: visible;
+        }
+
+        .brand-logo-image {
+          height: 40px;
+          width: auto;
+          max-width: 150px;
+          object-fit: contain;
+          transition: transform 0.2s ease;
+          cursor: pointer;
+        }
+
+        .brand-logo-image:hover {
+          transform: scale(1.05);
         }
 
         .brand-logo {

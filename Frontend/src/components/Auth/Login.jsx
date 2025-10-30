@@ -473,9 +473,14 @@ function Login({
   // 🔑 FORGOT PASSWORD HANDLER
   // ===============================
   const handleForgotPassword = useCallback(() => {
-    // Navigate to forgot password page or show modal
-    navigate("/forgot-password");
-  }, [navigate]);
+    // Navigate to forgot password page
+    navigate("/forgot-password", { 
+      state: { 
+        from: location,
+        email: formData.email // Pre-fill email if available
+      } 
+    });
+  }, [navigate, location, formData.email]);
 
   // ===============================
   // 🔄 EFFECT: CHECK EXISTING LOCKOUT
