@@ -1322,17 +1322,6 @@ function TeamChats({
     try {
       console.log("➕ Adding contact to chat list:", contact);
       
-      // 🔍 DEBUG: Log current user and company context
-      console.log("🔍 DEBUG - Context:", {
-        currentUser: currentUser,
-        currentCompany: currentCompany,
-        localStorage: {
-          token: localStorage.getItem('token') ? 'EXISTS' : 'MISSING',
-          selectedCompany: localStorage.getItem('selectedCompany'),
-          user: localStorage.getItem('user') ? 'EXISTS' : 'MISSING'
-        }
-      });
-      
       // Check if already exists
       const exists = parties.find(p => 
         (p._id || p.id) === (contact._id || contact.id) ||

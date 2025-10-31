@@ -33,6 +33,9 @@ import {
   faChartLine,
   faFileInvoice,
   faHandshake,
+  faMoneyBillWave,
+  faArrowCircleDown,
+  faArrowCircleUp,
 } from "@fortawesome/free-solid-svg-icons";
 import {useParams, useNavigate, useLocation} from "react-router-dom";
 
@@ -72,6 +75,7 @@ function MainNavbar({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
+  const [showAccountingDropdown, setShowAccountingDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
     left: 0,
@@ -80,21 +84,28 @@ function MainNavbar({
 
   // Refs for dropdown and search management
   const businessDropdownRef = useRef(null);
+  const accountingDropdownRef = useRef(null);
   const searchRef = useRef(null);
 
   // ✅ PRODUCTION: Main navigation links - only production-ready features
   const navLinks = [
-    {
-      key: "dashboard",
-      label: "Dashboard",
-      icon: faChartLine,
-      description: "Business overview and analytics",
-    },
+    // {
+    //   key: "dashboard",
+    //   label: "Dashboard",
+    //   icon: faChartLine,
+    //   description: "Business overview and analytics",
+    // },
     {
       key: "transactions",
       label: "Transactions",
       icon: faReceipt,
       description: "View all business transactions",
+    },
+    {
+      key: "accounting",
+      label: "Accounting",
+      icon: faFileInvoice,
+      description: "Manage expenses and income",
     },
     // {
     //   key: "partners",
@@ -374,8 +385,28 @@ function MainNavbar({
 
   // Event handlers
   const handleNavClick = (linkKey) => {
+    console.log('🔵 NavClick:', linkKey, 'CompanyId:', effectiveCompanyId);
     setActiveLink(linkKey);
     setShowMobileMenu(false);
+    
+    // Handle accounting menu - navigate to accounting section
+    if (linkKey === "accounting") {
+      // Try multiple sources for company ID
+      const companyId = effectiveCompanyId || currentCompany?.id || currentCompany?._id;
+      console.log('💼 Navigating to accounting, companyId:', companyId);
+      console.log('📊 Sources - effectiveCompanyId:', effectiveCompanyId, 'currentCompany:', currentCompany);
+      
+      if (companyId) {
+        const accountingUrl = `/companies/${companyId}/accounting`;
+        console.log('📍 Accounting URL:', accountingUrl);
+        navigate(accountingUrl);
+      } else {
+        console.error('❌ No company ID found for accounting navigation');
+        console.error('Available data:', { effectiveCompanyId, currentCompany, urlCompanyId });
+      }
+      return;
+    }
+    
     if (onNavigate) onNavigate(linkKey);
     // ✅ REMOVED: No toast for smooth navigation
   };
@@ -651,18 +682,22 @@ function MainNavbar({
         variant="light"
         expand="lg"
         className="shadow-sm border-bottom px-0"
-        style={{zIndex: 1030, height: "60px"}}
+        style={{
+          zIndex: 1030, 
+          height: "64px",
+          borderBottom: '1px solid #e5e7eb'
+        }}
         fixed="top"
       >
-        <Container fluid className="px-3 h-100">
+        <Container fluid className="px-4 h-100">
           <div className="d-flex align-items-center justify-content-between w-100 h-100">
             {/* Left Section - Logo and Navigation */}
-            <div className="d-flex align-items-center flex-shrink-0">
+            <div className="d-flex align-items-center flex-shrink-0 gap-4">
               {/* ✅ UPDATED: B2B Billing Brand Logo */}
               <Navbar.Brand
-                className="d-flex align-items-center me-4"
+                className="d-flex align-items-center"
                 onClick={handleNavigateHome}
-                style={{cursor: "pointer"}}
+                style={{cursor: "pointer", margin: 0}}
                 title="Go to Dashboard - B2B Billing Solution"
               >
                 <img 
@@ -670,7 +705,7 @@ function MainNavbar({
                   alt="B2B Billing" 
                   className="brand-logo-image"
                   style={{
-                    height: "40px",
+                    height: "42px",
                     width: "auto",
                     objectFit: "contain"
                   }}
@@ -678,12 +713,12 @@ function MainNavbar({
               </Navbar.Brand>
 
               {/* Navigation Links - Desktop - Only working features */}
-              <Nav className="d-none d-lg-flex">
+              <Nav className="d-none d-lg-flex gap-1">
                 {navLinks.map((link) => (
                   <Button
                     key={link.key}
                     variant="link"
-                    className={`nav-btn me-1 ${
+                    className={`nav-btn ${
                       activeLink === link.key ? "active" : ""
                     }`}
                     onClick={() => handleNavClick(link.key)}
@@ -801,14 +836,24 @@ function MainNavbar({
                   variant="link"
                   className="profile-btn"
                   title="User Menu"
+                  style={{
+                    padding: '4px',
+                    border: 'none',
+                    background: 'transparent'
+                  }}
                 >
                   <Image
                     src={getUserAvatarUrl()}
                     alt="User"
                     roundedCircle
                     className="profile-avatar"
-                    width="32"
-                    height="32"
+                    width="36"
+                    height="36"
+                    style={{
+                      objectFit: 'cover',
+                      border: '2px solid #e5e7eb',
+                      transition: 'all 0.2s ease'
+                    }}
                   />
                 </Dropdown.Toggle>
 
@@ -1289,116 +1334,117 @@ function MainNavbar({
 
       {/* ✅ PRODUCTION: Enhanced Styles with Search Results */}
       <style>{`
+        /* Professional Navbar Styling - Odoo/Munim Inspired */
+        .navbar {
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+          background: linear-gradient(to bottom, #ffffff, #fafbfc) !important;
+        }
+
         .navbar .container-fluid {
           max-width: 100%;
           overflow: visible;
         }
 
         .brand-logo-image {
-          height: 40px;
+          height: 42px;
           width: auto;
-          max-width: 150px;
+          max-width: 160px;
           object-fit: contain;
           transition: transform 0.2s ease;
           cursor: pointer;
+          filter: brightness(1);
         }
 
         .brand-logo-image:hover {
-          transform: scale(1.05);
-        }
-
-        .brand-logo {
-          width: 36px;
-          height: 36px;
-          background: linear-gradient(135deg, #4f46e5, #3b82f6);
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: bold;
-          font-size: 14px;
-          flex-shrink: 0;
-        }
-
-        .brand-text {
-          font-weight: 700;
-          color: #4f46e5;
-          font-size: 1.1rem;
-          margin: 0;
-          white-space: nowrap;
+          transform: scale(1.02);
+          filter: brightness(1.05);
         }
 
         .nav-btn {
           text-decoration: none;
-          color: #6b7280;
+          color: #4b5563;
           font-size: 14px;
           font-weight: 500;
-          padding: 8px 16px;
-          border-radius: 6px;
+          padding: 10px 18px;
+          border-radius: 8px;
           border: none;
-          transition: all 0.2s;
+          transition: all 0.2s ease;
           white-space: nowrap;
           flex-shrink: 0;
           display: flex;
           align-items: center;
+          background: transparent !important;
+          position: relative;
         }
 
         .nav-btn:hover {
-          color: #4f46e5;
-          background-color: #f3f4f6;
+          color: #2563eb;
+          background-color: #eff6ff !important;
           transform: translateY(-1px);
         }
 
         .nav-btn.active {
-          color: white;
-          background-color: #4f46e5;
-          box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+          color: #2563eb;
+          background-color: #dbeafe !important;
+          font-weight: 600;
+        }
+
+        .nav-btn.active::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 18px;
+          right: 18px;
+          height: 3px;
+          background: #2563eb;
+          border-radius: 3px 3px 0 0;
         }
 
         .company-selector {
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 6px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 10px;
+          padding: 8px 16px;
           background: white !important;
           color: #374151;
-          font-size: 14px;
-          min-width: 200px;
-          max-width: 280px;
+          font-size: 13.5px;
+          min-width: 220px;
+          max-width: 300px;
           transition: all 0.2s ease;
           cursor: pointer;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
 
         .company-selector:hover {
-          border-color: #d1d5db;
-          background: #f9fafb !important;
+          border-color: #2563eb;
+          background: #fafbfc !important;
           transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
         }
 
         .company-selector:focus {
           outline: none;
-          border-color: #4f46e5;
-          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
         .company-avatar {
-          width: 24px;
-          height: 24px;
+          width: 26px;
+          height: 26px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 10px;
-          font-weight: bold;
-          margin-right: 8px;
+          font-size: 11px;
+          font-weight: 600;
+          margin-right: 10px;
           flex-shrink: 0;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .company-name {
           font-weight: 600;
           color: #111827;
-          margin-right: 4px;
+          margin-right: 6px;
           flex-shrink: 1;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -1406,46 +1452,53 @@ function MainNavbar({
         }
 
         .company-switch-text {
-          color: #4f46e5;
+          color: #2563eb;
           font-size: 11px;
+          font-weight: 500;
           flex-shrink: 0;
         }
 
         .search-group {
-          width: 350px;
-          max-width: 350px;
-          flex-shrink: 0;
+          width: 400px;
+          max-width: 400px;
+          min-width: 300px;
+          flex-shrink: 1;
           position: relative;
         }
 
         .search-input {
-          border: 1px solid #e5e7eb;
+          border: 1px solid #d1d5db;
           border-right: none;
-          font-size: 14px;
-          padding: 8px 12px;
+          font-size: 13px;
+          padding: 8px 14px;
           transition: all 0.2s ease;
+          border-radius: 6px 0 0 6px;
+          background: #f9fafb;
         }
 
         .search-input:focus {
           border-color: #4f46e5;
-          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+          background: white;
+          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+          outline: none;
         }
 
         .search-icon {
-          border: 1px solid #e5e7eb;
+          border: 1px solid #d1d5db;
           border-left: none;
           background: #f9fafb;
           color: #6b7280;
           transition: all 0.2s ease;
-          min-width: 40px;
+          min-width: 42px;
           display: flex;
           align-items: center;
           justify-content: center;
+          border-radius: 0 6px 6px 0;
         }
 
         .search-input:focus + .search-icon {
           border-color: #4f46e5;
-          background: #eff6ff;
+          background: white;
           color: #4f46e5;
         }
 
@@ -1456,39 +1509,42 @@ function MainNavbar({
           right: 0;
           background: white;
           border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+          border-radius: 10px;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
           z-index: 1000;
-          max-height: 400px;
+          max-height: 420px;
           overflow-y: auto;
-          margin-top: 4px;
+          margin-top: 6px;
         }
 
         .search-results-header {
-          padding: 8px 12px;
+          padding: 10px 16px;
           border-bottom: 1px solid #f3f4f6;
-          background: #f9fafb;
-          border-radius: 8px 8px 0 0;
+          background: #fafbfc;
+          border-radius: 10px 10px 0 0;
+          font-weight: 500;
         }
 
         .search-result-item {
-          padding: 12px;
+          padding: 14px 16px;
           border-bottom: 1px solid #f3f4f6;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.15s ease;
           display: flex;
           align-items: center;
           justify-content: space-between;
         }
 
         .search-result-item:hover {
-          background: #f8fafc;
-          transform: translateX(4px);
+          background: #f0f9ff;
+          transform: translateX(2px);
+          border-left: 3px solid #2563eb;
+          padding-left: 13px;
         }
 
         .search-result-item:last-child {
           border-bottom: none;
-          border-radius: 0 0 8px 8px;
+          border-radius: 0 0 10px 10px;
         }
 
         .search-result-content {
@@ -1500,13 +1556,13 @@ function MainNavbar({
           font-weight: 600;
           color: #111827;
           font-size: 14px;
-          margin-bottom: 2px;
+          margin-bottom: 3px;
         }
 
         .search-result-description {
           color: #6b7280;
           font-size: 12px;
-          line-height: 1.3;
+          line-height: 1.4;
         }
 
         .search-result-type {
@@ -1581,109 +1637,145 @@ function MainNavbar({
         }
 
         .profile-btn {
-          border: none;
+          border: none !important;
+          background: transparent !important;
           color: #374151;
           text-decoration: none;
           display: flex;
           align-items: center;
-          padding: 4px;
+          justify-content: center;
+          padding: 4px !important;
           flex-shrink: 0;
           transition: all 0.2s ease;
+          width: 44px;
+          height: 44px;
         }
 
         .profile-btn:hover {
           transform: scale(1.05);
+          background: transparent !important;
+        }
+
+        .profile-btn:focus,
+        .profile-btn:active {
+          box-shadow: none !important;
+          outline: none !important;
         }
 
         .profile-avatar {
-          border: 2px solid #f8f9fa;
+          width: 36px !important;
+          height: 36px !important;
+          border: 2px solid #e5e7eb !important;
           transition: all 0.2s ease;
+          object-fit: cover;
         }
 
         .profile-avatar:hover {
-          border-color: #5e60ce;
-          box-shadow: 0 2px 8px rgba(94, 96, 206, 0.3);
+          border-color: #4f46e5 !important;
+          box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2) !important;
         }
 
         .profile-dropdown {
-          border: none;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
           border-radius: 12px;
           min-width: 280px;
-          animation: fadeInDown 0.3s ease;
+          animation: fadeInDown 0.2s ease;
+          margin-top: 8px;
         }
 
         .profile-header {
           padding: 20px;
-          background: linear-gradient(135deg, #f9fafb, #f3f4f6);
+          background: linear-gradient(135deg, #f8fafc, #f1f5f9);
           display: flex;
           align-items: center;
           border-radius: 12px 12px 0 0;
+          border-bottom: 1px solid #e5e7eb;
         }
 
         .profile-header-avatar {
-          box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+          border: 3px solid white;
         }
 
         .profile-header-name {
           font-weight: 600;
           color: #111827;
-          font-size: 16px;
+          font-size: 15px;
         }
 
         .profile-header-email {
           color: #6b7280;
-          font-size: 13px;
+          font-size: 12px;
+          margin-top: 2px;
+        }
+
+        .dropdown-item {
+          padding: 10px 16px;
+          font-size: 14px;
+          color: #374151;
+          transition: all 0.15s ease;
+        }
+
+        .dropdown-item:hover {
+          background: #f0f9ff;
+          color: #2563eb;
+          transform: translateX(2px);
         }
 
         .admin-option {
           color: #dc2626 !important;
-          background: linear-gradient(135deg, rgba(220, 53, 69, 0.05), rgba(220, 53, 69, 0.1)) !important;
-          margin: 2px 8px;
+          background: linear-gradient(135deg, rgba(220, 53, 69, 0.05), rgba(220, 53, 69, 0.08)) !important;
+          margin: 4px 8px;
           border-radius: 8px;
+          font-weight: 500;
         }
 
         .admin-option:hover {
           background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.15)) !important;
-          transform: translateX(4px);
+          transform: translateX(3px);
         }
 
         .mobile-menu {
           background: white;
           border-top: 1px solid #e5e7eb;
-          padding: 16px;
-          box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+          padding: 20px;
+          box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
         }
 
         .mobile-nav-btn {
           width: 100%;
           text-align: left;
           border: none;
-          padding: 12px 0;
-          color: #6b7280;
+          padding: 14px 16px;
+          color: #4b5563;
           text-decoration: none;
           font-size: 14px;
-          transition: all 0.2s ease;
-          border-radius: 6px;
+          transition: all 0.15s ease;
+          border-radius: 8px;
           display: flex;
           align-items: center;
+          margin-bottom: 4px;
+          font-weight: 500;
         }
 
         .mobile-nav-btn:hover {
-          color: #4f46e5;
-          background: #f3f4f6;
-          padding-left: 8px;
+          color: #2563eb;
+          background: #eff6ff;
+          padding-left: 20px;
         }
 
         .mobile-nav-btn.active {
-          color: #4f46e5;
+          color: #2563eb;
+          background: #dbeafe;
           font-weight: 600;
-          background: #eff6ff;
         }
 
+        /* Responsive Design */
         @media (max-width: 1200px) {
           .search-group {
-            width: 300px;
+            width: 320px;
+            min-width: 250px;
           }
         }
 
@@ -1695,38 +1787,51 @@ function MainNavbar({
 
           .company-selector {
             min-width: auto;
-            padding: 6px 8px;
-            max-width: 48px;
+            padding: 8px;
+            max-width: 50px;
           }
 
           .search-group {
-            width: 250px;
+            width: 280px;
+          }
+
+          .nav-btn {
+            padding: 8px 14px;
           }
         }
 
         @media (max-width: 768px) {
           .search-group {
-            width: 200px;
+            width: 220px;
+            min-width: 180px;
           }
 
-          .brand-text {
-            font-size: 1rem;
+          .brand-logo-image {
+            height: 36px;
           }
 
           .nav-btn {
             padding: 6px 12px;
             font-size: 13px;
           }
+
+          .navbar {
+            height: 56px !important;
+          }
         }
 
         @media (max-width: 576px) {
-          .brand-text {
+          .search-group {
             display: none;
           }
 
           .company-selector {
-            max-width: 40px;
-            padding: 4px 6px;
+            max-width: 42px;
+            padding: 6px;
+          }
+
+          .brand-logo-image {
+            height: 32px;
           }
         }
 

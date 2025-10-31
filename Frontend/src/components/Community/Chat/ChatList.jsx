@@ -172,7 +172,7 @@ function ChatList({
   }
 
   return (
-    <div className="chat-list">
+    <div className="chat-list" style={{padding: 0}}>
       <ListGroup variant="flush">
         {filteredChats.map((chat) => (
           <ListGroup.Item
@@ -181,18 +181,33 @@ function ChatList({
             active={selectedChat?.id === chat.id}
             onClick={() => onChatSelect(chat)}
             className={`border-0 chat-item ${
-              selectedChat?.id === chat.id ? "active" : ""
+              selectedChat?.id === chat.id ? "active bg-light" : ""
             }`}
-            style={{cursor: "pointer"}}
+            style={{
+              cursor: "pointer",
+              padding: "12px 16px",
+              borderBottom: "1px solid #f0f0f0",
+              transition: "background-color 0.15s ease"
+            }}
+            onMouseEnter={(e) => {
+              if (selectedChat?.id !== chat.id) {
+                e.currentTarget.style.backgroundColor = "#f5f5f5";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (selectedChat?.id !== chat.id) {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }
+            }}
           >
-            <div className="d-flex align-items-center">
+            <div className="d-flex align-items-start">
               {/* Avatar with online indicator */}
               <div className="position-relative me-3 flex-shrink-0">
                 <div
                   className={`rounded-circle d-flex align-items-center justify-content-center text-white fw-bold bg-${getTypeColor(
                     chat.type
                   )}`}
-                  style={{width: "50px", height: "50px", fontSize: "1rem"}}
+                  style={{width: "48px", height: "48px", fontSize: "0.95rem"}}
                 >
                   {getInitials(chat.name)}
                 </div>
@@ -200,12 +215,12 @@ function ChatList({
                 {/* Online status indicator */}
                 {chat.isOnline && (
                   <div
-                    className="position-absolute border border-white rounded-circle"
+                    className="position-absolute border border-2 border-white rounded-circle"
                     style={{
-                      bottom: "2px",
-                      right: "2px",
-                      width: "12px",
-                      height: "12px",
+                      bottom: "0px",
+                      right: "0px",
+                      width: "14px",
+                      height: "14px",
                       backgroundColor: getStatusColor(chat.status),
                     }}
                   />
@@ -214,80 +229,72 @@ function ChatList({
 
               {/* Chat content */}
               <div className="flex-grow-1 min-w-0">
-                {/* Header row */}
+                {/* Header row - Name and Time */}
                 <div className="d-flex align-items-center justify-content-between mb-1">
                   <div className="d-flex align-items-center min-w-0 flex-grow-1">
-                    <h6 className="mb-0 me-2 text-truncate fw-semibold">
+                    <h6 className="mb-0 me-2 text-truncate fw-semibold" style={{fontSize: "0.95rem", color: "#111"}}>
                       {chat.name}
                     </h6>
-                    <FontAwesomeIcon
-                      icon={getTypeIcon(chat.type)}
-                      className={`text-${getTypeColor(
-                        chat.type
-                      )} flex-shrink-0`}
-                      size="sm"
-                      title={
-                        chat.type.charAt(0).toUpperCase() + chat.type.slice(1)
-                      }
-                    />
                   </div>
 
-                  {/* Time and unread count */}
-                  <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                    <small className="text-muted">
-                      {formatTime(chat.lastMessageTime)}
-                    </small>
-                    {chat.unreadCount > 0 && (
-                      <Badge
-                        bg="primary"
-                        pill
-                        className="unread-badge"
-                        style={{minWidth: "20px", fontSize: "0.7rem"}}
-                      >
-                        {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
-                      </Badge>
-                    )}
-                  </div>
+                  {/* Time */}
+                  <small className="text-muted flex-shrink-0" style={{fontSize: "0.7rem"}}>
+                    {formatTime(chat.lastMessageTime)}
+                  </small>
                 </div>
 
-                {/* Company name */}
+                {/* Last message and unread count */}
+                <div className="d-flex align-items-center justify-content-between">
+                  <div className="text-muted small text-truncate me-2 flex-grow-1 d-flex align-items-center" style={{fontSize: "0.85rem"}}>
+                    {/* Message status icon for sent messages */}
+                    {chat.lastMessageStatus &&
+                      chat.messages?.length > 0 &&
+                      chat.messages[chat.messages.length - 1]?.senderId ===
+                        currentUser?.id && (
+                        <FontAwesomeIcon
+                          icon={getMessageStatusIcon(chat.lastMessageStatus)}
+                          className={`${getMessageStatusColor(
+                            chat.lastMessageStatus
+                          )} me-1 flex-shrink-0`}
+                          size="sm"
+                          title={chat.lastMessageStatus}
+                        />
+                      )}
+                    <span className="text-truncate">
+                      {chat.lastMessage || "No messages yet"}
+                    </span>
+                  </div>
+
+                  {/* Unread count badge */}
+                  {chat.unreadCount > 0 && (
+                    <Badge
+                      bg="success"
+                      pill
+                      className="unread-badge flex-shrink-0"
+                      style={{minWidth: "20px", fontSize: "0.65rem", fontWeight: "600"}}
+                    >
+                      {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Company name with icon */}
                 {chat.company && (
-                  <div className="small text-muted mb-1 d-flex align-items-center">
+                  <div className="small text-muted mt-1 d-flex align-items-center" style={{fontSize: "0.75rem"}}>
                     <FontAwesomeIcon
-                      icon={faBuilding}
-                      className="me-1"
+                      icon={getTypeIcon(chat.type)}
+                      className={`text-${getTypeColor(chat.type)} me-1`}
                       size="xs"
+                      title={chat.type.charAt(0).toUpperCase() + chat.type.slice(1)}
                     />
                     <span className="text-truncate">{chat.company}</span>
                   </div>
                 )}
 
-                {/* Last message row */}
-                <div className="d-flex align-items-center justify-content-between">
-                  <div className="text-muted small text-truncate me-2 flex-grow-1">
-                    {chat.lastMessage || "No messages yet"}
-                  </div>
-
-                  {/* Message status (only for sent messages) */}
-                  {chat.lastMessageStatus &&
-                    chat.messages?.length > 0 &&
-                    chat.messages[chat.messages.length - 1]?.senderId ===
-                      currentUser?.id && (
-                      <FontAwesomeIcon
-                        icon={getMessageStatusIcon(chat.lastMessageStatus)}
-                        className={`${getMessageStatusColor(
-                          chat.lastMessageStatus
-                        )} flex-shrink-0`}
-                        size="xs"
-                        title={chat.lastMessageStatus}
-                      />
-                    )}
-                </div>
-
                 {/* Support ticket info */}
                 {chat.type === "support" && chat.ticketId && (
                   <div className="mt-1">
-                    <small className="text-muted">
+                    <small className="text-muted" style={{fontSize: "0.7rem"}}>
                       Ticket #{chat.ticketId}
                       {chat.priority && (
                         <span

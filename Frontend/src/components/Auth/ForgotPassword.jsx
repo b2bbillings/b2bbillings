@@ -9,6 +9,8 @@ import {
   faSpinner,
   faShieldAlt,
 } from "@fortawesome/free-solid-svg-icons";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import authService from "../../services/authService";
 import "./ForgotPassword.css";
 
@@ -39,6 +41,7 @@ function ForgotPassword({
     isSuccess: false,
     isOnline: navigator.onLine,
     countdown: 0,
+    showResendButton: false,
   });
 
   // ===============================
@@ -98,7 +101,7 @@ function ForgotPassword({
   // ⏰ COUNTDOWN TIMER
   // ===============================
   const startCountdown = useCallback(() => {
-    setUiState((prev) => ({ ...prev, countdown: 60 }));
+    setUiState((prev) => ({ ...prev, countdown: 60, showResendButton: false }));
 
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
@@ -109,7 +112,7 @@ function ForgotPassword({
         const newCountdown = prev.countdown - 1;
         if (newCountdown <= 0) {
           clearInterval(countdownIntervalRef.current);
-          return { ...prev, countdown: 0 };
+          return { ...prev, countdown: 0, showResendButton: true };
         }
         return { ...prev, countdown: newCountdown };
       });
@@ -163,23 +166,38 @@ function ForgotPassword({
       );
 
       if (response.success) {
+        // Show toast notification with custom styling
+        toast.success("Password reset link has been sent to your email", {
+          position: "top-center",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          icon: "✓",
+          style: {
+            background: "#ffffff",
+            color: "#333333",
+            fontWeight: "600",
+            fontSize: "15px",
+            borderRadius: "8px",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+            padding: "12px 16px",
+            textAlign: "left"
+          },
+          progressStyle: {
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+          }
+        });
+
         setUiState((prev) => ({
           ...prev,
           isSuccess: true,
           isSubmitting: false,
         }));
 
-        // Start countdown
+        // Start countdown (1 minute timer for resend button)
         startCountdown();
-
-        // Auto redirect to login after 60 seconds
-        setTimeout(() => {
-          if (onBackToLogin) {
-            onBackToLogin();
-          } else {
-            navigate("/login");
-          }
-        }, 60000);
       } else {
         setUiState((prev) => ({
           ...prev,
@@ -229,7 +247,15 @@ function ForgotPassword({
   };
 
   // ===============================
-  // 🔙 BACK TO LOGIN HANDLER
+  // � RESEND EMAIL HANDLER
+  // ===============================
+  const handleResend = useCallback(async () => {
+    // Reset the form and resubmit
+    await handleSubmit({ preventDefault: () => {} });
+  }, [handleSubmit]);
+
+  // ===============================
+  // �🔙 BACK TO LOGIN HANDLER
   // ===============================
   const handleBackToLogin = useCallback(() => {
     if (onBackToLogin) {
@@ -362,32 +388,6 @@ function ForgotPassword({
           </div>
         )}
 
-        {uiState.isSuccess && (
-          <div className="alert-success success-card">
-            <div className="success-icon">
-              <FontAwesomeIcon icon={faCheckCircle} />
-            </div>
-            <div>
-              <h3 style={{ fontSize: "1.5rem", fontWeight: "700", marginBottom: "0.75rem", color: "#166534" }}>
-                Email Sent Successfully!
-              </h3>
-              <p style={{ marginBottom: "0.5rem", fontSize: "1rem", lineHeight: "1.6" }}>
-                We've sent password reset instructions to{" "}
-                <strong style={{ color: "#059669" }}>{formData.email}</strong>
-              </p>
-              <p style={{ fontSize: "0.95rem", color: "#047857" }}>
-                Please check your inbox and spam folder.
-              </p>
-              {uiState.countdown > 0 && (
-                <div className="countdown-text">
-                  <FontAwesomeIcon icon={faCheckCircle} className="me-1" />
-                  Resend available in {uiState.countdown} seconds...
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* ✨ FORGOT PASSWORD FORM */}
         {!uiState.isSuccess && (
           <form onSubmit={handleSubmit} noValidate>
@@ -454,15 +454,31 @@ function ForgotPassword({
               <FontAwesomeIcon icon={faArrowLeft} className="me-2" />
               Back to Login
             </button>
-            <button
-              type="button"
-              className="resend-button"
-              onClick={() => setUiState((prev) => ({ ...prev, isSuccess: false }))}
-              disabled={uiState.countdown > 0}
-            >
-              <FontAwesomeIcon icon={faEnvelope} className="me-2" />
-              Didn't receive email? Send again
-            </button>
+            
+            {/* Show resend button after 1 minute */}
+            {uiState.showResendButton && (
+              <button
+                type="button"
+                className="resend-button"
+                onClick={handleResend}
+                disabled={uiState.isSubmitting}
+              >
+                <FontAwesomeIcon icon={faEnvelope} className="me-2" />
+                {uiState.isSubmitting ? "Sending..." : "Didn't receive email? Send again"}
+              </button>
+            )}
+            
+            {/* Show countdown while waiting */}
+            {!uiState.showResendButton && uiState.countdown > 0 && (
+              <p style={{ 
+                marginTop: "1rem", 
+                fontSize: "0.9rem", 
+                color: "#666",
+                textAlign: "center" 
+              }}>
+                Resend available in {uiState.countdown} seconds...
+              </p>
+            )}
           </div>
         )}
 
@@ -473,6 +489,8 @@ function ForgotPassword({
           </div>
         </div>
       </div>
+      {/* Toast Container for notifications */}
+      <ToastContainer />
     </div>
   );
 }

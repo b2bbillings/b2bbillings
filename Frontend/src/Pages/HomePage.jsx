@@ -39,6 +39,9 @@ import CompanyBrandInfo from "../components/New_Dashboard/Info/CompanyBrandInfo"
 // Import Category component
 import Category from "../components/Home/Category/Category";
 
+// Import Accounting component
+import Accounting from "../components/New_Dashboard/Accounting/Accounting";
+
 // Import utility components
 import ErrorBoundary from "../components/ErrorBoundary";
 import Loading from "../components/Loading";
@@ -167,6 +170,7 @@ function HomePage({
       daybook: "categories",
       transactions: "transactions",
       "cash-bank": "cashAndBank",
+      accounting: "accounting",
       // Removed parties, customers, vendors - they now have dedicated routes
       sales: "invoices",
       quotations: "quotations",
@@ -1086,6 +1090,16 @@ function HomePage({
             <Category
               {...commonProps}
               companyService={serviceProps.companyService}
+            />
+          );
+
+        // Accounting Dashboard
+        case "accounting":
+          return wrapWithErrorBoundary(
+            <Accounting
+              {...commonProps}
+              currentCompany={currentCompany}
+              currentUser={currentUser}
             />
           );
 

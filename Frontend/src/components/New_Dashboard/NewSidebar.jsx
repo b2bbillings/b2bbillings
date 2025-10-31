@@ -36,6 +36,7 @@ import {
   faArrowDown,
   faArrowUp,
   faExchangeAlt,
+  faCalculator,
 } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
 import "./NewSidebar.css";
@@ -64,6 +65,14 @@ const NAVIGATION_ITEMS = [
     icon: faTachometerAlt,
     type: "single",
     requiresCompany: false,
+    isActive: true,
+  },
+  {
+    id: "accounting",
+    label: "Accounting",
+    icon: faCalculator,
+    type: "single",
+    requiresCompany: true,
     isActive: true,
   },
   {
@@ -793,6 +802,9 @@ const NewSidebar = React.memo(
       let path = `/${type}`;
 
       switch (type) {
+        case 'accounting':
+          path = '/accounting';
+          break;
         case 'expenseManagement':
           path = '/expenses';
           break;
@@ -914,7 +926,7 @@ const NewSidebar = React.memo(
 
           {/* Navigation Menu */}
           <div className="new-sidebar-menu">
-            {/* Single Links for Dashboard, Categories, Items */}
+            {/* Single Links for Dashboard, Accounting, Categories, Items */}
             <div className="new-sidebar-item">
               <NavLink
                 to={getPath('dashboard')}
@@ -924,6 +936,19 @@ const NewSidebar = React.memo(
                 <div className="new-sidebar-link-content">
                   <FontAwesomeIcon icon={faTachometerAlt} className="new-sidebar-icon" />
                   <span className="new-sidebar-text">Dashboard</span>
+                </div>
+              </NavLink>
+            </div>
+
+            <div className="new-sidebar-item">
+              <NavLink
+                to={getPath('accounting')}
+                className={({ isActive }) => `new-sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleSimpleNavigation("Accounting", "accounting")}
+              >
+                <div className="new-sidebar-link-content">
+                  <FontAwesomeIcon icon={faCalculator} className="new-sidebar-icon" />
+                  <span className="new-sidebar-text">Accounting</span>
                 </div>
               </NavLink>
             </div>

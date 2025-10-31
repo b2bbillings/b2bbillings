@@ -27,6 +27,7 @@ import Customers from "./New_parties/Customers/Customers";
 import Vendors from "./New_parties/Vendors/Vendors";
 import Expense from "./Expenses+/Expense";
 import IndirectIncome from "./Expenses+/Indirect_Income/indirectIncome";
+import Accounting from "./Accounting/Accounting";
 import PaymentIn from "./Transactions/PaymentIn";
 import PaymentOut from "./Transactions/PaymentOut";
 import SimpleItems from "./Items/SimpleItems";
@@ -52,6 +53,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
   // Map path to content type
   const routeMap = {
     "/": { title: "Home", type: "welcome" },
+    "/accounting": { title: "Accounting", type: "accounting" },
     "/categories": { title: "Category Management", type: "categories" },
     "/items": { title: "Item Management", type: "items" },
     "/parties": { title: "Parties", type: "parties" },
@@ -101,6 +103,7 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       console.log("🔍 Checking last part:", lastPart); // Debug log
       
       const contentTypeMap = {
+        'accounting': { title: "Accounting", type: "accounting" },
         'salesWithGST': { title: "Sales with GST", type: "salesWithGST" },
         'salesWithoutGST': { title: "Sales without GST", type: "salesWithoutGST" },
         'allBills': { title: "All Bills", type: "allBills" },
@@ -258,6 +261,20 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
       />
     </div>
   );
+
+  // Accounting Content
+  const renderAccountingContent = () => {
+    console.log("🎯 Rendering Accounting Content", { currentCompany, currentUser });
+    return (
+      <div className="content-accounting">
+        <Accounting 
+          currentCompany={currentCompany}
+          currentUser={currentUser}
+          addToast={addToast}
+        />
+      </div>
+    );
+  };
 
   // Parties Content - New Parties Component
   const renderPartiesContent = () => (
@@ -516,6 +533,8 @@ const ContentDisplay = ({ activeContent, contentType, currentCompany, currentUse
         return renderCategoryContent();
       case "items":
         return renderItemContent();
+      case "accounting":
+        return renderAccountingContent();
       case "parties":
         return renderPartiesContent();
       case "customers":

@@ -58,13 +58,13 @@ function ChatSidebar({
   };
 
   return (
-    <div className="h-100 d-flex flex-column bg-white">
-      {/* Sidebar Header */}
-      <div className="flex-shrink-0 p-3 border-bottom bg-white">
-        <div className="d-flex align-items-center justify-content-between mb-3">
-          <h5 className="mb-0 text-primary fw-bold">
+    <div className="h-100 d-flex flex-column bg-white" style={{padding: 0}}>
+      {/* Sidebar Header - Reduced padding */}
+      <div className="flex-shrink-0 px-3 py-2 border-bottom bg-white">
+        <div className="d-flex align-items-center justify-content-between mb-2">
+          <h5 className="mb-0 text-primary fw-bold" style={{fontSize: "1.1rem"}}>
             <FontAwesomeIcon icon={faComments} className="me-2" />
-            Messages
+            Chats
           </h5>
           {currentUser && (
             <div className="d-flex align-items-center text-muted">
@@ -76,7 +76,7 @@ function ChatSidebar({
               </div>
               <small
                 className="text-truncate d-none d-md-inline"
-                style={{maxWidth: "120px"}}
+                style={{maxWidth: "120px", fontSize: "0.8rem"}}
               >
                 {currentUser.name}
               </small>
@@ -88,12 +88,12 @@ function ChatSidebar({
         <SearchBar
           searchQuery={searchQuery}
           onSearchChange={onSearchChange}
-          placeholder="Search conversations..."
+          placeholder="Search or start a new chat"
         />
       </div>
 
-      {/* Filter Tabs - Made smaller */}
-      <div className="flex-shrink-0 bg-light border-bottom p-2">
+      {/* Filter Tabs - Compact */}
+      <div className="flex-shrink-0 bg-light border-bottom px-2 py-1">
         <div className="d-flex flex-wrap gap-1">
           {filterSections.map((section) => (
             <button
@@ -132,10 +132,10 @@ function ChatSidebar({
         </div>
       </div>
 
-      {/* Section Header with Stats - Simplified */}
-      <div className="flex-shrink-0 p-2 bg-light border-bottom">
-        <div className="d-flex align-items-center justify-content-between mb-2">
-          <h6 className="mb-0 fw-bold" style={{fontSize: "0.9rem"}}>
+      {/* Section Header with Stats */}
+      <div className="flex-shrink-0 px-2 py-2 bg-light border-bottom">
+        <div className="d-flex align-items-center justify-content-between mb-1">
+          <h6 className="mb-0 fw-bold" style={{fontSize: "0.85rem"}}>
             <FontAwesomeIcon
               icon={getSectionIcon(
                 filterSections.find((s) => s.key === activeSection)?.icon
@@ -152,9 +152,10 @@ function ChatSidebar({
               size="sm"
               onClick={() => onStartNewChat()}
               style={{fontSize: "0.75rem", padding: "0.25rem 0.5rem"}}
+              title="Add New Customer/Vendor"
             >
               <FontAwesomeIcon icon={faPlus} className="me-1" size="xs" />
-              New Chat
+              New
             </Button>
           )}
         </div>
@@ -194,8 +195,8 @@ function ChatSidebar({
         </div>
       </div>
 
-      {/* Footer with Actions - Simplified */}
-      <div className="flex-shrink-0 p-2 border-top bg-light">
+      {/* Footer with Actions - Minimal padding */}
+      <div className="flex-shrink-0 px-2 py-2 border-top bg-light">
         <div className="d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center text-muted">
             <div
@@ -218,7 +219,7 @@ function ChatSidebar({
               <FontAwesomeIcon icon={faUsers} size="xs" />
             </Button>
             <small className="text-muted" style={{fontSize: "0.7rem"}}>
-              {chats.length} conversations
+              {chats.length} chats
             </small>
           </div>
         </div>

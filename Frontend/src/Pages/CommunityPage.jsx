@@ -332,26 +332,38 @@ function CommunityPage({
     }
   };
 
-  // Handle starting new chat
+  // Handle starting new chat - Navigate to add customer/vendor form
   const handleStartNewChat = (contact) => {
-    const newChat = {
-      id: Date.now(),
-      name: contact.name,
-      company: contact.company,
-      type: contact.type,
-      isOnline: contact.isOnline,
-      status: contact.isOnline ? "online" : "offline",
-      lastSeen: new Date().toISOString(),
-      lastMessage: "",
-      lastMessageTime: new Date().toISOString(),
-      lastMessageStatus: "sent",
-      unreadCount: 0,
-      messages: [],
-    };
+    // If contact is provided (from contact list), create chat
+    if (contact && contact.name) {
+      const newChat = {
+        id: Date.now(),
+        name: contact.name,
+        company: contact.company,
+        type: contact.type,
+        isOnline: contact.isOnline,
+        status: contact.isOnline ? "online" : "offline",
+        lastSeen: new Date().toISOString(),
+        lastMessage: "",
+        lastMessageTime: new Date().toISOString(),
+        lastMessageStatus: "sent",
+        unreadCount: 0,
+        messages: [],
+      };
 
-    setChats((prev) => [newChat, ...prev]);
-    setSelectedChat(newChat);
-    showToast(`Started new conversation with ${contact.name}`, "success");
+      setChats((prev) => [newChat, ...prev]);
+      setSelectedChat(newChat);
+      showToast(`Started new conversation with ${contact.name}`, "success");
+    } else {
+      // Navigate to add customer/vendor page
+      const companyId = effectiveCompanyId;
+      if (companyId) {
+        // Navigate to parties page where user can add customer/vendor
+        window.location.href = `/companies/${companyId}/parties`;
+      } else {
+        showToast("Please select a company first", "error");
+      }
+    }
   };
 
   // Handle sending message
@@ -451,10 +463,10 @@ function CommunityPage({
   return (
     <div
       className="community-page"
-      style={{height: "100vh", overflow: "hidden"}}
+      style={{height: "100vh", overflow: "hidden", display: "flex", flexDirection: "column"}}
     >
       {/* Top Header */}
-      <div className="bg-white border-bottom px-3 py-2 d-flex align-items-center justify-content-between">
+      <div className="bg-white border-bottom px-3 py-2 d-flex align-items-center justify-content-between" style={{flexShrink: 0}}>
         <div className="d-flex align-items-center">
           <Button
             variant="ghost"
@@ -559,15 +571,15 @@ function CommunityPage({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="d-flex h-100" style={{height: "calc(100vh - 60px)"}}>
-        {/* ChatSidebar Component */}
+      {/* Main Content - No padding/margin */}
+      <div className="d-flex flex-grow-1" style={{overflow: "hidden"}}>
+        {/* ChatSidebar Component - No padding */}
         <div
           className="flex-shrink-0 border-end"
           style={{
-            width: selectedChat ? "400px" : "450px",
-            minWidth: "350px",
-            maxWidth: "500px",
+            width: selectedChat ? "380px" : "420px",
+            minWidth: "320px",
+            maxWidth: "480px",
           }}
         >
           <ChatSidebar
@@ -587,10 +599,10 @@ function CommunityPage({
           />
         </div>
 
-        {/* Main Chat Area */}
+        {/* Main Chat Area - No padding */}
         <div
           className="flex-grow-1 d-flex flex-column"
-          style={{background: "#e5ddd5"}}
+          style={{background: "#e5ddd5", overflow: "hidden"}}
         >
           <ChatContainer
             selectedChat={selectedChat}

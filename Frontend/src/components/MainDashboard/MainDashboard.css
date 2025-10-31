@@ -161,11 +161,11 @@
    DASHBOARD CONTENT - COMPACT LAYOUT
    ========================================================================== */
 
-.dashboard-content {
+/* .dashboard-content {
   padding: var(--spacing-md);
   min-height: calc(100vh - 110px);
   position: relative;
-}
+} */
 
 .dashboard-content.mobile-content {
   padding: var(--spacing-sm);
@@ -244,7 +244,7 @@
 
 .single-view {
   min-height: calc(100vh - 110px);
-  padding: var(--spacing-md);
+  
 }
 
 .single-view.mobile-single-view {
@@ -451,9 +451,12 @@
   }
   
   .dashboard-content {
-    padding: var(--spacing-xl);
+    /* padding: var(--spacing-xl); */
     max-width: 1600px;
     margin: 0 auto;
+    margin-bottom: 1rem;
+    margin-left: .2rem;
+    margin-right: .2rem;
   }
   
   .view-tab {
@@ -470,9 +473,9 @@
     max-width: 300px !important;
   }
   
-  .dashboard-content {
+  /* .dashboard-content {
     padding: var(--spacing-lg);
-  }
+  } */
   
   .view-tab {
     min-width: 110px;
@@ -487,9 +490,9 @@
     max-width: 280px !important;
   }
   
-  .dashboard-content {
+  /* .dashboard-content {
     padding: var(--spacing-md);
-  }
+  } */
   
   .view-tab {
     min-width: 90px;
@@ -533,16 +536,13 @@
     gap: var(--spacing-sm);
   }
   
-  .dashboard-content {
+  /* .dashboard-content {
     padding: var(--spacing-sm);
-  }
+  } */
 }
 
 /* Mobile (< 768px) - Switch to single column only on mobile */
 @media (max-width: 767.98px) {
-  .dashboard-content {
-    padding: var(--spacing-sm);
-  }
   
   .section-wrapper {
     border-radius: var(--radius-md);
@@ -573,9 +573,6 @@
     top: 56px;
   }
   
-  .dashboard-content {
-    min-height: calc(100vh - 100px);
-  }
   
   .view-tabs {
     gap: var(--spacing-xs);
@@ -588,9 +585,6 @@
     min-width: 70px;
   }
   
-  .dashboard-content.mobile-content {
-    padding: var(--spacing-xs);
-  }
   
   .view-tab.mobile-tab {
     min-height: 48px;
@@ -737,9 +731,6 @@
     background: white !important;
   }
   
-  .dashboard-content {
-    padding: 1rem !important;
-  }
   
   .section-wrapper {
     box-shadow: none !important;
